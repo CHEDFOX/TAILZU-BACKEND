@@ -30,6 +30,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
+import { quotaBody, quotaHeaders, type Quota } from "../../usage/metering.js";
 import { requireAdmin } from "../../control/index.js";
 import type { Bots } from "../../bots/index.js";
 import { frontEnvelope, tagOf, type BotTag } from "../../bots/envelope.js";
@@ -60,8 +61,9 @@ export interface FrontRoutesDeps {
   front: Front | null;
   /** The guard the admin route reports on; the front door's own, or the process's. */
   guard?: Guard;
-  /** The monthly allowance, as the server counts it: a sentence when it is spent, else null. */
-  quota?: (user: AuthedUser) => Promise<string | null>;
+  /** The monthly allowance, as the server counts it: a refusal when it is spent (a sentence, or a whole body where the ordinary
+   *  "you have run out" would be wrong — the burn brake's; usage/metering.ts `Quota`), else null. */
+  quota?: (user: AuthedUser) => Promise<Quota | null>;
   /** Written down after an answer (zero words: the model's words are not the person's), with what the front door's own calls cost (a bot's
    *  answer is written down by the bots platform itself): the usage meter counts it (src/you/limits.ts). */
   used?: (user: AuthedUser, paise: number) => Promise<void>;
@@ -203,7 +205,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     if (await (deps.stopped ?? isLeaving)(user.id)) return reply.code(403).send({ code: "account_leaving", message: LEAVING_MESSAGE });
 
     const quota = await deps.quota?.(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
 
     const ctx: FrontCtx = { userId: user.id, plan: await planOf(user), ...input.ctx };
     // The Xode chat sends no turns: the thread it names says what was asked last, so "??" or "why?" goes on from that question.

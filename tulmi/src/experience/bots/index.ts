@@ -144,7 +144,7 @@ export interface BotsRequest {
  */
 export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise<ScreenResponse> {
   const tz = req.tzOffsetMinutes ?? 0;
-  const live = await loadLive(deps, tz);
+  const live = await loadLive(deps, tz, req.user?.id);
   // Spaces switched off: a link, a widget row or a notification into one of its screens opens Home, with none of its params.
   const spaces = req.spaces ?? spacesOn();
   const away = !spaces && isSpacesScreen(req.screenId);

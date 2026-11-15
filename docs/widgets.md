@@ -121,6 +121,7 @@ serves a widget's button, a notification's button and a reply typed into a notif
 | `task:<id>[:<approval>]` | `yes`, `no` | approves or denies a connected app's waiting call (`connectors/tasks.ts`) | `needs.answer` |
 | `stask:<space>:<task>` | `done` | ticks the person's own part of a space's task (`SpaceTasks.answer`) | `task.done` |
 | `thread:<id>` | `reply` + `text` + `key` | sends a message (`Threads.send`) | session only |
+| `psa:<askId>` | `share`, `decline` | answers one ask to be put on your plan, exactly as the card in Activity does (`billing/planShareActs.ts`, docs/plan-share.md §5.1). Nothing while `PLAN_SHARE` is off | session only |
 
 **Checks.** Every service checks the item again: is it the person's own, may they write there, is it still waiting? A widget
 token may act only within its scopes, and only where `widgets.needs.modes` says `inPlace`. A connected app's yes is given from
@@ -154,6 +155,7 @@ The person's open screens are told (`livePublish`).
   | `space_message` | `x0_reply` |
   | `space_task`, `space_plan` | `x0_task` |
   | `approval` | `x0_yesno` |
+  | `plan_share_ask` | `x0_plan_share` (Share, Not now) — the category is registered with the phone only while `PLAN_SHARE` is on, and no push of the kind is raised while it is off |
   | `plan_todo` | `x0_todo` (Done, Later; `x0_todo_last`, Done only, after Later three times) |
   | `plan_leave` | `x0_leave` (Open map: it opens `bots.plan.go`, which hands off to Maps) |
   | `plan_evening` | none, or `x0_move` (Move it, Keep) when it asks the Move card's question |

@@ -13,6 +13,8 @@ tulmi/src/code/agent/
   tools.ts         read_file ... done: what each tool really does
   runner.ts        the runner port, and the environment router behind it
   report.ts        the commit message, the pull request body, the final report
+  surface.ts       what the change took away: the exported names and routes of the files it touched, before against after
+  scope.ts         the files a change touched that its task never pointed at: said to the model once, then reported
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
   loop.ts          the driver (runLoop), the single-advance entry (advanceLoop), and the budget stop
@@ -46,8 +48,8 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `plan` | `work/plan.ts`. Then the policy is asked in advance what the commit this plan leads to would do (`decide`). A standing "never" ends the job with the reason. A **high-risk** plan, or one the policy would ask about, waits for the person's OK through the approval book. | the OK (`needs_you`) |
 | `split` | **Only for a big goal** (a plan over 12 files or 3 features, a goal over several projects, or the person asked; never a small task): the job becomes a **lead**. The `team_split` role splits the work into parts with disjoint file ownership; code validates them (an overlap is refused and asked again, three rounds at most). A split that cannot be made right leaves the job to do the work itself. `docs/code-team.md` | the budget cannot pay a team (`needs_you`, `budget`) |
 | `team` | The lead's loop over its helpers: it builds part 0 (the shared contracts) first, then starts helpers (child jobs, three at once by default), has each part reviewed by a model of another family (two fix rounds at most), merges the parts in dependency order, and then runs `verify` on the whole branch. One pull request at the end. `docs/code-team.md` | a part's money, a helper's question (shown as a `blocked` part) |
-| `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. | a question from the model; the budget |
-| `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. | |
+| `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. After a round that changed code, the tests covering the changed files are run while the edit is still in front of the model, when that is nearly free (section 4a), and what it touched beyond the task is noted once (section 4c). | a question from the model; the budget |
+| `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4b, `surface.ts`). | |
 | `design` | **Only for a job built from an approved design** (`AgentState.spec`, `docs/artifacts.md` sections 6 and 11), and only if `CODE_DESIGN_CHECK` is on. After the checks pass and before the commit: start the project's dev server on the runner (the preview, `docs/cloudflare-jobs.md` section 11), open the route the design is for, shoot it and the approved design at mobile and desktop, and compare (a cheap pixel gate first, the vision tier only if they differ, metered in the job's budget). **Major** differences send the job back to `work` with the differences and the fix hints in front of the model, **twice at most**, and the checks run again before the next look. After the last round one more look is taken and what still differs is **reported**. It **never blocks the commit**: no live runner, not a web app, no `dev` script, a dev server that will not start, no browser or shot viewer, a budget too small (about 240 paise), a failed shot, a model with no usable answer: the round is skipped with one sentence for the report and the job goes on. Its stages are saved one by one, so a restart or a wait resumes it without doing anything twice | |
 | `commit` | The **server** commits all the staged edits at once through `workspace().commit`, so the policy, the secret scan, the Blip author and the co-author trailer always apply. If the policy asks, the job waits for the person's OK; if it says never, the job stops with the reason. | the OK (`needs_you`) |
 | `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke**, and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
@@ -76,7 +78,7 @@ A third road is **lead and helpers** (`docs/code-team.md`): after `plan`, a big 
 | It died while | The next server |
 | --- | --- |
 | the model was thinking | asks again for that turn (the turn it was in is not in the state) |
-| a tool call of a turn was done and the next not | runs the calls that have no result yet; a call already answered is not run again, so **an edit is never made twice** (and a call's id keeps it out of the work log twice) |
+| a tool call of a turn was done and the next not | runs the calls that have no result yet; a call already answered is not run again, so **an edit is never made twice** (and a call's id keeps it out of the work log twice). A run of looks answered side by side (section 3) is saved once, when the run is done, so a death in the middle asks them all again, which changes nothing |
 | a runner step was out | **adopts** it (`state.run`: the step's index and commands), whether it has finished or not, instead of asking for another |
 | the commit was being made | looks at the branch: if every staged file is already there as staged, the commit was made and is **not made again**; if the branch moved, stops rather than commit over someone's work |
 | the pull request was opened | `openDraftPr` finds the open one and its description is updated |
@@ -94,14 +96,16 @@ A loop that fails on something unexpected (GitHub down, a bug) is not the person
 | `grep {pattern, path?, glob?, ignoreCase?, context?, filesOnly?, maxResults?}` | **Exact search**, like ripgrep: a JavaScript regular expression, line by line, each match `path:line:text` (context lines `path-line-text`). Sees the staged edits. At most 500 matches (100 by default), a pattern of at most 300 characters; a dangerous pattern (a back-reference, `(a+)+`) is refused with the reason, and a search that runs out of time or work comes back `partial` and says so. Without the live session it searches up to 60 files through GitHub's API, and says which it did not reach. |
 | `glob {pattern}` | Files by name: `src/**/*.test.ts`, `*.md`, `tests/{a,b}/*.js` (a pattern with no `/` matches the name at any depth). The most recently changed first, at most 500. Sees the staged edits. |
 | `search_code {query}` | The project brain's index, for **where a feature lives** (files, symbols, the text people see). It does not see the staged edits. Use `grep` for an exact name or string. |
-| `edit_file {path, old, new}` | An exact replace of text that occurs **once**; says what it found otherwise (not there, or N times). Staged. |
+| `edit_file {path, old, new, replace_all?}` | An exact replace of text that occurs **once**; says what it found otherwise (not there, or N times, and that `replace_all` changes every one). `replace_all: true` changes every copy and says how many: a name used all through a file is one call, not one call a copy each with lines around it to make it the only one. Staged. |
 | `write_file`, `delete_file` | Stage a whole file, or a deletion. |
 | `run {cmd, why}` | Up to 20 commands on a runner, **with the staged edits laid over the checkout** (`overlay` on the step; nothing it changes is kept); the exit code and the end of the output. At most 10 runs in a round of work. With the live session the commands go to a runner kept open for the job (about a second each); otherwise each is a step of its own. |
 | `web_search`, `read_page`, `research` | Layer 3. The page arrives inside `asUntrusted`'s wrapper. |
 | `find_resources {need}` | Layer 6: a ranked shortlist of libraries. |
-| `flag_finding`, `note` | A bug noticed in code it was not asked to change (it goes in the pull request); a line for the work log. |
+| `flag_finding`, `note` | A bug noticed in code it was not asked to change (it goes in the pull request); a line for the work log. **A finding earns its severity:** a `risk` must carry `how` it happens (what someone controls, what it reaches, what comes of it) or it is kept as a `warn` marked *worth checking* instead, and the model is told so. The verdict (`confirmed`, `needs_checking`) is `work/findings.ts cleanFinding`'s word, never the model's, and the two groups are separate in the report and the pull request. After Cloudflare's security-audit skill (MIT; the idea, not its text): only an established boundary failure is confirmed, and a missing hardening measure is not one. |
 | `ask_user {question, options?}` | The job waits for the person; their words come back as the call's result. |
 | `done {summary}` | The work is finished. |
+
+**Looks side by side.** `read_file`, `list_dir`, `grep`, `glob`, `search_code`, `suggest_files` and `project_map` only look: they stage nothing, run nothing and ask no one. A turn's run of two or more of them is answered **side by side**, four at a time (`phases.ts LOOKS_AT_ONCE`), the results kept in the order the model asked, and the checkpoint written **once for the run** instead of once a call (a turn of four looks wrote the checkpoint five times; it writes it twice). What several of them may need at once is asked for once and shared: GitHub's tree, a file of the branch, the job's copy of the code and the staged edits it is given (`Tools`), and the work log's count. Every other call is carried out alone, in order, and saved as soon as it is done.
 
 **Refused up front, in words the model can act on, before anything is staged:** a path under `.github/workflows` (CI is never changed), a path outside the repo or inside `.git`, Tailzu's own runner files, an env file or a key, text that newly holds something that looks like a secret, a file over 1 MB, more than 100 files or 600,000 characters staged. The policy would refuse or ask at commit time as well; this way the model hears it while it can still do something about it, and **a secret is never written into the checkpoint**: a call whose arguments look like one is kept without them (`WITHHELD_ARGS`) and still refused when it runs. Every call and its result is in the work log (a secret is redacted before it is kept). A turn whose every call failed counts as a bad one: it makes the router climb a tier, and six in a row stop the job.
 
@@ -150,6 +154,92 @@ Masking saves model calls and cheap-tier money, and it costs input tokens: the p
 **Data is never instructions.** A file the model read, a command's output, a search result and the folded summary go in `<tool_data>`; a web page arrives in the web code's `<web_page>`. Both wrappers are ones their own text cannot close. Our one-line answers ("Edited src/a.ts.") are the only text outside a wrapper in a tool message. Nothing run on a runner comes from anything but a `run` call of the model.
 
 **Tiers.** Each turn is routed by `planRoute("write_code", ...)` (`brain/route.ts`): the tier climbs on failures (bad turns and fix rounds), and a tier the remaining budget cannot afford (by its `maxTokens`: 4,096 of answer plus the tier's own room for thinking, `phases.ts workTokens`) is not chosen. A thinking model given 4,096 in all spent them all thinking and wrote nothing. After each round of writing, `recordOutcome` tells the route statistics whether it worked, what it cost and how long it took.
+
+## 4a. The tests covering what was just edited, run mid-work
+
+The project's checks run once, after `done` (`verify`). A break found there is a fix round: the model comes back to it several steps later, with the
+edit that caused it folded into a summary, and works out again what it did. Found at the end of the round that caused it, the edit is still the model's
+last thought and the fix is usually one turn.
+
+So after a round that changed code, the tests that cover the changed files are run on the staged edits (`phases.ts spotCheck`), and a failure goes into
+the **next turn's prompt** in its own words ("not the final check; what your last edit did, while you are still in it"), never as a verify fix round.
+The command is the narrowed one verify runs first (`work/plan.ts affectedTestCommand`, over the brain's `testsFor`), so it runs that file's tests and
+not the suite.
+
+**Only when it is nearly free**, because a runner step is the expensive thing in a job:
+
+* the job has a **live session** (`deps.live`) and the model has **already run a command in this round**, so a runner is open and warm and one more
+  command is about a second. Without that a check is a step of its own, and verify does it at the end as it always has;
+* the command can be **narrowed** to the tests covering the changed files (`scope: "affected"`); a whole suite is not a spot check;
+* at most **`SPOT_CHECKS_MAX`** (2) in a job, never twice on the same staged edits (their fingerprint is kept in `work.spotAt`), and **mid-work only**:
+  once `done` is called, verify is the next thing anyway;
+* a test that was **already failing** on the branch is not this change's doing: the result is compared to the baseline, exactly as verify's is.
+
+It never fails a job and never blocks anything: a runner that does not come, output that cannot be read, no test covering the changed files, or any
+error at all leaves the job as it was. `verify` clears its word when it runs: the verdict is the checks', not the spot check's.
+
+Tests: the "mid-work" group in `tests/code-agent-loop.test.ts` (the failure reaching the next turn and fixed there, nothing run without a session or
+before the model has run anything, and the two-in-a-job cap with the same edits never checked twice).
+
+## 4b. What the change took away
+
+The project's checks prove that what is tested still works. They say nothing about what no test covers, and most projects cover a fraction: an
+exported function dropped in a rewrite, a route no longer registered, a component renamed and its last caller missed. The tests stay green and the
+feature is gone; the person finds it, not the job. (`testlock.ts` guards the project's own tests the same way, by counting.)
+
+So once the checks have passed, before the commit (`surface.ts`): for every staged file the **exported names and the HTTP routes** are read from the
+text on the work branch and from the staged text (`project/symbols.ts extractSymbols`: regexes over blanked comments, **no model and no parser**, every
+pattern with a fixture), and anything that was there and is not any more is a **removal**.
+
+It is narrow on purpose, because a false alarm costs a round of the person's money:
+
+* only what is visible from outside the file (`exported`) and routes; a private helper is the file's own business;
+* the **name**, not its kind: an exported function that becomes an exported const of the same name is the refactor it is;
+* a name that **moved** is not a removal: gone from one staged file and present in another is what a refactor looks like, and a file the job **deleted**
+  is read the same way, so moving a module's contents elsewhere is fine and dropping them is not;
+* a test file is the test lock's business, and a file that cannot be read (binary, too big, gone) is left out rather than called a removal;
+* a task that asks for something to go (`REMOVAL_ASKED`: remove, delete, drop, rename, replace, deprecate, clean up, dead code...) turns the check
+  **off**, as the test lock's `TESTS_ASKED` does: the person asked;
+* nothing for a `merge` (the removals in a merged-in branch are other people's commits) or a new project.
+
+**One round, and it never blocks the commit.** A removal the task did not ask for goes back to `work` once (`work.surfaceAsked`), with the names and
+their files, told to put it back or, if it was renamed on purpose, to update every use and say so with `note`. That round is its own, outside the three
+fix rounds, so it cannot eat them. If the name is still missing after it, the job **goes on and commits**: what is gone is named in the report and in
+the pull request ("Gone from this branch, and no test covers it", `VerifyState.lost`), and the report's next steps offer to put it back. A check that
+cannot be made says nothing at all.
+
+Tests: `tests/code-agent-surface.test.ts` (the surface per language, what counts as moved, the words the model is given) and the "what the change took
+away" group in `tests/code-agent-loop.test.ts` (the round through the real loop, the one-round cap with the report and the pull request, and a task that
+asked for the removal).
+
+## 4c. The files a change touched that its task never pointed at
+
+A change should touch what it must and leave the rest alone. An agent reading a lot of code is tempted by what it passes: a tidy-up here, a rename
+there, a lint fix in a file it only opened to understand. Each is defensible alone, and together they turn a two-file change into a twelve-file one
+that nobody can review.
+
+So after every round that has something staged, the staged files are set against what the task pointed at (`scope.ts`), from what the project already
+knows and with **no model**: the plan's files and the located targets, the locate funnel's top files (`work/locate.ts fusedFor`, the free half, run
+once a job and kept), a path the person wrote in the task itself, and what the index connects to those — their importers, what they import, and the
+tests covering them.
+
+Never counted as a detour: a **manifest or lockfile** (a dependency the work needed shows up there), a **test beside a related file**, and a **new**
+file in the same folder as a related one (that is how a project grows). An **edit** to a file that merely shares the folder *is* counted: in a project
+whose source sits in one directory, the folder would otherwise excuse everything.
+
+**It is a note, not a gate.** The funnel is a guess and this is a guess about a guess, so what is left over is never called wrong:
+
+* **once** a job, while the model can still act on it, as a line in its prompt: these are not files the task pointed at, which is often right (a call
+  site, a type, a config, a test), but if one is a tidy-up that is not part of this task, put it back, and `flag_finding` is where something noticed
+  elsewhere belongs. It costs no model and no runner, and saying it once means it cannot nag a model into reverting work it needs;
+* in the **report and the pull request** ("Beyond what the task asked for"), as what a reviewer should look at first. The list is kept up to date after
+  the note has been said, so a detour taken later still shows up there.
+
+Nothing for a merge, a new project or a team's part (a helper's files are already its own, and `team/guard.ts` *refuses* an edit outside them: that is a
+guard, because a part really does own its paths, where here nobody knows better than the model what the change needs).
+
+Tests: `tests/code-agent-scope.test.ts` (what counts as pointed at, the three exemptions and the edit that is not excused by its folder, a brain that
+cannot answer) and the "a file the task never pointed at" group in `tests/code-agent-loop.test.ts`.
 
 ## 5. Money
 
@@ -298,7 +388,7 @@ prepare ► baseline ► work (read, search, run, edit, run again ... in the mod
 * **The locate funnel is a tool and a hint, not a gate.** When the work starts, `hintsOf` runs the funnel's free half (`work/locate.ts fusedFor`: the request's names, the text people see, symbols, paths, features and the repo map; no model, no threshold, no question) and the job is shown the top files with the reason for each, once, as a guess to check. The `suggest_files {query?}` tool asks again (with other words), and adds the tests near the first files. No excerpts are shown (they were slivers that led the guided work to the wrong place); the model reads what it needs.
 * **Asking as little as possible once the work has started** (`phases.ts holdQuestion`). The person handed the work over; a question stops the job and calls them back. A job made from a plan the owner approved (its task carries `APPROVED_PLAN_LINE`, `code/flow/plan.ts`) has its first `ask_user` held back, and is never asked "where does this belong?" (locate picks the best place); a job from a plain request may ask once, and its next question is held back. A held question is not shown to the person: the model is told to decide, say what it chose with `note`, and go on. Asked again within two steps it goes through: what only the person can give (a key, an account, a file), or what would delete their data or spend their money. Approvals the policy asks for (a commit, paid compute) are not questions and are unchanged.
 * **How it is told to work** (`context.ts freeformGuide`, in the task, the same on every turn): find the code (suggest_files, grep for every call site, read whole functions); when the request leaves open WHAT to build, `ask_user` once with two or three options before changing code (a job from a plan the owner approved asks nothing about what to build); for a bug, reproduce it first; change every use of what it renames; prove it by running the tests and adding a focused one; then `done`. A question is told to change nothing and to put the whole answer, with the exact names and values and file:line for each, in `done`'s summary. This is mini-swe-agent's order (MIT; the idea, not its text) and aider's map of the repo up front (Apache-2.0; the idea), in our tools.
-* **It keeps its transcript** (the `transcript` context strategy, section 4): every result whole until they pass 160,000 characters, then the oldest masked in one batch; the first user message the same on every turn and what changes (the step, what is staged, the checks' feedback, the person's words) in a short message at the end. The provider's prompt cache keeps hitting it (the rawBody feature on DeepSeek V4.1 Flash: 92% of 1.04M prompt tokens were cached), and the model does not read the same file again and again as the summary made it do.
+* **It keeps its transcript** (the `transcript` context strategy, section 4): every result whole until they pass 160,000 characters, then the oldest masked in one batch; the first user message the same on every turn and what changes (the step, what is staged, the checks' feedback, the person's words) in a short message at the end. The provider's prompt cache keeps hitting it (the rawBody feature on DeepSeek V4.1 Flash: 92% of 1.04M prompt tokens were cached; Claude, which caches only where it is told, is sent the marks for it: `docs/code-brain.md` section 2, prompt caching), and the model does not read the same file again and again as the summary made it do.
 * **The same rails.** Free-form means the model chooses the order, not that it chooses the rules. The budget (a turn the money cannot cover is not made), the policy, the staged changeset, the secret scan, text from outside as data, checkpoints, the protected paths, the project's own checks before the commit, the focused test round (`CODE_PROVE_FIX`), asking before anything risky, and **verify before commit** (section 1) are exactly the guided job's. It never gets a tool that commits.
 * **Held in a way of its own.** A free-form job has at most **50 steps** (a step is a turn and its tool calls; the guided job has 60 turns), **6 more for each fix round** and **4 for the focused test** (`freeformStepCap`: a job that used its 50 and then broke a test had no step left to fix it), and **30 runs** in a round (a guided round has 10): investigating means running things. The status line says how many are used, says so when half the steps are gone with nothing staged, and warns in the last five. Once the person has answered the job's own question, it says that what to build is settled, and after **4 more steps** with nothing staged (`FREEFORM_AFTER_ANSWER_STEPS`) that the change is to be made now: the vague request of the paid comparison asked well, was told exactly what to build, and then read for fifteen steps until it ran out of time, three times out of three. At the step cap the work is called done with a note, and goes on to the checks with what is staged.
 * **Plan-first still plans.** A free-form job with "show me the plan first" runs one locate (that never stops to ask) and one plan, waits for the yes, and only then works.

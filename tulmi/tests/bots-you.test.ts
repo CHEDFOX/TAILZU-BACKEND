@@ -42,8 +42,16 @@ const RESETS = Date.UTC(2026, 10, 1) - IST * MIN;
 const S = structuredClone(DEFAULT_SETTINGS);
 const byBot = [{ bot: "code", paise: 14_200 }, { bot: "keybot", paise: 1800 }, { bot: "plan", paise: 1500 }, { bot: "gym-bot", paise: 900 }];
 
+/** The meter as the server now serves it: one month, one allowance, so `stretch` IS the month and there is nothing else to draw. */
 const USAGE = {
-  plan: { id: "paid", name: "Pro", paid: true, windows: true, carryOver: false, upgrade: false },
+  plan: { id: "paid", name: "Pro", paid: true, windows: false, carryOver: false, upgrade: false },
+  stretch: { used: 0.64, startsAt: MONTH_START, resetsAt: RESETS, n: 1, of: 1, days: 31 },
+  month: { used: 0.64, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
+  state: "ok",
+};
+/** The same person on a server that has put the five windows back (USAGE_STRETCHES): the way out, which the screens must still draw. */
+const WINDOWED = {
+  plan: { ...USAGE.plan, windows: true },
   stretch: { used: 0.64, startsAt: Date.UTC(2026, 9, 23) - IST * MIN, resetsAt: RESETS, n: 5, of: 5, days: 9 },
   month: { used: 0.4, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
   state: "ok",
@@ -190,14 +198,15 @@ describe("the You screens", () => {
 
   it("You and Usage show the meter the way other AI assistants do, and no screen here shows money", async () => {
     const you = texts((await build("bots.you", "phone", ANSWERS)).root);
-    expect(you).toContain("This stretch");
+    expect(you).toContain("This month");
     expect(you).toContain("64% used");
     expect(you).toContain("Resets Sun");
     for (const client of ["phone", "desktop"] as const) {
       const usage = texts((await build("bots.usage", client, ANSWERS)).root);
-      expect(usage).toEqual(expect.arrayContaining(["Usage", "This stretch", "64% used", "Resets Sun", "This month", "40% used"]));
-      // The meters say it: no line explaining how the stretches work.
-      expect(usage.join(" ")).not.toContain("five stretches");
+      expect(usage).toEqual(expect.arrayContaining(["Usage", "This month", "64% used", "Resets Sun"]));
+      // One allowance, one meter: nothing says "stretch" and nothing explains a schedule that no longer exists.
+      expect(usage.join(" ")).not.toMatch(/stretch/i);
+      expect(usage.filter((t) => t === "64% used")).toHaveLength(1);
     }
     // Budget's old link opens Usage.
     expect(texts((await build("bots.budget", "phone", ANSWERS)).root)).toContain("64% used");
@@ -211,14 +220,14 @@ describe("the You screens", () => {
     // Razorpay's and the UPI app's, so no invoices, no "Paid by", no plan blurb.
     for (const client of ["phone", "desktop"] as const) {
       const billing = texts((await build("bots.billing", client, ANSWERS)).root);
-      expect(billing).toEqual(expect.arrayContaining(["Plan", "Pro", "Renews", "Usage", "64% of this stretch", "Change plan", "Cancel plan"]));
+      expect(billing).toEqual(expect.arrayContaining(["Plan", "Pro", "Renews", "Usage", "64% of this month", "Change plan", "Cancel plan"]));
       for (const gone of ["Invoices", "Paid by", "UPI autopay", "Your UPI app tells you before each renewal.", "TZ-2610-0412", "More every month, for all your bots"]) expect(billing, client).not.toContain(gone);
     }
   });
 
   it("near the limit a calm line; at it the sentence, and a plan offered as an action without a price", async () => {
-    const near = { ...ANSWERS, "GET /v1/you/usage?tz=330": { usage: { ...USAGE, stretch: { ...USAGE.stretch, used: 0.85 }, state: "near" }, near: "You've used most of this stretch. It resets Sun.", out: null, how: "" } };
-    expect(texts((await build("bots.usage", "phone", near)).root)).toContain("You've used most of this stretch. It resets Sun.");
+    const near = { ...ANSWERS, "GET /v1/you/usage?tz=330": { usage: { ...USAGE, stretch: { ...USAGE.stretch, used: 0.85 }, state: "near" }, near: "You've used most of this month. It resets Sun.", out: null, how: "" } };
+    expect(texts((await build("bots.usage", "phone", near)).root)).toContain("You've used most of this month. It resets Sun.");
     const out = { ...ANSWERS, "GET /v1/you/usage?tz=330": { usage: OUT, near: null, out: "You've reached this month's limit. It resets Sun.", how: "" } };
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.usage", client, out);
@@ -227,10 +236,22 @@ describe("the You screens", () => {
       expect(JSON.stringify(s)).not.toMatch(/₹/);
     }
     const you = { ...ANSWERS, "GET /v1/you?tz=330": { ...(ANSWERS["GET /v1/you?tz=330"] as object), usage: { ...USAGE, state: "near", stretch: { ...USAGE.stretch, used: 0.9 } } } };
-    expect(texts((await build("bots.you", "phone", you)).root)).toContain("You've used most of this stretch. It resets Sun.");
+    expect(texts((await build("bots.you", "phone", you)).root)).toContain("You've used most of this month. It resets Sun.");
   });
 
-  it("the free plan has no stretches: every You screen shows the month alone, and says this month", async () => {
+  /**
+   * THE WAY OUT HAS TO DRAW. A server that sets USAGE_STRETCHES serves `windows: true` and the same screens must go back to two meters
+   * and the word "stretch", with nothing else changed: the screens read the meter, they do not know the setting.
+   */
+  it("draws the five windows again when the meter says the month has them", async () => {
+    const windowed = { ...ANSWERS, "GET /v1/you/usage?tz=330": { usage: WINDOWED, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." } };
+    for (const client of ["phone", "desktop"] as const) {
+      const usage = texts((await build("bots.usage", client, windowed)).root);
+      expect(usage).toEqual(expect.arrayContaining(["This stretch", "64% used", "This month", "40% used"]));
+    }
+  });
+
+  it("the free plan is the same one month, only smaller: every You screen shows it alone, and says this month", async () => {
     // As the server serves a free account (src/you/usage.ts): one allowance, the month, n 1 of 1.
     const FREE = {
       plan: { id: "free", name: "Free", paid: false, windows: false, carryOver: false, upgrade: true },
@@ -238,7 +259,7 @@ describe("the You screens", () => {
       month: { used: 0.64, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
       state: "ok",
     };
-    const how = "Your plan's use is counted by the month, and starts again when the month does.";
+    const how = "Your plan's use is counted by the month, and starts again when the month does. Use it whenever you like.";
     const free = {
       ...ANSWERS,
       "GET /v1/you/usage?tz=330": { usage: FREE, near: null, out: null, how },
@@ -354,11 +375,11 @@ describe("the usage limits, kept", () => {
   let store: MemoryYouStore;
   let spent = 0;
   beforeEach(() => { store = new MemoryYouStore(); spent = 0; });
-  // Lite's month is five stretches of $4, $8, $6, $10 and $7: this one (23 to 31 Oct, the fifth, on the calendar: the entitlement names no
-  // billing day) may use $7, 61,600 paise of ours at 88 rupees to the dollar.
-  const STRETCH = 7 * 8800;
+  // Lite's month is $4 + $8 + $6 + $10 + $7 = $35, spendable on any day of it: 308,000 paise of ours at 88 rupees to the dollar.
+  const MONTH = 35 * 8800;
+  // The job's spend sits three hours back, outside the burn brake's hour, so these tests are about the month and nothing else.
   const jobs = {
-    listJobs: async () => [{ id: "j", task: "t", state: "done", spentPaise: spent, createdAt: FIXED_NOW - HOUR, updatedAt: FIXED_NOW - MIN, branch: "b", projectId: "p", budgetPaise: 3000 }],
+    listJobs: async () => [{ id: "j", task: "t", state: "done", spentPaise: spent, createdAt: FIXED_NOW - 4 * HOUR, updatedAt: FIXED_NOW - 3 * HOUR, branch: "b", projectId: "p", budgetPaise: 3000 }],
     defaultBudget: () => 3000,
   };
   const make = () =>
@@ -371,12 +392,12 @@ describe("the usage limits, kept", () => {
     // A dictation that cost us a quarter of a dollar: 2,200 paise at 88.
     spending.recordUsd(UID, "keybot", 0.25);
     const u = await spending.usage(UID, { tz: IST, fresh: true });
-    expect(u.stretch.used).toBeCloseTo((3000 + 1000 + 2200) / STRETCH, 3);
-    expect(u.stretch).toMatchObject({ n: 5, of: 5, resetsAt: RESETS });
-    expect(u.plan).toMatchObject({ id: "paid", windows: true, upgrade: false });
+    expect(u.stretch.used).toBeCloseTo((3000 + 1000 + 2200) / MONTH, 3);
+    expect(u.stretch).toMatchObject({ n: 1, of: 1, resetsAt: RESETS });
+    expect(u.plan).toMatchObject({ id: "paid", windows: false, upgrade: false });
   });
 
-  it("a bot's answer is refused once the stretch is used up, with when it resets, and every answer is written down", async () => {
+  it("a bot's answer is refused once the month is used up, with when it resets, and every answer is written down", async () => {
     spent = 30_000;
     const spending = make();
     const answer = { bot: { slug: "plan" }, paise: 120 };
@@ -384,31 +405,37 @@ describe("the usage limits, kept", () => {
     wrapBots(bots as never, spending);
     await bots.ask(UID, "plan", {} as never);
     expect((await store.spendSince(UID, 0)).map((r) => [r.bot, r.paise])).toEqual([["plan", 120]]);
-    spent = STRETCH;
+    spent = MONTH;
     spending.forget(UID);
     await expect(bots.ask(UID, "plan", {} as never)).rejects.toBeInstanceOf(BotError);
     await expect(bots.askWithKey("Bearer k" as never, "plan", {} as never)).rejects.toMatchObject({
-      code: "quota_exceeded", status: 429, message: "You've reached this stretch's limit. It resets Sun.",
+      code: "quota_exceeded", status: 429, message: "You've reached this month's limit. It resets Sun.",
     });
   });
 
-  it("a new Xode job, and a Keep going, are held to what is left of the stretch; with nothing left, the refusal", async () => {
+  it("a new Xode job, and a Keep going, are held to what is left of the MONTH; with nothing left, the refusal", async () => {
     spent = 59_000;
     const spending = make();
     const app = Fastify();
     app.post("/v1/code/jobs", async (req) => ({ got: req.body }));
     app.post("/v1/code/jobs/:id/budget", async (req) => ({ got: req.body }));
     holdJobsToUsage(app, spending, jobs as never);
-    const left = Math.floor(STRETCH - 59_000);
-    const r = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x" } });
+    const left = Math.floor(MONTH - 59_000);
+    // A job that asks for more than the month has left is brought down to it.
+    const r = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x", budgetPaise: 1_000_000 } });
     expect(r.json().got.budgetPaise).toBe(left);
-    const more = await app.inject({ method: "POST", url: "/v1/code/jobs/j/budget", headers: { authorization: "Bearer good" }, payload: { addPaise: 5000 } });
+    const more = await app.inject({ method: "POST", url: "/v1/code/jobs/j/budget", headers: { authorization: "Bearer good" }, payload: { addPaise: 1_000_000 } });
     expect(more.json().got.addPaise).toBe(left);
-    spent = STRETCH;
+    // One the month can afford is left alone, default budget and all: the clamp is a ceiling, not a setting.
+    const ordinary = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x" } });
+    expect(ordinary.json().got.budgetPaise).toBeUndefined();
+    const some = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x", budgetPaise: 5000 } });
+    expect(some.json().got.budgetPaise).toBe(5000);
+    spent = MONTH;
     spending.forget(UID);
     const stopped = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x", budgetPaise: 500 } });
     expect(stopped.statusCode).toBe(429);
-    expect(stopped.json()).toEqual({ code: "quota_exceeded", reason: "usage_limit", message: "You've reached this stretch's limit. It resets Sun.", resetsAt: RESETS, upgrade: false });
+    expect(stopped.json()).toEqual({ code: "quota_exceeded", reason: "usage_limit", message: "You've reached this month's limit. It resets Sun.", resetsAt: RESETS, upgrade: false });
     expect(stopped.body).not.toMatch(/₹|paise/i);
     await app.close();
   });
@@ -417,7 +444,7 @@ describe("the usage limits, kept", () => {
     vi.stubEnv("USAGE_LIMITS", "false");
     resetConfigForTests();
     try {
-      spent = 70_000;
+      spent = MONTH;
       const spending = make();
       expect((await spending.usage(UID)).state).toBe("out");
       expect(await spending.refusal(UID)).toBeNull();
@@ -451,7 +478,7 @@ describe("the routes", () => {
     const res = await get("/v1/you/usage?tz=330");
     expect(res.statusCode, res.body).toBe(200);
     const u = res.json();
-    // No plan bought (and Tailzu not free for all here): the free plan, $3 for the month with no stretches, a plan on offer.
+    // No plan bought (and Tailzu not free for all here): the free plan, $3 for the month, a plan on offer.
     expect(u.usage.plan).toMatchObject({ id: "free", windows: false, upgrade: true });
     expect(u.usage.stretch.used).toBeCloseTo(2500 / 26_400, 4);
     expect(u.usage.stretch.used).toBe(u.usage.month.used);
@@ -494,9 +521,9 @@ describe("the download link", () => {
 });
 
 describe("the tab ring", () => {
-  it("is how much of this stretch is used, from the usage meter when the You tab's source answers", async () => {
+  it("is how much of this month is used, from the usage meter when the You tab's source answers", async () => {
     const base = { bots: [], jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 50_000, now: FIXED_NOW, tzOffsetMinutes: IST };
-    const usage = { used: 0.64, month: 0.4, state: "ok" as const, resetsAt: RESETS, windows: true };
+    const usage = { used: 0.64, month: 0.64, state: "ok" as const, resetsAt: RESETS, windows: false };
     const l = liveFrom({ ...base, stored: { limitPaise: 100_000, monthPaise: 25_000, usage } });
     expect(l.usage).toEqual(usage);
     expect(l.tab.used).toBe(0.64);

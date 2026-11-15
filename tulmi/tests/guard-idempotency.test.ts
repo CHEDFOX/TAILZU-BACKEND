@@ -257,11 +257,11 @@ describe("the guard around the work", () => {
     expect(h.open).toBe(0);
   });
 
-  it("is built from the config: 64 at once, 3 a person (1 on the free plan), and the front door's daily cap", async () => {
+  it("is built from the config: 64 at once, 3 a person free or paying, and the front door's daily cap", async () => {
     resetConfigForTests();
     resetGuardForTests();
     const g = guardFromConfig();
-    expect(g.limiter.config).toMatchObject({ global: 64, perUser: 3, perUserFree: 1, queueMax: 256, queuePerUser: 4, waitMs: 8000 });
+    expect(g.limiter.config).toMatchObject({ global: 64, perUser: 3, perUserFree: 3, perUserSlowed: 1, queueMax: 256, queuePerUser: 4, waitMs: 8000 });
     expect(g.daily.leftPaise("u")).toBe(1500);
     process.env.GUARD_GLOBAL_CONCURRENCY = "7";
     process.env.GUARD_USER_CONCURRENCY = "2";

@@ -264,6 +264,23 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "desktop.notes.stoppedLeft": "Stopped. Writing up what was heard.",
   "desktop.notes.stoppedSaving": "Notes stopped. Still saving what was said; this can take a minute on a slow connection.",
   "desktop.notes.untitled": "Your notes",
+  // THE PERMISSION CARD, over the app, when one is missed (the window's
+  // sdui/permCard.js; docs/window-setup.md). One card a permission: what it is
+  // for, in the words of the moment it was missed, and the button that goes as
+  // far towards granting it as that system allows.
+  "desktop.perm.allow": "Allow",
+  "desktop.perm.ax.h": "Let me type that for you",
+  "desktop.perm.ax.p": "Your words were copied, but I couldn’t put them where your cursor is. Switch X0 Bot on in your Mac’s settings — it lists this under Accessibility — and they’ll land in whatever you’re writing in.",
+  "desktop.perm.blocked": "Your computer keeps this one. Open its settings, switch X0 Bot on, and come back.",
+  "desktop.perm.cam.h": "Your camera, when you want it",
+  "desktop.perm.cam.p": "A call can’t turn your camera on until your computer lets X0 Bot use it. It stays off until you switch it on in the call.",
+  "desktop.perm.done": "That’s it. Carry on.",
+  "desktop.perm.later": "Not now",
+  "desktop.perm.mic.h": "Let me hear you",
+  "desktop.perm.mic.p": "I couldn’t open the microphone, so there was nothing to write down. It’s off every other moment.",
+  "desktop.perm.open": "Open Settings",
+  "desktop.perm.see.h": "Let me read the window you’re in",
+  "desktop.perm.see.p": "Ask answers about what’s in front of you, and it can’t read your screen yet. Your Mac lists this under Screen Recording. It looks only when you ask it something, and the picture is never kept.",
   "desktop.notify.accessibilityBody": "Text was copied. To auto-paste, enable X0 Bot under System Settings → Privacy & Security → Accessibility.",
   "desktop.notify.accessibilityTitle": "X0 Bot needs Accessibility",
   "desktop.notify.baseUrlRefused": "baseUrl must be https (or http to localhost): {url} was ignored.",
@@ -627,7 +644,6 @@ export const APP_KNOB_LABELS: Record<string, string> = {
 
 export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "ads.meta.enabled": true,
-  "ads.meta.ios.enabled": false,
   "analytics.enabled": false,
   "analytics.posthogHost": "https://us.i.posthog.com",
   "app.boot.breadcrumbMs": 6000,

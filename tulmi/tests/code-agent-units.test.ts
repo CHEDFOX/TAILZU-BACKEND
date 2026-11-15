@@ -23,7 +23,7 @@ vi.hoisted(() => {
 });
 noNetwork();
 
-const { Changeset, Refused, checkedText, editablePath, replaceOnce, secretKinds } = await import("../src/code/agent/changeset.js");
+const { Changeset, Refused, checkedText, editablePath, replaceEvery, replaceOnce, secretKinds } = await import("../src/code/agent/changeset.js");
 const { CHECK_MARK, checkCommands, failingNames, parseMarkers, resultsOf, wrapCheck } = await import("../src/code/agent/checks.js");
 const { buildContext, capWrapped, dataBlock, digestOf, fold, projectContext, renderResult } = await import("../src/code/agent/context.js");
 const { stableBlock } = await import("../src/principles/index.js");
@@ -96,6 +96,14 @@ describe("replacing text exactly once", () => {
     expect(() => replaceOnce("f.ts", text, "", "x")).toThrow(/old is needed/);
     expect(() => replaceOnce("f.ts", text, "line one", undefined)).toThrow(/new is needed/);
     expect(() => replaceOnce("f.ts", text, "line one", "line one")).toThrow(/nothing would change/);
+  });
+
+  it("points a model that meant every copy at replace_all, which changes them all and says how many", () => {
+    expect(() => replaceOnce("f.ts", text, "return a + b;", "x")).toThrow(/or say replace_all to change every one/);
+    expect(replaceEvery("f.ts", text, "a + b", "a - b")).toEqual({ text: "line one\nreturn a - b;\nline three\nreturn a - b;\n", count: 2 });
+    expect(replaceEvery("f.ts", "one\n", "one", "two")).toEqual({ text: "two\n", count: 1 });
+    expect(() => replaceEvery("f.ts", text, "return a - b;", "x")).toThrow(/That text is not in f\.ts/);
+    expect(() => replaceEvery("f.ts", text, "", "x")).toThrow(/old is needed/);
   });
 });
 
@@ -829,8 +837,11 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     const { budgetShortfall } = await import("../src/code/agent/loop.js");
     const spent = budgetShortfall({ spent: 250, budget: 250 }, 0);
     expect(spent).toMatchObject({ kind: "spent" });
-    expect(spent.words).toBe("This job used what it was given of this stretch before the work was finished.");
-    expect(spent.ask).toBe("This job has used a lot of this stretch.");
+    // One month, one allowance: "this month" is what every plan hears now (src/you/span.ts), and the five windows are the
+    // caller's to name when USAGE_STRETCHES puts them back.
+    expect(spent.words).toBe("This job used what it was given of this month before the work was finished.");
+    expect(spent.ask).toBe("This job has used a lot of this month.");
+    expect(budgetShortfall({ spent: 250, budget: 250 }, 0, "this stretch").ask).toBe("This job has used a lot of this stretch.");
     expect(budgetShortfall({ spent: 300, budget: 250 }, 120).kind).toBe("spent");
   });
 
@@ -840,7 +851,7 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     expect(r).toMatchObject({ kind: "short", needPaise: 330, leftPaise: 247 });
     expect(r.words).toBe("The next step needs more than this job has left, so I stopped before the work was finished.");
     expect(r.words).not.toContain("used what it was given");
-    expect(r.ask).toBe("This job's next step needs more of this stretch.");
+    expect(r.ask).toBe("This job's next step needs more of this month.");
   });
 
   it("does not invent a number it does not have", async () => {

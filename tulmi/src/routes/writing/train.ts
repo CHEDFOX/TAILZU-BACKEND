@@ -9,7 +9,7 @@ import { applyPresetOverrides } from "../../experience/personalityPresets.js";
 import { getPersonality, updatePersonality } from "../../personality/store.js";
 import { refineVariants, updateStylePortrait, type ConverseTurn, converseTurn, spokenLanguage, portraitFromTranscript } from "../../pipeline/cleanup.js";
 import { mergePortraitWords } from "../../pipeline/portraitDimensions.js";
-import { enforceQuota, recordUsage } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders, recordUsage } from "../../usage/metering.js";
 import { unauthorized, countWords } from "../../http/helpers.js";
 
 export interface TrainRouteDeps {
@@ -37,7 +37,7 @@ export function registerTrainRoutes(app: FastifyInstance, deps: TrainRouteDeps):
     const over = tooLong(textIn);
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
     try {
       const personality = await getPersonality(user);
       const tone = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 120) : undefined;
@@ -92,7 +92,7 @@ export function registerTrainRoutes(app: FastifyInstance, deps: TrainRouteDeps):
     // A model call like its siblings, so behind the same gate: without it an
     // account past its allowance could keep the model busy through this route.
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
     try {
       const personalityNow = await getPersonality(user);
       const current = personalityNow.stylePortrait;
@@ -213,7 +213,7 @@ export function registerTrainRoutes(app: FastifyInstance, deps: TrainRouteDeps):
     const read = readTurns(body.turns);
     if ("error" in read) return reply.code(400).send({ code: "bad_request", message: read.error });
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
     try {
       const personality = await getPersonality(user);
       // A reply the meta filter drops ("could you say that again?") used to be
@@ -250,7 +250,7 @@ export function registerTrainRoutes(app: FastifyInstance, deps: TrainRouteDeps):
     const read = readTurns((req.body as { turns?: unknown } | undefined)?.turns);
     if ("error" in read) return reply.code(400).send({ code: "bad_request", message: read.error });
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
     try {
       const personalityNow = await getPersonality(user);
       const next = await portraitFromTranscript(personalityNow.stylePortrait, read.turns);

@@ -30,6 +30,7 @@
  */
 import type { LiveNotes, MeetAsk, MeetSettings, MeetStatus } from "./store.js";
 import type { Platform } from "./words.js";
+import type { Brief } from "../brief/types.js";
 
 export type { LiveNotes, MeetAsk, MeetSettings, MeetStatus, Platform };
 
@@ -57,6 +58,8 @@ export interface MeetingView {
   /** Why it could not join, in a few words for a person. */
   error: string | null;
   liveNotes: LiveNotes | null;
+  /** The document the bot is making of this meeting (src/brief, docs/brief.md). Null until it has written something. */
+  brief?: Brief | null;
   /** Whose meeting it is, when it is not the viewer's (a member's, seen by their space's admin). */
   owner?: { id: string; name: string };
   /** Who sent the bot, when it was not the meeting's owner (the space's admin, for a member). */

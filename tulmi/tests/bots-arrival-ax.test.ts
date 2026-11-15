@@ -14,7 +14,9 @@ process.env.BOTS_APP = "true";
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
-const { AX_STATE } = await import("../src/experience/bots/screens/firstRun/parts.js");
+const { AX_STATE, SEE_STATE } = await import("../src/experience/bots/screens/firstRun/parts.js");
+/** What the card's Mac step is titled, by how many switches this window can ask about. */
+const MAC_STEP = { one: "One switch in your Mac's settings", two: "Two switches in your Mac's settings" };
 
 const ARRIVE = { "GET /v1/shell/started": { started: true }, "GET /v1/bots/first-run/arrival": { due: true } };
 const MOTION = ["BotsMotion"];
@@ -45,8 +47,10 @@ describe("the window's arrival card, with Accessibility in its state", () => {
       readyWhen: { all: [{ neq: ["micGranted", null] }, { neq: ["axGranted", null] }] },
       doneWhen: { all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { truthy: "axGranted" }] },
     });
-    const ax = stepOf(card, "Let Keylessbord type for you")!;
+    const ax = stepOf(card, MAC_STEP.one)!;
     expect(ax.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { falsy: "axGranted" }] });
+    // It says what the switch is for, and gives the Mac's own name for it, which is the only way to find it.
+    expect(texts(ax).join(" ")).toContain("under the name Accessibility");
     // Its own button to the Mac's page (no Ask card in this window), and "Not now" instead of a Done to press.
     expect(actions(ax)).toEqual(expect.arrayContaining([{ kind: "ask.openAccessibility" }]));
     expect(texts(ax)).toContain("Not now");
@@ -58,8 +62,8 @@ describe("the window's arrival card, with Accessibility in its state", () => {
 
   it("with Ask's card too: the row is the card's, and the step still goes once it is on", async () => {
     const s = await build("bots.home", [...MOTION, "DeskMicAsk", "DeskAskSetup", AX_STATE]);
-    const ax = stepOf(cardOf(s.root!)!, "Let Keylessbord type for you")!;
-    expect(walk(ax).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
+    const ax = stepOf(cardOf(s.root!)!, MAC_STEP.one)!;
+    expect(walk(ax).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read", title: "Typing for you" }] });
     expect(actions(ax).some((a) => a.kind === "ask.openAccessibility")).toBe(false);
     expect(cardOf(s.root!)!.props?.doneWhen).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { truthy: "axGranted" }] });
   });
@@ -75,13 +79,50 @@ describe("the window's arrival card, with Accessibility in its state", () => {
     const card = cardOf(s.root!)!;
     expect(card.props?.readyWhen).toEqual({ neq: ["micGranted", null] });
     expect(card.props?.doneWhen).toBeUndefined();
-    expect(texts(stepOf(card, "Let Keylessbord type for you")!)).toContain("Done");
+    expect(texts(stepOf(card, MAC_STEP.one)!)).toContain("Done");
+  });
+
+  it("a window that reads the second switch too asks for both, in one step, and waits for both", async () => {
+    const s = await build("bots.home", [...MOTION, "DeskMicAsk", "DeskAskSetup", AX_STATE, SEE_STATE]);
+    expect(s.state).toMatchObject({ axGranted: null, seeGranted: null });
+    const card = cardOf(s.root!)!;
+    expect(card.props).toMatchObject({
+      readyWhen: { all: [{ neq: ["micGranted", null] }, { neq: ["axGranted", null] }, { neq: ["seeGranted", null] }] },
+      doneWhen: { all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { truthy: "axGranted" }, { truthy: "seeGranted" }] },
+    });
+    const mac = stepOf(card, MAC_STEP.two)!;
+    // One step, two rows, each named for what it is for; the Mac's own names are in the line under them.
+    expect(walk(mac).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({
+      rows: [{ key: "read", title: "Typing for you" }, { key: "see", title: "Answering about your screen" }],
+    });
+    expect(texts(mac).join(" ")).toContain("Accessibility and Screen Recording");
+    // Up while either is still off, gone when both are on.
+    expect(mac.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { any: [{ falsy: "axGranted" }, { falsy: "seeGranted" }] }] });
+    // Neither row says "screen recording" as the thing X0 Bot does.
+    const rows = JSON.stringify(walk(mac).find((n) => n.type === "DeskAskSetup")?.props?.rows);
+    expect(rows).not.toMatch(/recording/i);
+    expect(rows).toContain("The picture is never kept");
+    // Allow, not "Open Settings": the first press is the system's own dialog
+    // over the window, and the window swaps the label itself once it has been.
+    expect(walk(mac).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ allow: "Allow", allowAgain: "Open Settings" });
+  });
+
+  it("asks only for what a row on screen mentions: no Ask card, no second switch to wait on", async () => {
+    // A window that can read Screen Recording but draws no rows for it (Ask is
+    // off in this copy, so it declares no card): the step is Accessibility's
+    // alone, and the card does not wait on a switch nothing mentions.
+    const s = await build("bots.home", [...MOTION, "DeskMicAsk", AX_STATE, SEE_STATE]);
+    const card = cardOf(s.root!)!;
+    expect(JSON.stringify(card.props?.doneWhen)).not.toContain("seeGranted");
+    expect(JSON.stringify(card.props?.readyWhen)).not.toContain("seeGranted");
+    expect(stepOf(card, MAC_STEP.one)).toBeDefined();
+    expect(stepOf(card, MAC_STEP.two)).toBeUndefined();
   });
 
   it("without the living tiles: a plain card, gone once it is all on", async () => {
     const s = await build("bots.home", ["DeskMicAsk", AX_STATE]);
     expect(cardOf(s.root!)).toBeUndefined();
-    expect(texts(s.root!)).toContain("Let Keylessbord type for you");
+    expect(texts(s.root!)).toContain(MAC_STEP.one);
     expect(lintTree(s.root!).filter((m) => !m.startsWith("type Desk"))).toEqual([]);
   });
 });

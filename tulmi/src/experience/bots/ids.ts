@@ -39,6 +39,7 @@ export const SCREENS = {
   usage: "bots.usage",               // Usage: this stretch and this month as meters, when each resets (no board; Budget's place)
   budget: "bots.budget",             // Budget / DBudget: now the Usage page too (older links)
   billing: "bots.billing",           // Billing / DBilling
+  planShare: "bots.plan.share",      // Share your plan with people you share a space with: tick as many as you like (screens/you/planShareCard.ts; no board)
   plans: "bots.plans",               // Plans / DPlans
   link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
   devices: "bots.devices",           // Terminal sign-ins: Xode in a terminal, each with Remove, and where to type a terminal's code (screens/you/devicesPage.ts; no board)

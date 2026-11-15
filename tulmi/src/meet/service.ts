@@ -40,6 +40,8 @@ import { getProfile } from "../profile/store.js";
 import { pushEngine } from "../push/index.js";
 import { addCostUsd, chargedTo, ttsUsd } from "../usage/cost.js";
 import { brain, type Brain } from "./brain.js";
+import { applyEdit } from "../brief/edit.js";
+import { briefOn, briefWriter, type BriefWriter } from "../brief/role.js";
 import { NO_PEOPLE, type MeetPeople } from "./people.js";
 import { chatParts, recall, RecallError, type BotInput, type RecallBot, type RecallClient } from "./recall.js";
 import {
@@ -66,6 +68,8 @@ export interface MeetServiceDeps {
   /** Null: the meeting bot is not set up (join answers meet_off). */
   recall: RecallClient | null;
   brain: Brain;
+  /** Writes the meeting's document (src/brief, docs/brief.md). Left out: the brief is not made. */
+  brief?: BriefWriter;
   stage: StageHub;
   /** A spoken answer (an mp3); the server's speech by default. */
   tts?: (text: string) => Promise<{ audio: Buffer; contentType: string }>;
@@ -135,6 +139,7 @@ function viewOf(m: Meeting): MeetingView {
   return {
     id: m.id, title: m.title, platform: m.platform, url: m.url, status: m.status, voice: m.voice, source: m.source, joinAt: m.joinAt,
     startedAt: m.startedAt, endedAt: m.endedAt, noteId: m.noteId, participants: [...m.participants], error: m.error, liveNotes: m.liveNotes,
+    ...(m.brief ? { brief: m.brief } : {}),
   };
 }
 
@@ -173,6 +178,7 @@ export class MeetService {
   private readonly store: MeetStore;
   private readonly recall: RecallClient | null;
   private readonly brain: Brain;
+  private readonly brief: BriefWriter | null;
   private readonly stage: StageHub;
   private readonly tts: (text: string) => Promise<{ audio: Buffer; contentType: string }>;
   private readonly notify: MeetNotify;
@@ -201,6 +207,7 @@ export class MeetService {
     this.store = d.store;
     this.recall = d.recall;
     this.brain = d.brain;
+    this.brief = d.brief ?? null;
     this.stage = d.stage;
     this.tts = d.tts ?? speakMp3;
     this.notify = d.notify ?? defaultNotify;
@@ -530,6 +537,9 @@ export class MeetService {
     if (m.startedAt === null && m.noteId === null && !heard && !sentAway) return this.fail(id, subCode);
     const room = this.close(m.id);
     if (room) await this.settle(room);
+    // The document's last pass, with everything that was said and the meeting over: the overview made whole, the decisions and
+    // the to-dos complete, the half-written taken out. It is awaited, so the row below is written after it (docs/brief.md).
+    if (room) await this.briefLast(room);
     const came = room?.cameNames() ?? [];
     const row = (await this.store.update(m.id, { status: "ended", endedAt: this.now(), ...(came.length ? { participants: came } : {}) }))
       ?? { ...m, status: "ended" as const, endedAt: this.now() };
@@ -870,6 +880,51 @@ export class MeetService {
     this.track(this.notesPass(room).finally(() => { room.notesRunning = false; }));
   }
 
+  /**
+   * THE BRIEF, A PASS AT A TIME (src/brief, docs/brief.md). Beside the notes, and on the same tick: the model is shown the
+   * meeting so far and the document as it stands, and answers with the parts to write. What it writes is kept on the room
+   * and on the meeting's row, and the one line it may have for the people in the call goes to the chat.
+   *
+   * It never holds up the call or the notes: a pass that fails is a warning and the document stays as it was.
+   */
+  private briefTick(room: Room, live = true): void {
+    if (!this.brief || room.briefRunning) return;
+    if (live && (room.closed || room.heard - room.briefAt < NOTES_MIN_LINES)) return;
+    if (!live && !room.lines.length) return;
+    room.briefRunning = true;
+    this.track(this.briefPass(room, live).finally(() => { room.briefRunning = false; }));
+  }
+
+  /** The last pass, once the meeting is over and the lines are all in. Waited for, and never longer than a pass takes. */
+  private async briefLast(room: Room): Promise<void> {
+    if (!this.brief || !room.lines.length) return;
+    if (room.briefRunning) await new Promise((r) => setTimeout(r, 50));
+    room.briefRunning = true;
+    try { await this.briefPass(room, false); } finally { room.briefRunning = false; }
+  }
+
+  private async briefPass(room: Room, live: boolean): Promise<void> {
+    if (!this.brief) return;
+    const upto = room.heard;
+    try {
+      const edit = await asPerson(room.userId, () => chargedTo(room.userId, "meet", () => this.brief!.write({
+        botName: room.botName, owner: room.owner, title: room.title, people: room.names(),
+        lines: room.lines.slice(), brief: room.brief, live,
+      })));
+      room.briefAt = upto;
+      if (!edit) return;
+      const next = applyEdit(room.brief, edit, this.now());
+      if (!next.changed) return;
+      room.brief = next.brief;
+      await this.store.update(room.id, { brief: next.brief });
+      this.publish(room.userId, room.byId);
+      // The one line it had for the people in the call, if it had one and the call is still on.
+      if (next.say && live && !room.closed) await this.chat(room, next.say).catch(() => undefined);
+    } catch (err) {
+      console.warn(`[meet] the brief could not be written: ${said(err)}`);
+    }
+  }
+
   private async notesPass(room: Room): Promise<void> {
     const upto = room.heard;
     try {
@@ -948,7 +1003,7 @@ export class MeetService {
     if (this.leavingIds.has(m.id)) room.leaving = true;
     this.rooms.set(m.id, room);
     this.byHash.set(m.tokenHash, m.id);
-    room.notesTimer = setInterval(() => this.notesTick(room), this.notesEveryMs);
+    room.notesTimer = setInterval(() => { this.notesTick(room); this.briefTick(room); }, this.notesEveryMs);
     room.notesTimer.unref?.();
     return room;
   }
@@ -995,7 +1050,7 @@ export class MeetService {
     const meeting: Meeting = {
       id: randomUUID(), userId, botId: null, tokenHash: hashToken(token), url: o.link.url, platform: o.link.platform,
       title: cleanText(o.title, 200), status: o.source === "calendar" ? "scheduled" : "joining", voice, source: o.source,
-      eventKey: o.eventKey ?? null, joinAt: o.joinAt ?? null, startedAt: null, endedAt: null, noteId: null, liveNotes: null,
+      eventKey: o.eventKey ?? null, joinAt: o.joinAt ?? null, startedAt: null, endedAt: null, noteId: null, liveNotes: null, brief: null,
       participants: [], error: null, createdAt: now, updatedAt: now, spaceId: o.spaceId ?? null, byId: o.byId ?? null,
     };
     const bot: BotInput = {
@@ -1196,7 +1251,7 @@ export function meetService(): MeetService | null {
   const client = recall();
   if (!client) return null;
   shared = new MeetService({
-    store: meetStore(), recall: client, brain: brain(), stage: stageHub(), ownerName: firstNameOf, ...(sharedPeople ? { people: sharedPeople } : {}),
+    store: meetStore(), recall: client, brain: brain(), brief: briefOn() ? briefWriter() : undefined, stage: stageHub(), ownerName: firstNameOf, ...(sharedPeople ? { people: sharedPeople } : {}),
   });
   return shared;
 }

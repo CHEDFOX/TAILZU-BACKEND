@@ -787,16 +787,6 @@ describe("the asks that keep the phone's own card", () => {
     const byChange = firings(s).filter((f) => f.key === "onChange" && f.action.kind === "requestPermission");
     expect(byChange.length).toBeGreaterThan(0);
   });
-
-  it("the window's permissions step asks from a row's own button, unmarked (the window has no card of its own)", () => {
-    const s = onboardScreen(phoneCtx({
-      formFactor: "desktop", os: "mac", connectorsOn: false,
-      can: new Set(["OnboardStage", "BlipSpot", "DeskShell", "DeskMicAsk", "DeskCamAsk", "DeskAxState", "DeskSeeState"]),
-    }));
-    const mic = asks(s);
-    expect(mic.length).toBeGreaterThan(0);
-    for (const a of mic) expect(a.primed).toBeUndefined();
-  });
 });
 
 describe("the walk itself refuses what it is meant to", () => {

@@ -8,6 +8,10 @@
  *   who waits     Each over c.waiting: Let in, Not now, without leaving the call
  *   the tiles     Each over c.people, a Caller in each, their name and a ring while they talk; their own picture in the corner
  *   the controls  Mute, Camera, Flip and Speaker (the phone), Hang up — each reading c.mic, c.cam and the rest for its own label
+ *   the bot       X0 sits in every call, says so, and writes the document as it goes (docs/brief.md): the line under the title,
+ *                 whatever it last said, and the document itself beside the call (a window) or under it (a phone). It is the
+ *                 server's own data on the room, so the page redraws when the document changes and nothing in the apps knows
+ *                 anything about it
  *
  * EVERYONE WALKS IN MUTED AND DARK. Joining captures nothing; turning the microphone or the camera on is what opens it, and the
  * permission for it was granted once, after onboarding, so no card stands in the way here.
@@ -23,6 +27,8 @@ import {
   type BotsCtx, FACE, call, card, col, meta, page, primaryButton, quietButton, row, secondaryButton, seq, text, SCREENS,
 } from "../../kit.js";
 import { type BotsScreen, screen } from "../../registry.js";
+import { showNodes } from "../../show.js";
+import { roomTopic } from "../../../../live/topics.js";
 import { toast } from "../firstRun/parts.js";
 import { bizParam } from "./mailParts.js";
 import { isDesk, setState } from "./parts.js";
@@ -44,6 +50,29 @@ const toCall = (business: string, room: string): ActionSpec =>
   ({ kind: "navigate", screenId: SCREENS.mailCall, params: { b: business, r: room }, replace: true });
 
 export type RoomData = { room?: RoomView };
+
+/**
+ * THE BOT'S OWN COLUMN: that it is here and listening, the last thing it said, and the document it has made so far — the
+ * same blocks a bot draws under its words, so there is nothing new to draw (docs/brief.md, docs/show.md).
+ */
+function botColumn(ctx: BotsCtx, room: RoomView, desk: boolean): Node[] {
+  const bot = room.bot;
+  if (!bot) return [];
+  const parts = bot.brief?.parts ?? [];
+  return [col([
+    row([
+      text(bot.taking ? `${bot.name} is in this call` : `${bot.name} was in this call`, { size: 14, weight: 600, lineHeight: 19 }),
+      ...(bot.taking ? [meta("listening and writing", { size: 12 })] : []),
+    ], { gap: 8, alignItems: "baseline", flexWrap: "wrap" }),
+    ...(bot.said ? [card([text(bot.said.text, { size: 14, lineHeight: 20 })], { gap: 6, padding: 12 })] : []),
+    ...(parts.length
+      ? parts.flatMap((part) => [
+          ...(part.title ? [text(part.title, { size: 14, weight: 600, lineHeight: 19 })] : []),
+          ...showNodes(ctx, { blocks: part.blocks as never }, { slug: "mail", turn: `room.${part.id}.${part.v}`, live: false }),
+        ])
+      : bot.taking ? [meta("The document fills in as you talk.", { size: 12 })] : []),
+  ], { gap: 10, ...(desk ? { width: 320, flexShrink: 0 } : {}) })];
+}
 
 /** One person's tile: their picture, their name, and a ring while they are talking. */
 function tile(desk: boolean): Node {
@@ -140,6 +169,9 @@ export function roomPage(ctx: BotsCtx, d: RoomData | undefined) {
   const live = "state.c.phase != 'ended' && state.c.phase != 'failed'";
   return vocab2(page(ctx, {
     back, backTitle: "Call", title: room.title,
+    // The document is the server's own data on the room, so the page is redrawn whenever it changes (rooms/scribe.ts
+    // publishes the room's topic). The call itself is the app's and is not touched by a redraw.
+    live: [roomTopic(room.id)],
     ...(desk ? { maxWidth: 1100, fixed: true } : {}),
     gap: 12,
     state: {
@@ -162,8 +194,10 @@ export function roomPage(ctx: BotsCtx, d: RoomData | undefined) {
           standing,
         ], { gap: 2 }),
         waiting,
-        stage,
-        mine,
+        // A window puts the document beside the call; a phone puts it under it.
+        ...(desk
+          ? [row([col([stage, mine], { gap: 12, flexGrow: 1 }), ...botColumn(ctx, room, true)], { gap: 16, alignItems: "flex-start" })]
+          : [stage, mine, ...botColumn(ctx, room, false)]),
       ], { gap: 12, flexGrow: 1 }),
       on: { onAppear: "start" },
     }],

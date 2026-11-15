@@ -79,6 +79,36 @@ export interface UsageResponse { usage: UsageMeter; near: string | null; out: st
 export interface UsageRefusalBody { code: "quota_exceeded"; reason: "usage_limit"; message: string; resetsAt: number; upgrade: boolean }
 
 /**
+ * A person's tiny bot, as Spaces draws them (src/botsBots/personLook.ts): the catalog's avatar id and one of the group colours,
+ * both picked from their account id, so someone looks the same on a plan-sharing row as in the space they share.
+ */
+export interface PersonLookView { seed: string; avatar: string; color: string }
+
+/**
+ * GET /v1/botsapp/bots/plan/share — everything the sharing screens draw, from one read (src/billing/planShare.ts,
+ * docs/plan-share.md). Nothing here is money and nothing here is somebody else's money: `hasPlan` is the only thing ever said
+ * about another person's billing, and it is said only so the right row can be drawn. Whose plan a person is on is never told to
+ * anyone but them.
+ */
+export interface PlanShareView {
+  /** I have a live plan of my own, so I have something to share. */
+  canShare: boolean;
+  /** People on my plan, with how much of this month each of them has used (0–1 as a percentage, 0–100, rounded). */
+  members: Array<{ userId: string; name: string; usedPct: number; look?: PersonLookView }>;
+  /** Set when I am on someone else's plan: whose, since when, how much of the month everyone on it has used, and how much is mine. */
+  on?: {
+    ownerId: string; name: string; planName: string; since: number;
+    monthUsedPct: number; myUsedPct: number; look?: PersonLookView;
+  };
+  /** Everyone I share a space with: the only people a plan may ever be shared with or asked from. */
+  people: Array<{ userId: string; name: string; hasPlan: boolean; onMyPlan: boolean; look?: PersonLookView }>;
+  /** Asks waiting for my answer. */
+  asks: Array<{ id: string; askerId: string; name: string; about?: string; at: number; look?: PersonLookView }>;
+  /** My own ask, still waiting on them (`waiting`, or `promised` once they said yes and have yet to buy). */
+  asked?: { id: string; ownerId: string; name: string; at: number; look?: PersonLookView };
+}
+
+/**
  * Three continuous style dials (0–100). Continuous instead of enum so the
  * keyboard can offer a slider that Actually Feels Like a slider, and so we can
  * A/B different midpoints without a shape change.
@@ -196,12 +226,12 @@ export interface Personality {
 
   /**
    * The About you card (name and gender, on Home after a few visits; routes/bots/botsFirstRun.ts, GET/PUT
-   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), the visit
-   * from which it may come again after a "Not now", and how many times it was put off.
+   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), and whether
+   * the card is done with. The card asks for nothing (App Review 5.1.1(v), (x)): "Not now" on either of its steps, and
+   * finishing it however much was filled in, set `botsAboutSkipped`, and it is never due again.
    */
   botsVisits?: number;
-  botsAboutFrom?: number;
-  botsAboutPutOff?: number;
+  botsAboutSkipped?: boolean;
 
   /**
    * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:

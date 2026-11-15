@@ -57,11 +57,8 @@ export function languagesStep(p: Plan): Node {
     // shown, so the new copy of the screen opens where the person already is.
     BTN(EN["ob.cont"], seq(
       { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { languages: "$state.langs" } },
-      // A window goes to whatever comes next in its own flow (the terms, then
-      // the permissions this computer keeps); a phone to the keyboard unless it
-      // is already on.
       p.desktop
-        ? SET(p.next("languages"))
+        ? SET(p.I.try!)
         : when({ truthy: "keyboardReady" }, SET(p.I.try!), SET(p.I.keyboard!)),
       { kind: "refresh" },
     )),

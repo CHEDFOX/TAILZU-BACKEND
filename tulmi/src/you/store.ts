@@ -9,7 +9,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 import { DEFAULT_SETTINGS, cleanSettings, type YouSettings } from "./settings.js";
 
-export interface SpendRow { bot: string; at: number; paise: number }
+/** `by` is who really spent it when that is not `user_id`: someone on this person's shared plan (billing/planShare.ts, migration 0096). */
+export interface SpendRow { bot: string; at: number; paise: number; by?: string }
 export interface ComputerRow { deviceId: string; name: string; os: string; firstSeen: number; lastSeen: number }
 
 export interface YouStore {
@@ -17,7 +18,8 @@ export interface YouStore {
   putSettings(userId: string, s: YouSettings, now: number): Promise<YouSettings>;
   /** People who turned the daily summary on (for the summary's clock), at most `limit`. */
   summaryPeople(limit: number): Promise<Array<{ userId: string; settings: YouSettings }>>;
-  addSpend(userId: string, bot: string, paise: number, at: number): Promise<void>;
+  /** `by` names the person on `userId`'s shared plan whose use this was; left out, it was the account's own. */
+  addSpend(userId: string, bot: string, paise: number, at: number, by?: string): Promise<void>;
   spendSince(userId: string, since: number): Promise<SpendRow[]>;
   listComputers(userId: string): Promise<ComputerRow[]>;
   /** Every row of this person's here, for "Download my data". */
@@ -39,9 +41,9 @@ export class MemoryYouStore implements YouStore {
   async summaryPeople(limit: number) {
     return [...this.settings].filter(([, s]) => s.notify.summary).slice(0, limit).map(([userId, settings]) => ({ userId, settings: structuredClone(settings) }));
   }
-  async addSpend(userId: string, bot: string, paise: number, at: number) {
+  async addSpend(userId: string, bot: string, paise: number, at: number, by?: string) {
     const list = this.spend.get(userId) ?? [];
-    list.push({ bot, at, paise });
+    list.push({ bot, at, paise, ...(by && by !== userId ? { by } : {}) });
     // Forty days are all a month's screens read.
     this.spend.set(userId, list.filter((r) => at - r.at < 40 * 86_400_000).slice(-SPEND_READ_MAX));
   }
@@ -85,16 +87,27 @@ class SupabaseYouStore implements YouStore {
     return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({ userId: String(r.user_id), settings: this.settingsOf(r) }));
   }
 
-  async addSpend(userId: string, bot: string, paise: number, at: number) {
-    const { error } = await this.sb.from("you_spend").insert({ user_id: userId, bot: bot.slice(0, 64), paise: Math.max(0, Math.round(paise)), at: iso(at) });
+  async addSpend(userId: string, bot: string, paise: number, at: number, by?: string) {
+    const row = { user_id: userId, bot: bot.slice(0, 64), paise: Math.max(0, Math.round(paise)), at: iso(at), ...(by && by !== userId ? { by } : {}) };
+    let { error } = await this.sb.from("you_spend").insert(row);
+    // A database without the `by` column yet (migration 0096) still records the spend; only who on a shared plan it was is lost.
+    if (error && /\bby\b/i.test(error.message)) {
+      const { by: _drop, ...plain } = row;
+      ({ error } = await this.sb.from("you_spend").insert(plain));
+    }
     if (error) throw new Error(`you store: ${error.message}`);
   }
 
   async spendSince(userId: string, since: number) {
-    const { data, error } = await this.sb.from("you_spend").select("bot, at, paise").eq("user_id", userId).gte("at", iso(since))
+    const read = (cols: string) => this.sb.from("you_spend").select(cols).eq("user_id", userId).gte("at", iso(since))
       .order("at", { ascending: false }).limit(SPEND_READ_MAX);
+    let { data, error } = await read("bot, at, paise, by");
+    // A database without the `by` column yet (migration 0096) still answers, without who on a shared plan each row was.
+    if (error && /\bby\b/i.test(error.message)) ({ data, error } = await read("bot, at, paise"));
     if (error) throw new Error(`you store: ${error.message}`);
-    return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({ bot: String(r.bot), at: ms(r.at), paise: Number(r.paise) || 0 }));
+    return ((data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
+      bot: String(r.bot), at: ms(r.at), paise: Number(r.paise) || 0, ...(r.by ? { by: String(r.by) } : {}),
+    }));
   }
 
   async listComputers(userId: string) {

@@ -209,6 +209,23 @@ still pose. A build without `PersonBot` gets a plain circle in the person's colo
   picked apart: up to five people all have their own colour, up to seven their own avatar. Looks are worked out from every member,
   before anyone is hidden from the viewer, so Mom is the same bot to everyone in the space.
 - **The viewer is their own X0 bot**: ink `#0a0a0a`, the `blip` look.
+- **Someone no longer here goes neutral and faded.** When a message's sender has no account any more (their id is gone from the row)
+  or they and the viewer share no space any more, the server says `gone` on that message's `from`, and on that person in a chat's
+  `people`, and gives them `goneLook`: the plain `dot` avatar in `#8a8a8a`, so none of their own colour is left. The message itself
+  stays, words and files and all. The screens draw the name faded (the hint "No longer here" beside it, the row at 0.55) and
+  **nothing about them opens**: no page, no profile, no mention — the "@" list is the space's own members, so they are not in it.
+  One wording covers both cases on purpose: the app must never say an account was deleted when it was not.
+  Three places it reaches, besides a name over a message:
+  - **A one-to-one chat's own name.** Their name IS the chat's name, so the chat's head and its row in the chats list are
+    where it fades (no message in a one-to-one carries a name). A **deleted account** takes its `thread_members` row with it
+    (`auth.users` ON DELETE CASCADE, migration 0051), which is the one case being removed from a space does not reach, so
+    `viewOf` reads the name back off their own messages — `sender_name` stays, by the same migration — and puts them in
+    `people` as `gone`, so both cases read the same. "Someone" only if they never wrote anything at all.
+  - **"To Mom"**, over a message addressed to one person. `to_id` has no foreign key (migration 0068), by design, so such a
+    message stays for its sender and for the space's admin; `to.gone` says so and the line is faded with the same hint.
+  - **What is walked to know it.** A read says `gone` from everyone the viewer still shares a space with (`looksKnown`), but
+    everyone still in the chat's own space is connected by definition, so `Threads.read` walks the viewer's spaces only for a
+    one-to-one chat or a page that holds someone from outside this space. A space's feed opens through it.
 - Where it is carried: each member (`bot`) in `GET /spaces` and `GET /spaces/:id`, the feed's `people`, Work in space's people and
   notes (`bot`, `byBot`), an invitation (`byBot`: the admin who sent it, as that space has them), a request (`bot`: the one asking, as
   they would be once let in), `threads/contacts` and `share/targets` (`bot`: as the first space you share has them), someone's page

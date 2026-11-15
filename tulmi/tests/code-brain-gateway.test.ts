@@ -18,7 +18,8 @@
  *   - BudgetExceeded BEFORE the call, at the worst case, the job's or the call's
  *     own, and again before a retry or a repair;
  *   - nothing that was sent or received, not even inside an error, in a log;
- *   - the review tier never picks the writer's family.
+ *   - the review tier never picks the writer's family;
+ *   - Claude's prompt cache: the system block marked, and with `growing` the conversation up to its last message; a refused mark asked again without it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
@@ -28,7 +29,7 @@ process.env.GROQ_API_KEY = "k";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
-const { callModel, BudgetExceeded, ModelUnavailable, hashedUser, parseJsonLoose, droppedConnection } = await import("../src/code/brain/gateway.js");
+const { callModel, BudgetExceeded, ModelUnavailable, hashedUser, parseJsonLoose, droppedConnection, withCacheMarks, resetCacheMarksForTests } = await import("../src/code/brain/gateway.js");
 const { buildTierTable, resetTierTableForTests } = await import("../src/code/brain/tiers.js");
 const { addJobSpend } = await import("../src/code/brain/spend.js");
 const { usdToPaise, worstCasePaise, charsOf } = await import("../src/code/brain/money.js");
@@ -746,5 +747,89 @@ describe("what is logged", () => {
     const err = await callModel(ask({ messages: [{ role: "user", content: SECRET_PROMPT }] }), r.deps).catch((e: unknown) => e) as Error;
     expect(err).toBeInstanceOf(ModelUnavailable);
     expect(JSON.stringify({ m: err.message, trail: (err as InstanceType<typeof ModelUnavailable>).trail })).not.toContain("SECRET");
+  });
+});
+
+// ----------------------------------------------------------- prompt caching
+
+describe("prompt caching", () => {
+  const claude = buildTierTable({ tiers: JSON.stringify({ code: { models: ["anthropic/claude-sonnet-5.5", "b/two"], maxTokens: 1000, reasoning: "low", timeoutMs: 5000, usdPerMIn: 3, usdPerMOut: 15 } }) });
+  const mark = { type: "ephemeral" };
+  const loop: CallInput["messages"] = [
+    { role: "system", content: "the rules" },
+    { role: "user", content: "the task" },
+    { role: "assistant", content: null, tool_calls: [{ id: "c1", name: "read_file", arguments: "{}" }] },
+    { role: "tool", tool_call_id: "c1", content: "the file" },
+    { role: "assistant", content: "thinking aloud" },
+    { role: "user", content: "the status, new every turn" },
+  ];
+  const marked = (body: any) => (body.messages as any[]).flatMap((m, i) => (Array.isArray(m.content) ? m.content : []).filter((p: any) => p.cache_control).map(() => i));
+
+  afterEach(() => { resetCacheMarksForTests(); });
+
+  it("marks a Claude model's system block on every call, and nothing for a model that caches by itself", async () => {
+    const r = rig([answer("ok")], { tiers: claude });
+    await callModel(ask({ messages: [{ role: "system", content: "the rules" }, { role: "user", content: "hi" }] }), r.deps);
+    const sent = r.router.calls[0]!.body;
+    expect(sent.messages[0]).toEqual({ role: "system", content: [{ type: "text", text: "the rules", cache_control: mark }] });
+    expect(sent.messages[1]).toEqual({ role: "user", content: "hi" });
+
+    const r2 = rig([answer("ok")]);
+    await callModel(ask({ messages: [{ role: "system", content: "the rules" }, { role: "user", content: "hi" }] }), r2.deps);
+    expect(r2.router.calls[0]!.body.messages[0]).toEqual({ role: "system", content: "the rules" });
+    expect(JSON.stringify(r2.router.calls[0]!.body)).not.toContain("cache_control");
+  });
+
+  it("with growing, marks the last user or tool message before the final one: an assistant's words are passed over, the status is left alone", async () => {
+    const r = rig([answer("ok")], { tiers: claude });
+    await callModel(ask({ messages: loop, growing: true }), r.deps);
+    const sent = r.router.calls[0]!.body;
+    expect(marked(sent)).toEqual([0, 3]);
+    expect(sent.messages[3]).toEqual({ role: "tool", tool_call_id: "c1", content: [{ type: "text", text: "the file", cache_control: mark }] });
+    expect(sent.messages[4]).toEqual({ role: "assistant", content: "thinking aloud" });
+    expect(sent.messages[5]).toEqual({ role: "user", content: "the status, new every turn" });
+    expect(sent.messages[2].tool_calls).toEqual([{ id: "c1", type: "function", function: { name: "read_file", arguments: "{}" } }]);
+  });
+
+  it("marks only the system block on a loop's first call, and the last text part of a message with a picture", () => {
+    expect(withCacheMarks([{ role: "system", content: "s" }, { role: "user", content: "task" }], { growing: true }))
+      .toEqual([{ role: "system", content: [{ type: "text", text: "s", cache_control: mark }] }, { role: "user", content: "task" }]);
+    const picture = [{ type: "text", text: "look" }, { type: "image_url", image_url: { url: "data:x" } }];
+    expect(withCacheMarks([{ role: "user", content: picture }, { role: "user", content: "next" }], { growing: true })[0])
+      .toEqual({ role: "user", content: [{ type: "text", text: "look", cache_control: mark }, { type: "image_url", image_url: { url: "data:x" } }] });
+    expect(withCacheMarks([{ role: "user", content: "a" }, { role: "user", content: "b" }], { growing: false }))
+      .toEqual([{ role: "user", content: "a" }, { role: "user", content: "b" }]);
+  });
+
+  it("asks again at once without the conversation's mark when a marked request is refused, and stops sending it to that model once that works", async () => {
+    const r = rig([httpError(400), answer("ok"), answer("ok")], { tiers: claude });
+    const got = await callModel(ask({ messages: loop, growing: true }), r.deps);
+    expect(got.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(r.router.models()).toEqual(["anthropic/claude-sonnet-5.5", "anthropic/claude-sonnet-5.5"]);
+    expect(marked(r.router.calls[0]!.body)).toEqual([0, 3]);
+    expect(marked(r.router.calls[1]!.body)).toEqual([0]);
+    expect(got.trail[0]).toMatchObject({ outcome: "ok", unmarked: true });
+    expect(r.slept).toEqual([]);
+    expect(r.lines.some((l) => l.level === "warn" && /prompt cache/.test(l.msg))).toBe(true);
+
+    await callModel(ask({ messages: loop, growing: true }), r.deps);
+    expect(marked(r.router.calls[2]!.body)).toEqual([0]);
+  });
+
+  it("remembers nothing when the request is refused without the mark too: the ladder climbs, and the next call is marked again", async () => {
+    const r = rig([httpError(400), httpError(400), answer("ok"), answer("ok")], { tiers: claude });
+    const got = await callModel(ask({ messages: loop, growing: true }), r.deps);
+    expect(r.router.models()).toEqual(["anthropic/claude-sonnet-5.5", "anthropic/claude-sonnet-5.5", "b/two"]);
+    expect(got.model).toBe("b/two");
+    expect(JSON.stringify(r.router.calls[2]!.body)).not.toContain("cache_control");
+
+    await callModel(ask({ messages: loop, growing: true }), r.deps);
+    expect(marked(r.router.calls[3]!.body)).toEqual([0, 3]);
+  });
+
+  it("does not ask a refused request again when it carried no conversation mark", async () => {
+    const r = rig([httpError(400), answer("ok")], { tiers: claude });
+    await callModel(ask({ messages: loop }), r.deps);
+    expect(r.router.models()).toEqual(["anthropic/claude-sonnet-5.5", "b/two"]);
   });
 });

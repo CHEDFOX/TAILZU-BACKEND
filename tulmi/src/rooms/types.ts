@@ -45,6 +45,16 @@ export interface RoomView {
   lastAt: number;
   /** Minutes people have been in it, every time together. */
   minutes: number;
+  /**
+   * The bot sitting in the call (rooms/scribe.ts, docs/brief.md): that it is there and listening, the document it has made
+   * of the call so far, and the last thing it said. Absent when nothing sits in this call.
+   */
+  bot?: {
+    name: string;
+    taking: boolean;
+    brief: BriefForCall | null;
+    said?: { text: string; at: number };
+  };
 }
 
 /**
@@ -70,6 +80,23 @@ export interface SeatLive {
   waiting?: KnockView[];
   /** The seat is no longer in the call (sent away, the call ended, or it timed out). */
   gone?: boolean;
+  /**
+   * The bot sitting in the call (rooms/scribe.ts, docs/brief.md): that it is there and listening, the document it has made
+   * so far, and the last thing it said. Absent when nothing is sitting in this call.
+   */
+  bot?: {
+    name: string;
+    taking: boolean;
+    brief: BriefForCall | null;
+    said?: { text: string; at: number };
+  };
+}
+
+/** The document, as a call's screen reads it. Its blocks are the ones a bot draws under its words (src/show). */
+export interface BriefForCall {
+  v: number;
+  at: number;
+  parts: Array<{ id: string; kind: string; title: string; blocks: unknown[]; v: number }>;
 }
 
 /** Their microphone or camera turned on for the first time: the answer to the offer their new transceiver made. */
@@ -85,7 +112,15 @@ export interface PullView {
 }
 
 /** What a link shows before its holder asks to come in. */
-export interface GuestRoomView { title: string; host: string; status: RoomStatus; lobby: boolean; full: boolean }
+export interface GuestRoomView {
+  title: string;
+  host: string;
+  status: RoomStatus;
+  lobby: boolean;
+  full: boolean;
+  /** Once the call is over: the document the bot made of it, for everyone who was in it (docs/brief.md). */
+  brief?: BriefForCall | null;
+}
 
 /** A knock's answer: waiting, let in, not let in, or forgotten (it waited too long, or the call ended). */
 export interface KnockAnswer { knock: string; state: "waiting" | "admitted" | "denied" | "gone" }

@@ -339,7 +339,8 @@ export async function syncSubscription(sub: RzSubscription, source: string): Pro
     updated_at: new Date().toISOString(),
   }, { onConflict: "subscription_id" });
   if (error) return { ok: false, reason: error.message, userId };
-  forgetEntitlement(userId);
+  // A live window is a grant, and a grant is what turns a `promised` plan share into a real one (billing/planShare.ts).
+  forgetEntitlement(userId, { granted: until != null && until > Date.now() });
   if (until != null && until > Date.now()) {
     await warnIfDoubleBilled(userId);
     if (testMode()) console.warn(`[entitlements] TEST-MODE Razorpay access for ${userId} — switch to live keys before launch.`);

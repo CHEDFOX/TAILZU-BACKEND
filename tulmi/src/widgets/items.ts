@@ -16,6 +16,7 @@
  *   pc:<captureId>                a capture card (step 3: Add all)
  *   pl:<linkId>                   the work calendar's link (step 2: "No thanks" to the offer is pl:offer)
  *   pf:<followId>:<n>             one climb of a followed item (Plan Ease follow-through: Done, Later, Can't, I'll do it)
+ *   psa:<askId>                   one ask to be put on your plan (Share, Not now; PLAN_SHARE, billing/planShareActs.ts)
  *
  * An <eventRef> is the event's id, or for one start of a series "<id>.<day>" (an item part may not hold "@"; eventRefOf / eventIdOf).
  *
@@ -35,7 +36,8 @@ export type QuickItem =
   | { kind: "pm"; eventRef: string; start: string }
   | { kind: "pc"; captureId: string }
   | { kind: "pl"; linkId: string }
-  | { kind: "pf"; followId: string; n: number };
+  | { kind: "pf"; followId: string; n: number }
+  | { kind: "psa"; askId: string };
 
 /** A calendar event's id ("<id>" or "<id>@<day>") as an item part, and back. */
 export const eventRefOf = (eventId: string): string => eventId.replace("@", ".");
@@ -43,7 +45,7 @@ export const eventIdOf = (ref: string): string => { const i = ref.lastIndexOf(".
 
 /** An id part: what the stores make (UUIDs, slugs, short codes). Nothing with a separator of ours, nothing long. */
 const PART = /^[A-Za-z0-9_.-]{1,80}$/;
-/** A follow's id: a lower-case uuid. */
+/** A follow's id, and a plan ask's: a lower-case uuid. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** A question's fingerprint: eight hex characters of its words. */
@@ -65,6 +67,7 @@ export function itemId(i: QuickItem): string {
     case "pc": return `pc:${i.captureId}`;
     case "pl": return `pl:${i.linkId}`;
     case "pf": return `pf:${i.followId}:${i.n}`;
+    case "psa": return `psa:${i.askId}`;
   }
 }
 
@@ -86,6 +89,7 @@ export function parseItem(raw: unknown): QuickItem | null {
     case "pc": return b === undefined ? { kind, captureId: a } : null;
     case "pl": return b === undefined ? { kind, linkId: a } : null;
     case "pf": return b && /^\d{1,4}$/.test(b) && UUID.test(a) ? { kind, followId: a, n: Number(b) } : null;
+    case "psa": return b === undefined && UUID.test(a) ? { kind, askId: a } : null;
     default: return null;
   }
 }
@@ -106,6 +110,12 @@ export function pushItemOf(kind: string, data: Record<string, string> | undefine
   if (kind === "approval" && ok(d.taskId)) return itemId({ kind: "task", taskId: d.taskId, approvalId: ok(d.approvalId) ? d.approvalId : null });
   // A family member's follow push (botsBots/planFollow.ts): its buttons answer that climb of the follow.
   if (kind.startsWith("space_follow") && typeof d.item === "string" && parseItem(d.item)?.kind === "pf") return d.item;
+  // Someone asking for your plan (routes/bots/botsPlanShare.ts): the push's two buttons answer that one ask, and nothing else.
+  // Read before the plan_ line below, which this kind's name would otherwise fall into. The ask's own id is on the data too.
+  if (kind === "plan_share_ask") {
+    const raw = typeof d.item === "string" ? d.item : ok(d.ask) ? itemId({ kind: "psa", askId: d.ask }) : "";
+    return parseItem(raw)?.kind === "psa" ? raw : null;
+  }
   // Plan Ease's kinds say their item themselves (botsBots/planEase.ts), one of its own: pt:, pe:, pm:, pc:, pf:.
   if (kind.startsWith("plan_") && typeof d.item === "string") {
     const it = parseItem(d.item);

@@ -10,7 +10,7 @@ import { isValidTtsVoice, DEFAULT_TTS_VOICE } from "../../experience/ttsVoices.j
 import { getPersonality } from "../../personality/store.js";
 import { answerAbout, spokenLanguage } from "../../pipeline/cleanup.js";
 import { effectiveLanguage } from "../../profile/language.js";
-import { enforceQuota, recordUsage } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders, recordUsage } from "../../usage/metering.js";
 import { FRONT_BODY_LIMIT, type FrontRoutes } from "./front.js";
 import { unauthorized } from "../../http/helpers.js";
 
@@ -53,7 +53,7 @@ export function registerAskRoutes(app: FastifyInstance, deps: AskRouteDeps): voi
     if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
 
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
 
     try {
       const personality = body.personality ?? await getPersonality(user);

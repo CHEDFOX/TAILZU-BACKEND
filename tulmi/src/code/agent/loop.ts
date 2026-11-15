@@ -272,8 +272,8 @@ async function budgetStop(r: Run, needPaise: number): Promise<void> {
  */
 export function budgetShortfall(
   money: { spent: number; budget: number }, needPaise: number,
-  /** What the person's use is counted in: "this stretch", "this month" on the free plan (you/span.ts), or null when it is not known. */
-  span: string | null = "this stretch",
+  /** What the person's use is counted in: "this month", or "this stretch" if the old five windows are switched back on (you/span.ts); null when it is not known. */
+  span: string | null = "this month",
 ): { kind: "spent" | "short"; words: string; ask: string; needPaise: number; leftPaise: number } {
   const left = Math.max(0, money.budget - money.spent);
   if (left <= 0 || (needPaise <= 0 && money.spent >= money.budget)) {

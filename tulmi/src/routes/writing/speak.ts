@@ -15,7 +15,7 @@ import { getPrefs, type KeybotPrefs, readSpeed } from "../../keybot/prefs.js";
 import { getPersonality } from "../../personality/store.js";
 import { synthesize } from "../../pipeline/tts.js";
 import { addCostUsd, ttsUsd } from "../../usage/cost.js";
-import { enforceQuota, recordUsage } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, recordUsage } from "../../usage/metering.js";
 import { unauthorized, countWords } from "../../http/helpers.js";
 
 export interface SpeakRouteDeps {
@@ -68,7 +68,8 @@ export async function speakFor(
     o.call ? null : enforceQuota(user),
     getPrefs(user).catch(() => ({} as KeybotPrefs)),
   ]);
-  if (quota) return { status: 429, code: "quota_exceeded", message: quota };
+  // The meter's own words and its own code: the burn brake answers `overloaded`, not "you have run out" (usage/metering.ts).
+  if (quota) { const q = quotaBody(quota); return { status: 429, code: q.code, message: q.message }; }
   const speed = readSpeed(prefs);
 
   // Which voice to speak in. A voice the client sent is honoured only if it is

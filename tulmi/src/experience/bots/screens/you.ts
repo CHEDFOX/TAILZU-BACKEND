@@ -4,8 +4,8 @@
  * boards; Usage takes the Budget board's place, at bots.usage and the old bots.budget). Plans and Language are built in screens/firstRun.ts
  * (once first-run steps, now pages); they are linked, not built, here.
  *
- * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way other AI assistants show it: "This stretch ·
- * 64% used · resets Thu 9 am", "This month · 40% used", a calm line near the limit, and at it a bigger plan offered as an action (the store's
+ * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way other AI assistants show it: "This month ·
+ * 64% used · resets Sun 1 Nov", a calm line near the limit, and at it a bigger plan offered as an action (the store's
  * own sheet shows its price). Every number is the person's own, from the routes in routes/bots/botsYou.ts (src/you): the meter, the plan and its
  * dates from billing, the connected apps from connectors. A read that fails draws the honest empty state
  * (or ctx.live's meter), never a sample. Every control writes: PUT /v1/you/settings, the existing connector, job, billing and account routes,
@@ -32,6 +32,10 @@ import {
   quietSwitch, quietTimes, save, notifyDesk, callsSave, callsLine, followRows, followFromRows,
 } from "./you/notifyDesk.js";
 import { type SettingsData, settingsCard } from "./you/settingsCard.js";
+import {
+  canAskForPlan, leaveButton, onSomeonesPlan, planShareScreens, sharingSection, sharingState, waysOut,
+} from "./you/planShareCard.js";
+import { loadShare, type PlanShareView } from "../planShare.js";
 import { ARRIVAL, ARRIVAL_ANDROID, CAL_ADD, CAL_BUSY, CONTACTS, DRIVE, FOCUS, HEALTH, LOCATE, MOTION, REMINDERS, SLEEP } from "./permitWords.js";
 import {
   arrivalLive, calendarAddLive, calendarReadLive, canArrival, canCalendarRead, canMotion, canMotionDrive, contactPickLive,
@@ -43,7 +47,11 @@ import {
   youPhone,
 } from "./you/you.js";
 
-interface UsagePage { usage: UsageMeter; near: string | null; out: string | null; how: string }
+interface UsagePage {
+  usage: UsageMeter; near: string | null; out: string | null; how: string;
+  /** Sharing a plan (planShare.ts), when PLAN_SHARE is on: what the refused person's other way out is read from. */
+  share?: PlanShareView;
+}
 
 /** An invoice, as much as the screens show: when, which, what for, Razorpay's own page. No amount. */
 interface Invoice { id: string; number: string; date: number; status: string; url: string | null; what: string }
@@ -53,6 +61,9 @@ interface BillingData {
   usage: UsageMeter | null;
   email: string | null;
 }
+
+/** What bots.billing draws: the plan, and (PLAN_SHARE on) who is on it or whose the person is on. */
+interface BillingPage { billing?: BillingData; share?: PlanShareView }
 
 interface AppsData {
   enabled: boolean;
@@ -100,24 +111,28 @@ function pills(options: Array<{ label: string; value: string }>, path: string, o
 const avatarsOf = (ctx: BotsCtx, names: string[], size = 16): Node[] =>
   names.slice(0, 4).map((n) => { const b = botByName(ctx, n); return b ? botAvatar(b, size) : box([], { width: size, height: size, borderRadius: size / 2, backgroundColor: C.surface }); });
 
-/** "64% of this stretch". */
+/** "64% of this month". */
 const usedLine = (m: { used: number; windows: boolean }) => `${percent(m.used)} of this ${m.windows ? "stretch" : "month"}`;
 
 // ===================================================================== bots.usage (and bots.budget, its old link)
 
-/** The five stretches of the month as one bar: each as wide as its days, the ones gone in ink, this one half. */
-
-/** The way out at the limit: a bigger plan, as an action (the store's own sheet shows its price). None while nothing is for sale. */
-const upgradeButton = (u: UsageMeter, o: { wide?: boolean; size?: "md" | "lg" } = {}): Node[] =>
-  u.plan.upgrade ? [primaryButton("Get more with a plan", open(SCREENS.plans), { wide: o.wide ?? true, ...(o.size ? { size: o.size } : {}) })] : [];
+/**
+ * The ways out at the limit: a bigger plan, as an action (the store's own sheet shows its price), and — while PLAN_SHARE
+ * is on and somebody the person shares a space with has a plan — asking one of them to share theirs. The order is the one
+ * constant ASK_ABOVE_BUY (planShare.ts). None of either while nothing is for sale and nobody could share.
+ */
+const wayOutButtons = (d: UsagePage, o: { wide?: boolean; size?: "md" | "lg" } = {}): Node[] =>
+  waysOut({ upgrade: d.usage.plan.upgrade, ask: d.usage.state !== "ok" && canAskForPlan(d.share), ...o });
 
 function usageBody(ctx: BotsCtx, d: UsagePage): Node[] {
   const u = d.usage;
-  const stretch = usageMeter(spanLabel(u.plan.windows), u.stretch.used, { resets: resetsLine(ctx, u.stretch.resetsAt) });
+  // One meter, because there is one allowance: the month. A second one for the month only means something on a server that has put the
+  // five windows back (USAGE_STRETCHES), where the first meter is the window inside it.
+  const span = usageMeter(spanLabel(u.plan.windows), u.stretch.used, { resets: resetsLine(ctx, u.stretch.resetsAt) });
   const month = u.plan.windows ? [usageMeter("This month", u.month.used, { resets: `Starts again ${whenWords(u.month.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}` })] : [];
   // The meters, and a word when it is nearly or all used. Nothing explaining how it works: the meters say it.
   return [
-    card([stretch, ...month.flatMap((m) => [divider(), m])], { gap: 16, padding: 18 }),
+    card([span, ...month.flatMap((m) => [divider(), m])], { gap: 16, padding: 18 }),
     ...(d.out ? [notice(d.out, { ink: true })] : d.near ? [notice(d.near)] : []),
   ];
 }
@@ -130,7 +145,7 @@ function usagePhone(ctx: BotsCtx, d: UsagePage | undefined) {
   return page(ctx, {
     back: true, nav: "you", title: "Usage", gap: 18,
     body: [col([title("Usage"), meta(`${d.usage.plan.name} plan`, { size: 14, color: C.grey70 })], { gap: 4 }), ...usageBody(ctx, d)],
-    ...(d.usage.plan.upgrade && d.usage.state !== "ok" ? { footer: upgradeButton(d.usage) } : {}),
+    ...(() => { const f = d.usage.state !== "ok" ? wayOutButtons(d) : []; return f.length ? { footer: f } : {}; })(),
   });
 }
 
@@ -148,7 +163,7 @@ function usageDesk(ctx: BotsCtx, d: UsagePage | undefined) {
             meta(resetsLine(ctx, u.stretch.resetsAt), { size: 13 }),
             ...(u.plan.windows ? [meta(`This month · ${percent(u.month.used)} used`, { size: 13 })] : []),
           ], { gap: 4, flexShrink: 1 })], { gap: 18, alignItems: "center" }),
-          ...(u.plan.upgrade ? [divider(), ...upgradeButton(u, { wide: false, size: "md" })] : []),
+          ...(() => { const w = wayOutButtons(d, { wide: false, size: "md" }); return w.length ? [divider(), ...w] : []; })(),
         ], { padding: 20, gap: 14 }),
       ], { rightWidth: 360 }),
     ],
@@ -169,48 +184,60 @@ const cancelLine = (ctx: BotsCtx, p: BillingData["plan"]) =>
     : `Two taps. ${p.until ? `${p.name} stays till ${dayMonth(ctx, p.until)}, ` : ""}your bots and projects stay too.`;
 
 
-function billingPhone(ctx: BotsCtx, d: BillingData | undefined) {
+function billingPhone(ctx: BotsCtx, page0: BillingPage | undefined) {
+  const d = page0?.billing, share = page0?.share;
   if (!d) return page(ctx, { back: true, nav: "you", title: "Plan and billing", body: [title("Plan and billing"), couldNot("your plan")] });
   const p = d.plan;
   const cancel = cancelAction(p);
   // The least there is: the plan, when it renews, how much is used. Receipts and reminders come from whoever took the
   // payment (the App Store, Google Play, Razorpay, the UPI app), so none of that is repeated here.
+  //
+  // Then sharing (planShare.ts), and nothing at all while PLAN_SHARE is off: on someone else's plan the screen leads
+  // with whose it is; on your own it gains the list of people on it and "Share with someone".
   return page(ctx, {
-    back: true, nav: "you", title: "Plan and billing", gap: 18, state: { cancelSure: false },
+    back: true, nav: "you", title: "Plan and billing", gap: 18, state: { cancelSure: false, ...sharingState(share) },
     body: [
       title("Plan and billing"),
+      ...onSomeonesPlan(ctx, share),
       listCard([
         listRow({ label: "Plan", value: p.name }),
         ...(p.active && p.until ? [listRow({ label: p.renews ? "Renews" : "Ends", value: dayMonth(ctx, p.until) })] : []),
         ...(d.usage ? [listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })] : []),
       ]),
+      ...sharingSection(ctx, share),
     ],
     footer: [
       primaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { wide: true }),
+      ...leaveButton(ctx, share),
       ...(cancel ? [col([quietButton("Cancel plan", cancel, { wide: true }), meta(cancelLine(ctx, p), { size: 12, align: "center" })], { gap: 2 })] : []),
     ],
   });
 }
 
-function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
+function billingDesk(ctx: BotsCtx, page0: BillingPage | undefined) {
+  const d = page0?.billing, share = page0?.share;
   if (!d) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 1040, body: [heading(ctx, "Plan and billing"), couldNot("your plan")] });
   const p = d.plan;
   const cancel = cancelAction(p);
-  // As on the phone: the plan, when it renews, how much is used; change it or cancel it. Receipts are Razorpay's.
+  // As on the phone: the plan, when it renews, how much is used; change it or cancel it. Receipts are Razorpay's. And
+  // the same sharing pieces, built from the same functions (screens/you/planShareCard.ts).
   return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 640, gap: 20, state: { cancelSure: false },
+    back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 640, gap: 20, state: { cancelSure: false, ...sharingState(share) },
     body: [
       heading(ctx, "Plan and billing"),
+      ...onSomeonesPlan(ctx, share),
       listCard([
         listRow({ label: "Plan", value: p.name }),
         ...(p.active && p.until ? [listRow({ label: p.renews ? "Renews" : "Ends", value: dayMonth(ctx, p.until) })] : []),
         ...(d.usage ? [listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })] : []),
       ]),
+      ...sharingSection(ctx, share),
       row([
         secondaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { size: "md" }),
+        ...leaveButton(ctx, share),
         ...(cancel ? [quietButton("Cancel plan", cancel, { size: "md" })] : []),
         ...(cancel ? [meta(cancelLine(ctx, p), { size: 12, style: { flexShrink: 1 } })] : []),
-      ], { gap: 10 }),
+      ], { gap: 10, flexWrap: "wrap" }),
     ],
   });
 }
@@ -677,8 +704,26 @@ export const youScreens: BotsScreen[] = [
   ...spaceScreens, // Your space (screens/you/space.ts)
   ...devicesScreens, // Terminal sign-ins (screens/you/devicesPage.ts)
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
-  ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({ id, load: (ctx, deps) => deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)) })),
-  screen<BillingData>({ id: SCREENS.billing, load: (ctx, deps) => deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)) }),
+  ...planShareScreens, // Share with someone / Ask for a plan (screens/you/planShareCard.ts)
+  ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({
+    id,
+    load: async (ctx, deps) => {
+      const [usage, share] = await Promise.all([deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), loadShare(deps, ctx.user?.id)]);
+      return { ...usage, ...(share ? { share } : {}) };
+    },
+    build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)),
+  })),
+  screen<BillingPage>({
+    id: SCREENS.billing,
+    load: async (ctx, deps) => {
+      const [billing, share] = await Promise.all([
+        deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`).catch(() => undefined),
+        loadShare(deps, ctx.user?.id),
+      ]);
+      return { ...(billing ? { billing } : {}), ...(share ? { share } : {}) };
+    },
+    build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)),
+  }),
   screen<NotifyData>({ id: SCREENS.notify, load: (ctx, deps) => deps.api<NotifyData>("GET", `/v1/you/notify?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? notifyDesk(ctx, d) : notifyPhone(ctx, d)) }),
   screen<PrivacyData>({
     id: SCREENS.privacy,

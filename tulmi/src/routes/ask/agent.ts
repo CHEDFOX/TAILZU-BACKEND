@@ -48,7 +48,7 @@ import { estimateDurationSeconds, transcribe } from "../../pipeline/stt.js";
 import { effectiveLanguage } from "../../profile/language.js";
 import { getProfile } from "../../profile/store.js";
 import type { RunLedger } from "../../runs/ledger.js";
-import { enforceQuota, recordPicture, recordUsage } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders, recordPicture, recordUsage } from "../../usage/metering.js";
 import { unauthorized } from "../../http/helpers.js";
 
 export interface AgentRouteDeps {
@@ -137,7 +137,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     // A recording is a question spoken to Ask, held to Ask's own seconds too,
     // and a picture to the day's pictures.
     const quota = await enforceQuota(user, { agentAudio: !!audio, picture: !!image });
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
 
     // The run ledger's eye on this step: how it ends (and the receipt that
     // says so, before a terminal that ends the run), what the apps did, and

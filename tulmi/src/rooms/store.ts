@@ -12,6 +12,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 import type { RoomStatus } from "./types.js";
+import { keptBrief } from "../brief/edit.js";
+import type { Brief } from "../brief/types.js";
 
 /** One stretch of time people were in the room: from the first in to the last out (end null while it goes on). */
 export interface Session { start: number; end: number | null }
@@ -52,9 +54,12 @@ export interface Room {
   createdAt: number;
   updatedAt: number;
   endedAt: number | null;
+  /** The note this call's words are going into (src/rooms/scribe.ts), and the document being made of it (docs/brief.md). */
+  noteId?: string | null;
+  brief?: Brief | null;
 }
 
-export type RoomPatch = Partial<Pick<Room, "title" | "lobby" | "status" | "people" | "sessions" | "pastMinutes" | "endedAt">>;
+export type RoomPatch = Partial<Pick<Room, "title" | "lobby" | "status" | "people" | "sessions" | "pastMinutes" | "endedAt" | "noteId" | "brief">>;
 
 export interface RoomStore {
   add(r: Room): Promise<void>;
@@ -104,6 +109,8 @@ interface Row {
   id: string; user_id: string; code_hash: string; code_enc: string; business_id: string | null; host: string; title: string; lobby: boolean;
   status: RoomStatus; people: Seat[] | null; sessions: Session[] | null; past_minutes: number | null; created_at: string; updated_at: string;
   ended_at: string | null;
+  /** Migration 0096: absent before it was run, so a call's note and document live in memory until it is. */
+  note_id?: string | null; brief?: unknown;
 }
 
 const ms = (s: string | null): number | null => (s ? Date.parse(s) || null : null);
@@ -114,6 +121,7 @@ function fromRow(r: Row): Room {
     id: r.id, userId: r.user_id, codeHash: r.code_hash, codeEnc: r.code_enc, businessId: r.business_id, host: r.host ?? "", title: r.title ?? "",
     lobby: r.lobby !== false, status: r.status, people: Array.isArray(r.people) ? r.people : [], sessions: Array.isArray(r.sessions) ? r.sessions : [],
     pastMinutes: Number(r.past_minutes) || 0, createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0, endedAt: ms(r.ended_at),
+    noteId: r.note_id ?? null, brief: keptBrief(r.brief),
   };
 }
 
@@ -126,6 +134,9 @@ function toRow(p: RoomPatch): Record<string, unknown> {
   if (p.sessions !== undefined) out.sessions = p.sessions;
   if (p.pastMinutes !== undefined) out.past_minutes = p.pastMinutes;
   if (p.endedAt !== undefined) out.ended_at = iso(p.endedAt);
+  // 0096's two only when they say something, so a database that has not run it still takes every other write.
+  if (p.noteId) out.note_id = p.noteId;
+  if (p.brief) out.brief = p.brief;
   return out;
 }
 

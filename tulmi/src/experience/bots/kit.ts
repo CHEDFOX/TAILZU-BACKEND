@@ -583,7 +583,8 @@ export const canMotionDrive = (ctx: BotsCtx): boolean =>
 /**
  * "Remind me when I get there": the phone's own system watches the place; this server is never told of an arrival. On
  * Android it is the app that is woken by a geofence, which is background location under Play's policy, so this one waits on
- * Play: its own switch AND an account list for the stage between the first geofencing build and the approval propagating.
+ * Play: its own switch, and an account list for a private test of your own, which is empty in production (Play approves the
+ * whole app at once, so a list left in it would only hide the row from everyone not on it).
  */
 export function canArrival(ctx: BotsCtx): boolean {
   if (ctx.client !== "phone" || !ctx.can.has(ARRIVAL_CAPABILITY) || !permOn("PERM_ARRIVAL")) return false;
@@ -1469,10 +1470,10 @@ export function comingSoon(ctx: BotsCtx): ScreenResponse {
  * `usageMeter`, `percent` ("64%") and `whenWords` ("Thu 9 am").
  */
 
-/** "this stretch", or "this month" on a plan with no stretches (the free plan): what every line about use says, for this person. */
+/** "this month", or "this stretch" on a server that cuts the month into windows (USAGE_STRETCHES): what every line about use says. */
 export const spanOf = (ctx: { live: { usage: { windows: boolean } } }): string => (ctx.live.usage.windows ? "this stretch" : "this month");
 
-/** A usage meter: "This stretch · 64% used", its bar, and when it resets. `used` is a fraction (0.64); never an amount. */
+/** A usage meter: "This month · 64% used", its bar, and when it starts again. `used` is a fraction (0.64); never an amount. */
 export function usageMeter(label: string, used: number, o: { resets?: string; color?: string; height?: number } = {}): Node {
   const part = Math.max(0, Math.min(1, used));
   return col([

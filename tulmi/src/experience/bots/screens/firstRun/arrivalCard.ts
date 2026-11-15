@@ -5,7 +5,7 @@
 import type { Node, ActionRef, ActionSpec, Condition } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, seq, call, when, row, text, canMove, botCard, col, C } from "../../kit.js";
 import {
-  setState, permitStep, line, AX_STATE, MIC_SETTLED, OPEN_AX, KEYS_MISSING, keyboardLines, gotYou, KEYS_ON, CARD_BOT, CHEER_MS,
+  setState, permitStep, line, AX_STATE, SEE_STATE, MIC_SETTLED, OPEN_AX, KEYS_MISSING, keyboardLines, gotYou, KEYS_ON, CARD_BOT, CHEER_MS,
 } from "./parts.js";
 
 /** The read the first-arrival card is due on (GET /v1/bots/first-run/arrival) and the write that ends it. */
@@ -38,27 +38,59 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
   });
   let steps: Node[], ready: Condition | undefined, done: Condition | undefined;
   if (desk) {
-    // A window: its microphone (where it can tell) and this computer's Accessibility (where it can show it). A window
-    // that reads Accessibility itself (AX_STATE) lets the step go on its own once it is on, and the card close; one
-    // that only shows it (DeskAskSetup) keeps a Done.
-    const hasMic = ctx.can.has("DeskMicAsk"), askCard = ctx.can.has("DeskAskSetup"), axRead = ctx.can.has(AX_STATE);
+    // A WINDOW ASKS FOR WHAT A COMPUTER KEEPS, in the same card: its microphone
+    // (where it can tell), and then the switches only System Settings can
+    // flip — typing your words where the cursor is, and letting Ask answer
+    // about the window in front of you. A window that reads those itself
+    // (AX_STATE, SEE_STATE) lets the step go on its own once they are on, and
+    // the card close; one that only shows them (DeskAskSetup) keeps a Done.
+    //
+    // The camera is not here. A call is the only thing that opens one, and only
+    // when the person turns it on there, so it is asked for at that moment
+    // (the window's own card, sdui/permCard.js) and never up front.
+    const hasMic = ctx.can.has("DeskMicAsk"), askCard = ctx.can.has("DeskAskSetup");
+    const axRead = ctx.can.has(AX_STATE);
+    // The second switch is only ASKED for where the card that draws its row is
+    // there to draw it (Ask off in this copy, and the window declares no card):
+    // a window that can read the answer but has no row for it would be waiting
+    // on a switch nothing on screen mentions, and the card would never finish.
+    const seeAsk = ctx.can.has(SEE_STATE) && askCard;
     const hasAx = askCard || axRead;
     if (!hasMic && !hasAx) return [];
     const axTurn: Condition = hasMic ? MIC_SETTLED : { falsy: "permitClosed" };
-    const allSet: Condition | undefined = axRead ? { all: [...(hasMic ? [MIC_SETTLED] : []), { truthy: "axGranted" }] } : hasMic && !hasAx ? MIC_SETTLED : undefined;
+    // What the Mac still owes us, as this window can read it. Off a Mac both
+    // answer "nothing to ask for", so the step hides itself there.
+    const macOwed: Condition = seeAsk && axRead
+      ? { any: [{ falsy: "axGranted" }, { falsy: "seeGranted" }] }
+      : { falsy: "axGranted" };
+    const macOn: Condition[] = [...(axRead ? [{ truthy: "axGranted" } as Condition] : []), ...(seeAsk ? [{ truthy: "seeGranted" } as Condition] : [])];
+    const allSet: Condition | undefined = axRead
+      ? { all: [...(hasMic ? [MIC_SETTLED] : []), ...macOn] }
+      : hasMic && !hasAx ? MIC_SETTLED : undefined;
+    // Each row says what it is for; the line under them gives the Mac's own
+    // names, which is the only way to find the switches in its settings.
+    const macRows = [
+      { key: "read", title: "Typing for you", sub: "So your words land where your cursor is, in any app, instead of only being copied." },
+      ...(seeAsk ? [{ key: "see", title: "Answering about your screen", sub: "So Ask can answer about what's in front of you when you ask it to. The picture is never kept." }] : []),
+    ];
     steps = [
       ...(hasMic ? [mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] })] : []),
       ...(hasAx ? [permitStep({
-        when: axRead ? { all: [axTurn, { falsy: "axGranted" }] } : axTurn,
-        title: "Let Keylessbord type for you",
-        lines: [line("Allow Accessibility so Keylessbord can put your words where your cursor is, in any app.")],
+        when: axRead ? { all: [axTurn, macOwed] } : axTurn,
+        title: macRows.length > 1 ? "Two switches in your Mac's settings" : "One switch in your Mac's settings",
+        lines: [line(macRows.length > 1
+          ? "Your Mac keeps these two for itself, under the names Accessibility and Screen Recording. Turn X0 Bot on in each and come back — they tick themselves off here."
+          : "Your Mac keeps this one for itself, under the name Accessibility. Turn X0 Bot on and come back.")],
         ...(askCard ? {
           extra: [{
             type: "DeskAskSetup",
             props: {
               place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
-              on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
-              rows: [{ key: "read", title: "Accessibility", sub: "Lets Keylessbord type what you said into the app you're in." }],
+              // Allow, because the first press is the system's own dialog over the
+              // window; only the press after it opens the page (the window swaps the
+              // label itself, askSetupCard.js).
+              on: "Allowed", allow: "Allow", allowAgain: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
+              rows: macRows,
             },
           }],
         } : {
@@ -73,7 +105,11 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
         when({ falsy: "desktop.hold" }, line("Hold the clay key to speak, in any app.")),
       ] })] : []),
     ];
-    const known: Condition[] = [...(hasMic ? [{ neq: ["micGranted", null] } as Condition] : []), ...(axRead ? [{ neq: ["axGranted", null] } as Condition] : [])];
+    const known: Condition[] = [
+      ...(hasMic ? [{ neq: ["micGranted", null] } as Condition] : []),
+      ...(axRead ? [{ neq: ["axGranted", null] } as Condition] : []),
+      ...(seeAsk ? [{ neq: ["seeGranted", null] } as Condition] : []),
+    ];
     ready = known.length > 1 ? { all: known } : known[0];
     done = allSet;
   } else {

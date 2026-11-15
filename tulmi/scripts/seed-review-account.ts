@@ -19,6 +19,9 @@
  *                    by 6 pm on the day it was seeded, and on every day after. Its place is a name the server can always
  *                    resolve from `places/cities.ts` ("Bengaluru"), so the switch is there with no geocoder configured.
  *
+ *   the AI permission        the account's AI answer is CLEARED, so the card on Home ("Terms and privacy") is due again and
+ *                    the reviewer meets it, even if this account agreed in an earlier review. Nothing is granted by clearing it.
+ *
  * It does NOT switch health, sleep or the arrival reminder on: only the phone's own flow can, which is the point of each row.
  * The reviewer taps them.
  *
@@ -110,6 +113,24 @@ if (had2) {
   const made = await cal.addEvent(userId, { title: ITEM, day: today, time: "21:30", place: PLACE, tz: 330, repeat: "daily" });
   console.log(`item:  made "${made.title}", every day at 9:30 pm at ${PLACE}; its Remind me when I get there is off, as it must be`);
 }
+
+// ------------------------------------------------------------------ the AI permission card, back on Home
+//
+// The reviewer has to see the AI permission (screens/firstRun/aiConsentCard.ts, App Review 5.1.2(i)), and the review notes ask them
+// to tap Agree. A review account that agreed in an earlier review would never see it again, so its answer is cleared here. Nobody
+// else is asked again: AI_CONSENT_VERSION is unchanged.
+const { updatePersonality } = await import("../src/personality/store.js");
+const reviewer = { id: userId };
+await updatePersonality(reviewer, (p) => {
+  const q = { ...p } as Record<string, unknown>;
+  delete q.aiConsentAt;
+  delete q.aiConsentVersion;
+  delete q.aiConsentAskedVersion;
+  delete q.aiConsentWithdrawnAt;
+  return q as typeof p;
+});
+console.log("ai:    the AI permission answer is cleared, so the card is due again on Home");
+console.log("       (nothing is granted: until the reviewer taps Agree, nothing of theirs is sent to an AI service)");
 
 console.log("");
 console.log("Next, by hand, for the review:");

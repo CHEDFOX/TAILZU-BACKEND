@@ -37,7 +37,7 @@ import {
 import { getPersonality } from "../personality/store.js";
 import { estimateDurationSeconds, transcribe } from "../pipeline/stt.js";
 import { chargedTo } from "../usage/cost.js";
-import { enforceQuota, recordUsage } from "../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders, recordUsage } from "../usage/metering.js";
 
 export interface NotesRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -124,7 +124,7 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
     try {
       return reply.send({ note: await createNote(user) });
     } catch (err) { return fail(reply, err); }
@@ -148,7 +148,7 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
       if (!note) return reply.code(404).send({ code: "not_found", message: "No such note" });
       if (note.status !== "recording") return reply.code(409).send({ code: "finished", message: "This note has stopped." });
       const quota = await enforceQuota(user);
-      if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+      if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
       const personality = await getPersonality(user);
       const lang = await deps.effectiveLanguage(user, language, personality);
       const stt = await transcribe({

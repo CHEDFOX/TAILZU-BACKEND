@@ -135,7 +135,7 @@ export function keyOnDesk(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
     ? box([{
         type: "DeskAskSetup",
         props: {
-          place: "settings", on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
+          place: "settings", on: "Allowed", allow: "Allow", allowAgain: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
           rows: [{ key: "read", title: "Accessibility", sub: "So Keylessbord can put the words where your cursor is, in any app." }],
         },
       }], { paddingHorizontal: 4, paddingBottom: 4 })
