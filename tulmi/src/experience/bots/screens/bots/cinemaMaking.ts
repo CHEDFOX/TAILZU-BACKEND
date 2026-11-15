@@ -7,6 +7,10 @@
  *   boarding, board      c.board    he draws the storyboard, leans back to see whether it reads, goes in again
  *   rendering            c.shoot    the crew come in from the right with the camera and the light, he claps the board, it rolls
  *   cutting              c.cut      the bench, the takes going past him, the frames he keeps
+ *
+ * A film of several shots gets `c.shoot.big` and `c.cut.big` instead: the same performance with a bigger unit on it - four of
+ * them rather than two, the ones at the back drawn smaller. They are two parts, not four, because a recipe may only put four
+ * things on the floor (WSLOTS is 4 in every engine that has shipped), so a crew bot's mate is drawn inside the same part.
  *   a picture            c.sketch   he draws it at the board, leans back, and carries the board off when it is done
  *
  * They are all the same bot, smaller when there are more of them (shared/bots/looks.json: crew_cam, crew_lamp are cinema blips
@@ -26,14 +30,22 @@ import { RATIO, type Aspect, type FilmStatus } from "../../../../cinema/types.js
 import { type BotsCtx, botBuddy, botMoment, box, C, canBuddy } from "../../kit.js";
 import { DIRECTOR } from "./cinemaPage.js";
 
+/**
+ * How big the unit is. A one-shot film is a camera and a light; a film of several shots is a proper crew, and the same two
+ * recipes play with the bigger parts in them (four of them on the floor instead of two). The rule is the same one at both
+ * ends, so the crew that walked on is the crew that walks off.
+ */
+export const BIG_UNIT_SHOTS = 3;
+const big = (f: { shots?: number }): boolean => (f.shots ?? 0) >= BIG_UNIT_SHOTS;
+
 /** What he is doing, from where the film stands. A film waiting on the person is a film he is still fussing over. */
-export function momentFor(f: { status: FilmStatus; hold?: string | null }): string {
+export function momentFor(f: { status: FilmStatus; hold?: string | null; shots?: number }): string {
   if (f.hold) return "c.frame";
   switch (f.status) {
     case "writing": case "script": return "c.script";
     case "boarding": case "board": return "c.board";
-    case "rendering": return "c.shoot";
-    case "cutting": return "c.cut";
+    case "rendering": return big(f) ? "c.shoot.big" : "c.shoot";
+    case "cutting": return big(f) ? "c.cut.big" : "c.cut";
     default: return "c.frame";
   }
 }
@@ -49,12 +61,20 @@ export function frameBox(aspect: Aspect, row: number, cap: number): { w: number;
 }
 
 /**
- * The stage itself: the frame, and him working in it. `size` keeps the room about three and a half of him wide whatever the
- * shape, which is what the recipes are drawn for: the crew come to rest at a share of the room's width (`W`), so they land in
- * the same place in a tall frame as in a wide one.
+ * How many of him wide the room is. The recipes put their marks in bot-heights, so this is what decides whether the one at
+ * the back of a full unit is inside the frame: a bigger unit is given a wider room, which is the same thing as drawing him
+ * smaller. Nothing else about the performance changes.
+ */
+const ROOM = 3.6, ROOM_BIG = 4.4;
+export const roomFor = (moment: string): number => (moment.endsWith(".big") ? ROOM_BIG : ROOM);
+
+/**
+ * The stage itself: the frame, and him working in it. `size` keeps the room the same number of him across whatever the
+ * frame's shape, which is what the recipes are drawn for: the crew walk to marks in bot-heights, so they land in the same
+ * place in a tall frame as in a wide one.
  */
 export function makingFrame(ctx: BotsCtx, o: { color: string; life: string; moment: string; w: number; h: number }): Node {
-  const size = Math.max(24, Math.min(110, Math.round(Math.min(o.h * 0.52, o.w / 3.6))));
+  const size = Math.max(24, Math.min(110, Math.round(Math.min(o.h * 0.52, o.w / roomFor(o.moment)))));
   const him = canBuddy(ctx)
     ? [botBuddy({
       kind: "custom", color: o.color, life: o.life, width: o.w, height: o.h, size,

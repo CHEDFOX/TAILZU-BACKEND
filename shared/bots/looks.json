@@ -305,6 +305,34 @@
       {"d": "M -0.2 -0.64 L -0.13 -0.69 L -0.07 -0.63 M 0.08 -0.66 L 0.14 -0.7 M 0.09 -0.63 L 0.2 -0.63", "stroke": "$paint", "width": 0.01, "alpha": 0.8},
       {"d": "M -0.2 -0.47 L -0.1 -0.51 M -0.19 -0.44 L -0.07 -0.44", "stroke": "$paint", "width": 0.01, "alpha": 0.5}
     ] },
+    "crew_cam2": { "note": "The same camera with a unit on it: the operator at the eyepiece and one set back and upstage of him, smaller for the distance. Two bots in one part, because a recipe may only put four things on the floor.", "draw": [
+      {"d": "M -0.02 0 L 0.1 -0.3 M -0.02 0 L -0.14 -0.3 M -0.02 0 L -0.02 -0.3", "stroke": "ink", "width": 0.018},
+      {"d": "M 0.12 -0.47 L -0.14 -0.47 L -0.14 -0.29 L 0.12 -0.29 Z", "fill": "#3B3F47"},
+      {"d": "M -0.14 -0.43 L -0.25 -0.43 L -0.25 -0.34 L -0.14 -0.34 Z", "fill": "ink"},
+      {"d": "O -0.256 -0.385 0.036", "fill": "$paint", "alpha": 0.9},
+      {"d": "O 0.055 -0.525 0.05 O -0.05 -0.525 0.05", "stroke": "ink", "width": 0.013},
+      {"d": "M 0.265 -0.085 L 0.255 0.0 M 0.345 -0.085 L 0.355 0.0 M 0.5341 -0.1479 L 0.5267 -0.085 M 0.5933 -0.1479 L 0.6007 -0.085", "stroke": "$paint", "width": 0.025},
+      {"d": "M 0.215 -0.075 Q 0.23 -0.345 0.3 -0.345 Q 0.37 -0.345 0.385 -0.075 Z M 0.4971 -0.1405 Q 0.5082 -0.3403 0.56 -0.3403 Q 0.6118 -0.3403 0.6229 -0.1405 Z", "fill": "$paint"},
+      {"d": "O 0.3 -0.47 0.122 O 0.56 -0.4328 0.0903", "fill": "$paint"},
+      {"d": "M 0.185 -0.5 Q 0.185 -0.61 0.3 -0.61 Q 0.415 -0.61 0.415 -0.5 Z M 0.2 -0.505 Q 0.125 -0.52 0.085 -0.495 L 0.095 -0.465 Q 0.14 -0.48 0.205 -0.475 Z M 0.4749 -0.455 Q 0.4749 -0.5364 0.56 -0.5364 Q 0.6451 -0.5364 0.6451 -0.455 Z M 0.486 -0.4587 Q 0.4305 -0.4698 0.4009 -0.4513 L 0.4083 -0.4291 Q 0.4416 -0.4402 0.4897 -0.4365 Z", "fill": "#3B3F47"},
+      {"d": "O 0.258 -0.475 0.052 O 0.5289 -0.4365 0.0385", "fill": "paper"},
+      {"d": "M 0.255 -0.6 Q 0.235 -0.665 0.215 -0.7 M 0.345 -0.6 Q 0.375 -0.655 0.4 -0.675 M 0.5267 -0.529 Q 0.5119 -0.5771 0.4971 -0.603 M 0.5933 -0.529 Q 0.6155 -0.5697 0.634 -0.5845", "stroke": "$paint", "width": 0.022},
+      {"d": "O 0.212 -0.706 0.026 O 0.404 -0.679 0.03 O 0.4949 -0.6074 0.0192 O 0.637 -0.5875 0.0222", "fill": "$paint"}
+    ] },
+    "crew_lamp2": { "note": "The same light with two on it: the one who set it, a step downstage, and a third further back again.", "draw": [
+      {"d": "O -0.27 -0.57 0.2", "fill": "#F2D58A", "alpha": 0.22},
+      {"d": "M -0.02 0 L 0.08 -0.26 M -0.02 0 L -0.12 -0.26 M -0.02 0 L -0.02 -0.26", "stroke": "ink", "width": 0.016},
+      {"d": "M -0.02 -0.26 L -0.02 -0.58", "stroke": "ink", "width": 0.018},
+      {"d": "M 0.03 -0.635 L 0.03 -0.505 L -0.15 -0.455 L -0.15 -0.685 Z", "fill": "#3B3F47"},
+      {"d": "M -0.153 -0.675 L -0.153 -0.465", "stroke": "#F2D58A", "width": 0.03},
+      {"d": "M 0.2578 -0.0432 L 0.2486 0.035 M 0.3314 -0.0432 L 0.3406 0.035 M 0.4769 -0.1561 L 0.4703 -0.1 M 0.5297 -0.1561 L 0.5363 -0.1", "stroke": "$paint", "width": 0.025},
+      {"d": "M 0.2118 -0.034 Q 0.2256 -0.2824 0.29 -0.2824 Q 0.3544 -0.2824 0.3682 -0.034 Z M 0.4439 -0.1495 Q 0.4538 -0.3277 0.5 -0.3277 Q 0.5462 -0.3277 0.5561 -0.1495 Z", "fill": "$paint"},
+      {"d": "O 0.29 -0.3974 0.1122 O 0.5 -0.4102 0.0805", "fill": "$paint"},
+      {"d": "M 0.1842 -0.425 Q 0.1842 -0.5262 0.29 -0.5262 Q 0.3958 -0.5262 0.3958 -0.425 Z M 0.198 -0.4296 Q 0.129 -0.4434 0.0922 -0.4204 L 0.1014 -0.3928 Q 0.1428 -0.4066 0.2026 -0.402 Z M 0.4241 -0.43 Q 0.4241 -0.5026 0.5 -0.5026 Q 0.5759 -0.5026 0.5759 -0.43 Z M 0.434 -0.4333 Q 0.3845 -0.4432 0.3581 -0.4267 L 0.3647 -0.4069 Q 0.3944 -0.4168 0.4373 -0.4135 Z", "fill": "#3B3F47"},
+      {"d": "O 0.2514 -0.402 0.0478 O 0.4723 -0.4135 0.0343", "fill": "paper"},
+      {"d": "M 0.2486 -0.517 Q 0.2302 -0.5768 0.2118 -0.609 M 0.3314 -0.517 Q 0.359 -0.5676 0.382 -0.586 M 0.4703 -0.496 Q 0.4571 -0.5389 0.4439 -0.562 M 0.5297 -0.496 Q 0.5495 -0.5323 0.566 -0.5455", "stroke": "$paint", "width": 0.022},
+      {"d": "O 0.209 -0.6145 0.0239 O 0.3857 -0.5897 0.0276 O 0.4419 -0.566 0.0172 O 0.5686 -0.5481 0.0198", "fill": "$paint"}
+    ] },
     "crew_cam": { "note": "One of the crew: the same cinema blip, smaller, at the eyepiece of a camera on sticks pointed back at the shot.", "draw": [
       {"d": "M -0.02 0 L 0.1 -0.3 M -0.02 0 L -0.14 -0.3 M -0.02 0 L -0.02 -0.3", "stroke": "ink", "width": 0.018},
       {"d": "M 0.12 -0.47 L -0.14 -0.47 L -0.14 -0.29 L 0.12 -0.29 Z", "fill": "#3B3F47"},
@@ -1209,8 +1237,8 @@
       "label": "The board goes out as the crew come in with the camera and the light; he claps it, and it rolls", "dur": 12.4, "mode": "loop", "loopFrom": 5.2, "still": 7.4, "fallback": "play",
       "tracks": [
         {"note": "the storyboard leaves the way the crew arrive: the set changes without the room changing", "do": "prop", "at": 0.0, "to": 2.0, "part": "easel", "on": "ground", "x": "lerp(0.78, 4.2, smooth(0.0, 1.5, T))"},
-        {"do": "prop", "at": 0.5, "part": "crew_cam", "on": "ground", "x": "lerp(3.5, 1.05, smooth(0.6, 2.7, T))", "y": "-0.014*abs(sin(tau*T*1.7))*clamp((2.7 - T)*4, 0, 1)"},
-        {"do": "prop", "at": 0.8, "part": "crew_lamp", "on": "ground", "x": "lerp(4.4, 1.85, smooth(0.9, 3.3, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((3.3 - T)*4, 0, 1)"},
+        {"do": "prop", "at": 0.5, "part": "crew_cam", "on": "ground", "x": "lerp(3.5, 1.05, smooth(0.6, 2.7, T)) - 0.05*smooth(5.4, 11, T)", "y": "-0.013*abs(sin(tau*T*1.7))*clamp((2.7 - T)*4, 0, 1) - 0.006*smooth(2.7, 3.6, T)*(0.5 + 0.5*sin(tau*T/2.9))"},
+        {"do": "prop", "at": 0.8, "part": "crew_lamp", "on": "ground", "scale": 0.93, "x": "lerp(4.4, 1.82, smooth(0.9, 3.3, T))", "y": "-0.045 - 0.013*abs(sin(tau*T*1.7 + 1.2))*clamp((3.3 - T)*4, 0, 1) - 0.006*smooth(3.3, 4.2, T)*(0.5 + 0.5*sin(tau*T/3.7 + 2))"},
         {"do": "look", "at": 1.0, "to": 3.2, "target": "point", "x": 1.5, "y": -0.3},
         {"do": "arm", "at": 1.8, "to": 3.1, "hand": "front", "x": 0.26, "y": -0.26, "k": 560},
         {"note": "the board up, held open, and snapped shut: action", "do": "prop", "at": 3.4, "to": 5.0, "part": "slate", "on": "hand_front", "x": 0.03, "y": -0.02, "pop": true, "rot": "-0.5*clamp((4.6 - T)/1.0, 0, 1)"},
@@ -1219,7 +1247,7 @@
         {"do": "emit", "at": 4.6, "part": "puff", "from": "hand_front", "x": 0.14, "y": -0.1, "n": 3, "spread": 0.7, "vy": -0.6, "drag": 2, "life": 0.5, "size": 0.45, "alpha": 0.5},
         {"do": "hop", "at": 4.6, "h": 0.07},
         {"do": "mouth", "at": 4.62, "to": 5.4, "state": "o", "v": 0.75},
-        {"note": "rolling: the light is warm and he watches the frame", "do": "emit", "at": 5.2, "to": 12.3, "part": "mote", "from": "ground", "x": 1.85, "y": -0.6, "every": 0.6, "spread": 0.5, "vy": -0.5, "g": -0.05, "drag": 1.0, "life": 1.2, "size": 0.4, "alpha": 0.5, "paint": "#F2D58A"},
+        {"note": "rolling: the light is warm and he watches the frame", "do": "emit", "at": 5.2, "to": 12.3, "part": "mote", "from": "ground", "x": 1.82, "y": -0.6, "every": 0.6, "spread": 0.5, "vy": -0.5, "g": -0.05, "drag": 1.0, "life": 1.2, "size": 0.4, "alpha": 0.5, "paint": "#F2D58A"},
         {"do": "arm", "at": 5.4, "to": 10.6, "hand": "both", "x": 0.17, "y": -0.3, "k": 520},
         {"do": "eyes", "at": 5.4, "to": 10.6, "state": "squint"},
         {"do": "look", "at": 5.4, "to": 10.6, "target": "ahead", "x": "0.5 + 0.25*sin(tau*(T - 5.4)/3.4)", "y": -0.22},
@@ -1234,7 +1262,7 @@
       "end": {
         "dur": 4.8,
         "tracks": [
-          {"note": "that is a wrap: the gear goes out the way it came in", "do": "prop", "part": "crew_lamp", "on": "ground", "x": "lerp(1.85, 4.6, smooth(0.2, 2.4, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((2.4 - T)*4, 0, 1)"},
+          {"note": "that is a wrap: the gear goes out the way it came in", "do": "prop", "part": "crew_lamp", "on": "ground", "scale": 0.93, "y": -0.045, "x": "lerp(1.82, 4.6, smooth(0.2, 2.4, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((2.4 - T)*4, 0, 1)"},
           {"do": "prop", "part": "crew_cam", "on": "ground", "x": "lerp(1.05, 4.0, smooth(0.6, 3.0, T))", "y": "-0.014*abs(sin(tau*T*1.7))*clamp((3.0 - T)*4, 0, 1)"},
           {"do": "arm", "at": 0.6, "to": 3.4, "hand": "front", "x": "0.2 + 0.07*sin(tau*(T - 0.6)/0.55)", "y": -0.34, "k": 620},
           {"do": "look", "at": 0.4, "to": 3.4, "target": "point", "x": 1.4, "y": -0.3},
@@ -1248,8 +1276,71 @@
     "c.cut": {
       "label": "The crew take the set out and the bench comes in: he runs the takes past himself and keeps the frames that work", "dur": 9.4, "mode": "loop", "loopFrom": 2.5, "still": 5.0, "fallback": "read",
       "tracks": [
-        {"note": "they pack up and go while the bench is wheeled in behind them", "do": "prop", "at": 0.0, "to": 2.0, "part": "crew_cam", "on": "ground", "x": "lerp(1.05, 4.2, smooth(0.0, 1.6, T))", "y": "-0.014*abs(sin(tau*T*1.7))*clamp((1.6 - T)*4, 0, 1)"},
-        {"do": "prop", "at": 0.0, "to": 2.1, "part": "crew_lamp", "on": "ground", "x": "lerp(1.85, 4.8, smooth(0.15, 1.7, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((1.7 - T)*4, 0, 1)"},
+        {"note": "they pack up and go while the bench is wheeled in behind them", "do": "prop", "at": 0.0, "to": 2.0, "part": "crew_cam", "on": "ground", "x": "lerp(1.0, 4.2, smooth(0.0, 1.6, T))", "y": "-0.013*abs(sin(tau*T*1.7))*clamp((1.6 - T)*4, 0, 1)"},
+        {"do": "prop", "at": 0.0, "to": 2.1, "part": "crew_lamp", "on": "ground", "scale": 0.93, "x": "lerp(1.82, 4.8, smooth(0.15, 1.7, T))", "y": "-0.045 - 0.013*abs(sin(tau*T*1.7 + 1.2))*clamp((1.7 - T)*4, 0, 1)"},
+        {"do": "prop", "part": "monitor", "on": "ground", "x": "lerp(3.8, 0.72, smooth(0.8, 2.4, T))"},
+        {"do": "look", "at": 0.2, "to": 1.8, "target": "point", "x": 2.2, "y": -0.3},
+        {"do": "arm", "at": 0.4, "to": 1.5, "hand": "front", "x": 0.18, "y": -0.3, "k": 560},
+        {"do": "mouth", "at": 0.4, "to": 1.6, "state": "smile", "v": 0.6},
+        {"note": "and then it is him and the takes", "do": "lean", "at": 2.5, "to": 9.3, "v": 0.08},
+        {"do": "crouch", "at": 2.5, "to": 9.3, "v": 0.05},
+        {"do": "arm", "at": 2.5, "to": 9.3, "hand": "front", "x": "0.34 + 0.025*sin(tau*(T - 2.5)/0.33)", "y": "-0.12 + 0.02*sin(tau*(T - 2.5)/0.66)", "k": 560},
+        {"do": "arm", "at": 2.5, "to": 9.3, "hand": "back", "x": "0.26 + 0.025*sin(tau*(T - 2.5)/0.33 + 2.1)", "y": -0.06, "k": 560},
+        {"do": "look", "at": 2.5, "to": 9.3, "target": "point", "x": 0.72, "y": -0.42},
+        {"do": "lid", "at": 2.5, "to": 9.3, "v": 0.3},
+        {"note": "frames come up off the bench and go by", "do": "emit", "at": 2.6, "to": 9.3, "part": "filmframe", "from": "ground", "x": 0.72, "y": -0.56, "every": 0.5, "spread": 0.3, "vy": -0.55, "vx": -0.3, "g": -0.04, "drag": 0.9, "life": 1.6, "size": 1.1, "spin": 0.5, "alpha": 0.9},
+        {"note": "that one", "do": "eyes", "at": 4.8, "to": 5.7, "state": "happy"},
+        {"do": "mouth", "at": 4.8, "to": 5.7, "state": "smile", "v": 0.5},
+        {"do": "hop", "at": 4.9, "h": 0.04},
+        {"do": "eyes", "at": 7.4, "to": 8.2, "state": "squint"},
+        {"do": "tilt", "at": 7.4, "to": 8.2, "v": -0.06}
+      ]
+    },
+    "c.shoot.big": {
+      "label": "A bigger unit: the board goes out as four of them come in with the camera and the light, he claps it, and it rolls", "dur": 12.4, "mode": "loop", "loopFrom": 5.2, "still": 7.4, "fallback": "play",
+      "tracks": [
+        {"note": "the storyboard leaves the way the crew arrive: the set changes without the room changing", "do": "prop", "at": 0.0, "to": 2.0, "part": "easel", "on": "ground", "x": "lerp(0.78, 4.2, smooth(0.0, 1.5, T))"},
+        {"do": "prop", "at": 0.5, "part": "crew_cam2", "on": "ground", "x": "lerp(3.5, 0.76, smooth(0.6, 2.7, T)) - 0.05*smooth(5.4, 11, T)", "y": "-0.013*abs(sin(tau*T*1.7))*clamp((2.7 - T)*4, 0, 1) - 0.006*smooth(2.7, 3.6, T)*(0.5 + 0.5*sin(tau*T/2.9))"},
+        {"do": "prop", "at": 0.8, "part": "crew_lamp2", "on": "ground", "scale": 0.92, "x": "lerp(4.6, 1.78, smooth(0.9, 3.4, T))", "y": "-0.05 - 0.013*abs(sin(tau*T*1.7 + 1.2))*clamp((3.3 - T)*4, 0, 1) - 0.006*smooth(3.3, 4.2, T)*(0.5 + 0.5*sin(tau*T/3.7 + 2))"},
+        {"do": "look", "at": 1.0, "to": 3.2, "target": "point", "x": 1.5, "y": -0.3},
+        {"do": "arm", "at": 1.8, "to": 3.1, "hand": "front", "x": 0.26, "y": -0.26, "k": 560},
+        {"note": "the board up, held open, and snapped shut: action", "do": "prop", "at": 3.4, "to": 5.0, "part": "slate", "on": "hand_front", "x": 0.03, "y": -0.02, "pop": true, "rot": "-0.5*clamp((4.6 - T)/1.0, 0, 1)"},
+        {"do": "arm", "at": 3.35, "to": 5.0, "hand": "front", "x": 0.27, "y": -0.2, "k": 560},
+        {"do": "look", "at": 3.4, "to": 4.5, "target": "hand"},
+        {"do": "emit", "at": 4.6, "part": "puff", "from": "hand_front", "x": 0.14, "y": -0.1, "n": 3, "spread": 0.7, "vy": -0.6, "drag": 2, "life": 0.5, "size": 0.45, "alpha": 0.5},
+        {"do": "hop", "at": 4.6, "h": 0.07},
+        {"do": "mouth", "at": 4.62, "to": 5.4, "state": "o", "v": 0.75},
+        {"note": "rolling: the light is warm and he watches the frame", "do": "emit", "at": 5.2, "to": 12.3, "part": "mote", "from": "ground", "x": 1.78, "y": -0.6, "every": 0.6, "spread": 0.5, "vy": -0.5, "g": -0.05, "drag": 1.0, "life": 1.2, "size": 0.4, "alpha": 0.5, "paint": "#F2D58A"},
+        {"do": "arm", "at": 5.4, "to": 10.6, "hand": "both", "x": 0.17, "y": -0.3, "k": 520},
+        {"do": "eyes", "at": 5.4, "to": 10.6, "state": "squint"},
+        {"do": "look", "at": 5.4, "to": 10.6, "target": "ahead", "x": "0.5 + 0.25*sin(tau*(T - 5.4)/3.4)", "y": -0.22},
+        {"do": "crouch", "at": 5.4, "to": 6.0, "v": 0.06},
+        {"do": "tilt", "at": 6.2, "to": 7.8, "v": -0.06},
+        {"do": "tilt", "at": 8.0, "to": 9.6, "v": 0.05},
+        {"note": "that one was good", "do": "eyes", "at": 10.8, "to": 12.3, "state": "happy"},
+        {"do": "mouth", "at": 10.8, "to": 12.1, "state": "smile", "v": 0.7},
+        {"do": "arm", "at": 10.8, "to": 12.3, "hand": "front", "x": 0.2, "y": -0.26, "k": 520},
+        {"do": "hop", "at": 10.9, "h": 0.05}
+      ],
+      "end": {
+        "dur": 4.8,
+        "tracks": [
+          {"note": "that is a wrap: the gear goes out the way it came in", "do": "prop", "part": "crew_lamp2", "on": "ground", "scale": 0.92, "y": -0.05, "x": "lerp(1.78, 4.9, smooth(0.2, 2.4, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((2.4 - T)*4, 0, 1)"},
+          {"do": "prop", "part": "crew_cam2", "on": "ground", "x": "lerp(0.71, 4.0, smooth(0.6, 3.0, T))", "y": "-0.014*abs(sin(tau*T*1.7))*clamp((3.0 - T)*4, 0, 1)"},
+          {"do": "arm", "at": 0.6, "to": 3.4, "hand": "front", "x": "0.2 + 0.07*sin(tau*(T - 0.6)/0.55)", "y": -0.34, "k": 620},
+          {"do": "look", "at": 0.4, "to": 3.4, "target": "point", "x": 1.4, "y": -0.3},
+          {"do": "eyes", "at": 0.4, "to": 4.7, "state": "happy"},
+          {"do": "mouth", "at": 0.5, "to": 3.6, "state": "smile", "v": 0.75},
+          {"do": "emit", "at": 1.0, "part": "star", "from": "crown", "n": 3, "vy": -1.0, "spread": 1.0, "g": 1.1, "life": 1.1, "size": 0.6, "alpha": 0.85},
+          {"do": "arm", "at": 3.6, "to": 4.7, "hand": "both", "x": 0.1, "y": 0.04, "k": 460}
+        ]
+      }
+    },
+    "c.cut.big": {
+      "label": "A bigger unit packs up and goes as the bench is wheeled in: he runs the takes past himself and keeps the frames that work", "dur": 9.4, "mode": "loop", "loopFrom": 2.5, "still": 5.0, "fallback": "read",
+      "tracks": [
+        {"note": "they pack up and go while the bench is wheeled in behind them", "do": "prop", "at": 0.0, "to": 2.0, "part": "crew_cam2", "on": "ground", "x": "lerp(0.71, 4.2, smooth(0.0, 1.6, T))", "y": "-0.013*abs(sin(tau*T*1.7))*clamp((1.6 - T)*4, 0, 1)"},
+        {"do": "prop", "at": 0.0, "to": 2.1, "part": "crew_lamp2", "on": "ground", "scale": 0.92, "x": "lerp(1.78, 4.9, smooth(0.15, 1.7, T))", "y": "-0.05 - 0.013*abs(sin(tau*T*1.7 + 1.2))*clamp((1.7 - T)*4, 0, 1)"},
         {"do": "prop", "part": "monitor", "on": "ground", "x": "lerp(3.8, 0.72, smooth(0.8, 2.4, T))"},
         {"do": "look", "at": 0.2, "to": 1.8, "target": "point", "x": 2.2, "y": -0.3},
         {"do": "arm", "at": 0.4, "to": 1.5, "hand": "front", "x": 0.18, "y": -0.3, "k": 560},

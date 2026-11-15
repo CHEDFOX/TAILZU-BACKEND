@@ -107,23 +107,35 @@ for (const client of ["phone", "desktop"] as const) {
 
       const filming = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "rendering", hold: null, aspect: "16:9", seconds: 24, shots: 4, done: 2 }] }) });
       const s = stage(filming)!;
-      expect(s.moment).toBe("c.shoot");
-      // The frame is the film's own shape, and the room is about three and a half of him across, whatever that shape is.
+      // Four shots is a proper unit; one shot is a camera and a light.
+      expect(s.moment).toBe("c.shoot.big");
+      // The frame is the film's own shape, and a full unit is given a wider room, which is the same as drawing him smaller.
       expect(s.width! / s.height!).toBeCloseTo(16 / 9, 1);
-      expect(s.width! / s.size!).toBeGreaterThan(3.2);
-      expect(s.width! / s.size!).toBeLessThan(4.1);
+      expect(s.width! / s.size!).toBeGreaterThan(4.0);
+      expect(s.width! / s.size!).toBeLessThan(4.9);
 
       const tall = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "writing", hold: null, aspect: "9:16", seconds: 24, shots: 0, done: 0 }] }) });
       const t = stage(tall)!;
       expect(t.moment).toBe("c.script");
       expect(t.width! / t.height!).toBeCloseTo(9 / 16, 1);
       expect(t.width! / t.size!).toBeGreaterThan(3.2);
-      expect(t.width! / t.size!).toBeLessThan(4.1);
+      expect(t.width! / t.size!).toBeLessThan(4.0);
 
-      for (const [status, moment] of [["boarding", "c.board"], ["board", "c.board"], ["cutting", "c.cut"]] as const) {
+      for (const [status, moment] of [["boarding", "c.board"], ["board", "c.board"], ["cutting", "c.cut.big"]] as const) {
         const p = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status, hold: null, aspect: "1:1", seconds: 24, shots: 4, done: 0 }] }) });
         expect(stage(p)?.moment).toBe(moment);
       }
+      // One shot: the small unit, and the same one at both ends so the crew that walked on is the crew that walks off.
+      for (const [status, moment] of [["rendering", "c.shoot"], ["cutting", "c.cut"]] as const) {
+        const p = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status, hold: null, aspect: "1:1", seconds: 8, shots: 1, done: 0 }] }) });
+        expect(stage(p)?.moment).toBe(moment);
+      }
+      // The room the recipe is drawn for, and nothing else, decides how big he is.
+      const small = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "rendering", hold: null, aspect: "16:9", seconds: 8, shots: 1, done: 0 }] }) });
+      expect(stage(small)!.size!).toBeGreaterThan(s.size!);
+      // Waiting on the person for money or a look is not the set at all: he is holding the shot.
+      const held = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "rendering", hold: "budget", aspect: "1:1", seconds: 24, shots: 4, done: 2 }] }) });
+      expect(stage(held)?.moment).toBe("c.frame");
     });
 
     it("stops the making and shows the film once there is one to watch", async () => {

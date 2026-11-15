@@ -314,14 +314,23 @@ It shows **the frame it is being made in** - the very shape that was asked for -
 | --- | --- |
 | `writing`, `script` | `c.script`: he writes on the pad, reads it back, screws the page up and throws it, walks out of frame to think, comes back with the one that works |
 | `boarding`, `board` | `c.board`: the board is wheeled in while the script is still in his hand; he draws it, leans back on his heels to see whether it reads, goes in again |
-| `rendering` | `c.shoot`: the board goes out as the crew come in with the camera and the light, he claps it, and it rolls - the light warm, him watching the frame |
-| `cutting` | `c.cut`: the crew pack up and go as the bench is wheeled in, and the takes go past him on the monitor, the frames he keeps drifting up out of it |
+| `rendering` | `c.shoot`: the board goes out as the crew come in with the camera and the light, he claps it, and it rolls - the light warm, him watching the frame (`c.shoot.big`: a unit of four) |
+| `cutting` | `c.cut`: the crew pack up and go as the bench is wheeled in, and the takes go past him on the monitor, the frames he keeps drifting up out of it (`c.cut.big`: the same four leaving) |
 | a picture | `c.sketch`: he draws it at the board, leans back to look at it, and carries the board off when it is done |
 | `done` | the film itself, with Watch, Save it and Open it |
 
 The crew are **the same cinema blip, smaller** (`crew_cam`, `crew_lamp`: a camera on sticks and a light on a stand, each with a blip at
 0.62 of his height, cap and all). Everything they need is in the catalog as parts - `script_pad`, `paperwad`, `easel`, `monitor` - so the
 whole performance is a catalog push, not an app release.
+
+**How big the unit is follows the film.** A one-shot film is a camera and a light; a film of three shots or more gets `c.shoot.big` and
+`c.cut.big`, the same two recipes to the second with four of them on the floor, the ones at the back drawn smaller. The rule
+(`BIG_UNIT_SHOTS`) is read at both ends, so the crew that walked on is the crew that walks off. They are **two parts, not four**: a
+recipe may only put four things on the floor - `WSLOTS` is 4 in every engine that has shipped, the frozen window one included - so a
+crew bot's mate is drawn inside the same part, in the same `d` as the first (one shape can hold both their heads, both their caps, both
+their eyes, so a second bot costs no shapes at all, and the twelve-shape limit still holds). A bigger unit is also given a **wider
+room** - `roomFor` goes from 3.6 of him to 4.4 - which is the same thing as drawing him smaller, and is why the one at the back is
+inside the frame even in a 9:16.
 
 **It is one performance, not five.** Once the film is going the person is never shown a new scene: each recipe **strikes the set before
 it and wheels in its own**, in the same room, with the same bot. The board rolls in from the right while he still has the script in his
@@ -338,7 +347,7 @@ Three things hold the staging together, and a new recipe has to keep them:
   right is the set and no recipe needs to walk him there. It must not: a ground prop's `x` is bot-heights **forward** of him, so the moment
   he turns, everything on the floor jumps to his other side. Only `c.script` walks, and it carries nothing.
 - **`walk`'s `x` is a share of the stage, not bot-heights** (`dx` is bot-heights, from where he began). Worth knowing before writing one.
-- **The room is kept about three and a half of him wide**, whatever the frame's shape, by `makingFrame`'s `size` (`min(h * 0.52, w / 3.6)`).
+- **The room is kept a fixed number of him wide**, whatever the frame's shape, by `makingFrame`'s `size` (`min(h * 0.52, w / roomFor(moment))`).
   That is what lets one recipe play in a 16:9 frame and a 9:16 one: the marks the crew walk to are in bot-heights, and the room is always
   the same number of them across. A build that draws no bot gets the frame alone, in the film's shape, which is still the truth of it.
 

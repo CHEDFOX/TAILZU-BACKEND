@@ -76,7 +76,7 @@ describe("the catalog", () => {
   it("the making plays on every build: the cinema recipes are format 1, and the crew are the same blip, smaller", () => {
     const c = catalog();
     // Each stage of a film has a recipe, and none of them needs a newer app than the oldest one out there.
-    for (const id of ["c.script", "c.board", "c.shoot", "c.cut", "c.sketch"]) {
+    for (const id of ["c.script", "c.board", "c.shoot", "c.shoot.big", "c.cut", "c.cut.big", "c.sketch"]) {
       const m = c.moments?.[id];
       expect(m, id).toBeTruthy();
       expect(m!.format ?? 1, id).toBe(1);
@@ -85,10 +85,19 @@ describe("the catalog", () => {
     // The two that finish have an end to play when the thing lands: the crew pack up and go.
     for (const id of ["c.shoot", "c.sketch"]) expect((c.moments![id] as { end?: { tracks?: unknown[] } }).end?.tracks?.length, id).toBeGreaterThan(0);
     // The crew are drawn as the cinema blip, cap and all, so a set is never a different species.
-    for (const id of ["crew_cam", "crew_lamp"]) {
+    for (const id of ["crew_cam", "crew_lamp", "crew_cam2", "crew_lamp2"]) {
       const d = JSON.stringify((c.parts?.[id] as { draw?: unknown })?.draw ?? []);
       expect(d, id).toContain("#3B3F47");
       expect(d, id).toContain("$paint");
+    }
+    // The bigger unit is the same performance, to the second, with more of them on the floor.
+    for (const [one, more] of [["c.shoot", "c.shoot.big"], ["c.cut", "c.cut.big"]] as const) {
+      const a = c.moments![one] as { dur?: number; loopFrom?: number; tracks?: unknown[] };
+      const b = c.moments![more] as { dur?: number; loopFrom?: number; tracks?: unknown[] };
+      expect(b.dur, more).toBe(a.dur);
+      expect(b.loopFrom, more).toBe(a.loopFrom);
+      expect(b.tracks?.length, more).toBe(a.tracks?.length);
+      expect(JSON.stringify(b.tracks), more).toContain("crew_cam2");
     }
     // Everything the recipes put on the floor or in his hand is a part the catalog has.
     const parts = new Set(Object.keys(c.parts ?? {}));
