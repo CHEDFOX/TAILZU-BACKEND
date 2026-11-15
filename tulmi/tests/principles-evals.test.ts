@@ -51,6 +51,7 @@ const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { JobReviewVerdict } = await import("../src/code/agent/review.js");
+const { NameReply, PickReply: WhichPick } = await import("../src/code/chat/naming.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
@@ -301,6 +302,8 @@ describe("a known-good answer for each role", () => {
       text: '{"summary":"It trims the dashes from both ends and a test covers it.","findings":[]}',
       reads: (t) => JobReviewVerdict.parse(JSON.parse(t)),
     },
+    code_name: { text: '{"name":"login redirect"}', reads: (t) => NameReply.parse(JSON.parse(t)) },
+    code_which: { text: '{"projectId":"p3","confidence":0.9,"why":"the bakery site is shopfront"}', reads: (t) => WhichPick.parse(JSON.parse(t)) },
     // The bots platform (src/bots): the maker's draft, the front door's pick, a bot's own turn (plain text), and its memory of its owner.
     bot_builder: {
       text: '{"name":"Workout planner","purpose":"Plans my workouts and checks my calendar.","colour":"sea","rules":["Plan workouts around my calendar.","Keep each plan to one week."],'

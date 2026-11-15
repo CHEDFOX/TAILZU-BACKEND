@@ -25,6 +25,8 @@ import { ROLE_IDS, stableBlock, type RoleId } from "../src/principles/index.js";
 export const BEFORE: Readonly<Record<RoleId, number>> = {
   // A role that replaced nothing (NEW_ROLES): its first measured size is its own "before".
   code_review: 1377,
+  code_name: 571,
+  code_which: 723,
   classify: 1645,
   locate_terms: 538,
   locate_pick: 740,
@@ -102,7 +104,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the
