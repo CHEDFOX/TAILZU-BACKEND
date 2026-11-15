@@ -881,6 +881,44 @@ export interface AgentStepRequest {
 
 export type AgentHandoverWhy = "login" | "code" | "captcha" | "payment" | "other";
 
+/**
+ * WHAT ONE BOX OF A SIGN-IN CARD ASKS FOR. `secret` is a password: the app hides it as it is typed, and it is
+ * never written to the history, the ledger or a log — it goes to the page and nowhere else. `code` is the
+ * one-time code a site texts or mails; it is short-lived but still theirs, so it is kept the same way.
+ */
+export type AgentFieldKind = "text" | "phone" | "email" | "secret" | "code";
+
+/** One box of a sign-in card, and the field on the page it fills. */
+export interface AgentField {
+  /** The element on THIS screen the answer is typed into. */
+  id: string;
+  kind: AgentFieldKind;
+  /** What to call it, in the person's own language, ≤ 48 chars. */
+  label: string;
+}
+
+/** Another way in the page itself offers: "Continue with Google", "Use email instead". */
+export interface AgentWayIn {
+  /** The control on THIS screen that starts it. */
+  id: string;
+  label: string;
+}
+
+/**
+ * A SIGN-IN CARD THE PLANNER BUILT FROM THE PAGE IN FRONT OF IT (docs/sign-in.md).
+ *
+ * Nothing here is written per site: the planner reads the real fields off <screen> and names them, so a shop it
+ * has never seen works the same as one it has. The card is only ever an improvement on showing the page itself —
+ * when the planner cannot build one it is confident in, it sends no card and the person signs in on the page, which
+ * always works. Carried only on a `login` or `code` handover: a card is never drawn for a payment or a CAPTCHA.
+ */
+export interface AgentHandoverCard {
+  /** In the order they are filled, 1-6. */
+  fields: AgentField[];
+  /** Other ways in, 0-4. */
+  also?: AgentWayIn[];
+}
+
 export interface AgentJob {
   /** What they asked for, ≤ 1000. */
   goal: string;
@@ -1103,8 +1141,13 @@ export type AgentEvent =
   | { t: "progress"; done?: number[]; note?: string }
   /** TERMINAL: the next step is the person's own: a password, a one-time code, a CAPTCHA, card details, or a choice only
    *  they can make. Ask never types those. The device shows `text` with Continue and Stop; Continue is the next step, with a
-   *  history turn { did: "HANDOVER", result: "ok" }. */
-  | { t: "handover"; why: AgentHandoverWhy; text: string }
+   *  history turn { did: "HANDOVER", result: "ok" } — and nothing they typed, ever.
+   *
+   *  With `card` (a `login` or `code` handover only), the device may draw the boxes the card names instead of only the
+   *  sentence: each answer is typed into that field's own `id` on this same screen, then the card's own button is pressed.
+   *  A device that does not know `card` ignores it and shows `text`, which is why the card is an extra and never the only
+   *  way through. Showing the page itself is always offered beside it. */
+  | { t: "handover"; why: AgentHandoverWhy; text: string; card?: AgentHandoverCard }
   /** TERMINAL: a question for the user; their answer is the next step. */
   | { t: "ask"; text: string }
   /** TERMINAL, only on a step without a picture: the answer needs to see

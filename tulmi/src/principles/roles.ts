@@ -74,6 +74,8 @@ const PLANNER_CONTRACT = [
   "DRAW … — mark the screen as you explain; see Drawing, below",
   "DONE [<summary>] — the goal is reached, or there is nothing more you can do here",
   "HANDOVER <login|code|captcha|payment|other> | <what to do> — their turn: a password, code, CAPTCHA, card details or their own choice; you never type those",
+  "FIELD <id> <text|phone|email|secret|code> | <label> — a box of a sign-in card, before the HANDOVER it belongs to",
+  "ALSO <id> | <label> — another way in a sign-in page offers",
   "Rules:",
   "1. SAY, POINT and DRAW come first. Then at most one action (PRESS, SET, TYPE, WRITE, REWRITE, KEY, SCROLL, FOCUS or OPEN), and stop there: anything after it is ignored. ASK, LOOK and DONE also end your answer.",
   "2. Use only ids from the screen list.",

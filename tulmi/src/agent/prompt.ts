@@ -120,6 +120,52 @@ export const PAGE_NOTE = "<page> is the whole page or document in front of them,
 export const onAPhone = (platform: string): boolean => platform === "ios" || platform === "android";
 
 /**
+ * A SIGN-IN PAGE, WELL ENOUGH TO KNOW WHETHER TO SPEND WORDS ON ONE (docs/sign-in.md). The surest sign is the
+ * focused field's own kind, which the device takes from the window and which says "password" or "secure" on every
+ * platform; failing that, a box to type in on a screen that also says one of the things a sign-in page says.
+ *
+ * Deliberately cheap, and wrong in the safe direction both ways: a page this misses gets the plain HANDOVER that
+ * every sign-in page got before this existed, and a page it calls one in error costs seven lines the planner can
+ * ignore. It decides nothing by itself — the planner still chooses, and this only says when to tell it the rules.
+ */
+const WAY_IN = /\b(?:sign[\s-]?in|signin|log[\s-]?in|login|continue with|one[\s-]?time|otp|verification code|forgot your)\b/i;
+const SECRET_WORD = /\b(?:password|passcode|secure)\b/i;
+/** Elements you can type into. A combo is a chooser, not a box to type a password in. */
+const TYPEABLE = new Set(["field", "area"]);
+
+export function looksLikeSignIn(screen: AgentStepRequest["screen"]): boolean {
+  if (screen.field && SECRET_WORD.test(`${screen.field.kind} ${screen.field.label ?? ""}`)) return true;
+  let box = false, wayIn = false;
+  for (const e of screen.elements) {
+    const label = e.label ?? "";
+    if (TYPEABLE.has(e.role) && SECRET_WORD.test(label)) return true;
+    if (TYPEABLE.has(e.role)) box = true;
+    if (WAY_IN.test(label)) wayIn = true;
+    if (box && wayIn) return true;
+  }
+  return false;
+}
+
+/**
+ * HOW TO BUILD A SIGN-IN CARD: Tailzu's own lines at the head of the step's message, only on a screen that looks like
+ * a sign-in (looksLikeSignIn), so the stable block and every other step pay nothing for them. The two verbs are in the
+ * contract; these are the rules for using them, and they are the whole of what makes a card good on a site nobody has
+ * ever written code for.
+ */
+export const SIGN_IN_NOTE = [
+  "This looks like a sign-in page. It is theirs to finish, so it ends in a HANDOVER either way — but rather than send them"
+  + " to the page with nothing, you may first name what it is asking for, with FIELD lines and ALSO lines before the HANDOVER,"
+  + " and they are given those boxes to fill in.",
+  "S1. Name only what is really on this screen. Every FIELD and ALSO id comes from the screen list, as any other id does. Never add a box the page does not have.",
+  "S2. One card, one moment: the boxes it is asking for now, not the ones on the step after it.",
+  "S3. Name every way in the page offers, each as its own ALSO, worded as the page words it — a phone, an email, Google, Apple, \"use a password instead\". They rarely remember which one they used last.",
+  "S4. Label each box in their own language, in a few words, as the page labels it.",
+  "S5. secret is a password, code is a one-time code. Mark them so: they are hidden as they are typed, and kept nowhere.",
+  "S6. If you cannot read the page with confidence, write no FIELD lines at all. A plain HANDOVER shows them the page itself, which always works. A card you guessed at is worse than none.",
+  "S7. Never a card for a payment or a CAPTCHA, whatever the page shows: card details and squiggles belong on the real page, and only there.",
+].join("\n");
+
+/**
  * How the picture's places are written, for the model that is sent them: x
  * first, or y first as Gemini writes them. The same marks either way;
  * lines.ts reads both to the same events.
@@ -187,7 +233,9 @@ export function agentUserMessage(
   // The person's context and the whole page, at a run's first step only.
   const kept = req.step === 0 ? context?.trim() : "";
   const page = req.step === 0 && req.page ? reducePage(req.page, said).text : "";
-  const parts = [head.join(" "), ...(onAPhone(req.platform) ? [PHONE_NOTE] : []), ...(job ? [JOB_NOTE] : []), ...(kept ? [CONTEXT_NOTE] : []), ...(page ? [PAGE_NOTE] : [])];
+  // The sign-in rules, only on a screen that is one, and only on a do-run: a show run answers questions, it never signs in.
+  const signIn = mode === "do" && !onAPhone(req.platform) && looksLikeSignIn(req.screen);
+  const parts = [head.join(" "), ...(onAPhone(req.platform) ? [PHONE_NOTE] : []), ...(job ? [JOB_NOTE] : []), ...(signIn ? [SIGN_IN_NOTE] : []), ...(kept ? [CONTEXT_NOTE] : []), ...(page ? [PAGE_NOTE] : [])];
   if (kept) parts.push(`<context>\n${fenced(kept)}\n</context>`);
   if (page) parts.push(`<page>\n${fenced(page)}\n</page>`);
   parts.push(`<screen>\n${screenLines(req).join("\n")}\n</screen>`);
