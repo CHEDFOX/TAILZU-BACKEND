@@ -9,6 +9,7 @@
  *     .closeTracks(session, mids)              tracks taken out again
  *     .listen(session, trackName, endpoint)    that track's sound sent to us as PCM over a WebSocket -> the adapter's id
  *     .unlisten(adapterId)                     and stopped
+ *     .speak(session, trackName, endpoint)     a track of OURS, fed from that WebSocket as PCM: the bot's own voice
  *
  * THE APP SECRET NEVER LEAVES THIS SERVER. A phone or a window never calls the SFU: it sends us its offer, we make the session and hand
  * back the answer (routes/bots/rooms.ts). That is the SFU's own rule — the secret is the only credential there is, and it has no scopes —
@@ -63,6 +64,14 @@ export interface Sfu {
    */
   listen(sessionId: string, trackName: string, endpoint: string): Promise<string>;
   unlisten(adapterId: string): Promise<void>;
+  /**
+   * A TRACK OF OUR OWN IN THE CALL (the adapter the other way round): the SFU dials our endpoint, we write 48 kHz stereo
+   * PCM, and it publishes that as Opus on `trackName` in `sessionId`. Everyone in the call pulls it like anyone else's
+   * microphone, so a voice from the server needs nothing new in any app (docs/brief.md).
+   *
+   * Sound going INTO the SFU is not charged.
+   */
+  speak(sessionId: string, trackName: string, endpoint: string): Promise<string>;
   publish(sessionId: string, offer: Sdp, tracks: LocalTrack[]): Promise<Sdp>;
   pull(sessionId: string, want: RemoteTrack[]): Promise<PullAnswer>;
   answer(sessionId: string, sdp: string): Promise<void>;
@@ -166,6 +175,19 @@ export function sfu(o: { keys?: SfuKeys | null; fetchFn?: FetchFn } = {}): Sfu |
       });
       const id = typeof (out as { adapterId?: unknown }).adapterId === "string" ? (out as { adapterId: string }).adapterId : "";
       if (!id) throw new RoomsError(502, "The call's sound could not be listened to.", "room_service");
+      return id;
+    },
+
+    async speak(sessionId, trackName, endpoint) {
+      const out = await call("POST", "/adapters/websocket/new", {
+        location: "local",
+        sessionId,
+        trackName,
+        endpoint,
+        inputCodec: "pcm",
+      });
+      const id = typeof (out as { adapterId?: unknown }).adapterId === "string" ? (out as { adapterId: string }).adapterId : "";
+      if (!id) throw new RoomsError(502, "The call's voice could not be set up.", "room_service");
       return id;
     },
 

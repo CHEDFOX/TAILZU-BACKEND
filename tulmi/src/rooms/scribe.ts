@@ -8,7 +8,7 @@
  *   writes     every stretch into the call's note (src/notes), the same note a desktop recording makes
  *   draws      the document, a pass every few minutes (src/brief): the overview, the flow they described, the numbers, the
  *              decisions, who does what, what is still open
- *   answers    a question with its name in it, in the call, in writing
+ *   answers    a question with its name in it — in writing on every screen, and out loud in the call where it has a voice
  *   finishes   when the last person leaves: the ears closed, the note organised, the document's last pass
  *
  * WHAT IT IS NOT: it never speaks unless spoken to, never acts for anybody, and knows nothing of the owner's private life —
@@ -39,6 +39,18 @@ export interface ScribeState {
 
 export interface ScribeDeps {
   ears: Ears;
+  /**
+   * ITS VOICE, where this server has one (rooms/voice.ts). Given a call and a line, it takes a seat of its own at the SFU,
+   * says the line out loud, and everyone in the call hears it as they hear a person. Left out: the bot writes and does not
+   * speak, which is the whole of the difference.
+   */
+  voice?: {
+    /** A seat and a track for this call, so people can pull its voice. Answers the seat it took, or null. */
+    join(roomId: string): Promise<{ identity: string; name: string; sessionId: string; trackName: string } | null>;
+    say(roomId: string, text: string): Promise<void>;
+    hush(roomId: string): void;
+    leave(roomId: string): Promise<void>;
+  };
   store: RoomStore;
   brief: BriefWriter;
   /** A note for this call, made when the first person arrives. */
@@ -77,6 +89,10 @@ interface Sitting {
   answeredAt: number;
   /** Everyone whose track is already being listened to. */
   ears: Set<string>;
+  /** It has a seat of its own at the SFU and can be heard. */
+  voiced: boolean;
+  /** The last line it heard, so a question in the room is only answered once. */
+  lastHeard: number;
 }
 
 export class Scribe {
@@ -99,13 +115,32 @@ export class Scribe {
     const sitting: Sitting = {
       roomId: room.id, userId: room.userId, title: room.title || room.host || "Call", owner: room.host || "",
       noteId, startedAt: now, brief: room.brief ?? emptyBrief(), timer: null, passing: false, lastLines: 0,
-      said: null, answeredAt: 0, ears: new Set(),
+      said: null, answeredAt: 0, ears: new Set(), voiced: false, lastHeard: 0,
     };
     this.sittings.set(room.id, sitting);
     this.d.ears.open(room.id, { noteId, userId: room.userId, startedAt: now });
     if (!room.noteId) await this.d.store.update(room.id, { noteId }).catch(() => undefined);
     sitting.timer = setInterval(() => void this.pass(room.id, true), briefEveryMs());
     sitting.timer.unref?.();
+    // Its voice, where this server has one: a seat of its own in the call, so everyone's app pulls what it says the way it
+    // pulls a person's microphone.
+    if (this.d.voice) {
+      const seat = await this.d.voice.join(room.id).catch(() => null);
+      sitting.voiced = !!seat;
+    }
+  }
+
+  /**
+   * SOMEBODY SAID ITS NAME. Every line the ears write down comes through here: a line that calls it by name is a question
+   * to answer, and everything else is simply the meeting. One answer at a time, and never to its own voice.
+   */
+  async overheard(roomId: string, line: { who: string; text: string; at: number }): Promise<void> {
+    const s = this.sittings.get(roomId);
+    if (!s || line.at <= s.lastHeard) return;
+    s.lastHeard = line.at;
+    const asked = wokeIt(line.text);
+    if (!asked) return;
+    await this.asked(roomId, { asked, who: line.who });
   }
 
   /** Somebody turned their microphone on: that track is listened to from now on. */
@@ -134,6 +169,7 @@ export class Scribe {
     if (!s) return;
     this.sittings.delete(roomId);
     if (s.timer) clearInterval(s.timer);
+    if (s.voiced && this.d.voice) await this.d.voice.leave(roomId).catch(() => undefined);
     await this.d.ears.stop(roomId);
     await this.pass(roomId, false, s);
     await this.d.organise(s.userId, s.noteId).catch((err) => console.warn(`[rooms] a call's note could not be organised: ${said(err)}`));
@@ -164,6 +200,8 @@ export class Scribe {
       if (!text) return null;
       s.said = { text, at: now };
       this.d.changed(roomId);
+      // Out loud as well, where it has a voice: the people in the call hear the answer, and every screen has it in writing.
+      if (s.voiced && this.d.voice) await this.d.voice.say(roomId, text).catch(() => undefined);
       return text;
     } catch (err) {
       console.warn(`[rooms] a question in a call could not be answered: ${said(err)}`);
@@ -201,3 +239,15 @@ export class Scribe {
 }
 
 const said = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/**
+ * WHETHER A LINE IS TALKING TO IT, and what it asked. Its name at the start of what somebody said ("X0, what did we decide?"
+ * / "hey X0 — read that back"), which is how a person addresses anyone in a room. A name in the middle of a sentence is
+ * somebody talking ABOUT it, and is left alone.
+ */
+export function wokeIt(text: string, name = SCRIBE_NAME): string {
+  const t = String(text ?? "").trim();
+  const m = new RegExp(`^(?:hey |ok |okay |hi )?${name}\\b[\\s,:—–-]*(.*)$`, "i").exec(t);
+  const asked = (m?.[1] ?? "").trim();
+  return asked.length >= 2 ? asked : "";
+}

@@ -120,6 +120,41 @@ describe("asked something in the call", () => {
   });
 });
 
+describe("its voice", () => {
+  it("takes one when it sits down, says its answers out loud as well as in writing, and gives it up at the end", async () => {
+    const r = rig();
+    const spoken: string[] = [];
+    const voice = {
+      joined: 0, left: 0,
+      async join() { voice.joined++; return { identity: "x0-bot", name: "X0", sessionId: "s", trackName: "t" }; },
+      async say(_roomId: string, text: string) { spoken.push(text); },
+      hush() { /* the mouth's own */ },
+      async leave() { voice.left++; },
+    };
+    (r.scribe as unknown as { d: { voice: unknown } }).d.voice = voice;
+    await r.scribe.sit(r.room);
+    expect(voice.joined).toBe(1);
+    expect(await r.scribe.asked("room-1", { asked: "when do we ship?", who: "Ravi" })).toBe("Friday, they said.");
+    expect(spoken).toEqual(["Friday, they said."]);
+    // In writing too: the screens are not left out because it spoke.
+    expect(r.scribe.state("room-1")!.said!.text).toBe("Friday, they said.");
+    await r.scribe.leave("room-1");
+    expect(voice.left).toBe(1);
+  });
+
+  it("answers a line in the call that calls it by name, and leaves every other line alone", async () => {
+    const r = rig();
+    await r.scribe.sit(r.room);
+    await r.scribe.overheard("room-1", { who: "Asha", text: "we should ask X0 about the price", at: 10 });
+    expect(r.asked).toEqual([]);
+    await r.scribe.overheard("room-1", { who: "Asha", text: "X0, what did we decide?", at: 20 });
+    expect(r.asked).toEqual([{ asked: "what did we decide?", who: "Asha" }]);
+    // The same line again (the ears flushing twice) is not a second question.
+    await r.scribe.overheard("room-1", { who: "Asha", text: "X0, what did we decide?", at: 20 });
+    expect(r.asked).toHaveLength(1);
+  });
+});
+
 describe("the last person out", () => {
   it("closes the ears, writes the last pass told the call has ended, and organises the note", async () => {
     const r = rig();

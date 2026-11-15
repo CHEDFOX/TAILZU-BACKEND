@@ -472,7 +472,8 @@ export class RoomService {
 
   /** The room as it really is right now: seats that went quiet are not in the call, whatever the row still says. */
   private fresh(r: Room, now: number = this.now()): Room {
-    const people = r.people.filter((s) => now - s.seen <= SEAT_QUIET_MS);
+    // The bot never beats: it is in the call until the call ends, or until it leaves of its own accord.
+    const people = r.people.filter((s) => s.bot || now - s.seen <= SEAT_QUIET_MS);
     return people.length === r.people.length ? r : { ...r, people };
   }
 
@@ -521,7 +522,7 @@ export class RoomService {
     const now = this.now();
     const fresh = this.fresh(r, now);
     const already = fresh.people.find((s) => s.identity === who.identity);
-    if (!already && fresh.people.length >= this.maxPeople) throw full();
+    if (!already && fresh.people.filter((s) => !s.bot).length >= this.maxPeople) throw full();
     await this.underCap(r.userId);
 
     // NOTHING IS CAPTURED BY JOINING. The seat starts with a session and no tracks of its own: the person hears and sees the others,
@@ -591,7 +592,8 @@ export class RoomService {
 
   /** The room written with these seats, and opened or closed as that changes. */
   private async settle(r: Room, people: Seat[], now: number): Promise<Room> {
-    const empty = !people.length;
+    // A call with nobody in it but the bot is an empty call: it is there for the people, not for itself.
+    const empty = !people.some((s) => !s.bot);
     if (this.scribe) {
       const left = r.people.filter((s) => !people.some((p) => p.identity === s.identity));
       for (const s of left) await this.scribe.gone(r.id, s.identity).catch(() => undefined);
