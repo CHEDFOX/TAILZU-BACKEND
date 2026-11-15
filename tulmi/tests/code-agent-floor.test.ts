@@ -11,7 +11,7 @@
  *   - IT CANNOT FAIL A JOB: rubbish, a cut-off page or an empty string is a page with no findings, and it never throws.
  */
 import { describe, expect, it } from "vitest";
-import { FLOOR_SHOWN, checkFloor, floorLines } from "../src/code/agent/floor.js";
+import { FLOOR_SHOWN, checkFloor, floorBrief, floorLines, seenByPeople } from "../src/code/agent/floor.js";
 
 /** A page with nothing wrong with it: the floor must be silent on this. */
 const SOUND = `<!doctype html>
@@ -149,5 +149,43 @@ describe("the words the report carries", () => {
     expect(lines).toHaveLength(3);
     expect(lines[1]).toMatch(/^- The page has no viewport meta tag/);
     expect(lines[2]).toMatch(/^- The <html> tag has no lang/);
+  });
+});
+
+describe("the same floor, said before the work", () => {
+  it("fires on work that touches a page, and says not a word on work nobody sees", () => {
+    expect(floorBrief(["src/components/Card.tsx"])).toContain("clear the floor");
+    expect(floorBrief(["app/page.vue", "src/util.ts"])).not.toBe("");
+    expect(floorBrief(["styles/site.css"])).not.toBe("");
+    for (const quiet of [[], ["src/util.ts"], ["src/db/migrate.sql"], ["src/Card.test.tsx"], ["src/Card.stories.tsx"], ["tests/e2e/home.tsx"], ["types.d.ts"]]) {
+      expect(floorBrief(quiet), quiet.join(",")).toBe("");
+    }
+  });
+
+  it("names every rule the built page is then read for, so the model is not surprised by the report", () => {
+    const brief = floorBrief(["src/pages/Pricing.tsx"]);
+    for (const said of ["width=device-width", "alt on every image", "label on every field", "name on every", "lang on <html>", "heading levels that do not skip"]) {
+      expect(brief, said).toContain(said);
+    }
+    // And the gaps a request leaves open, which are to be filled rather than asked about.
+    expect(brief).toMatch(/loading/);
+    expect(brief).toMatch(/nothing to show/);
+    expect(brief).toMatch(/fails/);
+    expect(brief).toMatch(/from a keyboard/);
+    expect(brief).toMatch(/not to ask about/);
+  });
+
+  it("names no colour, no spacing and no component: the project's own kit is the look", () => {
+    const brief = floorBrief(["src/pages/Pricing.tsx"]);
+    expect(brief).not.toMatch(/#[0-9a-f]{3,6}\b|\b\d+px\b|\brem\b|flex|grid|rounded/i);
+    expect(brief).toContain("with its own");
+    expect(brief).toContain("Invent no look of your own.");
+    // Short enough to ride in every turn of a UI job without being felt.
+    expect(brief.length).toBeLessThan(1_200);
+  });
+
+  it("is one definition of what people see, shared with the screens round", () => {
+    expect(seenByPeople("src/components/Card.tsx")).toBe(true);
+    expect(seenByPeople("src/components/Card.test.tsx")).toBe(false);
   });
 });

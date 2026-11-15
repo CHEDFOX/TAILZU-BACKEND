@@ -29,6 +29,44 @@
  * can do it where a real Chrome is running but not on every path, so it is not here yet and is named in the docs instead.
  */
 
+/** A file people see: a component, a page, a template or a stylesheet. */
+const UI_FILE = /\.(?:tsx|jsx|vue|svelte|astro|html?|css|scss|sass|less|mdx)$/i;
+/** Tests, stories and type files are not what people see. */
+const NOT_UI = /(?:^|\/)(?:__tests__|tests?|e2e|cypress|\.storybook)\/|\.(?:test|spec|stories|d)\.[a-z]+$/i;
+
+/** Whether a path is a file people look at. The one definition: the screens round filters by it, and the brief below fires on it. */
+export const seenByPeople = (path: string): boolean => UI_FILE.test(path) && !NOT_UI.test(path);
+
+/**
+ * THE FLOOR, SAID BEFORE THE WORK RATHER THAN AFTER IT.
+ *
+ * `checkFloor` reads the built page, which is the honest way round but also the late way: what it finds costs a person a line in the report, or the
+ * job a round. Telling the model the same floor while it is still writing costs nothing — the block is stable, so a cache keeps it free after the
+ * first turn — and the floor is then usually simply there.
+ *
+ * It says two things, and only for work on files people see:
+ *
+ *   the floor itself      the six things nobody asks for, so they are built in rather than found missing
+ *   the gaps a request leaves  what a screen does while it loads, when it is empty, when it fails, and from a keyboard. A request almost never says,
+ *                         and the answer is never "ask": it is the project's own pattern, found and followed
+ *
+ * NOT A LOOK AND NOT A TASTE. It names no colour, no spacing and no component: the project's own kit is the look, and a model that invents one is
+ * the thing to avoid. Empty for work nobody sees, so an ordinary job carries not a word of it.
+ */
+export function floorBrief(paths: readonly string[]): string {
+  if (!paths.some(seenByPeople)) return "";
+  return [
+    "Some of this is a page people will look at. Whatever its design says, it has to clear the floor, and nobody will think to ask for any of it:",
+    'a viewport meta tag that says width=device-width; an alt on every image (alt="" if it is decoration); a label on every field; a name on every',
+    "button, the icon-only ones included; lang on <html>; heading levels that do not skip. The running page is read for exactly these after the checks",
+    "pass, and whatever is missing goes in the report, so build them in now.",
+    "",
+    "A request also rarely says what a screen does while it is loading, when it has nothing to show, or when it fails, and it never says how it works",
+    "from a keyboard. Those are yours to fill in, not to ask about: find how this project already does them and do it the same way, with its own",
+    "components, tokens and styles. Invent no look of your own.",
+  ].join("\n");
+}
+
 export interface FloorFinding {
   /** The rule, as a short id: "viewport", "img.alt". */
   rule: string;

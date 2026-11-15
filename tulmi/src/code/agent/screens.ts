@@ -25,19 +25,14 @@ import { getConfig } from "../../config.js";
 import { cut, oneLine } from "../work/model.js";
 import { Refused } from "./changeset.js";
 import { isWebProject, previewCommand, targetRoute, viewportsFor } from "./design.js";
-import { checkFloor, floorLines } from "./floor.js";
+import { checkFloor, floorLines, seenByPeople } from "./floor.js";
 import { LostClaim, Yield, type Run } from "./run.js";
 import { RunPending } from "./runner.js";
 import { DESIGN_START_MS, type ScreenShot, type ScreensState } from "./types.js";
 
-/** A file people see: a component, a page, a template or a stylesheet. */
-const UI_FILE = /\.(?:tsx|jsx|vue|svelte|astro|html?|css|scss|sass|less|mdx)$/i;
-/** Tests, stories and type files are not what people see. */
-const NOT_UI = /(?:^|\/)(?:__tests__|tests?|e2e|cypress|\.storybook)\/|\.(?:test|spec|stories|d)\.[a-z]+$/i;
-
-/** The staged files people see. */
+/** The staged files people see (floor.ts holds the one definition, because the brief the model is given fires on the same thing). */
 export function seenFiles(paths: readonly string[]): string[] {
-  return paths.filter((p) => UI_FILE.test(p) && !NOT_UI.test(p));
+  return paths.filter(seenByPeople);
 }
 
 /** Whether the screens round is still to be done for this job. */
