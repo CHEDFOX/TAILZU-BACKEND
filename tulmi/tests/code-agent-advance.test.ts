@@ -65,10 +65,11 @@ async function drive(r: Rig, w: ReturnType<typeof worker>, jobId: string, o: { t
 }
 
 /** A job made and handed to the Worker's orchestrator (nothing drives it until `drive`). */
-async function made(r: Rig, w: ReturnType<typeof worker>, task: string, over: { budgetPaise?: number } = {}) {
+async function made(r: Rig, w: ReturnType<typeof worker>, task: string, over: { budgetPaise?: number; planFirst?: boolean } = {}) {
   const { branch } = await createWorkBranch(r.d, "alice", r.project.id, task);
   const job = await r.jobs.createJob("alice", r.project.id, branch, task, over.budgetPaise, { agent: true });
-  await w.enqueue(job.id, task);
+  // planFirst is how a plan is made to wait for a yes: it no longer waits merely for being risky (phases.ts planPhase).
+  await w.enqueue(job.id, task, over.planFirst !== undefined ? { planFirst: over.planFirst } : {});
   return { job, branch };
 }
 
@@ -508,7 +509,7 @@ describe("the VPS's role: hand over, wake, claim nothing", () => {
     a.json.on("work.plan", UTIL_PLAN);
     a.model.push(call("edit_file", UTIL_EDIT), done("ok"));
     const aw = worker(a), av = vps(a, rj.jobs);
-    const m = await made(a, aw, RISKY);
+    const m = await made(a, aw, RISKY, { planFirst: true });
     await drive(a, aw, m.job.id);
     const q = (await av.approve("alice", m.job.id)) as { approvalId: string };
     rj.log.length = 0;
@@ -518,7 +519,7 @@ describe("the VPS's role: hand over, wake, claim nothing", () => {
     const d = await agentRig();
     d.json.on("work.plan", UTIL_PLAN);
     const dw = worker(d), dv = vps(d, rj.jobs);
-    const n = await made(d, dw, RISKY);
+    const n = await made(d, dw, RISKY, { planFirst: true });
     await drive(d, dw, n.job.id);
     rj.log.length = 0;
     expect(await dv.deny("alice", n.job.id)).toMatchObject({ state: "cancelled" });
@@ -551,7 +552,7 @@ describe("the approval book is one process's memory", () => {
       code: { ...r.code, approvals: new ApprovalBook({ now: r.now }) }, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog,
       now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps", jobMode: "guided",
     })!;
-    const { job } = await made(r, w1, RISKY);
+    const { job } = await made(r, w1, RISKY, { planFirst: true });
     await drive(r, w1, job.id);
     const s0 = await r.stateNow(job.id);
     expect(s0.waiting).toMatchObject({ kind: "approval", for: "plan" });
@@ -610,7 +611,7 @@ describe("the approval book is one process's memory", () => {
       code: { ...r.code, approvals: new ApprovalBook({ now: r.now }) }, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog,
       now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps", jobMode: "guided",
     })!;
-    const { job } = await made(r, w, RISKY);
+    const { job } = await made(r, w, RISKY, { planFirst: true });
     await drive(r, w, job.id);
     const q = (await v.approve("alice", job.id)) as { approvalId: string };
     r.fake.clock.t += 11 * 60_000;

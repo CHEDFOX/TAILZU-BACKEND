@@ -353,10 +353,11 @@ export async function agentRig(o: AgentRigOptions = {}) {
   const orch = orchestrator();
 
   /** A work branch for a task, and an agent job on it, enqueued. */
-  async function start(task: string, over: { budgetPaise?: number | undefined; enqueue?: boolean } = {}) {
+  async function start(task: string, over: { budgetPaise?: number | undefined; enqueue?: boolean; planFirst?: boolean } = {}) {
     const { branch } = await createWorkBranch(d, "alice", project.id, task);
     const job = await jobs.createJob("alice", project.id, branch, task, "budgetPaise" in over ? over.budgetPaise : undefined, { agent: true });
-    if (over.enqueue !== false) await orch.enqueue(job.id, task);
+    // planFirst is how a test makes a plan wait for a yes: a plan no longer waits merely for being risky (phases.ts planPhase).
+    if (over.enqueue !== false) await orch.enqueue(job.id, task, over.planFirst !== undefined ? { planFirst: over.planFirst } : {});
     return { job, branch };
   }
 

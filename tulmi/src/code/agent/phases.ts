@@ -287,7 +287,10 @@ export async function planPhase(r: Run): Promise<void> {
   const paths = plan.steps.flatMap((st) => st.files.map((f) => f.path));
   const asks = await planAsks(r, paths);
   if (asks.denied) throw new EndJob("failed", asks.denied);
-  if (plan.risk === "high" || asks.asking.length || s.planFirst) {
+  // THE TASK IS THE PERMISSION. A plan no longer waits merely for being risky: the person asked for the work, and everything the job
+  // then does on its own branch is free (policy.ts). It still waits when the POLICY asks about part of it (a file outside the branch,
+  // a workflow, something that looks like a secret) and when the person has asked to see every plan first (planFirst).
+  if (asks.asking.length || s.planFirst) {
     const top = asks.asking.find((x) => x.faceId) ?? asks.asking[0];
     const action = top?.action ?? "job.plan";
     const approval = r.deps.projects.approvals.issue({
@@ -302,10 +305,10 @@ export async function planPhase(r: Run): Promise<void> {
         needs: asks.asking.map((x) => ({ action: x.action, label: ACTIONS[x.action].label, faceId: x.faceId })),
       },
     };
-    const must = plan.risk === "high" || asks.asking.length > 0;
-    await r.log.decision(must ? `The plan is ${plan.risk} risk${asks.asking.length ? " and the policy asks about part of it" : ""}, so it waits for your OK.` : "You asked to see the plan first, so it waits for your OK.");
+    const must = asks.asking.length > 0;
+    await r.log.decision(must ? "The policy asks about part of this plan, so it waits for your OK." : "You asked to see the plan first, so it waits for your OK.");
     throw new Park("approval", must
-      ? `The plan for this is ${plan.risk} risk${plan.riskReasons[0] ? ` (${cut(plan.riskReasons[0], 100)})` : ""}. It needs your OK before I change anything.`
+      ? `Part of this plan needs your OK before I change anything: ${asks.asking.map((x) => ACTIONS[x.action].label.toLowerCase()).slice(0, 3).join(", ")}.`
       : `Here is the plan (${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}, ${plan.risk} risk). You asked to see it first: it needs your OK before I change anything.`);
   }
   s.planOk = true;
