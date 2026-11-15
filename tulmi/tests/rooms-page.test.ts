@@ -190,6 +190,32 @@ describe("in a call", () => {
     expect(JSON.stringify(state)).not.toContain("seat");
   });
 
+  it("shows the bot that sits in the call, and the document it is making", async () => {
+    const brief = {
+      v: 2, at: FIXED_NOW, parts: [
+        { id: "overview", kind: "overview", title: "What this is", blocks: [{ type: "text", text: "A call about order 1234.", style: "body" }], v: 1 },
+        { id: "numbers", kind: "numbers", title: "The numbers", blocks: [{ type: "table", columns: ["Item", "Price"], rows: [["Tea", "₹240"]] }], v: 2 },
+      ],
+    };
+    const { nodes, p } = await parts({ room: ROOM({ bot: { name: "X0", taking: true, brief, said: { text: "I've drawn the prices.", at: FIXED_NOW } } }) });
+    expect(p.lint).toEqual([]);
+    const words = nodes.filter((n) => n.type === "Text").map((n) => String((n.props as Record<string, unknown>)?.content ?? ""));
+    expect(words).toContain("X0 is in this call");
+    expect(words).toContain("listening and writing");
+    expect(words).toContain("I've drawn the prices.");
+    expect(words).toContain("What this is");
+    // The document's own blocks are drawn with the same parts a bot's answer is drawn with: the table's cells are there.
+    expect(words).toContain("A call about order 1234.");
+    expect(words).toContain("Tea");
+    expect(words).toContain("₹240");
+  });
+
+  it("a call with no bot in it says nothing about one", async () => {
+    const { nodes } = await parts();
+    const words = nodes.filter((n) => n.type === "Text").map((n) => String((n.props as Record<string, unknown>)?.content ?? ""));
+    expect(words.some((w) => w.includes("in this call"))).toBe(false);
+  });
+
   it("draws one tile per person, and their own picture", async () => {
     const { nodes } = await parts();
     const callers = nodes.filter((n) => n.type === "Caller");

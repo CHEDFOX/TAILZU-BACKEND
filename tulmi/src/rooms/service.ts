@@ -49,6 +49,8 @@ import { codeOf, hashOf, linkOf, newCode, sealer, type Sealer } from "./link.js"
 import { Lobby, type Knock } from "./lobby.js";
 import { sfu as makeSfu, sfuKeys, SDP_MAX, type Sfu } from "./sfu.js";
 import { roomStore, SESSIONS_MAX, type Room, type RoomPatch, type RoomStore, type Seat, type Session } from "./store.js";
+import { SCRIBE_NAME, type Scribe } from "./scribe.js";
+import { sitIn } from "./sitIn.js";
 import {
   RoomsError, type GuestRoomView, type KnockAnswer, type PersonView, type PullView, type RoomStatus, type RoomView, type SeatLive,
   type SeatView,
@@ -145,6 +147,12 @@ export interface RoomDeps {
   maxPeople?: number;
   dailyMinutes?: number;
   linkOrigin?: string;
+  /**
+   * THE BOT THAT SITS IN THE CALL (rooms/scribe.ts, docs/brief.md): it hears, writes the note, makes the document and answers
+   * when asked. Left out (a server with the brief switched off, and every test that is not about it): a room behaves exactly
+   * as a room did before, and nothing in a call is listened to.
+   */
+  scribe?: Scribe;
 }
 
 export class RoomService {
@@ -158,6 +166,7 @@ export class RoomService {
   private readonly maxPeople: number;
   private readonly dailyMinutes: number;
   private readonly linkOrigin: string | undefined;
+  private readonly scribe: Scribe | null;
   private readonly told = new Map<string, number>();
   /** One change at a time per seat: the SFU answers 406 to a second offer while the first is unanswered. */
   private readonly locks = new Map<string, Promise<unknown>>();
@@ -174,6 +183,7 @@ export class RoomService {
     this.maxPeople = d.maxPeople ?? cfg!.ROOM_MAX_PEOPLE;
     this.dailyMinutes = d.dailyMinutes ?? cfg!.ROOM_DAILY_MINUTES;
     this.linkOrigin = d.linkOrigin;
+    this.scribe = d.scribe ?? null;
   }
 
   // ------------------------------------------------------------------------------------------------------------------- the host's
@@ -289,7 +299,13 @@ export class RoomService {
   async guest(rawCode: string): Promise<GuestRoomView | null> {
     const r = await this.byCode(rawCode);
     if (!r) return null;
-    return { title: r.title, host: r.host, status: r.status, lobby: r.lobby, full: this.fresh(r).people.length >= this.maxPeople };
+    const bot = botOf(this.scribe, r);
+    return {
+      title: r.title, host: r.host, status: r.status, lobby: r.lobby, full: this.fresh(r).people.length >= this.maxPeople,
+      // THE DOCUMENT IS EVERYONE'S WHO WAS IN THE CALL. The link is what they joined by, so the link is where they read it
+      // afterwards: once the call is over, the same document the host sees, and nothing else of theirs (docs/brief.md).
+      ...(r.status === "ended" && bot?.brief ? { brief: bot.brief } : {}),
+    };
   }
 
   async knock(rawCode: string, rawName: unknown): Promise<KnockAnswer | null> {
@@ -381,11 +397,25 @@ export class RoomService {
     const changedWhat = me.audio !== next.audio || me.video !== next.video;
     const saved = await this.store.update(room.id, { people }) ?? { ...room, people };
     if (changedWhat || people.length !== room.people.length) this.changed(saved);
+    const bot = this.scribe?.state(room.id) ?? null;
     return {
       status: saved.status,
       people: saved.people.filter((s) => s.identity !== me.identity).map(personOf),
       ...(me.role === "host" ? { waiting: this.lobby.waiting(room.id).map((k) => ({ id: k.id, name: k.name, since: k.at })) } : {}),
+      ...(bot ? { bot: { name: bot.name, taking: bot.taking, brief: bot.brief, ...(bot.said ? { said: bot.said } : {}) } } : {}),
     };
+  }
+
+  /**
+   * Somebody in the call asked the bot something, in writing. Answered from what was said in this call, and the answer is
+   * put where every screen in the call sees it (the heartbeat's `bot.said`). Null when nothing is sitting in this call, or
+   * it answered a moment ago.
+   */
+  async ask(seat: string, asked: unknown): Promise<string | null> {
+    const { room, me } = await this.seatOf(seat);
+    const q = typeof asked === "string" ? asked.trim().slice(0, 400) : "";
+    if (!q || !this.scribe) return null;
+    return this.scribe.asked(room.id, { asked: q, who: me.name });
   }
 
   /** Hung up. */
@@ -505,6 +535,9 @@ export class RoomService {
     // Someone joining again (the app was killed and reopened) replaces their own seat; the old session is left to die at the SFU.
     const people = [...fresh.people.filter((s) => s.identity !== who.identity), mine];
     const saved = await this.store.update(r.id, { people, status: "live", ...opened(fresh, now) }) ?? { ...fresh, people };
+    // The bot takes its seat with the first person in, so the note has somewhere to put the first words. It is never silent
+    // about being there: the call screen shows it, and everyone in the call sees it (rooms/scribe.ts).
+    if (this.scribe) await this.scribe.sit(saved).catch(() => undefined);
     this.changed(saved);
     return {
       seat, identity: mine.identity, name: mine.name, host: who.role === "host",
@@ -537,7 +570,14 @@ export class RoomService {
         seen: this.now(),
       };
       const people = room.people.map((x) => (x.seatHash === me.seatHash ? next : x));
-      this.changed(await this.store.update(room.id, { people }) ?? { ...room, people });
+      const saved = await this.store.update(room.id, { people }) ?? { ...room, people };
+      // Their microphone is on, so their own track can be listened to — theirs alone, which is how the note knows who said
+      // what without guessing. Nothing is listened to before this: joining a call captures nothing.
+      if (this.scribe && o.audioMid) {
+        await this.scribe.hear(room.id, { identity: me.identity, name: me.name, sessionId: me.sessionId, trackName: trackName(me.identity, "audio") })
+          .catch(() => undefined);
+      }
+      this.changed(saved);
       return { answer: answer.sdp };
     });
   }
@@ -552,12 +592,19 @@ export class RoomService {
   /** The room written with these seats, and opened or closed as that changes. */
   private async settle(r: Room, people: Seat[], now: number): Promise<Room> {
     const empty = !people.length;
+    if (this.scribe) {
+      const left = r.people.filter((s) => !people.some((p) => p.identity === s.identity));
+      for (const s of left) await this.scribe.gone(r.id, s.identity).catch(() => undefined);
+    }
     const patch: RoomPatch = {
       people,
       ...(empty && r.status === "live" ? { status: "open" as RoomStatus, ...closed(r, now) } : {}),
       ...(!empty && r.status === "open" ? { status: "live" as RoomStatus, ...opened(r, now) } : {}),
     };
     const saved = await this.store.update(r.id, patch) ?? { ...r, ...patch };
+    // The last person has gone: the ears close, the note is organised and the document gets its last pass. Not awaited —
+    // nobody is left in the call to wait for it (docs/brief.md).
+    if (empty && this.scribe && this.scribe.in(r.id)) void this.scribe.leave(r.id).catch(() => undefined);
     this.changed(saved);
     return saved;
   }
@@ -568,6 +615,7 @@ export class RoomService {
     const now = this.now();
     this.lobby.forget(r.id);
     const next = await this.store.update(r.id, { status: "ended", people: [], endedAt: now, ...closed(r, now) }) ?? r;
+    if (this.scribe && this.scribe.in(r.id)) void this.scribe.leave(r.id).catch(() => undefined);
     this.changed(next);
     return next;
   }
@@ -598,8 +646,19 @@ export class RoomService {
       people: fresh.people.map(personOf),
       waiting: r.status === "ended" ? [] : this.lobby.waiting(r.id).map((k) => ({ id: k.id, name: k.name, since: k.at })),
       businessId: r.businessId, createdAt: r.createdAt, lastAt: lastAtOf(r), minutes: minutesOf(r, now),
+      // The bot in the call, where one is sitting: the screens draw it from here, so nothing in the apps had to learn it.
+      ...(botOf(this.scribe, r) ? { bot: botOf(this.scribe, r)! } : {}),
     };
   }
+}
+
+/** What a call's screens are told about the bot: what it is doing now, or what it left behind when the call ended. */
+function botOf(scribe: Scribe | null, r: Room): RoomView["bot"] | null {
+  const now = scribe?.state(r.id);
+  if (now) return { name: now.name, taking: now.taking, brief: now.brief, ...(now.said ? { said: now.said } : {}) };
+  // Over, but it wrote something: the document stays on the call, which is where people come back to read it.
+  if (r.brief?.parts.length) return { name: SCRIBE_NAME, taking: false, brief: r.brief };
+  return null;
 }
 
 const full = (): RoomsError => new RoomsError(409, "The call is full.", "room_full");
@@ -614,7 +673,12 @@ export function roomService(): RoomService | null {
   if (shared === undefined) {
     const keys = sfuKeys();
     const client = keys ? makeSfu({ keys }) : null;
-    shared = client ? new RoomService({ store: roomStore(), sfu: client, notify: defaultNotify }) : null;
+    if (!client) { shared = null; return shared; }
+    const store = roomStore();
+    // The bot that sits in the call, where this server has one (rooms/sitIn.ts: the brief switched on, and a public address
+    // for the SFU to send the sound to). Without it a call is exactly the call it was.
+    const sits = sitIn(store, client);
+    shared = new RoomService({ store, sfu: client, notify: defaultNotify, ...(sits ? { scribe: sits.scribe } : {}) });
   }
   return shared;
 }

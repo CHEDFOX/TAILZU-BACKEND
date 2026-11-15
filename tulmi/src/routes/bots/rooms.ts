@@ -19,7 +19,13 @@
  *   POST   /v1/rooms/seat/pull                 { seat, want: [{ identity, kind }] }: someone else's tracks -> the SFU's offer
  *   POST   /v1/rooms/seat/answer               { seat, sdp }: the answer to that offer
  *   POST   /v1/rooms/seat/live                 { seat, audio?, video? }: the heartbeat -> who is in, who waits, whether they are still in
+ *   POST   /v1/rooms/seat/ask                  { seat, asked }: the bot in the call asked something -> { said } (its answer goes to every screen)
  *   POST   /v1/rooms/seat/leave                { seat }: hung up
+ *
+ *   GET    /v1/rooms/ears/:token               CLOUDFLARE'S OWN, not a person's: the WebSocket the SFU dials to send us one
+ *                                              person's sound (docs/brief.md). The token is minted per listener, held only in
+ *                                              this server's memory, and is the whole of its authority: it names one track of
+ *                                              one call and can do nothing else. Nothing is ever sent back down it.
  *
  * JOINING CAPTURES NOTHING. A seat starts with no tracks of its own, so no light comes on for walking into a call; the microphone and
  * the camera are published by `/seat/publish` when the person turns one on, and the permission for them was asked once, after
@@ -55,8 +61,19 @@ export interface RoomsRoutesService {
   pull(seat: string, want: Array<{ identity: string; kind: "audio" | "video" }>): Promise<PullView>;
   answer(seat: string, sdp: string): Promise<void>;
   live(seat: string, o: { audio?: boolean; video?: boolean }): Promise<SeatLive>;
+  /** The bot in the call, asked something in writing (docs/brief.md). Null: nothing is sitting in this call. */
+  ask?(seat: string, asked: unknown): Promise<string | null>;
   leave(seat: string): Promise<void>;
 }
+
+/** What the SFU's socket gives us, which is a WebSocket and nothing of Fastify's. */
+interface WebSocketish {
+  on(event: "message", f: (data: Buffer, isBinary: boolean) => void): void;
+  close(): void;
+}
+
+/** The ears the SFU's socket feeds (rooms/sitIn.ts). Null where the bot does not sit in calls on this server. */
+type EarsLike = { knows(token: string): boolean; feed(token: string, message: Buffer): void } | null;
 
 export interface RoomsRouteDeps {
   rateLimit: unknown;
@@ -64,6 +81,8 @@ export interface RoomsRouteDeps {
   service?: RoomsRoutesService | null;
   /** The person's first name, their name in their own calls (their profile's when not given). */
   nameOf?: (user: AuthedUser) => Promise<string>;
+  /** The ears the SFU's socket feeds; the server's own when not given. */
+  ears?: EarsLike;
 }
 
 const BASE = "/v1/rooms";
@@ -93,6 +112,18 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
     return (await import("../../rooms/service.js")).roomService() as RoomsRoutesService | null;
   };
   const nameOf = deps.nameOf ?? firstNameOf;
+  // The ears are the server's own unless a test hands in its own set. Found once, a tick after boot: the room service is
+  // what builds them, and the SFU does not dial before a call has started.
+  let earsOnce: EarsLike | undefined = deps.ears;
+  if (earsOnce === undefined) {
+    void (async () => {
+      try {
+        (await import("../../rooms/service.js")).roomService();
+        earsOnce = (await import("../../rooms/sitIn.js")).earsNow();
+      } catch { earsOnce = null; }
+    })();
+  }
+  const earsOf = (): EarsLike => earsOnce ?? null;
   const off = (reply: FastifyReply) => reply.code(404).send({ code: "rooms_off", message: "Calls are not switched on." });
   const notFound = (reply: FastifyReply) => reply.code(404).send({ code: "not_found", message: "Not found." });
   const noCall = (reply: FastifyReply) => reply.code(404).send({ code: "not_found", message: "This link isn't a call. Check it and try again." });
@@ -288,6 +319,34 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
       }
     }
     try { return send(reply, await got.s.live(got.seat, o)); } catch (err) { return fail(reply, err); }
+  });
+
+  // Somebody in the call asked the bot something, in writing. Its answer rides the heartbeat, so every screen in the call
+  // sees it, not only the one that asked.
+  app.post(`${BASE}/seat/ask`, at("seat"), async (req, reply) => {
+    const got = await seatBegin(req, reply);
+    if (!got) return reply;
+    if (!got.s.ask) return send(reply, { said: null });
+    try { return send(reply, { said: await got.s.ask(got.seat, got.b.asked) }); } catch (err) { return fail(reply, err); }
+  });
+
+  /**
+   * THE EAR. Cloudflare's SFU dials this and sends one person's track as PCM; we read it and write it down (rooms/ears.ts).
+   * It is not a person's route: there is no sign-in, because there is nobody to sign in — the authority is the token, which
+   * this server minted a moment ago for one track of one call and told nobody but Cloudflare. An unknown token is closed at
+   * once, and nothing is ever sent back.
+   */
+  app.get<{ Params: { token: string } }>(`${BASE}/ears/:token`, { websocket: true, config: { rateLimit: RL.look } }, (socket: WebSocketish, req) => {
+    const ears = earsOf();
+    const token = String((req.params as { token?: string }).token ?? "");
+    if (!ears || !/^[a-f0-9]{16,64}$/i.test(token) || !ears.knows(token)) {
+      try { socket.close(); } catch { /* it is gone either way */ }
+      return;
+    }
+    socket.on("message", (raw: Buffer, isBinary: boolean) => {
+      if (!isBinary) return;
+      try { ears.feed(token, Buffer.isBuffer(raw) ? raw : Buffer.from(raw)); } catch { /* one bad packet is not the call */ }
+    });
   });
 
   app.post(`${BASE}/seat/leave`, at("seat"), async (req, reply) => {

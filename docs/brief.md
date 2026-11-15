@@ -25,8 +25,30 @@ Switched off until the owner turns it on: **`MEETING_BRIEF=true`**, and migratio
 ## 1. One brief, two kinds of meeting
 
 A meeting the bot joined through Recall and one of our own calls differ only in how the words reach us. Everything in
-`src/brief/` is fed lines and gives back a document, so both get the same thing and neither knows about the other. Today the
-Recall feed is wired (`meet/service.ts`); our own rooms get their ears next (`docs/rooms.md` section 10).
+`src/brief/` is fed lines and gives back a document, so both get the same thing and neither knows about the other.
+
+**Recall's meetings** (`meet/service.ts`): Recall sits in the call and sends us the words; the brief's pass runs on the
+meeting's own tick.
+
+**Our own calls** (`rooms/scribe.ts`, `rooms/ears.ts`): there is nobody to send, because we are the SFU's customer — so
+Cloudflare sends us the sound itself.
+
+| | |
+|---|---|
+| it takes its seat | with the first person in. The call's note is made then, so the first words have somewhere to go |
+| it hears | one **WebSocket adapter a person** (`sfu.listen`): Cloudflare decodes that one track's Opus and dials a `wss://` of ours with 48 kHz stereo PCM. No WebRTC on this side, no headless browser |
+| who said what | free: the track is theirs, so the words are theirs. Nothing is diarized |
+| what it keeps | every ~25 seconds of sound written down and appended to the note, under that person's name |
+| what it costs | the sound is taken to 16 kHz mono before anything is kept, so a speaker-minute is ~2 MB rather than 11.5; Cloudflare bills it as ordinary egress ($0.05/GB, the first 1,000 GB free) |
+| it answers | a question asked in the call (`POST /v1/rooms/seat/ask`), from what was said in this call and nothing private, at most one answer every 20 seconds |
+| the last person out | the ears closed, the last pass written, the note organised like any other recording |
+
+**The ear is not a person's route.** `GET /v1/rooms/ears/:token` is the socket the SFU dials. There is no sign-in because
+there is nobody to sign in: the authority is a token this server minted a moment earlier for one track of one call, held in
+memory, told to nobody but Cloudflare. An unknown token is closed at once and nothing is ever sent back down it.
+
+**It sits in a call only where it can**: `MEETING_BRIEF` on, the SFU set up, and a public `wss://` address for Cloudflare to
+dial (`sitsIn()`). Otherwise a call is exactly the call it was, and nothing is listened to.
 
 ## 2. What a document is made of
 
@@ -92,10 +114,13 @@ twenty passes.
 
 ## 6. Where it shows
 
-- **The meeting's page** (`experience/bots/screens/bots/meetScreens.ts`): "The document, so far" while the meeting runs, "The
-  document" after, each part's title and its blocks drawn with `showNodes`.
-- **The row** (`meetings.brief`, migration 0095), so it survives a restart and the page can be opened again later.
-- Next: the note it belongs to, the call screen of our own rooms, and sharing it with everyone who was in the meeting.
+- **The meeting's page** (`meetScreens.ts`): "The document, so far" while the meeting runs, "The document" after.
+- **The call itself** (`callRoom.ts`): in a window, beside the people; on a phone, under them. The line "X0 is in this call ·
+  listening and writing", whatever it last said, and the document as it grows. It is the server's own data on the room, so
+  the page redraws when the document changes (the room's live topic) and **nothing in the apps had to learn any of it**.
+- **Everyone who was in the call**: the link they joined by shows the document once the call is over
+  (`GET /v1/rooms/guest/:code`), so a guest with no account reads the same thing the host reads.
+- **The rows**: `meetings.brief` (0095) and `rooms.brief` with `rooms.note_id` (0096), so a restart loses nothing.
 
 ## 7. Tests
 
@@ -105,3 +130,12 @@ prompt says (only from the transcript, nothing private, the fences hold); what i
 `tulmi/tests/meet-service.test.ts` — the brief in a real meeting: written beside the notes, kept on the row, its line in the
 call's chat, a last pass told the meeting has ended, a failed pass leaving both the document and the meeting alone, and a
 server with the switch off writing none.
+`tulmi/tests/rooms-pcm.test.ts` — the adapter's protobuf messages, stereo to mono, 48 kHz to 16, the WAV, and knowing a voice
+from an empty room.
+`tulmi/tests/rooms-ears.test.ts` — one ear a person, a stretch gathered and written down under their name, where a late
+joiner starts, silence never sent, a speech service that fails losing one stretch and nothing else, and every ear closed at
+the end.
+`tulmi/tests/rooms-scribe.test.ts` — the five seams: its seat, a microphone on, a pass, a question answered (and not twice in
+a breath), and the last person out.
+`tulmi/tests/rooms-page.test.ts` — the bot and its document on the call screen, and a call with no bot saying nothing about
+one.
