@@ -11,8 +11,13 @@
  *
  * They are all the same bot, smaller when there are more of them (shared/bots/looks.json: crew_cam, crew_lamp are cinema blips
  * at 0.62 of his height). Each recipe loops for as long as the work takes, so a long film is not a longer animation - it is the
- * same room, still busy. `c.shoot` and `c.sketch` have an `end`: the crew pack up and walk off the way they came, which a screen
- * plays with `momentEndWhen` when the thing lands.
+ * same room, still busy.
+ *
+ * IT IS ONE PERFORMANCE. The person never sees a new scene start: each recipe strikes the set before it and wheels in its own,
+ * and `loopFrom` keeps that changeover out of the loop. The server drives it and nothing else - a status move publishes on the
+ * bot's live topic, the session screen is subscribed, and the next draw carries the next recipe. `life` is the film's own id, so
+ * it is the same bot throughout: he carries on from where he is rather than starting again every time the page is drawn.
+ * `c.shoot` and `c.sketch` also have an `end`: the crew pack up and walk off, which a screen plays with `momentEndWhen`.
  *
  * A build that draws no bot (no BotBuddy) gets the frame alone, in the film's shape, which is still the truth of it.
  */

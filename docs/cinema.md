@@ -313,9 +313,9 @@ It shows **the frame it is being made in** - the very shape that was asked for -
 | where the film is | what you see |
 | --- | --- |
 | `writing`, `script` | `c.script`: he writes on the pad, reads it back, screws the page up and throws it, walks out of frame to think, comes back with the one that works |
-| `boarding`, `board` | `c.board`: he draws the storyboard on its easel, leans back on his heels to see whether it reads, goes in again |
-| `rendering` | `c.shoot`: the crew come in from the right with the camera and the light, he claps the board, and it rolls - the light warm, him watching the frame |
-| `cutting` | `c.cut`: the bench, the takes going past him on the monitor, the frames he keeps drifting up out of it |
+| `boarding`, `board` | `c.board`: the board is wheeled in while the script is still in his hand; he draws it, leans back on his heels to see whether it reads, goes in again |
+| `rendering` | `c.shoot`: the board goes out as the crew come in with the camera and the light, he claps it, and it rolls - the light warm, him watching the frame |
+| `cutting` | `c.cut`: the crew pack up and go as the bench is wheeled in, and the takes go past him on the monitor, the frames he keeps drifting up out of it |
 | a picture | `c.sketch`: he draws it at the board, leans back to look at it, and carries the board off when it is done |
 | `done` | the film itself, with Watch, Save it and Open it |
 
@@ -323,13 +323,21 @@ The crew are **the same cinema blip, smaller** (`crew_cam`, `crew_lamp`: a camer
 0.62 of his height, cap and all). Everything they need is in the catalog as parts - `script_pad`, `paperwad`, `easel`, `monitor` - so the
 whole performance is a catalog push, not an app release.
 
+**It is one performance, not five.** Once the film is going the person is never shown a new scene: each recipe **strikes the set before
+it and wheels in its own**, in the same room, with the same bot. The board rolls in from the right while he still has the script in his
+other hand; it rolls out again as the camera and the light walk in; they walk out as the bench comes in; and when the film is there the
+frame simply becomes the film. `loopFrom` keeps that changeover out of the loop, so it plays once and then the room settles into its work
+for as long as the work takes. What drives it is the server and nothing else: every status move goes through `update()`, which publishes
+on the bot's live topic, the session screen is subscribed to it (`live: [botTopic(bot)]`), and the next draw carries the next recipe. The
+bot himself is kept by `life: film.<id>`, so he is the same bot across every one of those draws - he does not jump, reset, or start again
+when a message arrives in the talk.
+
 Three things hold the staging together, and a new recipe has to keep them:
 
-- **A ground prop's `x` is bot-heights forward of him, and it mirrors when he turns.** So a recipe that puts something on the floor must
-  not walk him past it afterwards, or the set jumps to his other side. `c.board`, `c.cut` and `c.sketch` move him once, before the props
-  come out, and `loopFrom` keeps that walk out of the loop.
-- **`walk`'s `x` is a share of the stage, not bot-heights** (`dx` is bot-heights). Each recipe opens with `walk x 0.22`: he takes the left
-  of the room so the floor to his right is the set.
+- **The engine already stands him a fifth to a third of the way in** (`core.ts` `setup()`: `w * (0.2 + rand * 0.12)`), so the floor to his
+  right is the set and no recipe needs to walk him there. It must not: a ground prop's `x` is bot-heights **forward** of him, so the moment
+  he turns, everything on the floor jumps to his other side. Only `c.script` walks, and it carries nothing.
+- **`walk`'s `x` is a share of the stage, not bot-heights** (`dx` is bot-heights, from where he began). Worth knowing before writing one.
 - **The room is kept about three and a half of him wide**, whatever the frame's shape, by `makingFrame`'s `size` (`min(h * 0.52, w / 3.6)`).
   That is what lets one recipe play in a 16:9 frame and a 9:16 one: the marks the crew walk to are in bot-heights, and the room is always
   the same number of them across. A build that draws no bot gets the frame alone, in the film's shape, which is still the truth of it.
