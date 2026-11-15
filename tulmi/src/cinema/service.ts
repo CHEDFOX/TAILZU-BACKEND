@@ -39,7 +39,7 @@ import { boardQuote, candidatesFor, filmQuote } from "./quote.js";
 import { editUsd, editable, pickJob, route, runFrom, wantsLipSync, whyNone } from "./route.js";
 import { upscaleUsd } from "./models.js";
 import { filmKeys, type Picture, type CinemaStore } from "./store.js";
-import { ASPECTS, TIERS, type Aspect, type Character, type Film, type FilmRow, type ShotCard, type Take, type Tier, type Verdict } from "./types.js";
+import { ASPECTS, filmShape, TIERS, type Aspect, type Character, type Film, type FilmRow, type ShotCard, type Take, type Tier, type Verdict } from "./types.js";
 
 export const TICK_MS = 5_000;
 /** Longer than any script takes to write. */
@@ -258,7 +258,7 @@ export class CinemaService {
     const q = filmQuote(f.script, f, models.video, this.d.fx);
     if (q.missing.length) {
       const card = f.script.shots.find((s) => s.n === q.missing[0])!;
-      throw new CinemaError(409, `Shot ${card.n}: ${whyNone({ card, style: f.script.bible.style, aspect: f.aspect, tier: f.tier, models: models.video })}`, "no_model");
+      throw new CinemaError(409, `Shot ${card.n}: ${whyNone({ card, style: f.script.bible.style, aspect: this.shot(f), tier: f.tier, models: models.video })}`, "no_model");
     }
     this.canAgree(userId, f, q.paise);
     await this.consent(userId);
@@ -507,7 +507,7 @@ export class CinemaService {
           const mend = st?.mend ? f.takes.find((t) => t.id === st.mend!.take) : undefined;
           const editor = st?.mend ? pickJob(models.jobs, "edit") : null;
           if (mend && editor) return usdToPaise(editUsd(editor, mend.seconds), this.d.fx);
-          const best = route({ card, style: f.script.bible.style, aspect: f.aspect, tier: f.tier, models: models.video, blamed: st?.blamed ?? [] })[0];
+          const best = route({ card, style: f.script.bible.style, aspect: this.shot(f), tier: f.tier, models: models.video, blamed: st?.blamed ?? [] })[0];
           return best ? usdToPaise(best.usd * best.seconds, this.d.fx) : null;
         }
         default: return 0;
@@ -575,12 +575,17 @@ export class CinemaService {
     x.spentPaise += usdToPaise(usd, this.d.fx);
   }
 
+  /** The shape the models work in for this film: the nearest filmable one to what was asked for. The cut takes it the rest of the way. */
+  private shot(f: Film): Aspect {
+    return filmShape(f.aspect);
+  }
+
   private async sheet(f: Film, of: "character" | "place" | "look", key: string, images: CatalogImageModel[]): Promise<void> {
     const b = f.script!.bible;
     const m = stillModel(images, 0);
     if (!m) throw new CinemaError(503, "Pictures can't be made just now. Try again in a few minutes.", "no_model");
     const prompt = of === "look" ? lookPrompt(b) : of === "character" ? characterSheetPrompt(b.characters.find((c) => c.key === key)!, b) : placeSheetPrompt(b.places.find((p) => p.key === key)!, b);
-    const aspect = of === "look" ? f.aspect : of === "character" ? "3:2" : "16:9";
+    const aspect = of === "look" ? this.shot(f) : of === "character" ? "3:2" : "16:9";
     const img = await this.d.media.image({ model: m.id, prompt, aspect });
     const mediaKey = filmKey(f.ownerId, f.id, `${of}-${key}-${this.id().slice(0, 8)}`, img.type);
     await this.d.blobs.put(mediaKey, img.bytes, img.type);
@@ -610,7 +615,7 @@ export class CinemaService {
     let fix: string | null = null;
     for (let round = 0; round < 2; round++) {
       const prompt = stillPrompt(fix ? { ...card, frame: `${card.frame} ${fix}` } : card, b, m.maxRefs);
-      const made = await Promise.allSettled(Array.from({ length: candidatesFor(card.cast) }, () => this.d.media.image({ model: m.id, prompt, aspect: f.aspect, refs: refUrls })));
+      const made = await Promise.allSettled(Array.from({ length: candidatesFor(card.cast) }, () => this.d.media.image({ model: m.id, prompt, aspect: this.shot(f), refs: refUrls })));
       for (const r of made) {
         if (r.status !== "fulfilled") continue;
         usd += r.value.usd;
@@ -736,7 +741,7 @@ export class CinemaService {
     let job: string | null = null;
     try {
       job = await this.d.media.startVideo({
-        model: m.id, prompt, seconds: 0, res: f.tier === "draft" ? "720p" : "1080p", aspect: f.aspect,
+        model: m.id, prompt, seconds: 0, res: f.tier === "draft" ? "720p" : "1080p", aspect: this.shot(f),
         first: dataUrl(still, "image/png"), audio: false, voice: dataUrl(audio, "audio/mpeg"),
       });
     } catch (err) {
@@ -769,7 +774,7 @@ export class CinemaService {
     if (at < 0) return false;
     const p = prints(f);
     const run = runFrom({
-      cards, at, style: script.bible.style, aspect: f.aspect, tier: f.tier, models: video,
+      cards, at, style: script.bible.style, aspect: this.shot(f), tier: f.tier, models: video,
       filmed: (k) => f.takes.some((t) => t.n === k && t.of === p.take.get(k)),
     });
     if (!run) return false;
@@ -801,7 +806,7 @@ export class CinemaService {
       let job: string;
       try {
         job = await this.d.media.startVideo({
-          model: run.pick.model.id, prompt, seconds: run.pick.seconds, res: run.pick.res, aspect: f.aspect,
+          model: run.pick.model.id, prompt, seconds: run.pick.seconds, res: run.pick.res, aspect: run.pick.filmedAs,
           first, last: dataUrl(landOn, "image/png"), audio: run.pick.audio,
         });
       } catch (err) {
@@ -872,11 +877,11 @@ export class CinemaService {
     if (await this.lipSync(f, n, of, jobs)) return;
     // Shots that carry one moment on: filmed as one unbroken take and cut apart, so there is no join between them.
     if (this.d.media.slice && (await this.runTake(f, n, video))) return;
-    const pick = route({ card, style: script.bible.style, aspect: f.aspect, tier: f.tier, models: video, blamed: st.blamed })[0];
+    const pick = route({ card, style: script.bible.style, aspect: this.shot(f), tier: f.tier, models: video, blamed: st.blamed })[0];
     if (!pick) {
       await this.update(f.ownerId, f.id, (x) => {
         const s = shotOf(x, n);
-        if (s) Object.assign(s, { failedOf: of, error: whyNone({ card, style: script.bible.style, aspect: f.aspect, tier: f.tier, models: video }) });
+        if (s) Object.assign(s, { failedOf: of, error: whyNone({ card, style: script.bible.style, aspect: this.shot(f), tier: f.tier, models: video }) });
       });
       return;
     }
@@ -899,7 +904,7 @@ export class CinemaService {
       video: null, lastFrame: null, verdict: null, error: null, startedAt: this.now(), endedAt: null, polledAt: null,
     };
     try {
-      take.job = await this.d.media.startVideo({ model: pick.model.id, prompt, seconds: pick.seconds, res: pick.res, aspect: f.aspect, first, last, audio: pick.audio });
+      take.job = await this.d.media.startVideo({ model: pick.model.id, prompt, seconds: pick.seconds, res: pick.res, aspect: pick.filmedAs, first, last, audio: pick.audio });
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === "busy" || code === "no_credit") throw err;
@@ -1111,7 +1116,9 @@ export class CinemaService {
     const total = shots.length ? script.shots.reduce((n, c) => n + c.seconds, 0) : 30;
     const music = await this.music(f, total);
     const height = f.tier === "draft" ? 720 : 1080;
-    const out = await this.d.media.cut({ shots, music: music.bytes, aspect: f.aspect, height });
+    // Filmed in one shape, cut to the one that was asked for: a 4:5 film is 9:16 takes cropped towards the subject.
+    const fit = f.aspect === this.shot(f) ? undefined : "crop" as const;
+    const out = await this.d.media.cut({ shots, music: music.bytes, aspect: f.aspect, height, ...(fit ? { fit } : {}) });
     const blanks = out.blanks?.length ? `The film goes blank at ${out.blanks.map((s) => `${s}s`).join(", ")}: look at those shots.` : "";
     const videoKey = filmKey(f.ownerId, f.id, `film-${p.cut}`, "video/mp4");
     await this.d.blobs.put(videoKey, out.video, "video/mp4");

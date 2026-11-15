@@ -18,7 +18,7 @@
  *
  * Output is H.264 and AAC in MP4 with the index at the front, which every phone and browser plays.
  */
-import type { Aspect, Link } from "./types.js";
+import { RATIO, type Aspect, type Link } from "./types.js";
 
 export const DISSOLVE = 0.5;
 const FADE_IN = 0.4;
@@ -87,10 +87,15 @@ export interface CutPlan {
   burn?: string | null;
 }
 
+/**
+ * The frame for a shape, in pixels. `height` is the film's quality: 1080 for a finished film, 720 for a draft. For a shape taller than it
+ * is wide that height is the WIDTH, so a vertical film is 1080 across - the same number of pixels down the short side either way, which is
+ * what makes a 9:16 and a 16:9 of one film look like the same film. Both sides are rounded to even numbers, which H.264 requires.
+ */
 export function frameOf(aspect: Aspect, height: 720 | 1080): { w: number; h: number } {
-  if (aspect === "1:1") return { w: height, h: height };
-  const long = height === 1080 ? 1920 : 1280;
-  return aspect === "9:16" ? { w: height, h: long } : { w: long, h: height };
+  const r = RATIO[aspect] ?? 16 / 9;
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  return r >= 1 ? { w: even(height * r), h: even(height) } : { w: even(height), h: even(height / r) };
 }
 
 /** When each shot starts in the film, and how long the film is. A dissolve overlaps the two shots by DISSOLVE. */

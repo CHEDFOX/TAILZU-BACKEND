@@ -21,12 +21,12 @@ import { botTopic } from "../../../../live/topics.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, meta, notice, primaryButton, C, botAvatar, botBuddy, botMoment,
-  canBuddy, canMoments, listCard, listRow, sectionLabel, open, SCREENS, call, seq, segmented, picture,
+  canBuddy, canMoments, listCard, listRow, sectionLabel, open, SCREENS, call, seq, segmented, chips, picture,
 } from "../../kit.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
 import { abs, CINEMA, openFilm, statusLine, waitsForYou, type CinemaData } from "./cinemaScreens.js";
-import type { FilmRow } from "../../../../cinema/types.js";
+import type { Aspect, FilmRow } from "../../../../cinema/types.js";
 import { type BotPageData, chatBar, isDesk, lookOf, setState } from "./parts.js";
 
 export type CinemaPageData = BotPageData & { cinema?: CinemaData };
@@ -78,6 +78,12 @@ function directorCard(ctx: BotsCtx, look: { color: string }, films: readonly Fil
   };
 }
 
+/** The lengths offered on the way in. Any number of seconds works; these are the ones people ask for. */
+const LENGTHS = [10, 15, 20, 30, 45, 60, 90] as const;
+/** The shapes offered on the way in, and what each is called. */
+const SHAPES: readonly Aspect[] = ["9:16", "16:9", "1:1", "4:5"];
+const SHAPE_WORD: Record<string, string> = { "9:16": "Vertical", "16:9": "Wide", "1:1": "Square", "4:5": "Tall" };
+
 const said = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
 const refresh: ActionSpec = { kind: "refresh" };
 const plain = (s: string | null | undefined): string => String(s ?? "").trim().replace(/^[@\s]+/, "");
@@ -128,8 +134,10 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
     body.push(col([
       sectionLabel("A new film"),
       mailField("cn_idea", "What happens, who is in it, and where it is for. “A 30 second ad for my chai stall in the Mumbai rain.”", desk, { label: "the film", multiline: true, minHeight: 84, onSubmit: write }),
-      option("Length", segmented([{ label: "15 s", value: "15" }, { label: "30 s", value: "30" }, { label: "60 s", value: "60" }], "cn_len")),
-      option("Frame", segmented([{ label: "Wide", value: "16:9" }, { label: "Vertical", value: "9:16" }, { label: "Square", value: "1:1" }], "cn_aspect")),
+      // Any length the film can be, not three: the director writes as many shots as the seconds need (service.ts clamps to 5-180).
+      option("Length", chips(LENGTHS.map((n) => ({ label: `${n} s`, value: String(n) })), "cn_len")),
+      // Every shape, including the ones no video model films: those are filmed in the nearest shape and cropped in the cut.
+      option("Frame", chips(SHAPES.map((a) => ({ label: SHAPE_WORD[a], value: a })), "cn_aspect")),
       option("Quality", segmented([{ label: "Draft", value: "draft" }, { label: "Standard", value: "standard" }, { label: "Premium", value: "premium" }], "cn_tier")),
       row([primaryButton("Write the script", write, { size: "md" })]),
       meta("You read the script and see the storyboard before anything is filmed.", { size: 12 }),

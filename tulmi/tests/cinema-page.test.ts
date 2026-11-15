@@ -258,6 +258,14 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.texts.join(" ")).not.toMatch(/₹|cost|price/i);
   });
 
+  it("offers any length and every shape on the way in", async () => {
+    const p = await build({ client, overview: OVERVIEW() });
+    expect(p.lint).toEqual([]);
+    // Seven lengths, not three; and the shapes include one no video model films (4:5, cropped from the nearest in the cut).
+    for (const n of ["10 s", "15 s", "20 s", "30 s", "45 s", "60 s", "90 s"]) expect(p.texts).toContain(n);
+    for (const w of ["Vertical", "Wide", "Square", "Tall"]) expect(p.texts).toContain(w);
+  });
+
   it("a film that cannot be read says so", async () => {
     const p = await build({ client, ...FILM });
     expect(p.lint).toEqual([]);

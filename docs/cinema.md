@@ -44,6 +44,13 @@ story, sound and the edit are left to the person. This bot works the other way r
 
 Hindi and Hinglish are first-class: the script, the lines, the voice-over and the subtitles are written in the person's language.
 
+**Any length, and every shape.** A film is any number of seconds from 5 to 180, not three sizes. And it can be any shape - 16:9, 9:16,
+1:1, 4:5, 5:4, 4:3, 3:4, 21:9 - although the video models make only three of those. A film is **filmed** in the nearest shape every model
+can make (`types.ts filmShape`, and per model `route.ts filmedAs`, which never turns a tall film wide) and **cut** to the shape that was
+asked for, cropping towards the subject exactly as another cut of the same film does. So a 4:5 for a feed costs what a 9:16 costs, and a
+model that can film the asked-for shape outright is preferred over one whose frame has to be cropped. One shape is chosen for the whole
+film, so its stills, its takes and the frames a shot carries on from are all in step; the cut is the only place a film changes shape.
+
 ## 2. A film, from idea to cut
 
 `Film.status` (`src/cinema/types.ts`):

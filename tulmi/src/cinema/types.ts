@@ -19,8 +19,52 @@ export const CINEMA_SLUG = "cinema";
 /** The film page's screen id (experience/bots/ids.ts SCREENS.cinemaFilm), params { f }. */
 export const CINEMA_FILM_SCREEN = "bots.cinema.film";
 
-export type Aspect = "16:9" | "9:16" | "1:1";
-export const ASPECTS: readonly Aspect[] = ["16:9", "9:16", "1:1"];
+/**
+ * THE SHAPE A FILM IS. Every shape a person may ask for, not only the ones the video models happen to offer: a film is FILMED at the
+ * nearest shape its model can make (route.ts filmedAs) and CUT to the one that was asked for, cropping towards the subject exactly as
+ * another cut of the same film does (cut.ts fitFilter, compile.ts subjectBias). So 4:5 for a feed costs no more than 9:16 does.
+ */
+export type Aspect = "16:9" | "9:16" | "1:1" | "4:5" | "5:4" | "4:3" | "3:4" | "21:9";
+export const ASPECTS: readonly Aspect[] = ["16:9", "9:16", "1:1", "4:5", "5:4", "4:3", "3:4", "21:9"];
+
+/** Width over height, for the frame and for choosing the nearest shape a model can film. */
+export const RATIO: Readonly<Record<Aspect, number>> = {
+  "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1, "4:5": 4 / 5, "5:4": 5 / 4, "4:3": 4 / 3, "3:4": 3 / 4, "21:9": 21 / 9,
+};
+
+/**
+ * The shapes every video model makes. A film is filmed in one of these - the nearest to what was asked for - and cut to the shape the
+ * person asked for. Deciding this once, for the whole film, is what keeps the stills, the takes and the frames a shot continues from all
+ * in one shape; the cut is the only place the film changes shape.
+ */
+export const FILMABLE: readonly Aspect[] = ["16:9", "9:16", "1:1"];
+
+/**
+ * The nearest of some shapes to the one asked for. Nearest by ratio, measured in how far the frame has to be cropped rather than by the
+ * numbers themselves, so 1:1 and 16:9 are as far from each other as 1:1 and 9:16 are. A tall ask is never answered with a wide shape.
+ *
+ * Some asks fall exactly between two (3:4 is as far from 9:16 as it is from a square), and a tie decided by the last bit of a float is a
+ * tie decided by nothing: the one that leans the same way as the ask wins, so a tall film stays tall.
+ */
+export function nearestShape(pool: readonly Aspect[], want: Aspect): Aspect | null {
+  if (!pool.length) return null;
+  if (pool.includes(want)) return want;
+  const r = RATIO[want];
+  const tall = r < 1;
+  const same = pool.filter((a) => (RATIO[a] < 1) === tall || RATIO[a] === 1 || r === 1);
+  const able = same.length ? same : pool;
+  const far = (a: Aspect) => Math.abs(Math.log(RATIO[a] / r));
+  return able.reduce((best, a) => {
+    const d = far(a) - far(best);
+    if (d < -1e-9) return a;
+    if (d > 1e-9) return best;
+    return RATIO[a] !== 1 && (RATIO[a] < 1) === tall ? a : best;
+  });
+}
+
+/** The shape a film is filmed in: the nearest one every model can make. */
+export const filmShape = (want: Aspect): Aspect => nearestShape(FILMABLE, want) ?? "16:9";
+
 
 /** How good, and how dear: the models a film may use (models.ts). */
 export type Tier = "draft" | "standard" | "premium";

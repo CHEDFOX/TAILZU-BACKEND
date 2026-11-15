@@ -16,10 +16,12 @@
  * The answer is a ranked list: the first is used, and a retake that blames the model moves down it.
  */
 import { renderRes, snapSeconds, tierRank, usdPerSecond, type CatalogModel, type Job, type JobModel, type Trait } from "./models.js";
-import type { Aspect, IssueKind, ShotCard, Style, Tier } from "./types.js";
+import { ASPECTS, nearestShape, type Aspect, type IssueKind, type ShotCard, type Style, type Tier } from "./types.js";
 
 export interface Choice {
   model: CatalogModel;
+  /** The shape this model is actually asked for: the nearest it can make to the film's. The cut takes it the rest of the way. */
+  filmedAs: Aspect;
   /** The duration it will render (the nearest it takes to the card's). */
   seconds: number;
   res: string;
@@ -52,6 +54,17 @@ export function needs(card: ShotCard, style: Style): Record<Trait, number> {
 const PRICE_WEIGHT: Record<Tier, number> = { draft: 30, standard: 12, premium: 4 };
 
 /**
+ * THE SHAPE A MODEL IS ASKED FOR. A person may ask for any shape (types.ts ASPECTS); a model makes the few it was trained on. So the shot
+ * is filmed in the nearest shape that model can make - nearest by ratio, and never a shape of the wrong turn (a tall film is never filmed
+ * wide) - and the cut crops it to the shape that was asked for, towards the subject, exactly as another cut of the same film does. Where
+ * the model lists no shapes at all, it is asked for the film's own and left to it.
+ */
+export function filmedAs(m: Pick<CatalogModel, "aspects">, want: Aspect): Aspect | null {
+  if (!m.aspects.length) return want;
+  return nearestShape(ASPECTS.filter((a) => m.aspects.includes(a)), want);
+}
+
+/**
  * Whether a take asks for the model's own sound. Lines need it (the lips move with them). Ambience only where the model can be told "no
  * music": Kling's sound is all or nothing and adds a score of its own, so its takes are silent unless someone speaks, and the cut adds the
  * film's music and voice-over.
@@ -77,16 +90,20 @@ export function route(i: RouteInput): Choice[] {
   const pool = fresh.length ? fresh : able;
   const picks: Choice[] = [];
   for (const m of pool) {
+    const shot = filmedAs(m, i.aspect);
+    if (!shot) continue;
     const res = renderRes(m, i.tier);
     const audio = wantsAudio(i.card, m);
-    const usd = usdPerSecond(m, { res, audio, aspect: i.aspect });
+    const usd = usdPerSecond(m, { res, audio, aspect: shot });
     if (usd === null) continue;
     let fit = 0;
     for (const t of Object.keys(need) as Trait[]) fit += need[t] * m.s[t];
     const seconds = snapSeconds(m, i.card.seconds);
     const off = Math.abs(seconds - i.card.seconds) * 0.6;
-    const score = Math.round((fit - usd * PRICE_WEIGHT[i.tier] - off) * 100) / 100;
-    picks.push({ model: m, seconds, res, audio, usd, score });
+    // A shape the model cannot make is filmed in the nearest it can and cropped in the cut: good, but a little of the frame is lost.
+    const cropped = shot === i.aspect ? 0 : 0.6;
+    const score = Math.round((fit - usd * PRICE_WEIGHT[i.tier] - off - cropped) * 100) / 100;
+    picks.push({ model: m, filmedAs: shot, seconds, res, audio, usd, score });
   }
   picks.sort((a, b) => b.score - a.score || a.usd - b.usd);
   const pinned = i.card.pin ? picks.findIndex((p) => p.model.id === i.card.pin) : -1;
@@ -96,7 +113,6 @@ export function route(i: RouteInput): Choice[] {
 
 function can(m: CatalogModel, i: RouteInput): boolean {
   if (tierRank(m.tier) > tierRank(i.tier) && m.id !== i.card.pin) return false;
-  if (m.aspects.length && !m.aspects.includes(i.aspect)) return false;
   if (i.card.link === "continue" && !m.last) return false;
   if (i.card.lines.length && !m.audio) return false;
   return true;
@@ -105,7 +121,7 @@ function can(m: CatalogModel, i: RouteInput): boolean {
 /** Why a shot cannot be made, in a few words for a person: what to change, never which models there are. */
 export function whyNone(i: RouteInput): string {
   if (!i.models.length) return "Video can't be made just now. Try again in a few minutes.";
-  if (!i.models.some((m) => !m.aspects.length || m.aspects.includes(i.aspect))) return `${i.aspect} video can't be made just now; pick another frame.`;
+  if (!i.models.some((m) => filmedAs(m, i.aspect))) return `${i.aspect} video can't be made just now; pick another frame.`;
   if (i.card.lines.length && !i.models.some((m) => m.audio && tierRank(m.tier) <= tierRank(i.tier))) return "Spoken lines can't be filmed at this quality; move them to the voice-over or raise the quality.";
   if (i.card.link === "continue" && !i.models.some((m) => m.last)) return "This shot can't carry straight on from the one before; make it a cut.";
   return "This shot can't be made at this quality; raise the quality.";

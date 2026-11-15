@@ -25,7 +25,7 @@
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import type { CardView, FilmPublic, TakeView } from "../../../../cinema/public.js";
 import type { CinemaOverview, FilmView } from "../../../../cinema/service.js";
-import { ASPECTS, CINEMA_SLUG, type Aspect, type Film, type FilmRow, type ShotStatus } from "../../../../cinema/types.js";
+import { CINEMA_SLUG, type Aspect, type Film, type FilmRow, type ShotStatus } from "../../../../cinema/types.js";
 import { botTopic } from "../../../../live/topics.js";
 import {
   type BotsCtx, type Mark, page, row, col, box, text, card, meta, notice, primaryButton, secondaryButton, quietButton, sectionLabel, listCard, listRow,
@@ -139,7 +139,12 @@ function hero(ctx: BotsCtx, v: FilmView, url: string): Node {
   ], { width: w, height: h, alignSelf: "flex-start" }, { kind: "openUrl", url, external: true } as ActionSpec);
 }
 
-const SHAPE_WORDS: Record<Aspect, string> = { "16:9": "Wide", "9:16": "Vertical", "1:1": "Square" };
+/** What each shape is called, in the person's words. The ratio is shown beside it where there is room: "Tall (4:5)". */
+const SHAPE_WORDS: Record<Aspect, string> = {
+  "16:9": "Wide", "9:16": "Vertical", "1:1": "Square", "4:5": "Tall", "5:4": "Boxy", "4:3": "Old screen", "3:4": "Old portrait", "21:9": "Cinemascope",
+};
+/** The shapes a person is offered another cut in: the ones people actually post. The rest can still be asked for in words. */
+const OFFERED: readonly Aspect[] = ["16:9", "9:16", "1:1", "4:5"];
 
 /**
  * THE SAME FILM, CUT ANOTHER WAY: a vertical for a feed, a square, or the words drawn into the picture for the places that play without
@@ -151,8 +156,9 @@ function otherCuts(v: FilmView, desk: boolean): Node | null {
   if (!f.cut.video || (f.status !== "done" && f.status !== "cutting")) return null;
   const F = `${CINEMA}/films/${f.id}`;
   // The shapes it is not in, and - on their own, because they are a different thing - the ones with the words drawn in.
-  const shapes = ASPECTS.filter((a) => a !== f.aspect).map((a) => ({ aspect: a, captions: false, label: `${SHAPE_WORDS[a]} (${a})` }));
-  const burned = [f.aspect, ...ASPECTS.filter((a) => a !== f.aspect)].map((a) => ({ aspect: a, captions: true, label: SHAPE_WORDS[a] }));
+  const others = OFFERED.filter((a) => a !== f.aspect);
+  const shapes = others.map((a) => ({ aspect: a, captions: false, label: `${SHAPE_WORDS[a]} (${a})` }));
+  const burned = [f.aspect, ...others].map((a) => ({ aspect: a, captions: true, label: SHAPE_WORDS[a] }));
   const offers: { aspect: Aspect; captions: boolean; label: string }[] = [...shapes, ...burned];
   const ask = (o: { aspect: Aspect; captions: boolean }, said_: string): ActionSpec =>
     call("POST", `${F}/edition`, { aspect: o.aspect, captions: o.captions }, { ok: seq(said(said_), refresh), fail: toast("Couldn't do that just now. Try again.") });

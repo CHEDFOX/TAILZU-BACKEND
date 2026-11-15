@@ -15,7 +15,9 @@ import { routeImage, stillModel } from "../src/cinema/imageModels.js";
 import { catalog, frameSize, jobCatalog, renderRes, snapSeconds, usdPerSecond } from "../src/cinema/models.js";
 import { videoBody } from "../src/cinema/openrouter.js";
 import { boardQuote, filmQuote, RESERVE, sheetsNeeded } from "../src/cinema/quote.js";
-import { editUsd, editable, needs, pickJob, route, wantsAudio, wantsLipSync, whyNone } from "../src/cinema/route.js";
+import { frameOf } from "../src/cinema/cut.js";
+import { ASPECTS, filmShape } from "../src/cinema/types.js";
+import { editUsd, editable, filmedAs, needs, pickJob, route, wantsAudio, wantsLipSync, whyNone } from "../src/cinema/route.js";
 import { bible, card, imageModels, liveVideo, shots, videoModels } from "./cinema-rig.js";
 
 const FX = 88;
@@ -178,11 +180,52 @@ describe("the router", () => {
     expect(picks.every((p) => p.model.last)).toBe(true);
   });
 
-  it("keeps a film within its tier and its aspect ratio", () => {
+  it("keeps a film within its tier", () => {
     const draft = route({ card: card(1), style: "live", aspect: "16:9", tier: "draft", models });
     expect(draft.every((p) => p.model.tier === "draft")).toBe(true);
+  });
+
+  it("films a shape a model cannot make in the nearest it can, and prefers one that needs no cropping", () => {
     const square = route({ card: card(1), style: "live", aspect: "1:1", tier: "premium", models });
-    expect(square.map((p) => p.model.id)).not.toContain("google/veo-3.1");
+    // A model that makes squares is asked for a square.
+    expect(square[0]!.filmedAs).toBe("1:1");
+    expect(square[0]!.model.aspects).toContain("1:1");
+    // Veo makes only 16:9 and 9:16: it is still offered, filmed wide and cropped in the cut, but it ranks below.
+    const veo = square.find((p) => p.model.id === "google/veo-3.1")!;
+    expect(veo).toBeTruthy();
+    expect(veo.filmedAs).toBe("16:9");
+    expect(square.indexOf(veo)).toBeGreaterThan(0);
+  });
+
+  it("never turns a tall film wide to film it", () => {
+    const veo = models.find((m) => m.id === "google/veo-3.1")!;
+    expect(filmedAs(veo, "9:16")).toBe("9:16");
+    expect(filmedAs(veo, "4:5")).toBe("9:16");
+    expect(filmedAs(veo, "21:9")).toBe("16:9");
+    // A model with no shapes listed takes the film's own.
+    expect(filmedAs({ aspects: [] }, "4:5")).toBe("4:5");
+  });
+
+  it("decides one shape to film a whole film in, so the stills and the takes agree", () => {
+    expect(filmShape("16:9")).toBe("16:9");
+    // A square loses less of the frame on its way to 4:5 than a 9:16 does (a fifth of the width against a third of the height).
+    expect(filmShape("4:5")).toBe("1:1");
+    expect(filmShape("5:4")).toBe("1:1");
+    expect(filmShape("21:9")).toBe("16:9");
+    expect(filmShape("3:4")).toBe("9:16");
+  });
+
+  it("frames every shape, both sides even", () => {
+    expect(frameOf("16:9", 1080)).toEqual({ w: 1920, h: 1080 });
+    expect(frameOf("9:16", 1080)).toEqual({ w: 1080, h: 1920 });
+    expect(frameOf("1:1", 720)).toEqual({ w: 720, h: 720 });
+    expect(frameOf("4:5", 1080)).toEqual({ w: 1080, h: 1350 });
+    expect(frameOf("21:9", 1080)).toEqual({ w: 2520, h: 1080 });
+    for (const a of ASPECTS) {
+      const { w, h } = frameOf(a, 720);
+      expect(w % 2).toBe(0);
+      expect(h % 2).toBe(0);
+    }
   });
 
   it("goes past a blamed model on a retake, and still uses it when nothing else is left", () => {

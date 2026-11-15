@@ -281,6 +281,16 @@ describe.skipIf(!hasFfmpeg)("with ffmpeg", () => {
     expect(await slice(clip(3, false), [0])).toEqual([]);
   }, 180_000);
 
+  it("cuts takes filmed in one shape to a shape no model films", async () => {
+    // 4:5 is filmed as 1:1 or 9:16 and cropped here: the finished film is exactly 4:5, both sides even.
+    const out = await cut({
+      shots: [{ video: clip(3, true, "480x480"), link: "cut", lines: [], vo: null, bias: 1 }],
+      music: null, aspect: "4:5", height: 720, fit: "crop",
+    });
+    const info = await probe(out.video);
+    expect([info.width, info.height]).toEqual([720, 900]);
+  }, 180_000);
+
   it("leaves the finished film under the peak ceiling, which one normalising pass does not", async () => {
     const out = await cut({
       // A loud take and a loud voice together: a single pass clips this, the loop brings it down.
