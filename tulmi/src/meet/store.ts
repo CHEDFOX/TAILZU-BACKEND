@@ -12,6 +12,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 import type { Platform } from "./words.js";
+import { keptBrief } from "../brief/edit.js";
+import type { Brief } from "../brief/types.js";
 
 export type MeetStatus = "scheduled" | "joining" | "waiting" | "in_call" | "ended" | "done" | "failed" | "cancelled";
 /** Where a meeting stands is one of these until it is over. */
@@ -40,6 +42,8 @@ export interface Meeting {
   endedAt: number | null;
   noteId: string | null;
   liveNotes: LiveNotes | null;
+  /** The document the bot is making of this meeting (src/brief, docs/brief.md; migration 0095). Null until it has written something. */
+  brief: Brief | null;
   participants: string[];
   error: string | null;
   createdAt: number;
@@ -121,6 +125,8 @@ interface Row {
   note_id: string | null; live_notes: LiveNotes | null; participants: string[] | null; error: string | null; created_at: string; updated_at: string;
   /** Migration 0083: absent before it was run. */
   space_id?: string | null; by_id?: string | null;
+  /** Migration 0095: absent before it was run, so a brief lives in memory until it is. */
+  brief?: unknown;
 }
 
 const ms = (s: string | null): number | null => (s ? Date.parse(s) || null : null);
@@ -130,7 +136,8 @@ function fromRow(r: Row): Meeting {
   return {
     id: r.id, userId: r.user_id, botId: r.bot_id, tokenHash: r.token_hash, url: r.url, platform: r.platform, title: r.title ?? "",
     status: r.status, voice: !!r.voice, source: r.source, eventKey: r.event_key, joinAt: ms(r.join_at), startedAt: ms(r.started_at),
-    endedAt: ms(r.ended_at), noteId: r.note_id, liveNotes: r.live_notes ?? null, participants: Array.isArray(r.participants) ? r.participants : [],
+    endedAt: ms(r.ended_at), noteId: r.note_id, liveNotes: r.live_notes ?? null, brief: keptBrief(r.brief),
+    participants: Array.isArray(r.participants) ? r.participants : [],
     error: r.error, createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0, spaceId: r.space_id ?? null, byId: r.by_id ?? null,
   };
 }
@@ -145,9 +152,10 @@ function toRow(p: Partial<Meeting>): Record<string, unknown> {
     ["participants", "participants", (v) => v], ["error", "error", (v) => v],
   ];
   for (const [k, col, f] of map) if (p[k] !== undefined) out[col] = f(p[k]);
-  // 0083's columns only when they say something, so a database that has not run it still takes every meeting nobody else sent.
+  // 0083's and 0095's columns only when they say something, so a database that has not run them still takes every other write.
   if (p.spaceId) out.space_id = p.spaceId;
   if (p.byId) out.by_id = p.byId;
+  if (p.brief) out.brief = p.brief;
   return out;
 }
 

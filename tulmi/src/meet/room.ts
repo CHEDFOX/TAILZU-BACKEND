@@ -17,6 +17,7 @@ import type { NoteSegment } from "../../../shared/types/api.js";
 import type { Line } from "./brain.js";
 import type { Meeting } from "./store.js";
 import { wakeNames } from "./words.js";
+import { emptyBrief, type Brief } from "../brief/types.js";
 
 /** The lines kept for answering questions. */
 export const KEEP_LINES = 400;
@@ -118,6 +119,11 @@ export class Room {
   notesAt = 0;
   notesRunning = false;
   notesTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** The document the bot is making of this meeting (src/brief), as its last pass left it, and that pass's bookkeeping. */
+  brief: Brief = emptyBrief();
+  briefAt = 0;
+  briefRunning = false;
 
   /** Lines waiting to be written to the note, and the writes, one after another. */
   readonly buffer: NoteSegment[] = [];

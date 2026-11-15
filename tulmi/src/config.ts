@@ -804,6 +804,15 @@ const EnvSchema = z.object({
   MEET_SPEAKING_VARIANT: z.enum(["web", "web_4_core"]).default("web_4_core"),
   /** How many minutes of meetings one person's bot may sit in, in any 24 hours (Recall bills by the minute). */
   MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
+  /**
+   * THE BRIEF (src/brief, docs/brief.md): the document the bot makes while a meeting runs — the overview, what it drew, what
+   * was said, who does what, what is still open — from the same building blocks a bot draws under its words. Off until the
+   * owner turns it on; with it off a meeting keeps the notes it always had and nothing else changes. Migration 0095 keeps a
+   * brief between restarts; without it the document is the server's memory only. One model call a pass, on MEET_MODEL.
+   */
+  MEETING_BRIEF: bool(false),
+  /** How often the document is written while the meeting goes on (the notes pass's own cadence by default). */
+  MEETING_BRIEF_EVERY_S: z.coerce.number().int().min(30).max(900).default(180),
   /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
   MEET_LANGUAGE: z.string().trim().default("en"),
   /**
