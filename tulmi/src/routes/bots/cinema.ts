@@ -2,7 +2,7 @@
  * THE CINEMA BOT'S DOORS (src/cinema, docs/cinema.md). The signed-in person's own:
  *
  *   GET    /v1/cinema/overview                       their films, pictures and cast, and today's spending
- *   POST   /v1/cinema/films                          { idea, length?, aspect?, tier?, voice?, cast?, language? } -> 201 FilmView (status writing)
+ *   POST   /v1/cinema/films                          { idea, length?, aspect?, tier?, voice?, cast?, language?, session? } -> 201 FilmView (status writing)
  *   GET    /v1/cinema/films/:id                      -> FilmView
  *   POST   /v1/cinema/films/:id/approve-script       Make the storyboard: the stills begin -> FilmView
  *   POST   /v1/cinema/films/:id/approve-board        Film it: the takes begin -> FilmView
@@ -85,6 +85,8 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
         idea: str(b.idea),
         ...(typeof b.length === "number" ? { length: b.length } : typeof b.length === "string" && b.length ? { length: Number(b.length) } : {}),
         aspect: str(b.aspect), tier: str(b.tier), voice: str(b.voice), language,
+        // The session the card was in: the talk and the film it made are one thing (botsBots/sessions.ts).
+        ...(str(b.session) ? { session: str(b.session) } : {}),
         ...(Array.isArray(b.cast) ? { cast: b.cast.filter((k): k is string => typeof k === "string").slice(0, 6) } : {}),
       });
       return send(reply, view, 201);

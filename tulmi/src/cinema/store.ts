@@ -144,6 +144,7 @@ interface FilmRow {
   budget_paise: number;
   spent_paise: number;
   body: Pick<Film, "script" | "shots" | "takes" | "cut" | "notes" | "editions" | "wantBig">;
+  session_id: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -154,7 +155,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 function toRow(f: Film): FilmRow {
   return {
     id: f.id, user_id: f.ownerId, status: f.status, hold: f.hold, idea: f.idea, aspect: f.aspect, tier: f.tier, length: f.length, voice: f.voice,
-    budget_paise: f.budgetPaise, spent_paise: f.spentPaise,
+    budget_paise: f.budgetPaise, spent_paise: f.spentPaise, session_id: f.session ?? null,
     body: { script: f.script, shots: f.shots, takes: f.takes, cut: f.cut, notes: f.notes, ...(f.editions ? { editions: f.editions } : {}), ...(f.wantBig ? { wantBig: true } : {}) },
     error: f.error, created_at: iso(f.createdAt), updated_at: iso(f.updatedAt),
   };
@@ -165,6 +166,7 @@ function fromRow(r: FilmRow): Film {
     id: r.id, ownerId: r.user_id, status: r.status, hold: r.hold, idea: r.idea, aspect: r.aspect, tier: r.tier, length: r.length, voice: r.voice,
     budgetPaise: r.budget_paise, spentPaise: r.spent_paise, script: r.body?.script ?? null, shots: r.body?.shots ?? [], takes: r.body?.takes ?? [],
     cut: r.body?.cut ?? { video: null, srt: null, seconds: 0, of: null }, notes: r.body?.notes ?? [], error: r.error,
+    ...(r.session_id ? { session: r.session_id } : {}),
     ...(r.body?.editions ? { editions: r.body.editions } : {}), ...(r.body?.wantBig ? { wantBig: true } : {}),
     createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at),
   };

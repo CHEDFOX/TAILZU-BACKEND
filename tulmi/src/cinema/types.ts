@@ -337,6 +337,8 @@ export interface Film {
   hold: Hold;
   /** What the person asked for, in their words. */
   idea: string;
+  /** The session it was made in (botsBots/sessions.ts), so the talk and the film are one thing. */
+  session?: string | null;
   aspect: Aspect;
   tier: Tier;
   /** How long they want it, in seconds. */

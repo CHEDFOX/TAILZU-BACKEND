@@ -31,6 +31,7 @@ import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
 import type { CatalogModel, JobModel } from "./models.js";
 import { makePicture, readAsk } from "./pictures.js";
+import { propose, type Proposal } from "./propose.js";
 import { compareSaid, spellNumbers, type Heard } from "./voiceCheck.js";
 import { publicFilm, publicPicture, type FilmPublic, type PictureView } from "./public.js";
 import { direct, revise, type Think } from "./plan.js";
@@ -184,7 +185,7 @@ export class CinemaService {
   }
 
   /** A new film from an idea. `language` is the one the person writes in: the director writes in it unless the idea says otherwise. */
-  async create(userId: string, o: { idea: string; length?: number; aspect?: string; tier?: string; voice?: string; cast?: string[]; language?: string }): Promise<FilmView> {
+  async create(userId: string, o: { idea: string; length?: number; aspect?: string; tier?: string; voice?: string; cast?: string[]; language?: string; session?: string | null }): Promise<FilmView> {
     const idea = o.idea.trim();
     if (idea.length < 3) throw new CinemaError(400, "Say what the film is about.", "bad_request");
     if (idea.length > 4000) throw new CinemaError(400, "That is too long for one film. Keep it under 4,000 characters.", "bad_request");
@@ -195,6 +196,7 @@ export class CinemaService {
     const length = Math.max(5, Math.min(180, Math.round(o.length ?? 30)));
     const film: Film = {
       id: this.id(), ownerId: userId, status: "writing", hold: null, idea, aspect, tier, length, voice: o.voice || "nova",
+      ...(o.session ? { session: o.session } : {}),
       budgetPaise: 0, spentPaise: 0, script: null, shots: [], takes: [], cut: { video: null, srt: null, seconds: 0, of: null }, notes: [], error: null,
       createdAt: now, updatedAt: now,
     };
@@ -399,6 +401,17 @@ export class CinemaService {
   }
 
   /** A picture, made now. `photos` are the person's own (data URLs), for an edit. */
+  /**
+   * What the bot thinks they want, read from the talk so far (propose.ts): the card the session screen draws. Null until enough has been
+   * said. Costs a fraction of a paisa and makes nothing; what it costs is on the person's meter, as the bot's own reading of a picture is.
+   */
+  async proposal(userId: string, turns: readonly { role: "me" | "bot"; text: string }[]): Promise<Proposal | null> {
+    await this.consent(userId);
+    const out = await asPerson(userId, () => propose(this.d.think(userId), turns));
+    if (out.usd > 0) this.d.charge(userId, out.usd);
+    return out.proposal;
+  }
+
   async picture(userId: string, o: { words: string; photos?: { url: string; type: string }[]; tier?: string }): Promise<PictureView> {
     const words = o.words.trim();
     if (words.length < 2) throw new CinemaError(400, "Say what the picture should show.", "bad_request");
