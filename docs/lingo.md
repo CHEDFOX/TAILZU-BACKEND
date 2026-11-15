@@ -354,6 +354,14 @@ language they are learning, each with its progress, a **Continue** on it, and **
 at once, by choice. `GET /v1/lingo/courses` carries `progress` and `mastery` per course, so the territory draws from
 one call.
 
+Where a heading would be, **Lingo itself is there, alive, across the width of the page** — the back bar already says
+its name, so a second one in words would only take the room. What it is doing says what the territory holds: while a
+word is due in any language it mutters conjugations under its breath with letter tiles drifting up (`l.mutter`), and
+once nothing is due it hums to itself (`l.hum`). Both are idlings of its own, on a loop, and no other bot is given
+them — they are not in `idle.moments`, which every bot draws from. It is the plain custom tile underneath, as every
+bot is: only the colour and the moments are Lingo's. A build too old to draw him gets the heading in words instead,
+so the page is never headless.
+
 **Leaving one** is a bin icon on its card. It opens a card with a box to write why, and a button that says **Just
 clean up** — which removes it with no reason given, because a person who does not want to explain themselves must
 not be made to.
@@ -375,7 +383,7 @@ which is what the gate sends a client missing a block.
 
 | | |
 | --- | --- |
-| `bots.lingo` | the territory: a card per language with its own meter, counts, Continue and a bin; Add a language beside them |
+| `bots.lingo` | the territory: Lingo alive along the top, then a card per language with its own meter, counts, Continue and a bin; Add a language beside them |
 | `bots.lingo.set` | a set, one exercise at a time, with the verdict under it |
 | `bots.lingo.add` | the picker: search at the top, the suggested few, then all of them |
 | `bots.lingo.leave` | stop learning one: a box for why, and **Just clean up** |
