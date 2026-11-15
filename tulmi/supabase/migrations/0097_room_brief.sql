@@ -7,7 +7,7 @@
 --
 -- Null for every call from before this. Written and read by the server with the service key only, as the rest of the row is.
 --
--- Run in your Supabase SQL editor after 0095. It can be run again. Without it a call still gets its note and its document while
+-- Run in your Supabase SQL editor after 0096. It can be run again. Without it a call still gets its note and its document while
 -- it runs; a restart forgets which note it was (the note itself is kept, in notes).
 
 alter table public.rooms add column if not exists note_id uuid;

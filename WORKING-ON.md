@@ -190,16 +190,17 @@ look. The apps are renderers: build server data with the existing blocks and cat
 ## Numbers in use
 
 - Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days, 0091 rooms, 0092 lingo left,
-  0093 trust signals, 0094 phone things, 0095 the meeting's brief, 0096 plan share AND 0096 a call's note and brief —
-  **two files share 0096, and one of them can never run.** Next free: **0097**. Take the next free number and check
-  `git log origin/main -- tulmi/supabase/migrations` first: two sessions have collided twice today, and now a third time.
+  0093 trust signals, 0094 phone things, 0095 the meeting's brief, 0096 plan share, 0097 a call's note and brief.
+  Next free: **0098**. Take the next free number and check `git log origin/main -- tulmi/supabase/migrations` first:
+  sessions have collided three times now, and the third one nearly shipped.
 
-  **`0096_room_brief.sql` will not be applied, silently.** `LIVE_MIGRATION` is `0096` (set by 61fb099, for the meeting
-  brief and plan sharing, both of which did run). `migrate-pending.sh` keeps a file only when its number is GREATER than
-  that, so a second `0096` is skipped for ever and the deploy says nothing is pending. Whoever owns the call's note and
-  brief: rename it `0097_room_brief.sql` and it runs on the next deploy. It is written to be safe to run twice, so the
-  rename costs nothing even if some of it reached the database another way. Until then its tables do not exist and the
-  code that expects them fails at runtime.
+  **The third collision, and what it teaches.** A call's note and brief was written as a second `0096` while
+  `LIVE_MIGRATION` was already `0096`. `migrate-pending.sh` keeps a file only when its number is GREATER than that,
+  so it was not pending, would never have run, and the deploy would have said there was nothing to do — the tables
+  missing and the code that wants them failing at runtime, with nothing anywhere saying why. Renamed to
+  `0097_room_brief.sql`, which the runner now picks up; it is two `add column if not exists`, so running it is safe
+  whatever already reached the database. **A duplicate number does not fail loudly, it fails silently** — which is
+  why the list above is worth keeping straight.
 - Phone runtime: `tailzu-2026-11-x0-blip`. Do not change it.
 
 ## Notes from other sessions
