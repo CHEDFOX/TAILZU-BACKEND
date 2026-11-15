@@ -341,12 +341,34 @@ on the bot's live topic, the session screen is subscribed to it (`live: [botTopi
 bot himself is kept by `life: film.<id>`, so he is the same bot across every one of those draws - he does not jump, reset, or start again
 when a message arrives in the talk.
 
-Three things hold the staging together, and a new recipe has to keep them:
+**A crowd only where a crowd belongs** (`cinemaMaking.ts` `farBots`, `crowdFor`). A film set is a busy place - the unit at the
+camera and other people further back, waiting and watching - and the frame should say so: six pale blips at six depths behind
+a full unit, three behind a single camera. Writing a script is not a busy place, and nor is cutting. Those are one person and
+a long afternoon, and the empty room behind him is the truth of them, so they get **nobody**. The crowd is drawn into the
+frame as an SVG behind him rather than into the recipe: it belongs to the room and not to any one stage, and the recipes have
+no slot to spare. Its distance is measured in his own heights, not the frame's, so a narrow frame reads as a narrow room with
+them close behind instead of a tall one with people floating in the air.
+
+Five things hold the staging together, and a new recipe has to keep them:
 
 - **The engine already stands him a fifth to a third of the way in** (`core.ts` `setup()`: `w * (0.2 + rand * 0.12)`), so the floor to his
   right is the set and no recipe needs to walk him there. It must not: a ground prop's `x` is bot-heights **forward** of him, so the moment
   he turns, everything on the floor jumps to his other side. Only `c.script` walks, and it carries nothing.
 - **`walk`'s `x` is a share of the stage, not bot-heights** (`dx` is bot-heights, from where he began). Worth knowing before writing one.
+- **A lean that changes direction walks him off his mark.** He steps to catch himself when he leans in and does not step back
+  when he leans out, so an alternating lean ratchets him across the floor a step a loop, dragging the set with him (every
+  ground prop hangs off his hip). The catalog has known this since `sweat` ("he stays at it: leaning in would walk him off"),
+  which holds itself with a `walk toward: start`. Over a ten-second recipe that is not enough: `c.board` and `c.sketch` keep
+  **one small lean, held**, and appraise the work with a `tilt` of the head instead.
+- **Every making recipe opens with the same mark** (`walk x 0.22`, held for the whole recipe). The engine stands him anywhere
+  from a fifth to a third of the way in (`setup`: `w * (0.2 + rand * 0.12)`), which is fine for a bot on his own and no good
+  at all when a set is placed from where he stands. One mark for all of them also means a handover moves nothing: he is
+  already standing where the next recipe wants him.
+- **Particles are the only real physics on the floor, and they are small.** A thrown page or a passing frame carries gravity,
+  drag, spin and `floor` (it lands and bounces at 0.42), which is what makes the throw and the takes read as weight rather
+  than animation. A part at `size` 1 is a fraction of his height, though, so anything left *resting* on the floor of a card
+  this size is a three-pixel speck at the very bottom edge: litter that builds up through a loop was tried and dropped. Keep
+  the physics for things in flight.
 - **The room is kept a fixed number of him wide**, whatever the frame's shape, by `makingFrame`'s `size` (`min(h * 0.52, w / roomFor(moment))`).
   That is what lets one recipe play in a 16:9 frame and a 9:16 one: the marks the crew walk to are in bot-heights, and the room is always
   the same number of them across. A build that draws no bot gets the frame alone, in the film's shape, which is still the truth of it.

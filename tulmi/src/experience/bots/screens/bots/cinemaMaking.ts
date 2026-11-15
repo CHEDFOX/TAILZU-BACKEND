@@ -27,7 +27,7 @@
  */
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import { RATIO, type Aspect, type FilmStatus } from "../../../../cinema/types.js";
-import { type BotsCtx, botBuddy, botMoment, box, C, canBuddy } from "../../kit.js";
+import { type BotsCtx, botBuddy, botMoment, box, C, canBuddy, shapes } from "../../kit.js";
 import { DIRECTOR } from "./cinemaPage.js";
 
 /**
@@ -69,16 +69,57 @@ const ROOM = 3.6, ROOM_BIG = 4.4;
 export const roomFor = (moment: string): number => (moment.endsWith(".big") ? ROOM_BIG : ROOM);
 
 /**
- * The stage itself: the frame, and him working in it. `size` keeps the room the same number of him across whatever the
- * frame's shape, which is what the recipes are drawn for: the crew walk to marks in bot-heights, so they land in the same
- * place in a tall frame as in a wide one.
+ * THE FAR SIDE OF THE ROOM, WHERE THERE IS ONE. A film set is a crowded place - the unit at the camera and other people
+ * further back, waiting, watching, carrying something past - and the frame should say so. Writing a script is not, and
+ * nor is cutting: those are one person and a long afternoon, and an empty room behind him is the truth of them. So the
+ * crowd is drawn only on the set, and it grows with the unit; the quiet stages get the quiet room they deserve.
+ *
+ * They are drawn into the frame rather than into the recipe, because they belong to the room and not to any one stage -
+ * and because the recipes have no slot for them: four things on the floor is all an engine will draw (WSLOTS). Their
+ * distance is set in his own heights, not the frame's, so a narrow frame is a narrow room with them close behind rather
+ * than a tall one with people up in the air.
+ */
+const FAR: readonly [x: number, back: number, tall: number][] = [
+  [0.63, 0.68, 0.37], [0.26, 0.74, 0.34], [0.84, 0.84, 0.29], [0.1, 0.52, 0.46], [0.45, 0.92, 0.26], [0.72, 1.02, 0.22],
+];
+/** How many of them are about: a full unit draws a crowd, one camera draws a few, and a desk draws nobody. */
+export const crowdFor = (moment: string): number => (moment === "c.shoot.big" ? 6 : moment === "c.shoot" ? 3 : 0);
+function farBots(w: number, h: number, size: number, color: string, n: number): Node | null {
+  if (n <= 0) return null;
+  const fill: string[] = [], line: string[] = [];
+  const r = (n: number) => Math.round(n * 10) / 10;
+  // A circle in a path, because this is an SVG `d` and not the catalog's own grammar (which has O cx cy r, and this has not).
+  const disc = (cx: number, cy: number, rad: number) =>
+    `M ${r(cx - rad)} ${r(cy)} a ${r(rad)} ${r(rad)} 0 1 0 ${r(rad * 2)} 0 a ${r(rad)} ${r(rad)} 0 1 0 ${r(-rad * 2)} 0 Z`;
+  for (const [fx, back, k] of FAR.slice(0, n)) {
+    const cx = r(fx * w), y = r(h - size * back), t = size * k;
+    fill.push(disc(cx, y - 0.78 * t, 0.21 * t));
+    fill.push(`M ${r(cx - 0.17 * t)} ${r(y - 0.14 * t)} Q ${r(cx - 0.14 * t)} ${r(y - 0.56 * t)} ${cx} ${r(y - 0.56 * t)} Q ${r(cx + 0.14 * t)} ${r(y - 0.56 * t)} ${r(cx + 0.17 * t)} ${r(y - 0.14 * t)} Z`);
+    line.push(`M ${r(cx - 0.08 * t)} ${r(y - 0.16 * t)} L ${r(cx - 0.08 * t)} ${y} M ${r(cx + 0.08 * t)} ${r(y - 0.16 * t)} L ${r(cx + 0.08 * t)} ${y}`);
+    line.push(`M ${r(cx - 0.09 * t)} ${r(y - 0.94 * t)} L ${r(cx - 0.17 * t)} ${r(y - 1.08 * t)} M ${r(cx + 0.09 * t)} ${r(y - 0.94 * t)} L ${r(cx + 0.16 * t)} ${r(y - 1.06 * t)}`);
+  }
+  return {
+    ...shapes([
+      { d: line.join(" "), stroke: color, strokeWidth: Math.max(1, Math.round(size * 0.035)), linecap: "round", opacity: 0.26 },
+      { d: fill.join(" "), fill: color, opacity: 0.28 },
+    ], { viewBox: `0 0 ${w} ${h}`, width: w, height: h }),
+    style: { position: "absolute", top: 0, left: 0, width: w, height: h },
+  };
+}
+
+/**
+ * The stage itself: the frame, the room behind it, and him working in it. `size` keeps the room the same number of him
+ * across whatever the frame's shape, which is what the recipes are drawn for: the crew walk to marks in bot-heights, so
+ * they land in the same place in a tall frame as in a wide one.
  */
 export function makingFrame(ctx: BotsCtx, o: { color: string; life: string; moment: string; w: number; h: number }): Node {
   const size = Math.max(24, Math.min(110, Math.round(Math.min(o.h * 0.52, o.w / roomFor(o.moment)))));
+  const crowd = farBots(o.w, o.h, size, o.color, crowdFor(o.moment));
   const him = canBuddy(ctx)
-    ? [botBuddy({
+    ? [...(crowd ? [crowd] : []), botBuddy({
       kind: "custom", color: o.color, life: o.life, width: o.w, height: o.h, size,
-      state: "working", avatar: DIRECTOR, ...botMoment(ctx, o.moment, "loop"),
+      // Idle, not working: the recipe is what he is doing, and a busy mood paces him off his marks and drags the set with him.
+      state: "idle", avatar: DIRECTOR, ...botMoment(ctx, o.moment, "loop"),
     })]
     : [];
   return box(him, { width: o.w, height: o.h, borderRadius: 14, backgroundColor: C.surface, overflow: "hidden", flexShrink: 0 });
