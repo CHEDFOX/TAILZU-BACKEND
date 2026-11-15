@@ -63,7 +63,7 @@ export function filmKeys(f: Film): string[] {
   }
   for (const s of f.shots) keys.push(s.still, s.voice, s.said);
   for (const t of f.takes) keys.push(t.video, t.lastFrame);
-  keys.push(f.cut.video, f.cut.srt, f.cut.music, f.cut.big);
+  keys.push(f.cut.video, f.cut.srt, f.cut.music, f.cut.big, f.cut.board);
   for (const e of f.editions ?? []) keys.push(e.video);
   return [...new Set(keys.filter((k): k is string => !!k))];
 }

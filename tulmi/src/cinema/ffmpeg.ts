@@ -106,6 +106,32 @@ export async function contactSheet(shots: readonly Buffer[]): Promise<Buffer | n
 }
 
 /**
+ * A STILL TURNED INTO A LENGTH OF FILM, for the animatic: the storyboard frame held for as long as the shot is meant to run, with a slow
+ * drift across it so it breathes rather than sits there. The drift alternates direction shot to shot, which is what stops a run of held
+ * frames feeling like a slideshow. No sound: the cut lays the voice-over over the top, as it does for a real take.
+ *
+ * The frame is covered rather than fitted - the still is already the shot's shape - and a twelfth is left over at each side for the drift
+ * to use. Only ffmpeg runs, so an animatic costs nothing.
+ */
+export async function stillClip(bytes: Buffer, o: { seconds: number; width: number; height: number; drift?: -1 | 0 | 1 }): Promise<Buffer> {
+  const d = Math.max(0.4, Math.min(20, o.seconds));
+  const dir1 = o.drift ?? 1;
+  return inFolder(async (dir) => {
+    const src = join(dir, "still.jpg");
+    const out = join(dir, "clip.mp4");
+    await writeFile(src, bytes);
+    // Cover the frame at 1.08, then crop back to it, sliding across what is spare.
+    const big = `scale=${Math.round(o.width * 1.08)}:${Math.round(o.height * 1.08)}:force_original_aspect_ratio=increase`;
+    const at = dir1 === 0 ? "(iw-ow)/2" : dir1 > 0 ? `(iw-ow)*(0.12+0.76*t/${d.toFixed(3)})` : `(iw-ow)*(0.88-0.76*t/${d.toFixed(3)})`;
+    const vf = `${big},crop=${o.width}:${o.height}:'${at}':'(ih-oh)/2',setsar=1,fps=24,format=yuv420p`;
+    const r = await run("ffmpeg", [...COMMON, "-loop", "1", "-t", d.toFixed(3), "-i", src,
+      "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-an", "-y", out], 90_000);
+    if (r.code !== 0) throw new CutError(`a storyboard frame could not be held: ${r.stderr.slice(-300)}`);
+    return readFile(out);
+  });
+}
+
+/**
  * One take cut apart at the beats (route.ts runFrom): a clip for each stretch, re-encoded so each piece starts on a keyframe of its own
  * (copying would leave the first frames of a piece referring to frames it no longer has). `starts` is where each piece begins, in seconds,
  * the first always 0. Each piece's last frame comes back too, as a take's does, so the shot after a run still has a frame to start on.

@@ -59,8 +59,8 @@ film, so its stills, its takes and the frames a shot carries on from are all in 
 | --- | --- | --- |
 | `writing` | the director writes the bible and the shot list (`plan.ts direct`, the strong tier) | by itself, about a minute |
 | `script` | the person reads it and changes anything in plain words (`revise`) | **the person**: Make the storyboard (`approve-script`) |
-| `boarding` | the look frame, the reference sheets, the stills (two for a shot with people; the eye keeps the better), the voice-over | by itself |
-| `board` | the storyboard | **the person**: Film it (`approve-board`) |
+| `boarding` | the look frame, the reference sheets, the stills (two for a shot with people; the eye keeps the better), the voice-over, and then **the animatic** | by itself |
+| `board` | the storyboard, and the animatic to watch it as a film | **the person**: Film it (`approve-board`) |
 | `rendering` | each shot animated from its still, checked, retaken | by itself |
 | `cutting` | the cut, and any other shape of it the person asked for | by itself |
 | `done` | the film, ready to watch, download and share | a change sends it back to `rendering`; asking for another cut sends it back to `cutting` |
@@ -68,6 +68,17 @@ film, so its stills, its takes and the frames a shot carries on from are all in 
 `failed` (something could not be got past) and `stopped` (the person stopped it) end it. `Film.hold` says why a moving film waits: `budget`
 (the film has reached a limit and is paused for today: it carries on by itself, or sooner with a bigger plan) or `shot` (a shot the eye gave up on:
 Try again, or change it).
+
+**The animatic** (`Step "animatic"`, `service.ts animatic`, `ffmpeg.ts stillClip`). A storyboard is a page of pictures, and nobody can tell
+from a page of pictures whether a film works. So the last thing `boarding` does, before the person is asked for anything, is cut one: every
+frame the director drew is held for exactly as long as its shot is meant to run, with a slow drift across it that turns direction shot to
+shot, and the **same cutter that makes the film** lays the voice-over over the top, dissolves where the shot list dissolves and masters the
+sound. The person watches the whole film, at its real length, in its real shape - and only then says go to the part that costs.
+
+It is ffmpeg on frames that have already been paid for, so it is **free**, and it is made again whenever the storyboard changes
+(`compile.ts animaticPrint`: the stills, the voices, the lengths and the shape). It is cut at 720 whatever the film's tier, because it is a
+thing to watch once rather than keep, and it carries no music: music is made for the film, at the cut. A build whose ffmpeg cannot hold a
+still (`CinemaDeps.media.hold` absent) hands the storyboard over as it always did.
 
 **How it moves.** `flow.ts steps(film)` is one pure function that looks at a film and says what to do now: make a sheet, a still, a voice-over,
 a take; ask how a take is going; check one; cut; or move the status. The service (`service.ts`) runs the steps every few seconds (`tick`), a

@@ -446,6 +446,14 @@ export function musicPrint(bible: Bible, seconds: number): string | null {
   return bible.music ? print([bible.music, bible.tone, Math.round(seconds / 5)]) : null;
 }
 
+/**
+ * What the animatic is made from: the frames it holds, the words said over them, how long each shot runs and the shape it is cut to.
+ * A redrawn still or a reworded line makes another one; filming does not touch it.
+ */
+export function animaticPrint(o: { stills: readonly (string | null)[]; voices: readonly (string | null)[]; seconds: readonly number[]; aspect: string }): string {
+  return print([o.stills, o.voices, o.seconds, o.aspect]);
+}
+
 /** What a voice-over is recorded from. */
 export function voicePrint(card: ShotCard, bible: Bible, voice: string): string | null {
   return card.vo ? print([card.vo, bible.language, voice]) : null;

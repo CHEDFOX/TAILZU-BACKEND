@@ -18,7 +18,7 @@
  *   - so many at once of each kind (LIMITS), so one film does not take every slot a provider gives us
  */
 import { createHash } from "node:crypto";
-import { linePrint, stillPrint, takePrint, voicePrint } from "./compile.js";
+import { animaticPrint, linePrint, stillPrint, takePrint, voicePrint } from "./compile.js";
 import { wantsLipSync } from "./route.js";
 import { sheetsNeeded } from "./quote.js";
 import type { Aspect, Film, FilmStatus, Hold, ShotCard, ShotState, ShotStatus } from "./types.js";
@@ -34,6 +34,8 @@ export type Step =
   | { kind: "poll"; take: string }
   | { kind: "check"; take: string }
   | { kind: "cut" }
+  /** The storyboard cut to time with the voice-over over it, so the film can be watched before a second of it is filmed (free: ffmpeg). */
+  | { kind: "animatic" }
   /** The same film in another shape, or with its words in the picture, from the takes already filmed (free: only ffmpeg runs). */
   | { kind: "edition"; aspect: Aspect; captions: boolean }
   /** The finished film enlarged (an upscale model: a real job, paid for, asked for once). */
@@ -50,6 +52,7 @@ export function stepKey(s: Step): string {
     case "poll": return `poll:${s.take}`;
     case "check": return `check:${s.take}`;
     case "cut": return "cut";
+    case "animatic": return "animatic";
     case "edition": return `edition:${s.aspect}:${s.captions ? "caps" : "plain"}`;
     case "enlarge": return "enlarge";
     case "move": return "move";
@@ -65,6 +68,8 @@ export interface FlowCtx {
   /** Paise the film may still spend: what was agreed, less what was spent and what the running steps will spend. */
   left?: number;
   limits?: Limits;
+  /** Whether this build can hold a still for a length of time (ffmpeg stillClip): without it there is no animatic and the storyboard is handed over as it was. */
+  animatic?: boolean;
 }
 
 export interface Prints { still: Map<number, string>; take: Map<number, string>; cut: string }
@@ -125,6 +130,18 @@ export function refresh(film: Film, busy: ReadonlySet<string> = new Set()): Film
   const p = prints(film);
   const shots = film.script.shots.map((card) => ({ ...(shotOf(film, card.n) ?? blankShot(card.n)), status: shotStatus(film, card, p, busy) }));
   return { ...film, shots };
+}
+
+/** What an animatic would be made from: the frame each shot holds, the words over it, and how long it runs. */
+export function animaticOf(film: Film): { stills: (string | null)[]; voices: (string | null)[]; seconds: number[]; aspect: string } {
+  const cards = film.script?.shots ?? [];
+  const st = (n: number) => film.shots.find((x) => x.n === n);
+  return {
+    stills: cards.map((c) => st(c.n)?.still ?? null),
+    voices: cards.map((c) => st(c.n)?.voice ?? null),
+    seconds: cards.map((c) => st(c.n)?.saidSeconds || c.seconds),
+    aspect: film.aspect,
+  };
 }
 
 export function steps(film: Film, ctx: FlowCtx): Step[] {
@@ -196,6 +213,14 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
   }
 
   if (film.status === "boarding" && stillsReady && voicesReady && !missing.size && running("sheet:") + running("still:") + running("voice:") === 0) {
+    // The animatic first: the storyboard held to time with the words over it. It is what the person says go to, so it is made before
+    // they are asked, and it is ffmpeg only - a film that cannot have one (no frames yet) is handed over without it.
+    const want = ctx.animatic ? animaticPrint(animaticOf(film)) : null;
+    if (want && film.cut.boardOf !== want) {
+      const s: Step = { kind: "animatic" };
+      if (!busy.has(stepKey(s))) out.push(s);
+      return out;
+    }
     out.push({ kind: "move", status: "board", hold: null });
     return out;
   }

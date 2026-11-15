@@ -55,7 +55,7 @@ function rig(o: {
   const blobs = new Map<string, Buffer>();
   const charged: number[] = [];
   const pushes: string[] = [];
-  const calls = { images: 0, videos: [] as { model: string; prompt: string; last: boolean; voice: boolean; source: string | null }[], tts: 0, cuts: 0, music: 0 };
+  const calls = { images: 0, videos: [] as { model: string; prompt: string; last: boolean; voice: boolean; source: string | null }[], tts: 0, cuts: 0, music: 0, holds: [] as { seconds: number; w: number; drift: number }[] };
   const clock = { t: 1_800_000_000_000 };
   let ids = 0;
   let takeChecks = 0;
@@ -102,6 +102,7 @@ function rig(o: {
     frames: async () => ({ frames: [Buffer.from("f1"), Buffer.from("f2")], last: Buffer.from("last"), seconds: 4 }),
     slice: async (_b, starts) => starts.map((_s, i) => ({ video: Buffer.from(`piece${i}`), last: Buffer.from(`last${i}`), seconds: 4 })),
     seconds: async () => 9.4,
+    hold: async (bytes, h) => { calls.holds.push({ seconds: h.seconds, w: h.width, drift: h.drift ?? 0 }); return Buffer.from(`held:${bytes.toString("utf8")}`); },
     cut: async (input) => {
       calls.cuts++;
       return { video: Buffer.from(`film of ${input.shots.length} at ${input.aspect}`), srt: "1\n00:00:00,000 --> 00:00:01,000\nHi\n", seconds: 14, ...(input.captions ? { captions: true } : {}) };
@@ -172,7 +173,8 @@ describe("a whole film", () => {
     const done = await r.until("u1", made.film.id, "done");
     expect(done.status).toBe("done");
     expect(done.cut.video).toBeTruthy();
-    expect(r.calls.cuts).toBe(1);
+    // Two: the animatic at the storyboard, then the film itself.
+    expect(r.calls.cuts).toBe(2);
     expect(r.pushes).toContain("cinema_ready");
     const shot3 = r.calls.videos.filter((x) => x.prompt.includes("Lo, garam chai"));
     expect(shot3.length).toBe(2);
@@ -191,7 +193,7 @@ describe("a whole film", () => {
     const again = await r.until("u1", made.film.id, "done");
     expect(r.pushes).not.toContain("cinema_hold");
     expect(r.calls.videos.length - before).toBe(1);
-    expect(r.calls.cuts).toBe(2);
+    expect(r.calls.cuts).toBe(3);
     expect(again.cut.of).not.toBe(done.cut.of);
   });
 
@@ -385,7 +387,7 @@ describe("a whole film", () => {
     expect(r.calls.music).toBe(1);
     await r.svc.revise("u1", made.film.id, { note: "make Ravi say beta", n: 3 });
     await r.until("u1", made.film.id, "done");
-    expect(r.calls.cuts).toBe(2);
+    expect(r.calls.cuts).toBe(3);
     expect(r.calls.music).toBe(1);
   });
 
@@ -465,6 +467,35 @@ describe("a whole film", () => {
     const m2 = await day.svc.create("u1", { idea: "a chai ad", length: 12 });
     await day.svc.idle();
     await expect(day.svc.approveScript("u1", m2.film.id)).rejects.toMatchObject({ code: "cinema_day" });
+  });
+
+  it("holds the storyboard to time so the film can be watched before a second of it is filmed", async () => {
+    const r = rig();
+    const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    const board = await r.until("u1", made.film.id, "board");
+
+    // It is there before the person is asked to say go, and it is a film of its own.
+    expect(board.cut.board).toBeTruthy();
+    expect(board.cut.boardSeconds).toBeGreaterThan(0);
+    expect(board.cut.video).toBeNull();
+    // One frame held for each shot, each for as long as its shot will run, and the drift turns so it is not a slideshow.
+    expect(r.calls.holds.length).toBe(board.shots.length);
+    for (const h of r.calls.holds) expect(h.seconds).toBeGreaterThan(0);
+    expect(new Set(r.calls.holds.map((h) => h.drift)).size).toBeGreaterThan(1);
+    // Nothing was paid for: no model ran, and no music was made for a thing you watch once.
+    const spent = r.charged.length;
+    expect(r.calls.videos.length).toBe(0);
+    expect(r.calls.music).toBe(0);
+
+    // Redraw a frame and the animatic is made again; nothing else is touched.
+    const was = board.cut.board;
+    await r.svc.revise("u1", made.film.id, { note: "make the stall busier", n: 1 });
+    const after = await r.until("u1", made.film.id, "board");
+    expect(after.cut.board).toBeTruthy();
+    expect(after.cut.board).not.toBe(was);
+    expect(r.charged.length).toBeGreaterThanOrEqual(spent);
   });
 
   it("deletes a film's files with it", async () => {

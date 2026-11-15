@@ -88,7 +88,9 @@ function pickedUp(label: string): Node {
  */
 function filmInTalk(ctx: BotsCtx, m: Extract<MadeInSession, { kind: "film" }>, desk: boolean, color: string): Node {
   const F = `${CINEMA}/films/${m.id}`;
-  const line = statusLine({ status: m.status, hold: m.hold, shots: m.shots, done: m.done });
+  const line = m.status === "board" && m.board
+    ? "Watch the storyboard, then say go"
+    : statusLine({ status: m.status, hold: m.hold, shots: m.shots, done: m.done });
   const act = m.status === "script"
     ? primaryButton("Make the storyboard", call("POST", `${F}/approve-script`, {}, { ok: seq(said("Drawing your storyboard."), refresh), fail: toast("Couldn't start just now. Try again.") }), { size: "md" })
     : m.status === "board"
@@ -106,13 +108,18 @@ function filmInTalk(ctx: BotsCtx, m: Extract<MadeInSession, { kind: "film" }>, d
   const save = done && m.film
     ? [secondaryButton("Save it", { kind: "download", url: abs(m.film), filename: `${plain(m.title).replace(/[^\w -]+/g, "").trim() || "film"}.mp4` } as ActionSpec, { size: "md" })]
     : [];
+  // The animatic, while the storyboard waits on them: the whole film, at its real length, in the frames he drew, with the
+  // words over it. It is what "say go" should mean - you have seen it - and it cost nothing to make.
+  const watchBoard = m.status === "board" && m.board
+    ? [secondaryButton(m.boardSeconds ? `Watch it: ${Math.round(m.boardSeconds)}s` : "Watch it", { kind: "openUrl", url: abs(m.board), external: true } as ActionSpec, { size: "md" })]
+    : [];
   return col([
     frame,
     row([col([
       text(plain(m.title) || "Your film", { size: 15.5, weight: 600, lineHeight: 20, lines: 1 }),
       meta(line, { size: 12.5, lineHeight: 17 }),
     ], { gap: 2, flexShrink: 1 }), grow()], { gap: 8, alignItems: "center" }),
-    row([...(act ? [act] : []), secondaryButton("Open it", openFilm(m.id), { size: "md" }), ...save], { gap: 8, flexWrap: "wrap" }),
+    row([...(act ? [act] : []), ...watchBoard, secondaryButton("Open it", openFilm(m.id), { size: "md" }), ...save], { gap: 8, flexWrap: "wrap" }),
   ], { gap: 10, marginVertical: 4 });
 }
 

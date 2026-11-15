@@ -25,8 +25,9 @@
 import { randomUUID } from "node:crypto";
 import { usdToPaise } from "../code/brain/money.js";
 import { asPerson } from "../privacy/aiGate.js";
-import { castVoice, characterSheetPrompt, linePrint, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
-import { blankShot, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
+import { animaticPrint, castVoice, characterSheetPrompt, linePrint, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
+import { frameOf } from "./cut.js";
+import { animaticOf, blankShot, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
 import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
 import type { CatalogModel, JobModel } from "./models.js";
@@ -106,6 +107,8 @@ export interface MediaPorts {
   }) => Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[]; captions?: boolean }>;
   /** Several frames tiled into one picture for the checker; null when they cannot be tiled, and then each is sent on its own. */
   sheet?: (frames: readonly Buffer[]) => Promise<Buffer | null>;
+  /** A storyboard frame held for a length of time, with a slow drift across it (ffmpeg.ts stillClip). Absent: no animatic. */
+  hold?: (bytes: Buffer, o: { seconds: number; width: number; height: number; drift?: -1 | 0 | 1 }) => Promise<Buffer>;
   /** One take cut apart at the beats, for several shots filmed in one go (ffmpeg.ts slice). Absent: each shot is filmed on its own. */
   slice?: (bytes: Buffer, starts: readonly number[]) => Promise<{ video: Buffer; last: Buffer; seconds: number }[]>;
 }
@@ -148,6 +151,8 @@ export type MadeInSession =
   | {
     kind: "film"; id: string; at: number; title: string; status: Film["status"]; hold: Film["hold"]; aspect: Aspect;
     seconds: number; shots: number; done: number; poster?: string; film?: string;
+    /** The animatic, while the storyboard waits to be approved: the film as it will run, before it is filmed. */
+    board?: string; boardSeconds?: number;
   }
   | { kind: "picture"; id: string; at: number; title: string; url: string };
 
@@ -433,6 +438,7 @@ export class CinemaService {
         status: f.status, hold: f.hold, aspect: f.aspect, seconds: f.cut.seconds || f.length,
         shots: f.script?.shots.length ?? 0, done: f.shots.filter((s) => s.status === "ok").length,
         ...(poster ? { poster: signMedia(poster) } : {}),
+        ...(f.cut.board ? { board: signMedia(f.cut.board), boardSeconds: f.cut.boardSeconds ?? 0 } : {}),
         ...(f.cut.video ? { film: signMedia(f.cut.video) } : {}),
       };
     });
@@ -555,7 +561,7 @@ export class CinemaService {
       }
     };
     const left = f.budgetPaise - f.spentPaise - (this.reserved.get(f.id) ?? 0);
-    for (const s of steps(f, { now: this.now(), busy, cost, left })) {
+    for (const s of steps(f, { now: this.now(), busy, cost, left, animatic: !!this.d.media.hold })) {
       if (s.kind === "move") {
         // Short of budget: extended by itself within the limits, and the next tick carries on; past them, the film waits.
         if (s.hold === "budget" && f.hold !== "budget" && (await this.extend(f))) continue;
@@ -603,6 +609,7 @@ export class CinemaService {
       case "poll": return this.poll(f, s.take);
       case "check": return this.check(f, s.take, models.jobs);
       case "cut": return this.cutFilm(f);
+      case "animatic": return this.animatic(f);
       case "edition": return this.editionCut(f, s.aspect, s.captions);
       case "enlarge": return this.enlargeCut(f, models.jobs);
       default: return;
@@ -1150,6 +1157,48 @@ export class CinemaService {
     return { bytes: made.bytes, key, of, usd: made.usd };
   }
 
+  /**
+   * THE ANIMATIC: the storyboard, held to time, with the words over it. Every frame the director drew becomes a length of film as long as
+   * its shot is meant to run, with a slow drift across it, and the same cutter that makes the film lays the voice-over on top, dissolves
+   * where the shot list dissolves, and masters the sound. The person watches their film - the whole thing, in order, at its real length -
+   * and only then says go to the part that costs.
+   *
+   * Nothing here calls a model: it is ffmpeg on frames that have already been paid for, so an animatic is free and is made again whenever
+   * the storyboard changes. It is cut at 720 whatever the film's tier, because it is a thing to watch once, not to keep.
+   */
+  private async animatic(f: Film): Promise<void> {
+    const hold = this.d.media.hold;
+    if (!hold) return;
+    const script = f.script!;
+    const of = animaticPrint(animaticOf(f));
+    const seconds = animaticOf(f).seconds;
+    const { w, h } = frameOf(f.aspect, 720);
+    const who = (k: string) => script.bible.characters.find((c) => c.key === k)?.name ?? k;
+    const shots: CutShots = [];
+    for (const [i, card] of script.shots.entries()) {
+      const st = shotOf(f, card.n);
+      const still = st?.still ? await this.d.blobs.get(st.still).catch(() => null) : null;
+      if (!still) return;
+      const audio = st?.voice ? await this.d.blobs.get(st.voice).catch(() => null) : null;
+      // The drift turns about every other shot, so a run of held frames does not read as a slideshow.
+      const drift = (i % 3 === 2 ? 0 : i % 2 === 0 ? 1 : -1) as -1 | 0 | 1;
+      const video = await hold(still, { seconds: seconds[i] ?? card.seconds, width: w, height: h, drift });
+      shots.push({
+        video, link: card.link, lines: card.lines.map((l) => `${who(l.who)}: ${l.text}`),
+        vo: card.vo && audio ? { audio, text: card.vo, seconds: st!.voiceSeconds, ...(st!.voiceWords?.length ? { words: st!.voiceWords } : {}) } : null,
+      });
+    }
+    if (!shots.length) return;
+    const out = await this.d.media.cut({ shots, music: null, aspect: f.aspect, height: 720 });
+    const key = filmKey(f.ownerId, f.id, `board-${of}`, "video/mp4");
+    await this.d.blobs.put(key, out.video, "video/mp4");
+    await this.update(f.ownerId, f.id, (x) => {
+      const old = x.cut.board;
+      if (old && old !== key) void this.d.blobs.delete(old).catch(() => undefined);
+      x.cut = { ...x.cut, board: key, boardOf: of, boardSeconds: Math.round(out.seconds * 10) / 10 };
+    });
+  }
+
   private async cutFilm(f: Film): Promise<void> {
     const script = f.script!;
     const p = prints(f);
@@ -1338,6 +1387,7 @@ export class CinemaService {
     b?.places.forEach((p) => link(p.ref));
     f.shots.forEach((s) => { link(s.still); link(s.voice); link(s.said); });
     f.takes.forEach((t) => { if (f.shots.some((s) => s.take === t.id)) link(t.video); });
+    link(f.cut.board);
     link(f.cut.video);
     link(f.cut.srt);
     link(f.cut.big);
