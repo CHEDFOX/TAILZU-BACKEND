@@ -177,9 +177,11 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   const built = liveOn ? buildLive(env, { d: dProjects, jobs, store, fallback: classic, settings }) : null;
   const design = buildDesign(env);
   const screens = buildScreens(env);
+  // What the project already looks like (artifacts/kit.ts), for a job on files people see: read with no model and cached against the brain's head.
+  const kit = artifactStore();
   const orchestrator = createAgent({
     code, jobs, notify, log, passive: true, leaseMs: WORKER_LEASE_MS, ...(render ? { web: { render } } : {}),
-    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}), ...(screens ? { screens } : {}),
+    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}), ...(screens ? { screens } : {}), kit,
     // Lead and helpers (code/team): a helper is a job with a Workflow of its own, and a helper that ends or needs the person sends its lead's Workflow a "wake" event.
     team: teamPorts(env, () => orchestrator),
   });

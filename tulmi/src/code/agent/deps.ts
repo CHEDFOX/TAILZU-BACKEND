@@ -33,6 +33,7 @@ import type { CallFn } from "../work/model.js";
 import type { WorklogStore } from "../work/index.js";
 import type { findResources } from "../resources/finder.js";
 import type { CompareHook } from "../../artifacts/build.js";
+import type { ArtifactStore } from "../../artifacts/store.js";
 import type { LiveDeps } from "../live/ports.js";
 import type { ContextStrategy } from "./mask.js";
 import type { AgentRunner } from "./runner.js";
@@ -126,6 +127,13 @@ export interface AgentDeps {
   /** The design round (agent/design.ts) for a job built from an approved design. Absent: the round is skipped, and the report says so. */
   design?: DesignDeps;
   screens?: ScreensDeps;
+  /**
+   * Where the project's kit is kept (artifacts/kit.ts designKit): what the project already LOOKS like — its tokens, fonts, icon library and its own
+   * components — read with no model from at most a dozen files and cached against the brain's head, so it is free after the first read of a commit.
+   * A job on files people see is shown it (context.ts), so it builds to the project's look instead of discovering it or inventing one.
+   * Absent: the look is simply not shown, and nothing else changes.
+   */
+  kit?: Pick<ArtifactStore, "getKit" | "putKit">;
   /** Lead and helpers (code/team): how a lead starts a helper's job and a helper wakes its lead. Absent: a lead cannot start helpers (it does the work itself). */
   team?: TeamPorts;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts): instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */

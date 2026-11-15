@@ -411,8 +411,14 @@ function taskParts(i: ContextInput, k: Knobs, o: { transcript: boolean }): { sta
   if (i.checks.length) add(false, `After you call done, these checks run on your staged edits: ${i.checks.join("; ")}`);
   // Work on a page people look at: the floor it has to clear, and the states a request leaves open (floor.ts floorBrief). Stable, so a cache keeps
   // it free after the first turn, and empty for work nobody sees. Said BEFORE the work because the same floor is read off the built page after it.
-  const brief = floorBrief(floorPaths(s));
+  const brief = floorBrief(uiPaths(s));
   if (brief) add(false, brief);
+  // WHAT THIS PROJECT ALREADY LOOKS LIKE (artifacts/kit.ts, read once at the start of work): its own tokens, fonts and components, so a frontend
+  // job BUILDS TO THE PROJECT'S LOOK instead of discovering it by reading files, or inventing one. Stable, and only for work people see.
+  if (s.work.look) add(false, `What this project already looks like — build to this, and reach for its own components before writing new ones:\n${dataBlock("project_look", "", s.work.look)}`);
+  // WHAT THIS PROJECT ALREADY LOOKS LIKE (artifacts/kit.ts, read once at the start of work): its own tokens, fonts and components, so a
+  // frontend job BUILDS TO THE PROJECT'S LOOK instead of discovering it by reading files, or inventing one. Stable, and only for UI work.
+  if (s.work.look) add(false, `What this project already looks like — build to this, and reach for its own components before writing new ones:\n${dataBlock("project_look", "", s.work.look)}`);
   if (s.located?.targets.length) {
     add(false, `Where a search says this belongs: ${s.located.targets.slice(0, 5).map((t) => `${t.path} (${cut(t.why, 80)})`).join("; ")}`);
   }
@@ -445,7 +451,7 @@ function taskParts(i: ContextInput, k: Knobs, o: { transcript: boolean }): { sta
  * THREE ARE FIXED BEFORE THE WORK STARTS, which is the point: what is staged is not read, so the brief cannot appear halfway through and cost the
  * job its cached prefix. A job neither the plan nor the index puts on a page gets no brief, and the built page is still read afterwards.
  */
-function floorPaths(s: AgentState): string[] {
+export function uiPaths(s: AgentState): string[] {
   return [
     ...(s.plan?.steps ?? []).flatMap((p) => p.files.map((f) => f.path)),
     ...(s.located?.targets ?? []).map((t) => t.path),

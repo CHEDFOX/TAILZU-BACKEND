@@ -510,6 +510,11 @@ export interface AgentState {
     /** A free-form job: where the project's index points for the request (the locate funnel, no model), as lines, worked out once when work began. A hint, not a gate. */
     hints?: string;
     /**
+     * WHAT THE PROJECT ALREADY LOOKS LIKE, as the kit reads it (artifacts/kit.ts): its tokens, fonts, icon library and its own components, with no
+     * model. Read once at the start of work and only for a job on files people see. "" when there is nothing to read, or no store to read it with.
+     */
+    look?: string;
+    /**
      * The model's latest turn that was words and no tool call (it is nudged once): often the answer itself, which the done{summary} that follows shortens. A job
      * that changes nothing answers with both (phases.ts answerOf).
      */

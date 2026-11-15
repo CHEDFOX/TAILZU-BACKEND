@@ -17,6 +17,8 @@
  * that is not charged to the job (every call carries the job and "job" as its budget).
  */
 import { screensDue, screensLines } from "./screens.js";
+import { seenByPeople } from "./floor.js";
+import { designKit, workspaceFiles } from "../../artifacts/kit.js";
 import { ConnectorError } from "../../connectors/state.js";
 import { classifyRequest } from "../brain/classify.js";
 import { callModel } from "../brain/gateway.js";
@@ -47,7 +49,7 @@ import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
 import { getConfig } from "../../config.js";
-import { buildContext, digestOf, fold, projectContext } from "./context.js";
+import { buildContext, digestOf, fold, projectContext, uiPaths } from "./context.js";
 import { isStrategy, type ContextStrategy } from "./mask.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret, type ToolOutcome } from "./tools.js";
@@ -354,6 +356,29 @@ export async function hintsOf(r: Run): Promise<string> {
     .map((f) => `${f.path}: ${cut((f.whys.length ? f.whys.slice(0, 2).join("; ") : f.signals.join(", ")).replace(/\s+/g, " "), 160)}`).join("\n");
 }
 
+/**
+ * WHAT THE PROJECT ALREADY LOOKS LIKE, for a job on files people see: its own tokens, fonts, icon library and components, read by the kit with no
+ * model (artifacts/kit.ts) and cached against the brain's head, so it costs a few file reads once per commit and nothing after.
+ *
+ * Only for work people see: on anything else the kit is not read at all, and the context carries not a word of it. Empty on any trouble — no store
+ * to read it with, a read that fails, a project with nothing to read — because a job that cannot see the look must still do the work.
+ */
+export async function lookOf(r: Run): Promise<string> {
+  if (!r.deps.kit || !uiPaths(r.state).some(seenByPeople)) return "";
+  try {
+    const { kit, cached } = await designKit(
+      { store: r.deps.kit, files: workspaceFiles(r.ws), brain: r.brain },
+      { id: r.projectId, userId: r.userId },
+    );
+    const prompt = typeof kit.prompt === "string" ? kit.prompt : "";
+    if (prompt) await r.log.note(`The project's own look: ${kit.systems?.length ? kit.systems.join(", ") : "its tokens"}${cached ? " (already read for this commit)" : ""}.`);
+    return prompt;
+  } catch (err) {
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the project's look could not be read");
+    return "";
+  }
+}
+
 /** The first lines of the files the search points at, as they are now, for the model's first message. */
 async function excerptsOf(r: Run): Promise<string> {
   const out: string[] = [];
@@ -613,6 +638,7 @@ export async function workPhase(r: Run): Promise<void> {
     // A free-form job is not shown slivers of files it may not need (the guided flow's excerpts led the work to them); it is shown where the index points, once.
     w.excerpts = s.mode === "freeform" && !s.located?.targets.length ? "" : await excerptsOf(r);
     if (s.mode === "freeform" && w.hints === undefined) w.hints = await hintsOf(r);
+    if (w.look === undefined) w.look = await lookOf(r);
     await r.log.note("Starting the work.");
   }
   let rounds = 0;

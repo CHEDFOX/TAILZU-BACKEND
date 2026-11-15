@@ -259,6 +259,8 @@ export interface AgentRigOptions {
   design?: DesignDeps;
   /** The screens round's browser, picture store and links (code/agent/screens.ts). */
   screens?: ScreensDeps;
+  /** Where the project's kit is kept (artifacts/kit.ts): what the project already LOOKS like, shown to a job on files people see. Absent: not read, not shown. */
+  kit?: Pick<import("../src/artifacts/store.js").ArtifactStore, "getKit" | "putKit">;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts). Absent: the agent's default. */
   contextStrategy?: ContextStrategy;
   /** Have another model read the change before the pull request is ready (agent/review.ts). Absent: on, as the product has it. */
@@ -341,7 +343,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       code, jobs, store: jobStore, brain, call: model.call as never, worklog, intake, routeStats, notify, now, sleep, log, web: { store: null, cache: null, fetchFn: webFetch as never },
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: 2000 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one",
-      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}), ...(o.screens ? { screens: o.screens } : {}),
+      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}), ...(o.screens ? { screens: o.screens } : {}), ...(o.kit ? { kit: o.kit } : {}),
       ...(over.passive ? { passive: true } : {}), ...(over.team ? { team: over.team } : {}), ...(over.leaseMs ? { leaseMs: over.leaseMs } : {}),
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
       ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),

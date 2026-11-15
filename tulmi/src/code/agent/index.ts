@@ -30,6 +30,7 @@ import type { JobRouter } from "../jobs/router.js";
 import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps, type ScreensDeps, type TeamPorts } from "./deps.js";
+import type { ArtifactStore } from "../../artifacts/store.js";
 import { MemoryInbox, type LiveDeps } from "../live/ports.js";
 import type { ContextStrategy } from "./mask.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
@@ -85,6 +86,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   design?: DesignDeps;
   /** The screens round's browser, picture store and links (screens.ts); without them a job's report says there are no real screens. */
   screens?: ScreensDeps;
+  /** Where the project's kit is kept (artifacts/kit.ts): what the project already LOOKS like, shown to a job on files people see. Absent: not shown. */
+  kit?: Pick<ArtifactStore, "getKit" | "putKit">;
   /** Lead and helpers (code/team): how a helper's job is started and a lead woken, when this is not a server that drives its own jobs (the Worker starts a Workflow and sends an event). */
   team?: Partial<TeamPorts>;
   /** What becomes of old tool results: "mask", "summary", "hybrid" or "transcript" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
@@ -116,6 +119,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.live ? { live: o.live } : o.passive || o.remote ? {} : { live: { inbox: new MemoryInbox() } }),
     ...(o.design ? { design: o.design } : {}),
     ...(o.screens ? { screens: o.screens } : {}),
+    ...(o.kit ? { kit: o.kit } : {}),
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
     ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
     ...(o.jobReview !== undefined ? { jobReview: o.jobReview } : {}),
