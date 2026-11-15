@@ -231,6 +231,43 @@ phone's `runAction` switch has no default case, so an unknown kind silently does
 
 ---
 
+## 5a. The design rules, for a screen a MODEL draws (`sdui2/design.ts`)
+
+`lint.ts` (section 5) is the **structural** gate: does every expression compile, is the screen inside its caps, are the paths and node
+types ones the device knows. It answers *can the phone draw this at all*. It says nothing about whether what the phone draws looks like
+this app — because until now every screen was hand-written TypeScript and **the kit's helpers were the design rules**: you got them by
+calling `text()` rather than by being told.
+
+A screen a **model** draws calls no helpers. So the kit's rules, which lived in `experience/bots/kit.ts`'s header as prose, are checks:
+
+```ts
+const r = checkDesign(screen, { theme, drawn: true });
+if (r.errors.length) … // not served as it is: drawn again, or the built screen instead
+```
+
+| | | |
+| --- | --- | --- |
+| a pressable inside a pressable | **error** | the window runs both handlers, so one tap does two things |
+| a border written the CSS way | **error** | borders are `borderWidth` + `borderColor`, or the phone draws nothing |
+| text under 4.5 to 1 against what is behind it | **error** | text nobody can read. **Only when both colours are known**; one this cannot resolve is never guessed at |
+| text with no line height | warning | the two clients each choose one, and the text does not sit the same |
+| an image with no width, height or ratio | warning | neither client should guess a size |
+| something to press under 44 across | warning | smaller than a finger |
+
+`drawn: false` holds a **hand-built** screen to the errors alone: its warnings were the kit's own choices, made on purpose.
+
+**What is deliberately not a rule.** A colour written out (`#5c5c5c`) is **not** wrong: the kit writes explicit styles on purpose, "so the
+phone and the window draw the same thing". The first version of this file called that an error and **909 of the app's own nodes broke it**,
+which is how a rule written down wrong shows itself. The kit's other prose rules — colour belongs to bots, errors and links are ink — need
+to know what a node *means*, which cannot be read off a tree, so they stay prose rather than being guessed at.
+
+**The tells** (`tells`, never errors) are the marks of a drawing rather than a design: a small capitalised label above every heading, the
+same heading twice. They are counted so a drawing can be asked for again. After Nutlope's hallmark (MIT; the idea, not its text).
+
+**The app's own screens are the authority.** `tests/sdui-design.test.ts` builds **every** real page and holds it to the errors. One
+exception is written down there by name rather than quietly allowed: the **"Connect GitHub" button** on `bots.code` and `bots.code.start`
+is `#8a8a8a` on `#e6e6e6`, **2.8 to 1**, where 4.5 can be read. It may be meant as a disabled state. A *new* break still fails the test.
+
 ## 6. Launch dark
 
 **Every new thing ships behind a switch that defaults off.** A server deployed before the store build must draw
