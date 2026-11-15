@@ -712,6 +712,8 @@ const EnvSchema = z.object({
   CODE_PROVE_FIX: bool(true),
   /** A model of another family reads a plain job's diff before the pull request is marked ready (code/agent/review.ts). */
   CODE_JOB_REVIEW: bool(true),
+  /** Scheduled code work: a project's own standing job, started by the clock (code/schedule, docs/code-schedule.md). */
+  CODE_SCHEDULES: bool(false),
   CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid", "transcript"]).optional()),
   /**
    * HOW A NEW CODE JOB IS WORKED WHEN NEITHER THE JOB NOR ITS PROJECT SAYS (src/code/agent/orchestrator.ts enqueue, docs/code-agent.md): "freeform" (the

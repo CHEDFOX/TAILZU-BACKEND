@@ -167,6 +167,7 @@ code/              Xode (docs/code-*.md); code/flow/: read, agree a plan, work t
   team/            several agents on one job
   jobs/            the job router and providers (the person's PC, GitHub Actions, the Worker hand-off)
   live/            the live session's shared logic (protocol, tickets, search, unpack); the Durable Objects are in jobs/
+  schedule/        a project's standing job, started by the clock instead of by a person asking (docs/code-schedule.md)
   work/ newproject/ prcare/ resources/ secrets/   locating code, starting projects, PR care, library research, secret scanning
   github.ts oauth.ts policy.ts projects.ts …      the GitHub App and sign-in, the permission tiers, projects
 bots/              the bots platform: a bot's definition, store, keys, memory, tools, and running one (docs/bots.md)
@@ -344,7 +345,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/ARCHITECTURE.md` (the SDUI model and the keyboard), `docs/SUPABASE.md`, `docs/bots.md`, `docs/bots-app.md`,
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
-`docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
+`docs/cloudflare-jobs.md`, `docs/code-schedule.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
 `docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers), `docs/perms.md`,

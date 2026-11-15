@@ -48,6 +48,8 @@ import { registerFilesRoutes } from "./routes/files.js";
 import { registerFrontRoutes } from "./routes/ask/front.js";
 import { registerCodeRoutes } from "./routes/code/code.js";
 import { registerCodeJobRoutes } from "./routes/code/codeJobs.js";
+import { registerCodeScheduleRoutes, scheduleDeps } from "./routes/code/codeSchedules.js";
+import { CodeSchedules, codeScheduleStore, startCodeSchedules } from "./code/schedule/index.js";
 import { registerCodeInternalRoutes } from "./routes/code/codeInternal.js";
 import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
@@ -450,6 +452,19 @@ if (code && codeJobs && codeAgent) {
     app.addHook("onClose", async () => { stopCare(); await c.idle(); });
   }
 }
+// Scheduled code work (src/code/schedule, docs/code-schedule.md): a project's own standing job, started by the clock instead of by a
+// person asking. Off unless CODE_SCHEDULES is true (the routes then answer 404 schedules_off, and nothing ticks).
+const codeSchedules = code && codeJobs && cfg.CODE_SCHEDULES
+  ? new CodeSchedules(scheduleDeps({
+    rateLimit: AUTHED_RL, code, jobs: codeJobs, agent: codeAgent, log: app.log,
+    store: codeScheduleStore(),
+  }))
+  : null;
+if (codeSchedules) {
+  const stopSchedules = startCodeSchedules(codeSchedules, app.log);
+  app.addHook("onClose", async () => { stopSchedules(); });
+}
+registerCodeScheduleRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs, agent: codeAgent, schedules: codeSchedules, log: app.log });
 registerCodeJobRoutes(app, {
   rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent, care,
   // The live session's passes (docs/cloudflare-jobs.md section 10): only when the jobs run on the Worker, and it can be reached.
