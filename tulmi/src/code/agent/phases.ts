@@ -61,7 +61,7 @@ import {
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
 import { GithubRefusal, type CommitFile } from "../github.js";
-import { mapMarkdown, MAP_DIR } from "../project/index.js";
+import { mapMarkdown, MAP_DIR, type Candidate } from "../project/index.js";
 import { afterConflict, afterContracts, teamClean } from "../team/lead.js";
 import { afterPlan } from "../team/when.js";
 import { isHelperState } from "../team/types.js";
@@ -1354,12 +1354,48 @@ export async function newProjectPhase(r: Run): Promise<void> {
 
 // ------------------------------------------------------------------ report
 
+/**
+ * WHAT THIS JOB LEARNED ABOUT THE PROJECT, KEPT FOR THE NEXT ONE (project/learned.ts). Read from what the job already has, with
+ * NO MODEL and no extra call:
+ *
+ *   the person's own answers   a question the model had to ask, and what they said: the one thing that is a fact from the start,
+ *                              because they said it (status "confirmed"). The question is what makes the answer mean anything, so
+ *                              both are kept in the one line
+ *   a check already broken     the project's own check that failed on the default branch too, so the next job does not spend a fix
+ *                              round on something this change never broke
+ *
+ * It never fails a job: a project that cannot keep the lesson loses the lesson, not the work.
+ */
+async function keepLearned(r: Run): Promise<void> {
+  const s = r.state;
+  if (typeof r.brain.learn !== "function") return;
+  const candidates: Candidate[] = [];
+  // What the person answered, in their words, with the question that gives it its meaning.
+  for (const e of (await r.log.entries({ kinds: ["question"] }).catch(() => []))) {
+    const said = typeof e.data?.answer === "string" ? e.data.answer.trim() : "";
+    if (!said) continue;
+    candidates.push({ chapter: "rules", text: `Asked "${cut(e.text, 120)}", the owner said: ${cut(said, 140)}`, owner: true });
+  }
+  // A check that was failing before this job touched anything: worth knowing before the next one reads a red suite as its own doing.
+  for (const name of (s.verify?.alreadyBroken ?? []).slice(0, 3)) {
+    candidates.push({ chapter: "state", text: `The project's own check ${cut(name, 120)} was already failing on the default branch when a job last ran it.` });
+  }
+  if (!candidates.length) return;
+  try {
+    await r.brain.learn(candidates, { jobId: r.jobId });
+    await r.log.note(`Kept ${candidates.length === 1 ? "one thing" : `${candidates.length} things`} learned about this project for the next job.`);
+  } catch (err) {
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: what this job learned was not kept");
+  }
+}
+
 export async function reportPhase(r: Run): Promise<void> {
   const s = r.state;
   const money = await r.money();
   const outcome = s.commits.length === 0 && r.tools.changes.empty ? "answer" : "done";
   if (s.team) await linkPulls(r);
   const screens = screensLines(s.screens, r.deps.screens?.link ? (shotId) => r.deps.screens!.link!({ userId: r.userId, jobId: r.jobId, shotId }) : undefined);
+  await keepLearned(r);
   const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r), screens, ...(s.team ? { team: teamLines(s.team) } : {}) });
   s.report = { at: r.now(), outcome, text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent, ...(s.screens?.shots.length ? { shots: s.screens.shots } : {}) };
   s.phase = "done";

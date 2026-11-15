@@ -12,7 +12,8 @@
  *   - a turn's looks answered side by side, in the order asked, with one checkpoint write for them;
  *   - an export the change dropped though the checks pass: one round to put it back, then reported, never a block;
  *   - the tests covering what was just edited, run mid-work when a session is open, and the failure in the next turn;
- *   - a file the task never pointed at, said once and reported; a risk that must show how it happens to stay a risk.
+ *   - a file the task never pointed at, said once and reported; a risk that must show how it happens to stay a risk;
+ *   - what the job learned about the project, kept for the next one and shown to it.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -454,6 +455,68 @@ describe("a finding that claims to be a risk (work/findings.ts)", () => {
     expect(s.report?.text).toMatch(/Worth checking/);
     const [pr] = r.fake.pulls(r.repo);
     expect(pr!.body).toContain("worth checking: how it happens was not shown");
+  });
+});
+
+describe("what the job learned about the project (project/learned.ts)", () => {
+  it("keeps the person's own answer as theirs, and shows it to the next job", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", UTIL_PLAN);
+    r.model.push(
+      call("ask_user", { question: "Which date library does this project use?", options: ["date-fns", "dayjs"] }),
+      call("edit_file", UTIL_EDIT), done("Trimmed the dashes."),
+    );
+    const { job } = await r.start(UTIL_TASK);
+    await r.orch.idle();
+    await r.orch.answer("alice", job.id, "dayjs, everywhere");
+    await r.orch.idle();
+    expect((await r.jobNow(job.id)).state).toBe("done");
+
+    // Kept as the owner's word, because they are the ones who said it.
+    const learned = await r.fixture.brain.learned();
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ status: "confirmed", chapter: "rules", job: job.id });
+    expect(learned[0]!.text).toContain("dayjs, everywhere");
+    expect(learned[0]!.text).toContain("Which date library");
+
+    // The next job on this project is shown it, marked as the owner's.
+    r.model.push(call("edit_file", BUG), done("Did the next thing."));
+    const second = await r.start("make slug() keep underscores");
+    await r.orch.idle();
+    const shown = r.model.seen.at(-1)!.messages;
+    expect(shown).toContain("What earlier work here learned");
+    expect(shown).toContain("(the owner) Asked");
+    expect(shown).toContain("dayjs, everywhere");
+    expect((await r.jobNow(second.job.id)).state).toBe("done");
+  });
+
+  it("keeps a check that was already failing on the branch, so the next job does not take it for its own doing", async () => {
+    const r = await agentRig();
+    // typecheck fails before this job touches anything, and goes on failing: already broken, not broken by this change.
+    r.runner.checkResult = (kind) => (kind === "typecheck" ? { exit: 1, text: "TS2345 somewhere old" } : { exit: 0, text: "ok" });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    const learned = await r.fixture.brain.learned();
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ chapter: "state", status: "guessed" });
+    expect(learned[0]!.text).toMatch(/already failing on the default branch/);
+  });
+
+  it("keeps nothing from a job with nothing to learn, and a brain that cannot keep it does not fail the job", async () => {
+    const r = await agentRig();
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    await run(r);
+    expect(await r.fixture.brain.learned()).toEqual([]);
+
+    const broken = await agentRig();
+    broken.fixture.brain.learn = async () => { throw new Error("the store is down"); };
+    broken.json.on("work.plan", UTIL_PLAN);
+    broken.runner.checkResult = (kind) => (kind === "typecheck" ? { exit: 1, text: "old failure" } : { exit: 0, text: "ok" });
+    broken.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
+    const b = await run(broken);
+    expect((await broken.jobNow(b.job.id)).state).toBe("done");
   });
 });
 
