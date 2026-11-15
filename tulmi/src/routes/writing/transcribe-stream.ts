@@ -49,7 +49,7 @@ import { isDeviceBearer } from "../../auth/deviceTokens.js";
 import { getPersonality } from "../../personality/store.js";
 import { sttPrompt } from "../../pipeline/stt.js";
 import { vocabularyWithNames } from "../../experience/assistantName.js";
-import { enforceQuota, recordUsage } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, recordUsage } from "../../usage/metering.js";
 import {
   sanitizePlainTranscript, transcriptsAgree, isUsableAlternative, readsAsRomanHindi,
   detectScript, INDIC_SCRIPTS, leadsOnScript, scrubAndGate,
@@ -701,7 +701,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             if (over) {
               // Already written for the person (metering.enforceQuota): the
               // number, the reset date and the way out.
-              send({ type: "error", code: "quota_exceeded", message: over });
+              const q = quotaBody(over);
+              send({ type: "error", code: q.code, message: q.message });
               safeClose();
               return;
             }

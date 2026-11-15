@@ -179,8 +179,27 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
   }
 }
 
-export function forgetEntitlement(userId: string): void {
+/**
+ * WHO ELSE CARES THAT THIS ACCOUNT'S ENTITLEMENT MOVED.
+ *
+ * Shared plans (billing/planShare.ts) key the usage meter on "whose plan is this person on", which is wrong the moment an
+ * entitlement starts or ends — for the account itself, and for everyone on its plan — and a grant is also what turns a `promised`
+ * ask into a real share. Watchers are registered rather than called by name so that nothing in this file has to know about them:
+ * forgetEntitlement is already the one place every grant and every revoke, from both stores, passes through.
+ *
+ * A watcher never stops a purchase: one that throws is ignored.
+ */
+export type EntitlementChange = (userId: string, o: { granted: boolean }) => void;
+const watchers: EntitlementChange[] = [];
+export function onEntitlementChange(fn: EntitlementChange): void { watchers.push(fn); }
+
+/**
+ * The cache is what quota reads; this clears it. `granted` says which way it moved where the caller knows (a purchase or a
+ * renewal: true; an expiry, a refund or a cancel: false); left out, nothing is treated as a grant.
+ */
+export function forgetEntitlement(userId: string, o: { granted?: boolean } = {}): void {
   cache.delete(userId);
+  for (const w of watchers) { try { w(userId, { granted: o.granted === true }); } catch { /* a watcher never fails a purchase */ } }
 }
 
 /**
@@ -454,7 +473,9 @@ export async function applyRevenueCatEvent(
   if (error) return { ok: false, reason: error.message, userId };
 
   // The cache is what quota reads. Leaving it would keep a new subscriber
-  // capped, or an expired one unlimited, for up to a minute.
-  forgetEntitlement(userId);
+  // capped, or an expired one unlimited, for up to a minute. A grant also
+  // turns every `promised` ask by this account into a real share: that is the
+  // whole of "they have to buy and then can share" (billing/planShare.ts).
+  forgetEntitlement(userId, { granted: grants });
   return { ok: true, reason: grants ? "granted" : "revoked", userId };
 }

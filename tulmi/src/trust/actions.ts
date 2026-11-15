@@ -4,7 +4,7 @@
  *   trustMode()        off | shadow | on. Off: nothing at all. Shadow: rows, scores and a log line saying what it WOULD do.
  *   look()             one request's whole pass: collect, score, write the score, and (on `on`) take the action
  *   heldFreeUse(id)    whether this account is on the $3 free month instead of Lite's stretches right now (you/usage.ts)
- *   slowedDown(id)     whether this account keeps the free plan's single slot and a lower rate limit (guard, http/plugins.ts)
+ *   slowedDown(id)     whether this account is held to one request at a time and a lower rate limit (guard, http/plugins.ts)
  *   clear(id)          an admin took the score away (a second-hand phone, a mistake)
  *
  * WHO IS NEVER ACTED ON (docs/trust.md rule 5): anyone with a payment, the review account, the ids in
@@ -84,7 +84,7 @@ const put = (m: Map<string, Until>, userId: string, until: number): void => {
  */
 export const heldFreeUse = (userId: string, now = Date.now()): boolean => liveIn(held, userId, now);
 
-/** Whether this account is slowed right now: the free plan's single slot, and a lower rate limit. */
+/** Whether this account is slowed right now: one request at a time (the limiter's `perUserSlowed`), and a lower rate limit. */
 export const slowedDown = (userId: string, now = Date.now()): boolean => liveIn(slowed, userId, now);
 
 /** An admin cleared the score (docs/trust.md §admin): the hold and the slow go with it. */

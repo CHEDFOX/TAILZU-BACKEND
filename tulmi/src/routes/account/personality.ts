@@ -9,7 +9,7 @@ import { resolveUser } from "../../auth/supabase.js";
 import { PERSONALITY_PRESETS } from "../../experience/personalityPresets.js";
 import { getPersonality, updatePersonality, upsertPresetTone } from "../../personality/store.js";
 import { inferStyle } from "../../pipeline/cleanup.js";
-import { enforceQuota } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders } from "../../usage/metering.js";
 import { unauthorized } from "../../http/helpers.js";
 import type { AiAnswered } from "../../privacy/aiConsent.js";
 
@@ -203,7 +203,7 @@ export function registerPersonalityRoutes(app: FastifyInstance, deps: Personalit
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
 
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
 
     try {
       const inferred = await inferStyle(body.sample);

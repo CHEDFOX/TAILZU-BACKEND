@@ -100,7 +100,7 @@ function usage(ctx: BotsCtx, d: Usage | undefined) {
     back: true, nav: "you", title: "Usage",
     body: [
       title("Usage"),
-      usageMeter("This stretch", d?.usage.stretch.used ?? ctx.live.usage.used, d ? { resets: at(d.usage.stretch.resetsAt) } : {}),
+      usageMeter("This month", d?.usage.stretch.used ?? ctx.live.usage.used, d ? { resets: at(d.usage.stretch.resetsAt) } : {}),
       ...(d ? [usageMeter("This month", d.usage.month.used), meta(d.how)] : []),
     ],
   });
@@ -122,7 +122,7 @@ export const youScreens: BotsScreen[] = [
 
 **`ctx.live`** (no read of yours needed): `bots` (needs-you first, then working, then the built-ins, then the person's own; each with
 `color`, `icon`, `head`, `state`, `working`, `needs`, `doing`), `needs` (each with its question and ready `choices`: label, kind,
-action), `working`, `week` (`done`, `minutesSaved`), `usage` (the usage meter: `used` this stretch and `month` as fractions, `state`
+action), `working`, `week` (`done`, `minutesSaved`), `usage` (the usage meter: `used` this month and `month` as fractions, `state`
 ok / near / out, `resetsAt`, `windows`; section 12), `spend` (ours, never drawn), `tab` (what the tab icons show: the You ring is
 `usage.used`), `greeting`. It comes from GET /v1/bots's list (the four built-ins when BOTS is off), the Code bot's jobs (with the agent's waiting
 question), connected-app tasks, history stats; see live.ts's header.
@@ -159,7 +159,7 @@ an automatic charge, and **no amount on any screen** (section 12): not what Tail
 | `statusMark("working" \| "needs" \| "done" \| "waiting" \| "failed", { color, size })` | the five marks |
 | `botAvatar(look, size)` · `botChip(bot)` · `botTile(bot, { idle, onPress })` · `makeBotTile()` · `botLine(bot, idle)` | bot identity |
 | `meter(value, max, { label, valueText, segments })` · `stages(names, current, color)` | progress |
-| `usageMeter(label, used, { resets })` · `percent(used)` · `whenWords(at, now, tz)` | the usage meter: "This stretch · 64% used · Resets Thu 9 am" (section 12) |
+| `usageMeter(label, used, { resets })` · `percent(used)` · `whenWords(at, now, tz)` | the usage meter: "This month · 64% used · Resets Sun 1 Nov" (section 12) |
 | `timeline(items)` | bead timeline: each row's bead is its status mark |
 | `table(columns, rows)` | the window's tables |
 | `needsCard(item, { layout })` · `needsLabel` · `choiceRow` | a decision, one tap |
@@ -368,7 +368,7 @@ reaches a build that doesn't declare it.
 * **Do not edit** without the kit owner: `kit.ts` (additive only, see section 5), `live.ts`, `deps.ts`, `registry.ts`, `index.ts`,
   `ids.ts`, `glyphs.ts`, `palette.ts`, `server.ts`, `experience/screens.ts`, `experience/bootstrap/`, `shared/types/sdui.ts`, the phone and window renderers.
   **Never touch `tulmi/e2e`.**
-* Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two stretches counts in the later).
+* Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two months counts in the later).
   `profileGate.screenIds` is empty in the Bots app: the name and gender are asked only by the About you card on Home.
 
 ## 10. Live updates
@@ -462,46 +462,99 @@ into paise at the same rate, so it cancels and the meter counts dollars. A use t
 written in whole paise rounded up once (never per use). Keybot's words no longer count at a rate a thousand (`USAGE_KEYBOT_PAISE_PER_1000_WORDS`
 is gone): their real cost does. It stays ours, for the logs and the admin.
 
+* **One month, one allowance, spent whenever.** A plan gives a person an amount for the month and they may use all of it on one afternoon
+  or spread it over thirty days; nothing on the calendar refuses them in between. The month is the billing cycle when billing has one (the
+  entitlement's period end: its day and time, month after month), else the calendar month on the person's clock.
 * **The limits** are ours, per plan, in config.ts, in US dollars, validated at boot (zod: five positive amounts, or the server does not
-  start):
-  * Free, `USAGE_FREE_MONTH_USD` ($3): **no stretches**, one allowance for the month, which starts again when the month does. Every line a
-    free account sees says "this month" ("This month · 64% used · Resets Sun 1 Nov", "You've reached this month's limit. It resets Sun.").
-  * Lite, `USAGE_LITE_STRETCHES_USD` ("4,8,6,10,7": $35 a month); while `FREE_FOR_ALL` is on, everyone without a plan has Lite's stretches
+  start). A plan's month is the **sum** of its five amounts:
+  * Free, `USAGE_FREE_MONTH_USD` ($3).
+  * Lite, `USAGE_LITE_STRETCHES_USD` ("4,8,6,10,7": $35 a month); while `FREE_FOR_ALL` is on, everyone without a plan has Lite's month
     and nothing is offered to buy.
   * Elite, `USAGE_ELITE_STRETCHES_USD` ("50,70,80,100,150": $450 a month), by the product bought (`PLAN_ELITE_PRODUCTS`).
-  * `USAGE_TIERS` (`{"<entitlement id>": "a,b,c,d,e"}` for a paid tier's own stretches), `USAGE_CARRY_OVER` (false), `USAGE_NEAR` (0.8),
-    `USAGE_LIMITS` (true; false shows the meter and refuses nothing).
-* **The stretches** (src/you/usage.ts): a Lite or Elite month is used in five, days 1–4, 5–9, 10–15, 16–22 and 23 to the end (8 days in a
-  30-day month, fewer in February). Each may use **its own amount** from the plan, in order, whatever its length; what it did not use is gone
-  when it ends unless `USAGE_CARRY_OVER` (then the amounts so far, less what was used before it). The month may use the sum. The month is the
-  billing cycle when billing has one (the entitlement's period end: its day and time, month after month), else the calendar month on the
-  person's clock.
+  * `USAGE_TIERS` (`{"<entitlement id>": "a,b,c,d,e"}` for a paid tier's own month), `USAGE_NEAR` (0.8), `USAGE_LIMITS` (true; false shows
+    the meter and refuses nothing).
+  * Every line every plan sees says "this month": "This month · 64% used · Resets Sun 1 Nov", "You've reached this month's limit. It
+    resets Sun."
+* **The five windows, and the way back** (src/you/usage.ts): a month used to be cut into five "stretches" — days 1–4, 5–9, 10–15, 16–22
+  and 23 to the end — each with its own amount from the plan. It read as a plan rule but it was really a brake on runaway spending, and it
+  punished the person who did a week's work in two days. `USAGE_STRETCHES` (**off**) puts it back exactly as it was, which is why the
+  amounts keep their `_STRETCHES_` names, why `stretchesOf` / `stretchAmounts` are still here and tested, and why `USAGE_CARRY_OVER`
+  (false: with the windows on, what one did not use carries into the next) still exists. With the windows off there is nothing to carry.
+* **The burn brake** (`Spending.burning`, src/you/limits.ts; `burnCapPaise`, usage.ts): **not a plan feature**. With one month and no
+  windows, nothing on the calendar stops a loop with a bug from eating a person's month in an afternoon, so there is a ceiling on what one
+  person may spend in one **hour**, worked out from their own plan's month: a month is about 720 hours and an hour may spend
+  `USAGE_BURN_TIMES` (48) of those average hours — $2.33 an hour on Lite, $30 on Elite, roughly ten times a heavy real hour, so nobody
+  working normally meets it. `USAGE_BURN_TIMES=0` switches it off. It is never advertised, never drawn on the Usage screen and never a
+  reason to buy anything: someone who meets it gets the overload guard's own 429, `{ code: "overloaded", reason: "too_fast", message: "X0
+  Bot is busy right now. Try again in a moment.", retryAfterSec: 60 }`, because that is what has happened from where they stand — their
+  month is not spent, so "you've reached your limit" would be false and offering them a plan for it would be selling against our own bug.
+  It is asked on a bot's answer (`gate`), on the job routes (`holdJobsToUsage`) and — since the gate stopped answering with a
+  bare sentence — on everything that goes through `metering.enforceQuota` too (`Spending.quota`): Keylessbord's dictation and
+  rewrites, the old Ask, notes and the front door. The month's own refusal is always asked first and keeps its own words.
+* **Sharing a plan** (`PLAN_SHARE`, **off**; src/billing/planShare.ts, migration 0096, **docs/plan-share.md**): a plan is a
+  month's allowance on ONE account, so sharing it means other accounts draw on that SAME allowance — one shared pot, no seat
+  price and no seat count, because the allowance itself is the ceiling. `payerFor(userId)` is the one rule (their own live plan
+  always wins; only someone with none draws on another's), and the whole meter is keyed on its answer at two points and no
+  others: `Spending.read` for every read and `Spending.record` for every write, so a member's spend lands on the owner's month
+  and the owner's plan decides what they get. Nothing here is shown as money, and nothing about it is for sale.
 * **Plans' one line** (routes/bots/botsFirstRun.ts `planLine`): how many times the free month a plan's month is, from the same config: Lite
   35 / 3 → "11× more every month, for all your bots", Elite 450 / 3 → "150×".
 * **Not on the meter yet**: gateway calls that belong to no job, bot answer or front-door message (a note's to-dos, `notes/extract.ts`; an
   artifact's edits and asks, held to their own daily caps, `ARTIFACT_*_DAILY_PAISE`), and an old-Ask planner stream stopped before
   OpenRouter's last chunk (its charge never arrives). They are still in OpenRouter's own records and the run ledger.
 * **OpenRouter's side**: the server calls OpenRouter with one shared key (`OPENROUTER_API_KEY`); there are no per-person OpenRouter keys to
-  put a ceiling on, so the backend is the ceiling: every paid call is refused before it is made once the stretch or the month is used.
-* **The one answer**: `Spending.usage(userId)` (src/you/limits.ts) gives the stretch and the month as fractions used, when each resets,
-  near (from 80%) or out. `GET /v1/you/usage` serves it to the Usage page with the lines to show (`near`, `out`, `how`); `GET /v1/you/live`
-  to every screen (`ctx.live.usage`, the You tab's ring).
+  put a ceiling on, so the backend is the ceiling: every paid call is refused before it is made once the month is used.
+* **The one answer**: `Spending.usage(userId)` (src/you/limits.ts) gives the month as a fraction used, when it starts again, near (from
+  80%) or out. `GET /v1/you/usage` serves it to the Usage page with the lines to show (`near`, `out`, `how`); `GET /v1/you/live`
+  to every screen (`ctx.live.usage`, the You tab's ring). The answer's shape is unchanged — `usage.stretch` is the window being used,
+  which is the whole month unless `USAGE_STRETCHES` — so no app needs an update.
 * **Where it is kept**: a new Code bot job's budget, and "Keep going" (`/budget`, a part's `/rerun`), are held to what is left of the
-  stretch (`holdJobsToUsage`); a bot's answer (`wrapBots`: Bots.ask / test / askWithKey, so Ask's too); Keybot, the old Ask and the
+  **month** (`holdJobsToUsage`); a bot's answer (`wrapBots`: Bots.ask / test / askWithKey, so Ask's too); Keybot, the old Ask and the
   front door through `metering.enforceQuota` (`setUsageGate`). Out of allowance is 429 `{ code: "quota_exceeded", reason: "usage_limit",
-  message: "You've reached this stretch's limit. It resets Thu 9 am.", resetsAt, upgrade }`; the apps open the bootstrap's
+  message: "You've reached this month's limit. It resets Sun 1 Nov.", resetsAt, upgrade }`; the apps open the bootstrap's
   `quota.screenId`, which in the Bots app is `bots.usage`. The keyboard's stop screen (`words_out`) says the same when it was the meter.
-* **The screens**: Usage (`bots.usage`, and `bots.budget` for older links): "This stretch · 64% used · Resets Thu 9 am", "This month ·
-  40% used", which stretch of five, how they work; near the limit a calm line ("You've used most of this stretch. It resets Thu."), at it
-  the sentence and, when a plan is for sale, "Get more with a plan" (opens Plans, whose buttons open the store's own sheet). You, Billing
-  and Settings show the meter's share; the Code bot's home the near / at line; a job asks "This job has used a lot of this stretch. Keep
-  going?" and shows how much of what it was given it used, as a share. Project rules' "Checks with you" (Often, Sometimes, Rarely) sets
-  how much of the stretch a job may use before it asks. Every one of these says "this month" to a free account (kit.ts `spanOf`; a
-  job's own pause words through you/span.ts, and words true for every plan where the plan cannot be known, as on the Worker).
+  The burn brake is the one thing here that does NOT answer `quota_exceeded`; see its bullet above — the gate answers a whole
+  429 body now (`usage/metering.ts` `Quota`, `quotaBody`, `quotaHeaders`), not a sentence, which is what lets the brake guard
+  that path at all: a sentence sent down it came out wearing the quota code, sending the person to a Usage screen showing a
+  meter nowhere near full. A sentence still works and still means `quota_exceeded`.
+* **The screens**: Usage (`bots.usage`, and `bots.budget` for older links): "This month · 64% used · Resets Sun 1 Nov" and a line on how
+  it works; near the limit a calm line ("You've used most of this month. It resets Sun."), at it the sentence and, when a plan is for
+  sale, "Get more with a plan" (opens Plans, whose buttons open the store's own sheet). You, Billing and Settings show the meter's share;
+  the Code bot's home the near / at line; a job asks "This job has used a lot of this month. Keep going?" and shows how much of what it
+  was given it used, as a share. Project rules' "Checks with you" (Often, Sometimes, Rarely) sets how much of the month a job may use
+  before it asks. Every one of these reads its word off the meter's `windows` (kit.ts `spanOf`; a job's own pause words through
+  you/span.ts, and words true for every plan where the plan cannot be known, as on the Worker), so a server that sets `USAGE_STRETCHES`
+  gets "this stretch" back on every one of them with no other change.
 * **Payments** (a space's requests; Approve, where a bot's UPI hand-off lands): what it is for, who asks, approve or decline. The UPI link
   opens without an amount (`am` is optional, shell/parse.ts `upiOf` drops it): the person types it in their UPI app (migration 0055 lets
   a request carry none). The hand-off tool itself (connectors/handoffs) still takes the amount the person said, for the old app.
 * **Travel**: stays are compared by area, distance and rating (no "Cheaper"), with a link to see prices on the booking site.
+* **Per-person concurrency is the same for everyone** (`GUARD_USER_CONCURRENCY_FREE` now 3, the same as `GUARD_USER_CONCURRENCY`;
+  src/guard/limiter.ts, docs/front-door.md). A non-payer is no longer held to one request at a time — while `FREE_FOR_ALL` is on nearly
+  everybody is "free", and one at a time made the app feel broken. Paying still buys a place in the queue ahead of a free request. Abuse
+  prevention's slowed accounts have their own cap (`perUserSlowed`, 1) so that stayed exactly as it was.
+
+### 12a. The per-day caps that are still there, and what has to happen before they can go
+
+The money meter is one month, one allowance. These are **separate, older caps** that count things per day or per minute instead, and
+several of them are the ONLY brake on a surface whose spend does not reach the meter yet. Nothing here is a plan feature and none of it is
+advertised; a person who meets one is told to try again later, not to buy anything. They stay until the surface they guard spends through
+the meter, at which point the meter's month and its burn brake do the job and the cap can be deleted.
+
+| Cap | Default | What it protects | Before it can go |
+| --- | --- | --- | --- |
+| `FRONT_DAILY_PAISE` | 1,500 paise | the front door's own small-model reads, replies, research and plans for one person in a day | front-door spend is on the meter (`metering.enforceQuota` gates it, but not every path records against `you_spend`); route all of it through `recordUsd` first |
+| `ARTIFACT_DAILY_PAISE` | 2,000 paise | one person's artifact makings, edits and fixes in a day | artifact model spend is not on the meter at all (listed under "Not on the meter yet" above); send it through `setCostSink` first |
+| `ARTIFACT_ASK_DAILY_PAISE` | 500 paise | what an artifact asking the bot may cost **the person who opened it** (never the owner) in a day | the same, plus a decision on whose month a visitor's ask should come out of — today it comes out of nobody's |
+| `BOT_DAILY_PAISE` / `BOT_REQUEST_PAISE` (and their `_MAX`) | 800 / 150 paise | what ONE bot a person made may spend in a day and on a request — a per-bot budget the owner sets, not a per-person one | nothing: this is a knob the person owns on their own bot, and it stays even when everything is on the meter |
+| `BOT_KEY_DAILY_PAISE` / `BOT_KEY_RATE_PER_MIN` | 500 paise / 30 a minute | an API key handed to someone else's code, which is not a person and has no month | nothing: a key is not an account. It stays |
+| `EVERYDAY_DAILY` | 40 searches | flight and hotel lookups (Kiwi, trivago), free services with their own fair-use rules | these cost us nothing and so can never be metered in money; the cap is the fair-use promise. It stays |
+| `WEB_SEARCH_DAILY` / `WEB_RESEARCH_DAILY` | 200 / 30 a day | general web search and research runs against SearXNG, Brave and Stack Exchange | the searches themselves are free or flat-rate, so there is no cost to meter; the model work around a research run already is. Could go once per-run model spend covers the whole run |
+| `MEET_DAILY_MINUTES` | 240 minutes | Recall bills the meeting bot by the minute | meeting minutes are a real cost and could be priced into the meter; until they are, this is the only ceiling |
+| `ROOM_DAILY_MINUTES`, `ROOM_MAX_PEOPLE`, `MADE_PER_DAY` (rooms/service.ts, 100) | 600 minutes / 10 people / 100 rooms | the SFU bills by the gigabyte that leaves it | the same: price call minutes into the meter first |
+| `RATE_LIMIT_MAX` / `RATE_LIMIT_WINDOW_MS` (http/plugins.ts), the guards in src/guard, `PLACES_RATE_MS` | per route / per process | requests, not money: a loop hammering a route, the process running more at once than it can, the public geocoder's fair use | nothing. These are not allowances and have nothing to do with plans |
+| `FREE_DAILY_AGENT_PICTURES` | 100 | pictures an agent may make in a day | picture spend on the meter |
+| Everything in src/trust | — | abuse prevention's own holds (`slowedDown`, `heldFreeUse`): not caps, and both still work exactly as before | nothing. They are the floor under all of this |
 
 ## 13. Looks and moments
 

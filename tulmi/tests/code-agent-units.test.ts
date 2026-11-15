@@ -837,8 +837,11 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     const { budgetShortfall } = await import("../src/code/agent/loop.js");
     const spent = budgetShortfall({ spent: 250, budget: 250 }, 0);
     expect(spent).toMatchObject({ kind: "spent" });
-    expect(spent.words).toBe("This job used what it was given of this stretch before the work was finished.");
-    expect(spent.ask).toBe("This job has used a lot of this stretch.");
+    // One month, one allowance: "this month" is what every plan hears now (src/you/span.ts), and the five windows are the
+    // caller's to name when USAGE_STRETCHES puts them back.
+    expect(spent.words).toBe("This job used what it was given of this month before the work was finished.");
+    expect(spent.ask).toBe("This job has used a lot of this month.");
+    expect(budgetShortfall({ spent: 250, budget: 250 }, 0, "this stretch").ask).toBe("This job has used a lot of this stretch.");
     expect(budgetShortfall({ spent: 300, budget: 250 }, 120).kind).toBe("spent");
   });
 
@@ -848,7 +851,7 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     expect(r).toMatchObject({ kind: "short", needPaise: 330, leftPaise: 247 });
     expect(r.words).toBe("The next step needs more than this job has left, so I stopped before the work was finished.");
     expect(r.words).not.toContain("used what it was given");
-    expect(r.ask).toBe("This job's next step needs more of this stretch.");
+    expect(r.ask).toBe("This job's next step needs more of this month.");
   });
 
   it("does not invent a number it does not have", async () => {

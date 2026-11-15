@@ -11,6 +11,7 @@
  *   Plan Ease's own: done / later on a to-do, move / keep on a Move card, and what later steps add (pt:, pe:, pm:, pc:), each answered by
  *   botsBots/planEase.ts through the calendar the Plan page uses; a widget needs task.done for a to-do, needs.answer for a card
  *   a followed item's Done, Later, Can't and I'll do it (follow-through)                                    pf:<followId>:<n>      task.done
+ *   share / decline  share your plan with whoever asked, or quietly leave it      psa:<askId>            session only
  *
  * WHO MAY. Everything is the person's own: the services check it again (a job is its owner's, a task's yes is its owner's, a space
  * task only for whom it is for, a chat only for who may write there). A widget's token (token.ts) may only do what its scopes say,
@@ -134,6 +135,14 @@ export interface ActParts {
     scope(item: QuickItem, action: string): WidgetScope | "session" | null;
     act(userId: string, item: QuickItem, action: string): Promise<ActResult>;
   } | null;
+  /**
+   * Sharing a plan (billing/planShareActs.ts; PLAN_SHARE, off): the two buttons on the ask's notification, Share and Not now.
+   * The same door, the same checks and the same answer as the card in Activity. Null while the switch is off: nothing answers.
+   */
+  planShare?: {
+    scope(item: QuickItem, action: string): WidgetScope | "session" | null;
+    act(userId: string, item: QuickItem, action: string): Promise<ActResult>;
+  } | null;
   /** A Xode job: its question now (jobs/router.ts + deps.ts jobLite), and the answer (agent/orchestrator.ts answer). */
   jobs: {
     question(userId: string, jobId: string): Promise<{ text: string; options: string[] } | null>;
@@ -177,6 +186,8 @@ function scopeFor(item: QuickItem, action: string, parts: ActParts): WidgetScope
   // A family ask's buttons on a space task (I'll do it, I'm in, Can't do it, Ask): Plan Ease's, through the same door.
   if (item.kind === "stask") return parts.plan ? parts.plan.scope(item, action) : null;
   if (item.kind === "thread" && action === "reply") return "session";
+  // An ask to be put on your plan: its notification's Share and Not now (billing/planShareActs.ts).
+  if (item.kind === "psa") return parts.planShare ? parts.planShare.scope(item, action) : null;
   return null;
 }
 
@@ -278,6 +289,10 @@ export class QuickActs {
         if (!said) return no(400, "bad_request", "That isn't one of its answers.");
         await j.answer(userId, item.jobId, said);
         return ok("done");
+      }
+      case "psa": {
+        if (!this.parts.planShare) return no(404, "off", "That isn't there any more.");
+        return this.parts.planShare.act(userId, item, action);
       }
       case "pt": case "pe": case "pm": case "pc": case "pl": case "pf": {
         if (!this.parts.plan) return no(404, "off", "That isn't there any more.");

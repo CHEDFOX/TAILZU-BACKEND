@@ -197,21 +197,20 @@ describe("the hold", () => {
     expect(payer?.applied).toBe("none");
   });
 
-  it("gives the free month's one allowance instead of Lite's five stretches, and nothing else", async () => {
+  it("gives the free month's $3 instead of Lite's $35, and nothing else", async () => {
     const c = getConfig();
     const free = planOf(null, c);
-    expect(free.stretchPaise).not.toBeNull();
     turnOn("hold");
     await look({ userId: "u-held", ip: tor(15), paid: false, ...BAD, createdAt: TWO_DAYS, now: NOW });
     const held = planOf(null, c, { userId: "u-held" });
-    expect(held.stretchPaise).toBeNull();
+    // Both are one month with one allowance now, so the hold shows in the SIZE of the month, not in whether it has windows.
     expect(held.windows).toBe(false);
     expect(held.monthPaise).toBeLessThan(free.monthPaise);
     // The same name and the same screens as any free account: nothing on a screen says "held".
     expect(held.name).toBe("Free");
     expect(held.paid).toBe(false);
     // Somebody else is untouched.
-    expect(planOf(null, c, { userId: "u-other" }).stretchPaise).not.toBeNull();
+    expect(planOf(null, c, { userId: "u-other" }).monthPaise).toBe(free.monthPaise);
   });
 
   /**
@@ -227,18 +226,18 @@ describe("the hold", () => {
       return { store, spending: new Spending({ store, jobs: null, entitlement: async () => null, now: () => NOW }) };
     };
 
-    // Free for everyone, as it ships: five stretches, and the meter says so.
+    // Free for everyone, as it ships: Lite's whole month, in one piece.
     const open = meterFor("u-meter-open");
     const openNow = await open.spending.usage("u-meter-open");
-    expect(openNow.plan.windows).toBe(true);
-    expect(openNow.stretch.of).toBe(5);
+    expect(openNow.plan.windows).toBe(false);
+    expect(openNow.stretch.of).toBe(1);
 
     turnOn("hold");
     await look({ userId: "u-meter", ip: tor(18), paid: false, ...BAD, createdAt: TWO_DAYS, now: NOW });
     expect(heldFreeUse("u-meter")).toBe(true);
     const held = meterFor("u-meter");
     const heldNow = await held.spending.usage("u-meter");
-    // The free month's one allowance: no stretches, and far less of it than Lite's.
+    // The free month's $3: one allowance still, but far less of it than Lite's $35.
     expect(heldNow.plan.windows).toBe(false);
     expect(heldNow.stretch.of).toBe(1);
     expect(heldNow.allowancePaise).toBeLessThan(openNow.allowancePaise);
@@ -333,11 +332,16 @@ describe("the slow", () => {
     expect(slowedDown("u-slow", NOW)).toBe(true);
     expect(heldFreeUse("u-slow", NOW)).toBe(false);
     // And the free plan's own numbers are untouched: a slow is about speed, not about what may be used.
-    expect(planOf(null, getConfig(), { userId: "u-slow" }).stretchPaise).not.toBeNull();
+    expect(planOf(null, getConfig(), { userId: "u-slow" }).monthPaise).toBe(planOf(null, getConfig()).monthPaise);
   });
 
+  /**
+   * The slow used to work by making the person count as free, back when the free plan ran one request at a time. Free and paying now run
+   * the same number at once, so the slow has a cap of its own (`perUserSlowed`) and this test builds the limiter with the free cap at its
+   * real value — the same as the paid one — to prove the slow is not leaning on it any more.
+   */
   it("takes a slowed person down to one request at a time, however their plan reads", async () => {
-    const limiter = new ConcurrencyLimiter({ global: 10, perUser: 3, perUserFree: 1, queuePerUser: 4, queueMax: 10 });
+    const limiter = new ConcurrencyLimiter({ global: 10, perUser: 3, perUserFree: 3, queuePerUser: 4, queueMax: 10 });
     // Not slowed: a paid person gets their three.
     const a = await limiter.acquire("paid-one", "paid");
     const b = await limiter.acquire("paid-one", "paid");

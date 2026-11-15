@@ -81,7 +81,7 @@ And the one that is not negotiable: **no account is ever closed on this.** The s
 - `routes/app/appScreens.ts` — the bootstrap. The one request that has already read the entitlement and the address, so this
   is where an action is decided, where a `trust` ask is added to the answer, and where the `trust.installId` flag is sent
   (the app sends its install number only while that flag is true, and it is false in the defaults).
-- `guard/limiter.ts` and `http/plugins.ts` — a slowed account takes the free plan's single slot and a quarter of the rate
+- `guard/limiter.ts` and `http/plugins.ts` — a slowed account is held to one request at a time (`perUserSlowed`, its own cap since free and paid were levelled) and a quarter of the rate
   limit. Both read an **installed** check (`installSlowCheck`), so neither file imports any of this.
 - `you/usage.ts` and `usage/allowance.ts` — a held account gets the free month's one allowance instead of Lite's five
   stretches, and earns no words. Also an installed check (`installHoldCheck`). The refusal is the existing 429

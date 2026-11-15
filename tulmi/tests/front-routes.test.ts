@@ -138,7 +138,7 @@ describe("off unless FRONT_DOOR", () => {
     for (const k of ["FRONT_DOOR", "FRONT_DAILY_PAISE", "GUARD_GLOBAL_CONCURRENCY", "GUARD_USER_CONCURRENCY", "GUARD_USER_CONCURRENCY_FREE", "GUARD_QUEUE_MAX", "GUARD_QUEUE_PER_USER", "GUARD_QUEUE_WAIT_MS"]) {
       expect(ENV_KEYS).toContain(k);
     }
-    expect(getConfig()).toMatchObject({ GUARD_GLOBAL_CONCURRENCY: 64, GUARD_USER_CONCURRENCY: 3, GUARD_USER_CONCURRENCY_FREE: 1 });
+    expect(getConfig()).toMatchObject({ GUARD_GLOBAL_CONCURRENCY: 64, GUARD_USER_CONCURRENCY: 3, GUARD_USER_CONCURRENCY_FREE: 3 });
     process.env.FRONT_DOOR = "true";
     resetConfigForTests();
     try { expect(createFront({ call: noModel().call })).not.toBeNull(); } finally { delete process.env.FRONT_DOOR; resetConfigForTests(); }

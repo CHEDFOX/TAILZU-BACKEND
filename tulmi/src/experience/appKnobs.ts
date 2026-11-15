@@ -13,6 +13,7 @@ import { spacesOn } from "../botsBots/spacesSwitch.js";
 import { CALL_CATEGORIES, FOLLOW_CATEGORIES, PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
 import { callsOn, followOn, planOn } from "../botsBots/planSwitch.js";
 import { BOT_REPLY_CATEGORIES, notifyReplyOn } from "../bots/notifyReply.js";
+import { PLAN_SHARE_CATEGORIES, planShareOn } from "./bots/planShare.js";
 
 /** The Home Screen's long-press actions, a list per platform (appKnobsData.ts). */
 const QUICK_ACTIONS = ["app.quickActions.android", "app.quickActions.ios"] as const;
@@ -75,6 +76,20 @@ export const CATALOG_CONDITIONAL: ReadonlySet<string> = new Set([
  * NOTIFY_REPLY is on for this person, so while the switch is off no phone registers it and no push can carry it. Its button is a
  * `call`, so nothing on the phone has to change for it to work.
  */
+/**
+ * Sharing a plan (planShare.ts): one category, two actions — "Share" and "Not now" — so an ask can be answered from the
+ * notification itself, through the same door every other button uses (POST /v1/widgets/act). Nothing at all while
+ * PLAN_SHARE is off, and nothing while this person is not on its list.
+ */
+function withPlanShare(flags: Record<string, unknown>, userId?: string): Record<string, unknown> {
+  if (!planShareOn(userId)) return flags;
+  const out = { ...flags };
+  const cats = Array.isArray(out["push.categories"]) ? (out["push.categories"] as Array<{ id?: unknown }>) : [];
+  const have = new Set(cats.map((c) => c?.id));
+  out["push.categories"] = [...cats, ...PLAN_SHARE_CATEGORIES.filter((c) => !have.has(c.id)).map((c) => structuredClone(c) as unknown)];
+  return out;
+}
+
 function withBotReply(flags: Record<string, unknown>, userId?: string): Record<string, unknown> {
   if (!notifyReplyOn(userId)) return flags;
   const out = { ...flags };
@@ -120,7 +135,7 @@ export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags
   return {
     ...boot,
     labels: { ...APP_KNOB_LABELS, ...PERM_CARD_LABELS, ...(boot.labels ?? {}) },
-    flags: withBotReply(withPlanPush(withoutSpacesAction({ ...fill, ...(boot.flags ?? {}) })), who.userId) as T["flags"],
+    flags: withPlanShare(withBotReply(withPlanPush(withoutSpacesAction({ ...fill, ...(boot.flags ?? {}) })), who.userId), who.userId) as T["flags"],
   };
 }
 

@@ -266,11 +266,46 @@ export async function usageEventsSince(
  * nobody, which is the default.
  */
 /**
- * The usage meter's answer for a person: its refusal sentence ("You've reached
- * this stretch's limit. It resets Thu 9 am.") or null. Set by the You routes
- * (routes/bots/botsYou.ts) over src/you/limits.ts; unset, nothing is asked.
+ * A WHOLE 429 BODY, where the refusal is not the ordinary "you have run out".
+ *
+ * The meter used to answer this path with a SENTENCE and nothing else, and every caller turned a sentence into
+ * `{ code: "quota_exceeded", message }`. That made one thing impossible: the burn brake (you/limits.ts `burning`) could not be
+ * asked here, because its words sent down a `quota_exceeded` pipe would open the Usage screen on a meter nowhere near full and
+ * read as a nudge to buy a plan — for a runaway that is ours, not theirs. So the gate may answer a body instead, with its own
+ * code (`overloaded`, `reason: "too_fast"`, a Retry-After), and the brake now guards Keylessbord's dictation and rewrites, the
+ * old Ask, notes and the front door exactly as it already guards the bots platform and Xode's jobs.
  */
-export type UsageGate = (userId: string) => Promise<string | null>;
+export interface QuotaRefusal {
+  /** What the app reads: "quota_exceeded" opens the bootstrap's `quota.screenId`; "overloaded" is the busy answer, like the guard's. */
+  code: string;
+  message: string;
+  reason?: string;
+  retryAfterSec?: number;
+  resetsAt?: number;
+  upgrade?: boolean;
+}
+
+/** A refusal: a plain sentence (the month's own, as it always was) or a whole body. */
+export type Quota = string | QuotaRefusal;
+
+/** The 429 body for a refusal. A sentence is the month's refusal and keeps the code every app already knows. */
+export function quotaBody(q: Quota): QuotaRefusal {
+  return typeof q === "string" ? { code: "quota_exceeded", message: q } : { ...q };
+}
+
+/** The headers a refusal asks for: Retry-After where it named one, nothing otherwise. */
+export function quotaHeaders(q: Quota): Record<string, string> {
+  const sec = typeof q === "string" ? 0 : Math.max(0, Math.round(Number(q.retryAfterSec) || 0));
+  return sec ? { "retry-after": String(sec) } : {};
+}
+
+/**
+ * The usage meter's answer for a person: its refusal sentence ("You've reached
+ * this month's limit. It resets Sun 1 Nov."), a whole body where the ordinary
+ * words would be wrong, or null. Set by the You routes (routes/bots/botsYou.ts)
+ * over src/you/limits.ts; unset, nothing is asked.
+ */
+export type UsageGate = (userId: string) => Promise<Quota | null>;
 let usageGate: UsageGate | null = null;
 export function setUsageGate(g: UsageGate | null): void { usageGate = g; }
 
@@ -297,7 +332,7 @@ export function isQuotaExempt(id: string, configured: string | undefined): boole
 export async function enforceQuota(
   user: AuthedUser,
   opts: { agentAudio?: boolean; picture?: boolean } = {},
-): Promise<string | null> {
+): Promise<Quota | null> {
   // The usage meter first (src/you/limits.ts): every plan has one, paid and
   // free-for-all included, and its sentence says when it resets. Operator
   // tokens skip it as they skip the rest. A meter that cannot be read lets
