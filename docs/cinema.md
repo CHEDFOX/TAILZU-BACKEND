@@ -302,10 +302,37 @@ each time a screen is drawn; never the storage's own address. Refusals are `{ co
 `no_model`, `cinema_film_cap`, `cinema_day`, `quota_exceeded`, `ai_consent_needed`, `bad_photo`, `bad_link`.
 
 **The bot himself.** The cinema bot wears the **director** (`shared/bots/looks.json`): a charcoal cap and a viewfinder on a cord at his
-neck. He has three moments of his own: `c.clap` (he holds the clapperboard up, swings it open and claps it: his Home card, over and over),
+neck. Three moments are his small ones: `c.clap` (he holds the clapperboard up, swings it open and claps it: his Home card, over and over),
 `c.frame` (he makes a frame with his hands and finds the shot: the page before the first film) and `c.premiere` (he throws the film up in
 the air, once, when one is finished). The parts they are drawn from (`slate`, `clapstick`, `lens`, `filmframe`) are in the catalog too, and
 the apps' starter copies are regenerated with it (`TAILZU-FRONTEND/app/src/botTiles/genStarter.mjs`).
+
+**The making, acted out** (`screens/bots/cinemaMaking.ts`). While a film is being made the card in the talk does not show a bar filling up.
+It shows **the frame it is being made in** - the very shape that was asked for - and him inside it, doing the job the film is actually at:
+
+| where the film is | what you see |
+| --- | --- |
+| `writing`, `script` | `c.script`: he writes on the pad, reads it back, screws the page up and throws it, walks out of frame to think, comes back with the one that works |
+| `boarding`, `board` | `c.board`: he draws the storyboard on its easel, leans back on his heels to see whether it reads, goes in again |
+| `rendering` | `c.shoot`: the crew come in from the right with the camera and the light, he claps the board, and it rolls - the light warm, him watching the frame |
+| `cutting` | `c.cut`: the bench, the takes going past him on the monitor, the frames he keeps drifting up out of it |
+| a picture | `c.sketch`: he draws it at the board, leans back to look at it, and carries the board off when it is done |
+| `done` | the film itself, with Watch, Save it and Open it |
+
+The crew are **the same cinema blip, smaller** (`crew_cam`, `crew_lamp`: a camera on sticks and a light on a stand, each with a blip at
+0.62 of his height, cap and all). Everything they need is in the catalog as parts - `script_pad`, `paperwad`, `easel`, `monitor` - so the
+whole performance is a catalog push, not an app release.
+
+Three things hold the staging together, and a new recipe has to keep them:
+
+- **A ground prop's `x` is bot-heights forward of him, and it mirrors when he turns.** So a recipe that puts something on the floor must
+  not walk him past it afterwards, or the set jumps to his other side. `c.board`, `c.cut` and `c.sketch` move him once, before the props
+  come out, and `loopFrom` keeps that walk out of the loop.
+- **`walk`'s `x` is a share of the stage, not bot-heights** (`dx` is bot-heights). Each recipe opens with `walk x 0.22`: he takes the left
+  of the room so the floor to his right is the set.
+- **The room is kept about three and a half of him wide**, whatever the frame's shape, by `makingFrame`'s `size` (`min(h * 0.52, w / 3.6)`).
+  That is what lets one recipe play in a 16:9 frame and a 9:16 one: the marks the crew walk to are in bot-heights, and the room is always
+  the same number of them across. A build that draws no bot gets the frame alone, in the film's shape, which is still the truth of it.
 
 **The screens** (`experience/bots/screens/bots/cinemaPage.ts`, `cinemaScreens.ts`; drawn by the apps from the server, no app release):
 

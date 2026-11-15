@@ -1,5 +1,5 @@
 {
-  "v": 5,
+  "v": 6,
   "format": 2,
   "note": "The bots' looks and moments (docs/bots-app.md, 'Looks and moments'). Data the apps draw and play: change it, raise v by one, and the apps take it at their next start. tulmi/src/experience/bots/looks.ts checks every field; the apps' starter copy is generated from this file.",
   "parts": {
@@ -279,6 +279,59 @@
       {"d": "M -0.05 -0.034 L 0.05 -0.034 L 0.05 0.034 L -0.05 0.034 Z", "fill": "ink"},
       {"d": "M -0.032 -0.021 L 0.032 -0.021 L 0.032 0.021 L -0.032 0.021 Z", "fill": "$paint"},
       {"d": "M -0.044 -0.029 L -0.037 -0.029 M -0.044 0.029 L -0.037 0.029 M 0.037 -0.029 L 0.044 -0.029 M 0.037 0.029 L 0.044 0.029", "stroke": "paper", "width": 0.008}
+    ] },
+    "paperwad": { "note": "A page screwed into a ball: what a line he does not like turns into.", "draw": [
+      {"d": "O 0 0 0.038", "fill": "#F3EEE2", "stroke": "ink", "width": 0.01},
+      {"d": "M -0.022 -0.012 L 0.004 0.008 M 0.018 -0.022 L 0.006 0.006 M -0.014 0.024 L 0.01 0.014", "stroke": "ink", "width": 0.006, "alpha": 0.5}
+    ] },
+    "script_pad": { "note": "The script on a board, held flat in one hand: a clip, a page, and the lines going down it.", "draw": [
+      {"d": "M -0.11 -0.17 L 0.11 -0.17 L 0.115 0.115 L -0.105 0.115 Z", "fill": "#F3EEE2", "stroke": "ink", "width": 0.012},
+      {"d": "M -0.072 -0.12 L 0.072 -0.12 M -0.072 -0.073 L 0.072 -0.073 M -0.072 -0.026 L 0.04 -0.026 M -0.072 0.021 L 0.072 0.021 M -0.072 0.068 L 0.025 0.068", "stroke": "ink", "width": 0.008, "alpha": 0.45},
+      {"d": "M -0.115 -0.186 L 0.115 -0.186", "stroke": "#3B3F47", "width": 0.024}
+    ] },
+    "monitor": { "note": "The cutting bench: a screen on a short stand with a frame up on it and the bar it is scrubbed along.", "draw": [
+      {"d": "M -0.02 0 L -0.02 -0.12 M -0.14 0 L 0.1 0", "stroke": "ink", "width": 0.022},
+      {"d": "M -0.26 -0.53 L 0.22 -0.53 L 0.22 -0.12 L -0.26 -0.12 Z", "fill": "#3B3F47"},
+      {"d": "M -0.225 -0.495 L 0.185 -0.495 L 0.185 -0.16 L -0.225 -0.16 Z", "fill": "#F3EEE2"},
+      {"d": "M -0.19 -0.21 L -0.09 -0.34 L 0.0 -0.26 L 0.09 -0.37 L 0.175 -0.21 Z", "fill": "$paint", "alpha": 0.5},
+      {"d": "O 0.1 -0.43 0.034", "fill": "#F2D58A"},
+      {"d": "M -0.2 -0.185 L 0.16 -0.185", "stroke": "ink", "width": 0.012, "alpha": 0.4}
+    ] },
+    "easel": { "note": "The storyboard on its legs: four empty frames and the scribbles going into them. Stands on the ground.", "draw": [
+      {"d": "M -0.19 0 L -0.085 -0.42 M 0.19 0 L 0.085 -0.42", "stroke": "#7A5A3A", "width": 0.026},
+      {"d": "M -0.15 -0.21 L 0.15 -0.21", "stroke": "#7A5A3A", "width": 0.018},
+      {"d": "M -0.28 -0.78 L 0.28 -0.78 L 0.28 -0.38 L -0.28 -0.38 Z", "fill": "#F3EEE2", "stroke": "ink", "width": 0.014},
+      {"d": "M -0.24 -0.73 L -0.03 -0.73 L -0.03 -0.60 L -0.24 -0.60 Z M 0.03 -0.73 L 0.24 -0.73 L 0.24 -0.60 L 0.03 -0.60 Z M -0.24 -0.55 L -0.03 -0.55 L -0.03 -0.42 L -0.24 -0.42 Z M 0.03 -0.55 L 0.24 -0.55 L 0.24 -0.42 L 0.03 -0.42 Z", "stroke": "ink", "width": 0.008, "alpha": 0.55},
+      {"d": "M -0.2 -0.64 L -0.13 -0.69 L -0.07 -0.63 M 0.08 -0.66 L 0.14 -0.7 M 0.09 -0.63 L 0.2 -0.63", "stroke": "$paint", "width": 0.01, "alpha": 0.8},
+      {"d": "M -0.2 -0.47 L -0.1 -0.51 M -0.19 -0.44 L -0.07 -0.44", "stroke": "$paint", "width": 0.01, "alpha": 0.5}
+    ] },
+    "crew_cam": { "note": "One of the crew: the same cinema blip, smaller, at the eyepiece of a camera on sticks pointed back at the shot.", "draw": [
+      {"d": "M -0.02 0 L 0.1 -0.3 M -0.02 0 L -0.14 -0.3 M -0.02 0 L -0.02 -0.3", "stroke": "ink", "width": 0.018},
+      {"d": "M 0.12 -0.47 L -0.14 -0.47 L -0.14 -0.29 L 0.12 -0.29 Z", "fill": "#3B3F47"},
+      {"d": "M -0.14 -0.43 L -0.25 -0.43 L -0.25 -0.34 L -0.14 -0.34 Z", "fill": "ink"},
+      {"d": "O -0.256 -0.385 0.036", "fill": "$paint", "alpha": 0.9},
+      {"d": "O 0.055 -0.525 0.05 O -0.05 -0.525 0.05", "stroke": "ink", "width": 0.013},
+      {"d": "M 0.265 -0.085 L 0.255 0 M 0.345 -0.085 L 0.355 0", "stroke": "$paint", "width": 0.028},
+      {"d": "M 0.215 -0.075 Q 0.23 -0.345 0.3 -0.345 Q 0.37 -0.345 0.385 -0.075 Z", "fill": "$paint"},
+      {"d": "O 0.3 -0.47 0.122", "fill": "$paint"},
+      {"d": "M 0.185 -0.5 Q 0.185 -0.61 0.3 -0.61 Q 0.415 -0.61 0.415 -0.5 Z M 0.2 -0.505 Q 0.125 -0.52 0.085 -0.495 L 0.095 -0.465 Q 0.14 -0.48 0.205 -0.475 Z", "fill": "#3B3F47"},
+      {"d": "O 0.258 -0.475 0.052", "fill": "paper"},
+      {"d": "M 0.255 -0.60 Q 0.235 -0.665 0.215 -0.70 M 0.345 -0.60 Q 0.375 -0.655 0.40 -0.675", "stroke": "$paint", "width": 0.024},
+      {"d": "O 0.212 -0.706 0.026 O 0.404 -0.679 0.03", "fill": "$paint"}
+    ] },
+    "crew_lamp": { "note": "The other one: the same cinema blip, smaller, with the light on its stand throwing its warmth at the shot.", "draw": [
+      {"d": "O -0.27 -0.57 0.2", "fill": "#F2D58A", "alpha": 0.22},
+      {"d": "M -0.02 0 L 0.08 -0.26 M -0.02 0 L -0.12 -0.26 M -0.02 0 L -0.02 -0.26", "stroke": "ink", "width": 0.016},
+      {"d": "M -0.02 -0.26 L -0.02 -0.58", "stroke": "ink", "width": 0.018},
+      {"d": "M 0.03 -0.635 L 0.03 -0.505 L -0.15 -0.455 L -0.15 -0.685 Z", "fill": "#3B3F47"},
+      {"d": "M -0.153 -0.675 L -0.153 -0.465", "stroke": "#F2D58A", "width": 0.03},
+      {"d": "M 0.265 -0.085 L 0.255 0 M 0.345 -0.085 L 0.355 0", "stroke": "$paint", "width": 0.028},
+      {"d": "M 0.215 -0.075 Q 0.23 -0.345 0.3 -0.345 Q 0.37 -0.345 0.385 -0.075 Z", "fill": "$paint"},
+      {"d": "O 0.3 -0.47 0.122", "fill": "$paint"},
+      {"d": "M 0.185 -0.5 Q 0.185 -0.61 0.3 -0.61 Q 0.415 -0.61 0.415 -0.5 Z M 0.2 -0.505 Q 0.125 -0.52 0.085 -0.495 L 0.095 -0.465 Q 0.14 -0.48 0.205 -0.475 Z", "fill": "#3B3F47"},
+      {"d": "O 0.258 -0.475 0.052", "fill": "paper"},
+      {"d": "M 0.255 -0.60 Q 0.235 -0.665 0.215 -0.70 M 0.345 -0.60 Q 0.375 -0.655 0.40 -0.675", "stroke": "$paint", "width": 0.024},
+      {"d": "O 0.212 -0.706 0.026 O 0.404 -0.679 0.03", "fill": "$paint"}
     ] }
   },
   "avatars": {
@@ -1095,6 +1148,150 @@
         {"do": "emit", "at": 1.1, "part": "star", "from": "crown", "n": 4, "vy": -1.1, "spread": 1.1, "g": 1.2, "life": 1.2, "size": 0.7, "alpha": 0.9},
         {"do": "arm", "at": 2.2, "to": 3.5, "hand": "both", "x": 0.1, "y": -0.05, "k": 480}
       ]
+    },
+    "c.script": {
+      "label": "Writes the script: a line he does not like, a walk round the block, and the one that works", "dur": 10.6, "mode": "loop", "loopFrom": 0.7, "still": 1.4, "fallback": "read",
+      "tracks": [
+        {"note": "he takes the left of the room, so the floor to his right is the set", "do": "walk", "at": 0.0, "to": 0.6, "x": 0.22, "speed": 1.0},
+        {"note": "the script on his arm, the pencil going down it, head bent over it", "do": "prop", "at": 0.2, "to": 4.6, "part": "script_pad", "on": "hand_back", "x": 0.04, "y": -0.03, "pop": true},
+        {"do": "prop", "at": 0.2, "to": 4.0, "part": "pencil", "on": "hand_front"},
+        {"do": "arm", "at": 0.2, "to": 4.6, "hand": "back", "x": 0.22, "y": -0.04, "k": 520},
+        {"do": "arm", "at": 0.2, "to": 4.0, "hand": "front", "x": "0.24 + 0.035*sin(tau*T/0.46)", "y": "-0.02 + 0.016*sin(tau*T/0.23)", "k": 620},
+        {"do": "look", "at": 0.2, "to": 4.0, "target": "hand"},
+        {"do": "lid", "at": 0.2, "to": 4.0, "v": 0.4},
+        {"note": "he reads it back and it is not it", "do": "eyes", "at": 4.1, "to": 5.0, "state": "squint"},
+        {"do": "mouth", "at": 4.1, "to": 5.0, "state": "wavy", "v": 0.5},
+        {"do": "lean", "at": 4.1, "to": 5.0, "v": -0.05},
+        {"note": "screwed up and thrown over his shoulder", "do": "arm", "at": 4.9, "to": 5.3, "hand": "front", "x": 0.04, "y": -0.32, "k": 700},
+        {"do": "emit", "at": 5.15, "part": "paperwad", "from": "hand_front", "y": -0.06, "n": 1, "vx": -1.35, "vy": -1.75, "g": 1.7, "drag": 0.35, "life": 1.8, "spin": 4, "size": 1.6},
+        {"do": "hop", "at": 5.18, "h": 0.05},
+        {"note": "and he goes out to think about it", "do": "walk", "at": 5.4, "to": 7.0, "toward": "right", "speed": 1.0},
+        {"do": "arm", "at": 5.4, "to": 7.6, "hand": "both", "x": 0.07, "y": 0.1, "k": 420},
+        {"do": "look", "at": 5.4, "to": 7.6, "target": "around"},
+        {"note": "back in with it", "do": "walk", "at": 7.7, "to": 8.7, "toward": "start", "speed": 1.0},
+        {"do": "emit", "at": 8.5, "part": "star", "from": "crown", "n": 3, "vy": -1.0, "spread": 0.9, "g": 1.1, "life": 1.0, "size": 0.6, "alpha": 0.9},
+        {"do": "eyes", "at": 8.4, "to": 10.5, "state": "happy"},
+        {"do": "mouth", "at": 8.45, "to": 9.3, "state": "o", "v": 0.6},
+        {"do": "prop", "at": 8.6, "to": 10.5, "part": "script_pad", "on": "hand_back", "x": 0.04, "y": -0.03, "pop": true},
+        {"do": "prop", "at": 8.8, "to": 10.5, "part": "pencil", "on": "hand_front"},
+        {"do": "arm", "at": 8.6, "to": 10.5, "hand": "back", "x": 0.22, "y": -0.04, "k": 520},
+        {"do": "arm", "at": 8.8, "to": 10.5, "hand": "front", "x": "0.24 + 0.04*sin(tau*(T - 8.8)/0.34)", "y": "-0.02 + 0.018*sin(tau*(T - 8.8)/0.17)", "k": 660},
+        {"do": "look", "at": 8.8, "to": 10.5, "target": "hand"}
+      ]
+    },
+    "c.board": {
+      "label": "Draws the storyboard, leans back to see whether it reads, and goes in again", "dur": 8.4, "mode": "loop", "loopFrom": 0.7, "still": 2.4, "fallback": "survey",
+      "tracks": [
+        {"note": "he takes the left of the room, so the floor to his right is the set", "do": "walk", "at": 0.0, "to": 0.6, "x": 0.22, "speed": 1.0},
+        {"note": "the board stands in front of him and stays where it is put", "do": "prop", "part": "easel", "on": "ground", "x": 0.76},
+        {"do": "prop", "at": 0.2, "to": 3.6, "part": "pencil", "on": "hand_front"},
+        {"note": "in at it, drawing", "do": "lean", "at": 0.2, "to": 3.6, "v": 0.09},
+        {"do": "arm", "at": 0.4, "to": 3.6, "hand": "front", "x": "0.38 + 0.05*sin(tau*T/0.56)", "y": "-0.26 + 0.06*sin(tau*T/0.28)", "k": 620},
+        {"do": "look", "at": 0.4, "to": 3.6, "target": "hand"},
+        {"do": "emit", "at": 0.9, "to": 3.6, "part": "mote", "from": "hand_front", "every": 1.1, "spread": 1.2, "vy": 0.4, "g": 1.4, "drag": 0.8, "life": 0.6, "size": 0.28, "alpha": 0.35, "paint": "ink"},
+        {"note": "and back on his heels to see whether it reads", "do": "lean", "at": 3.8, "to": 6.4, "v": -0.1},
+        {"do": "crouch", "at": 3.8, "to": 4.3, "v": 0.05},
+        {"do": "arm", "at": 3.8, "to": 6.4, "hand": "both", "x": 0.07, "y": 0.11, "k": 420},
+        {"do": "look", "at": 3.8, "to": 6.4, "target": "point", "x": 0.72, "y": -0.5},
+        {"do": "tilt", "at": 4.2, "to": 5.2, "v": -0.07},
+        {"do": "eyes", "at": 4.2, "to": 5.2, "state": "squint"},
+        {"do": "eyes", "at": 5.4, "to": 6.4, "state": "happy"},
+        {"do": "mouth", "at": 5.4, "to": 6.4, "state": "smile", "v": 0.6},
+        {"note": "one more frame", "do": "prop", "at": 6.7, "to": 8.3, "part": "pencil", "on": "hand_front"},
+        {"do": "lean", "at": 6.6, "to": 8.3, "v": 0.09},
+        {"do": "arm", "at": 6.8, "to": 8.3, "hand": "front", "x": "0.38 + 0.05*sin(tau*(T - 6.8)/0.5)", "y": "-0.3 + 0.06*sin(tau*(T - 6.8)/0.25)", "k": 620},
+        {"do": "look", "at": 6.8, "to": 8.3, "target": "hand"},
+        {"do": "hop", "at": 6.6, "h": 0.04}
+      ]
+    },
+    "c.shoot": {
+      "label": "The crew come in with the camera and the light, he claps the board, and it rolls", "dur": 11.0, "mode": "loop", "loopFrom": 4.6, "still": 6.0, "fallback": "play",
+      "tracks": [
+        {"note": "he takes the left of the room, so the floor to his right is the set", "do": "walk", "at": 0.0, "to": 0.6, "x": 0.22, "speed": 1.0},
+        {"note": "in from the right, bobbing as they come, and they stop where he wants them", "do": "prop", "at": 0.6, "part": "crew_cam", "on": "ground", "x": "lerp(3.5, 1.05, smooth(0.7, 2.6, T))", "y": "-0.014*abs(sin(tau*T*1.7))*clamp((2.2 - T)*4, 0, 1)"},
+        {"do": "prop", "at": 0.6, "part": "crew_lamp", "on": "ground", "x": "lerp(4.4, 1.85, smooth(1.0, 3.2, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((2.7 - T)*4, 0, 1)"},
+        {"do": "look", "at": 1.0, "to": 2.9, "target": "point", "x": 1.5, "y": -0.3},
+        {"do": "arm", "at": 1.6, "to": 2.6, "hand": "front", "x": 0.26, "y": -0.26, "k": 560},
+        {"note": "the board goes up, and shuts: action", "do": "prop", "at": 2.9, "to": 4.3, "part": "slate", "on": "hand_front", "x": 0.03, "y": -0.02, "pop": true},
+        {"do": "prop", "at": 2.9, "to": 4.3, "part": "clapstick", "on": "hand_front", "x": -0.055, "y": -0.075, "rot": "-0.9*clamp((4.05 - T)/0.9, 0, 1)"},
+        {"do": "arm", "at": 2.85, "to": 4.3, "hand": "front", "x": 0.27, "y": -0.2, "k": 560},
+        {"do": "look", "at": 2.9, "to": 3.9, "target": "hand"},
+        {"do": "emit", "at": 4.05, "part": "puff", "from": "hand_front", "x": 0.14, "y": -0.1, "n": 3, "spread": 0.7, "vy": -0.6, "drag": 2, "life": 0.5, "size": 0.45, "alpha": 0.5},
+        {"do": "hop", "at": 4.05, "h": 0.07},
+        {"do": "mouth", "at": 4.08, "to": 4.8, "state": "o", "v": 0.75},
+        {"note": "rolling: the light is warm and he watches the frame", "do": "emit", "at": 4.4, "to": 10.9, "part": "mote", "from": "ground", "x": 1.85, "y": -0.6, "every": 0.6, "spread": 0.5, "vy": -0.5, "g": -0.05, "drag": 1.0, "life": 1.2, "size": 0.4, "alpha": 0.5, "paint": "#F2D58A"},
+        {"do": "arm", "at": 4.6, "to": 9.4, "hand": "both", "x": 0.17, "y": -0.3, "k": 520},
+        {"do": "eyes", "at": 4.6, "to": 9.4, "state": "squint"},
+        {"do": "look", "at": 4.6, "to": 9.4, "target": "ahead", "x": "0.5 + 0.25*sin(tau*(T - 4.6)/3.4)", "y": -0.22},
+        {"do": "crouch", "at": 4.6, "to": 5.2, "v": 0.06},
+        {"do": "tilt", "at": 5.4, "to": 6.8, "v": -0.06},
+        {"do": "tilt", "at": 7.0, "to": 8.4, "v": 0.05},
+        {"note": "that one was good", "do": "eyes", "at": 9.6, "to": 10.9, "state": "happy"},
+        {"do": "mouth", "at": 9.6, "to": 10.7, "state": "smile", "v": 0.7},
+        {"do": "arm", "at": 9.6, "to": 10.9, "hand": "front", "x": 0.2, "y": -0.26, "k": 520},
+        {"do": "hop", "at": 9.7, "h": 0.05}
+      ],
+      "end": {
+        "dur": 4.8,
+        "tracks": [
+          {"note": "that is a wrap: the gear goes out the way it came in", "do": "prop", "part": "crew_lamp", "on": "ground", "x": "lerp(1.85, 4.6, smooth(0.2, 2.4, T))", "y": "-0.014*abs(sin(tau*T*1.7 + 1.2))*clamp((2.3 - T)*4, 0, 1)"},
+          {"do": "prop", "part": "crew_cam", "on": "ground", "x": "lerp(1.05, 4.0, smooth(0.6, 3.0, T))", "y": "-0.014*abs(sin(tau*T*1.7))*clamp((2.9 - T)*4, 0, 1)"},
+          {"do": "arm", "at": 0.6, "to": 3.4, "hand": "front", "x": "0.2 + 0.07*sin(tau*(T - 0.6)/0.55)", "y": -0.34, "k": 620},
+          {"do": "look", "at": 0.4, "to": 3.4, "target": "point", "x": 1.4, "y": -0.3},
+          {"do": "eyes", "at": 0.4, "to": 4.7, "state": "happy"},
+          {"do": "mouth", "at": 0.5, "to": 3.6, "state": "smile", "v": 0.75},
+          {"do": "emit", "at": 1.0, "part": "star", "from": "crown", "n": 3, "vy": -1.0, "spread": 1.0, "g": 1.1, "life": 1.1, "size": 0.6, "alpha": 0.85},
+          {"do": "arm", "at": 3.6, "to": 4.7, "hand": "both", "x": 0.1, "y": 0.04, "k": 460}
+        ]
+      }
+    },
+    "c.cut": {
+      "label": "Cutting: he runs the takes past himself and keeps the frames that work", "dur": 7.6, "mode": "loop", "loopFrom": 0.7, "still": 2.0, "fallback": "read",
+      "tracks": [
+        {"note": "he takes the left of the room, so the floor to his right is the set", "do": "walk", "at": 0.0, "to": 0.6, "x": 0.22, "speed": 1.0},
+        {"do": "prop", "at": 0.6, "part": "monitor", "on": "ground", "x": 0.72},
+        {"do": "lean", "at": 0.0, "to": 7.5, "v": 0.08},
+        {"do": "crouch", "at": 0.0, "to": 7.5, "v": 0.05},
+        {"do": "arm", "at": 0.0, "to": 7.5, "hand": "front", "x": "0.34 + 0.025*sin(tau*T/0.33)", "y": "-0.12 + 0.02*sin(tau*T/0.66)", "k": 560},
+        {"do": "arm", "at": 0.0, "to": 7.5, "hand": "back", "x": "0.26 + 0.025*sin(tau*T/0.33 + 2.1)", "y": -0.06, "k": 560},
+        {"do": "look", "at": 0.0, "to": 7.5, "target": "point", "x": 0.72, "y": -0.42},
+        {"do": "lid", "at": 0.0, "to": 7.5, "v": 0.3},
+        {"note": "frames come up off the bench and go by", "do": "emit", "at": 0.3, "to": 7.5, "part": "filmframe", "from": "ground", "x": 0.72, "y": -0.56, "every": 0.5, "spread": 0.3, "vy": -0.55, "vx": -0.3, "g": -0.04, "drag": 0.9, "life": 1.6, "size": 1.1, "spin": 0.5, "alpha": 0.9},
+        {"note": "that one", "do": "eyes", "at": 3.0, "to": 3.9, "state": "happy"},
+        {"do": "hop", "at": 3.1, "h": 0.04},
+        {"do": "eyes", "at": 5.6, "to": 6.4, "state": "squint"},
+        {"do": "tilt", "at": 5.6, "to": 6.4, "v": -0.06},
+        {"do": "mouth", "at": 3.0, "to": 3.9, "state": "smile", "v": 0.5}
+      ]
+    },
+    "c.sketch": {
+      "label": "Draws the picture at the board, leans back to look at it, and carries it off when it is done", "dur": 7.4, "mode": "loop", "loopFrom": 0.7, "still": 2.2, "fallback": "survey",
+      "tracks": [
+        {"note": "he takes the left of the room, so the floor to his right is the set", "do": "walk", "at": 0.0, "to": 0.6, "x": 0.22, "speed": 1.0},
+        {"do": "prop", "at": 0.6, "part": "easel", "on": "ground", "x": 0.78},
+        {"do": "prop", "at": 0.2, "to": 4.6, "part": "pencil", "on": "hand_front"},
+        {"do": "lean", "at": 0.2, "to": 4.6, "v": 0.09},
+        {"do": "arm", "at": 0.4, "to": 4.6, "hand": "front", "x": "0.39 + 0.055*sin(tau*T/0.62)", "y": "-0.24 + 0.08*sin(tau*T/0.31)", "k": 620},
+        {"do": "look", "at": 0.4, "to": 4.6, "target": "hand"},
+        {"do": "emit", "at": 0.9, "to": 4.6, "part": "mote", "from": "hand_front", "every": 0.9, "spread": 1.2, "vy": 0.4, "g": 1.4, "drag": 0.8, "life": 0.6, "size": 0.3, "alpha": 0.4, "paint": "ink"},
+        {"do": "lean", "at": 4.8, "to": 7.3, "v": -0.1},
+        {"do": "crouch", "at": 4.8, "to": 5.3, "v": 0.05},
+        {"do": "arm", "at": 4.8, "to": 7.3, "hand": "both", "x": 0.06, "y": 0.12, "k": 420},
+        {"do": "look", "at": 4.8, "to": 7.3, "target": "point", "x": 0.72, "y": -0.5},
+        {"do": "tilt", "at": 5.0, "to": 6.0, "v": -0.07},
+        {"do": "eyes", "at": 6.1, "to": 7.3, "state": "happy"},
+        {"do": "mouth", "at": 6.1, "to": 7.3, "state": "smile", "v": 0.6}
+      ],
+      "end": {
+        "dur": 3.6,
+        "tracks": [
+          {"note": "he takes the board out with him and leaves the picture behind", "do": "prop", "part": "easel", "on": "ground", "x": "lerp(0.78, 4.2, smooth(0.5, 2.6, T))"},
+          {"do": "walk", "at": 0.4, "to": 2.6, "toward": "right", "speed": 0.9},
+          {"do": "arm", "at": 0.3, "to": 1.2, "hand": "front", "x": 0.18, "y": -0.3, "k": 560},
+          {"do": "mouth", "at": 0.3, "to": 1.8, "state": "smile", "v": 0.7},
+          {"do": "eyes", "at": 0.3, "to": 2.4, "state": "happy"}
+        ]
+      }
     },
     "p.pond": {
       "format": 2, "label": "Fishing pond", "dur": 6, "fallback": "survey", "still": 1.5,

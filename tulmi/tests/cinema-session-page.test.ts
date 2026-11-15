@@ -101,6 +101,56 @@ for (const client of ["phone", "desktop"] as const) {
       expect(c.texts).toContain("Watch");
     });
 
+    it("puts him to work in the frame, in the shape the film is being made in", async () => {
+      const stage = (p: Awaited<ReturnType<typeof build>>) => p.nodes.find((n) => n.type === "BotBuddy")?.props as
+        { moment?: string; width?: number; height?: number; size?: number } | undefined;
+
+      const filming = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "rendering", hold: null, aspect: "16:9", seconds: 24, shots: 4, done: 2 }] }) });
+      const s = stage(filming)!;
+      expect(s.moment).toBe("c.shoot");
+      // The frame is the film's own shape, and the room is about three and a half of him across, whatever that shape is.
+      expect(s.width! / s.height!).toBeCloseTo(16 / 9, 1);
+      expect(s.width! / s.size!).toBeGreaterThan(3.2);
+      expect(s.width! / s.size!).toBeLessThan(4.1);
+
+      const tall = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "writing", hold: null, aspect: "9:16", seconds: 24, shots: 0, done: 0 }] }) });
+      const t = stage(tall)!;
+      expect(t.moment).toBe("c.script");
+      expect(t.width! / t.height!).toBeCloseTo(9 / 16, 1);
+      expect(t.width! / t.size!).toBeGreaterThan(3.2);
+      expect(t.width! / t.size!).toBeLessThan(4.1);
+
+      for (const [status, moment] of [["boarding", "c.board"], ["board", "c.board"], ["cutting", "c.cut"]] as const) {
+        const p = await build({ client, view: VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status, hold: null, aspect: "1:1", seconds: 24, shots: 4, done: 0 }] }) });
+        expect(stage(p)?.moment).toBe(moment);
+      }
+    });
+
+    it("stops the making and shows the film once there is one to watch", async () => {
+      const done = VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "done", hold: null, aspect: "16:9", seconds: 24, shots: 4, done: 4, poster: "/v1/cinema/media/p.jpg?exp=1&sig=x", film: "/v1/cinema/media/f.mp4?exp=1&sig=x" }] });
+      const p = await build({ client, view: done });
+      expect(p.lint).toEqual([]);
+      expect(p.nodes.some((n) => n.type === "BotBuddy")).toBe(false);
+      expect(p.nodes.some((n) => n.type === "Image")).toBe(true);
+      expect(p.texts).toContain("Watch");
+      expect(p.texts).toContain("Save it");
+    });
+
+    it("draws the frame alone for a build that draws no bot", async () => {
+      const deps = fakeDeps({
+        bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Cinema", colour: "plum", purpose: "Films", builtin: true }],
+        api: { "GET /v1/botsapp/bots/session/s1": VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "rendering", hold: null, aspect: "16:9", seconds: 24, shots: 4, done: 2 }] }) },
+      });
+      const built = await buildBotsScreen({
+        screenId: "bots.session", client, params: { s: "s1" }, tzOffsetMinutes: IST,
+        user: { id: "u1", name: "Aanya" }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false },
+      }, deps);
+      const nodes = walk(built.root as Node);
+      expect(lintTree(built.root as Node, client)).toEqual([]);
+      expect(nodes.some((n) => n.type === "BotBuddy")).toBe(false);
+      expect(nodes.filter((n) => n.type === "Text").map((n) => String((n.props as { content?: unknown })?.content ?? ""))).toContain("Filming: 2 of 4 shots done");
+    });
+
     it("draws the card with what the bot chose already chosen", async () => {
       const view = VIEW({ proposal: { concept: "A 24-second film of a chai stall in the first monsoon rain", seconds: 24, aspect: "4:5", because: "you said reels" } });
       const p = await build({ client, view });

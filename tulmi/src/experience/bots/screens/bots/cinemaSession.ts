@@ -19,15 +19,17 @@
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import type { MadeInSession } from "../../../../cinema/service.js";
 import type { Proposal } from "../../../../cinema/propose.js";
-import { ASPECTS, RATIO, type Aspect } from "../../../../cinema/types.js";
+import { ASPECTS, CINEMA_SLUG, RATIO, type Aspect } from "../../../../cinema/types.js";
 import { botTopic } from "../../../../live/topics.js";
 import {
   type BotsCtx, C, box, call, col, grow, icon, meta, notice, page, picture, primaryButton, row, SCREENS, secondaryButton, seq, shapes, text,
 } from "../../kit.js";
+import { botLook } from "../../palette.js";
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
 import { abs, CINEMA, openFilm, statusLine } from "./cinemaScreens.js";
+import { frameBox, makingFrame, momentFor } from "./cinemaMaking.js";
 import { isDesk, setState } from "./parts.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
@@ -84,7 +86,7 @@ function pickedUp(label: string): Node {
  * A film in the talk, as it is right now. The same card from the first second to the last: it says what is happening, shows the still
  * once there is one, and carries the one thing to do when the film waits for the person.
  */
-function filmInTalk(m: Extract<MadeInSession, { kind: "film" }>, desk: boolean): Node {
+function filmInTalk(ctx: BotsCtx, m: Extract<MadeInSession, { kind: "film" }>, desk: boolean, color: string): Node {
   const F = `${CINEMA}/films/${m.id}`;
   const line = statusLine({ status: m.status, hold: m.hold, shots: m.shots, done: m.done });
   const act = m.status === "script"
@@ -94,19 +96,23 @@ function filmInTalk(m: Extract<MadeInSession, { kind: "film" }>, desk: boolean):
       : m.status === "done" && m.film
         ? primaryButton("Watch", { kind: "openUrl", url: abs(m.film), external: true } as ActionSpec, { size: "md" })
         : null;
-  // The film's own shape, but never so tall that it swallows the talk around it.
-  const wide = desk ? 320 : 358;
-  const tall = Math.min(Math.round(wide / Math.max(RATIO[m.aspect] ?? 1, 0.42)), 300);
-  const still = m.poster
-    ? picture(abs(m.poster), wide, tall, { radius: 14, fit: "cover", background: C.surface })
-    : box([], { height: 92, borderRadius: 14, backgroundColor: C.surface });
+  // The film's own shape, but never so tall that it swallows the talk around it. Until it is finished the frame is his
+  // room, and he is in it doing the work the film is at (cinemaMaking.ts); finished, it is the film.
+  const { w, h } = frameBox(m.aspect, desk ? 320 : 358, 260);
+  const done = m.status === "done" && !!m.poster;
+  const frame = done
+    ? picture(abs(m.poster!), w, h, { radius: 14, fit: "cover", background: C.surface, label: plain(m.title) })
+    : makingFrame(ctx, { color, life: `film.${m.id}`, moment: momentFor(m), w, h });
+  const save = done && m.film
+    ? [secondaryButton("Save it", { kind: "download", url: abs(m.film), filename: `${plain(m.title).replace(/[^\w -]+/g, "").trim() || "film"}.mp4` } as ActionSpec, { size: "md" })]
+    : [];
   return col([
-    still,
+    frame,
     row([col([
       text(plain(m.title) || "Your film", { size: 15.5, weight: 600, lineHeight: 20, lines: 1 }),
       meta(line, { size: 12.5, lineHeight: 17 }),
     ], { gap: 2, flexShrink: 1 }), grow()], { gap: 8, alignItems: "center" }),
-    ...(act ? [row([act, secondaryButton("Open it", openFilm(m.id), { size: "md" })], { gap: 8, flexWrap: "wrap" })] : [row([secondaryButton("Open it", openFilm(m.id), { size: "md" })])]),
+    row([...(act ? [act] : []), secondaryButton("Open it", openFilm(m.id), { size: "md" }), ...save], { gap: 8, flexWrap: "wrap" }),
   ], { gap: 10, marginVertical: 4 });
 }
 
@@ -176,6 +182,7 @@ export function sessionPage(ctx: BotsCtx, d: SessionData) {
   }
   const s = v.session;
   const now = Date.now();
+  const look = botLook(CINEMA_SLUG, ctx.live.bots.find((b) => b.slug === CINEMA_SLUG)?.color);
   const made = [...(v.made ?? [])];
   const body: Node[] = [
     col([
@@ -189,7 +196,7 @@ export function sessionPage(ctx: BotsCtx, d: SessionData) {
   const drawMade = (until: number) => {
     while (made.length && made[0]!.at <= until) {
       const m = made.shift()!;
-      body.push(m.kind === "film" ? filmInTalk(m, desk) : col([
+      body.push(m.kind === "film" ? filmInTalk(ctx, m, desk, look.color) : col([
         picture(abs(m.url), desk ? 320 : 358, desk ? 320 : 358, { radius: 14, fit: "cover", background: C.surface, label: plain(m.title) }),
         meta(plain(m.title), { size: 12 }),
       ], { gap: 6, marginVertical: 4 }));
