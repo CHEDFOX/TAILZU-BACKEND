@@ -14,6 +14,7 @@ tulmi/src/code/agent/
   runner.ts        the runner port, and the environment router behind it
   report.ts        the commit message, the pull request body, the final report
   surface.ts       what the change took away: the exported names and routes of the files it touched, before against after
+  review.ts        one job's change, read by a model of another family before the pull request is marked ready (role code_review)
   scope.ts         the files a change touched that its task never pointed at: said to the model once, then reported
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
@@ -52,7 +53,7 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4b, `surface.ts`). | |
 | `design` | **Only for a job built from an approved design** (`AgentState.spec`, `docs/artifacts.md` sections 6 and 11), and only if `CODE_DESIGN_CHECK` is on. After the checks pass and before the commit: start the project's dev server on the runner (the preview, `docs/cloudflare-jobs.md` section 11), open the route the design is for, shoot it and the approved design at mobile and desktop, and compare (a cheap pixel gate first, the vision tier only if they differ, metered in the job's budget). **Major** differences send the job back to `work` with the differences and the fix hints in front of the model, **twice at most**, and the checks run again before the next look. After the last round one more look is taken and what still differs is **reported**. It **never blocks the commit**: no live runner, not a web app, no `dev` script, a dev server that will not start, no browser or shot viewer, a budget too small (about 240 paise), a failed shot, a model with no usable answer: the round is skipped with one sentence for the report and the job goes on. Its stages are saved one by one, so a restart or a wait resumes it without doing anything twice | |
 | `commit` | The **server** commits all the staged edits at once through `workspace().commit`, so the policy, the secret scan, the Blip author and the co-author trailer always apply. If the policy asks, the job waits for the person's OK; if it says never, the job stops with the reason. | the OK (`needs_you`) |
-| `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke**, and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
+| `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke, and another model found nothing bad enough to hold it** (section 4d), and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
 | `report` | What changed, the PR link, the checks, the findings, **"already broken before Tailzu" as its own list**, the cost in rupees and what to do next. The job is finished through the router, which pushes `job_done`. | |
 
 A job that changes nothing (a question, "nothing needed changing") skips `verify`, `design`, `commit` and `pr`: the model's summary is the report. A job with no design to match skips `design`; its phase list is otherwise the same.
@@ -240,6 +241,32 @@ guard, because a part really does own its paths, where here nobody knows better 
 
 Tests: `tests/code-agent-scope.test.ts` (what counts as pointed at, the three exemptions and the edit that is not excused by its folder, a brain that
 cannot answer) and the "a file the task never pointed at" group in `tests/code-agent-loop.test.ts`.
+
+## 4d. The change, read by another model
+
+The project's checks prove that what is tested still works. They do not read the change. A team's part has been read by another model since the team
+flow was built (`team/review.ts`), and a chat answer drawn from code is read before it goes (`chat/look.ts`, role `code_check`). **A plain job's diff
+was the one thing nothing ever looked at**: green checks, then a pull request marked ready.
+
+So once the checks have passed, **while the edits are still staged** (the commit clears the changeset, so that is the last moment the diff exists), the
+diff is read ONCE against the task by a model **of another family** — the review tier is a pool, the router is told the writer's model, and the model
+that actually answered is checked again, exactly as a part's review is. Two models of one family share blind spots.
+
+**What it may conclude.** Findings, and nothing else: it cannot edit, commit or ask. A **blocker** or a **major** leaves the pull request a **draft**
+with the reason (`VerifyState`-like `AgentState.review`, read by `prPhase`'s `green`); the rest is written in the pull request and the report. It
+**never sends the job back to work**, so a review cannot cost more than the one call it is: the person reads it and asks for the fix if they want it.
+It cannot stop the commit either — what the checks passed is what gets committed, as it always was.
+
+**The evidence bar applies to the reviewer too** (`work/findings.ts cleanFinding`, section 3): a blocker or a major that cannot show **how it happens**
+is lowered to a minor, so nothing stops a pull request on a model's word alone; one that shows it keeps its severity and carries the `how` into the
+pull request. After Cloudflare's security-audit skill (MIT; the idea, not its text).
+
+**When it does not run**, each said in the report and **never recorded as a pass**: no model of another family (or only one of the writer's own family
+answered), too little budget left, nothing staged to read, a team's job or a merge (they have their own review), or `CODE_JOB_REVIEW` off.
+
+Tests: `tests/code-agent-review.test.ts` (the family rule, every skip, the evidence bar lowering a blocker, the cap and order, the fenced message) and
+the "another model reading the change" group in `tests/code-agent-loop.test.ts` (a blocker holding the pull request a draft, a clean read marking it
+ready, a skip never holding it, and the switch off).
 
 ## 5. Money
 

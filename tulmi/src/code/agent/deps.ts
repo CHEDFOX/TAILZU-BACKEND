@@ -126,6 +126,8 @@ export interface AgentDeps {
   contextStrategy?: ContextStrategy;
   /** Ask once for a focused test of the change before the checks run (phases.ts testWanted): instead of CODE_PROVE_FIX, for a harness that compares them. */
   proveFix?: boolean;
+  /** Have another model read a plain job's diff before the pull request is ready (review.ts). Absent: CODE_JOB_REVIEW. */
+  jobReview?: boolean;
   /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (default free-form), for a harness that compares the two. */
   jobMode?: JobMode;
   /** How hard a free-form turn thinks (agent/effort.ts): instead of CODE_EFFORT, for a harness that compares the two. */

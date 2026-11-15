@@ -44,6 +44,7 @@ const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
+const { JobReviewVerdict } = await import("../src/code/agent/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
@@ -258,6 +259,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   locate_pick: 634, // 576 measured
   plan_change: 795, // 722 measured
   agent_work: 1478, // 1343 measured
+  code_review: 1515, // 1377 measured
   agent_fold: 528, // 480 measured
   index_files: 477, // 433 measured
   index_cards: 676, // 615 measured
@@ -360,6 +362,7 @@ describe("the contracts say what the parsers read", () => {
     ["locate_pick", PickReply],
     ["plan_change", PlanReply],
     ["agent_fold", FoldReply],
+    ["code_review", JobReviewVerdict],
     ["index_files", FileSchema],
     ["index_cards", CardSchema],
     ["index_dirs", DirSchema],

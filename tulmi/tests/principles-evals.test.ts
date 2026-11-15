@@ -50,6 +50,7 @@ const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
+const { JobReviewVerdict } = await import("../src/code/agent/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
@@ -295,6 +296,10 @@ describe("a known-good answer for each role", () => {
     team_review: {
       text: '{"verdict":"pass","summary":"The endpoint and its tests meet the acceptance.","findings":[]}',
       reads: (t) => PartReviewVerdict.parse(JSON.parse(t)),
+    },
+    code_review: {
+      text: '{"summary":"It trims the dashes from both ends and a test covers it.","findings":[]}',
+      reads: (t) => JobReviewVerdict.parse(JSON.parse(t)),
     },
     // The bots platform (src/bots): the maker's draft, the front door's pick, a bot's own turn (plain text), and its memory of its owner.
     bot_builder: {

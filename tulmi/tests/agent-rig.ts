@@ -177,6 +177,9 @@ export function scriptedModel(jobStore: MemoryJobStore) {
     seen: [] as SeenTurn[],
     /** Paise a call costs, and the worst case the guard assumes. */
     paise: 4,
+    /** What the model that writes the code is called. A test that needs a reviewer of ANOTHER family (agent/review.ts) sets it,
+     *  because the fixture's JSON answers all come from "fake/model": with the default both are the family "fake". */
+    slug: undefined as string | undefined,
     need: 10,
     /** Turn ids are unique across the whole script, which is how a model's are. */
     n: 0,
@@ -214,7 +217,7 @@ export function scriptedModel(jobStore: MemoryJobStore) {
         await m.afterTurn?.(m.turns);
         const toolCalls = turn.calls.map((c) => ({ id: `call_${(m.n += 1)}`, name: c.name, arguments: typeof c.args === "string" ? c.args : JSON.stringify(c.args) }));
         result = {
-          text: turn.text ?? "", json: undefined, toolCalls, model: `fake/${input.tier ?? "code"}`, ...(input.tier ? { tier: input.tier } : {}), promptTokens: 100, completionTokens: 50,
+          text: turn.text ?? "", json: undefined, toolCalls, model: m.slug ?? `fake/${input.tier ?? "code"}`, ...(input.tier ? { tier: input.tier } : {}), promptTokens: 100, completionTokens: 50,
           costUsd: 0.0001, paise: m.paise, costSource: "reported", truncated: false, ms: 1, calls: 1, trail: [],
         } as CallResult<T>;
       } else {
@@ -258,6 +261,8 @@ export interface AgentRigOptions {
   screens?: ScreensDeps;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts). Absent: the agent's default. */
   contextStrategy?: ContextStrategy;
+  /** Have another model read the change before the pull request is ready (agent/review.ts). Absent: on, as the product has it. */
+  jobReview?: boolean;
   /** Ask once for a focused test of the change before the checks run (agent/phases.ts testWanted). Off in the suite (tests/setup.ts) unless a test turns it on: most scripts end a job with one `done`. */
   proveFix?: boolean;
   /** What the GitHub App was given on the install (Contents, Pull requests and Metadata unless said otherwise): PR care needs Checks, Commit statuses and Actions (read) as well. */
@@ -340,6 +345,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       ...(over.passive ? { passive: true } : {}), ...(over.team ? { team: over.team } : {}), ...(over.leaseMs ? { leaseMs: over.leaseMs } : {}),
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
       ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
+    ...(o.jobReview !== undefined ? { jobReview: o.jobReview } : {}),
       ...(o.jobMode === null ? {} : { jobMode: o.jobMode ?? "guided" }),
       ...(o.effort ? { effort: o.effort } : {}),
     })!;

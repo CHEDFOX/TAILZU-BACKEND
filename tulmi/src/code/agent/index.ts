@@ -91,6 +91,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   contextStrategy?: ContextStrategy;
   /** Ask once for a focused test of the change before the checks run: instead of CODE_PROVE_FIX (agent/phases.ts testWanted). */
   proveFix?: boolean;
+  /** Have another model read a plain job's diff before the pull request is ready (review.ts). Absent: CODE_JOB_REVIEW. */
+  jobReview?: boolean;
   /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (free-form by default). */
   jobMode?: JobMode;
   /** How hard a free-form turn thinks: instead of CODE_EFFORT (agent/effort.ts). */
@@ -116,6 +118,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.screens ? { screens: o.screens } : {}),
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
     ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
+    ...(o.jobReview !== undefined ? { jobReview: o.jobReview } : {}),
     ...(o.jobMode ? { jobMode: o.jobMode } : {}),
     ...(o.effort ? { effort: o.effort } : {}),
   };

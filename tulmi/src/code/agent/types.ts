@@ -25,6 +25,7 @@
  * A phase is entered, worked and left; the state says which, and what was decided
  * on the way. Nothing in this file reaches a network or a store.
  */
+import type { JobReview } from "./review.js";
 import type { Approval } from "../approvals.js";
 import type { ContextStrategy } from "./mask.js";
 import type { Classification } from "../brain/types.js";
@@ -552,6 +553,8 @@ export interface AgentState {
     lowTurns?: number;
   };
   verify?: VerifyState;
+  /** What another model saw in this change before the pull request was marked ready (agent/review.ts). */
+  review?: JobReview;
   commit?: { base: string; message: string; sha?: string; files: string[] };
   /** Every commit this job made. */
   commits: string[];

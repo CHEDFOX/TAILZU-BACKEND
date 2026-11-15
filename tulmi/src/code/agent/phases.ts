@@ -52,6 +52,7 @@ import { isStrategy, type ContextStrategy } from "./mask.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret, type ToolOutcome } from "./tools.js";
 import { REMOVAL_ASKED, lostFeedback, lostSurface, surfaceInput, type Lost } from "./surface.js";
+import { reviewJob } from "./review.js";
 import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
@@ -1038,6 +1039,9 @@ export async function verifyPhase(r: Run): Promise<void> {
       v.lost = lost.map((l) => `${l.label} (${l.path})`);
       await r.log.note(`Still missing after the round, so it is in the report: ${v.lost.slice(0, 4).join("; ")}.`);
     }
+    // Read by another model while the change is still staged: the commit clears the changeset, so this is the last place the
+    // diff exists. It cannot stop the commit; what it finds keeps the PULL REQUEST a draft (prPhase).
+    await readTheChange(r);
     // What the checks passed on is written down: the commit is made of exactly this, and of nothing the checks did not see.
     s.verified = stagedFingerprint(r);
     // A job built from an approved design runs the app and looks at it before it is committed (design.ts); every other job commits.
@@ -1193,6 +1197,42 @@ export async function commitPhase(r: Run): Promise<void> {
 
 // ---------------------------------------------------------------------- pr
 
+/**
+ * ONE JOB'S CHANGE, READ BY ANOTHER MODEL (review.ts), once the checks have passed and while the edits are still STAGED: the commit
+ * clears the changeset, so this is the last moment the diff exists. It cannot stop the commit; a blocker keeps the PULL REQUEST a draft. A team's part and a chat's answer have
+ * long been read by a second model; a plain job's diff was the one thing nothing looked at. It is one call, it can only report, and a
+ * blocker or a major leaves the pull request a draft with the reason. Skipped for a team or a merge (they have their own review), for a
+ * job that changed nothing, and when `CODE_JOB_REVIEW` is off. A review nobody could make is said to be skipped, never recorded as a pass.
+ */
+async function readTheChange(r: Run): Promise<void> {
+  const s = r.state;
+  if (s.review || s.team || s.part || s.merge || s.care) return;
+  if (!(r.deps.jobReview ?? getConfig().CODE_JOB_REVIEW)) return;
+  if (r.tools.changes.empty) return;
+  try {
+    const money = await r.money();
+    const changes = await Promise.all(r.tools.changes.files.map(async (f) => ({
+      path: f.path, before: await r.tools.onBranch(f.path).catch(() => null), after: f.content,
+    })));
+    s.review = await reviewJob({
+      task: s.task, summary: s.work.doneSummary ?? "", changes, checks: s.verify?.summary ?? "",
+      ...(s.plan?.steps.length ? { plan: s.plan.steps.map((x) => x.do) } : {}),
+      ...(s.classification ? { classification: s.classification } : {}),
+      ...(s.work.lastModel ? { writerModel: s.work.lastModel } : {}),
+      remainingPaise: money.remaining,
+    }, r.model(), r.now());
+    if (s.review.status === "read") {
+      await r.log.decision(`Read by ${s.review.model}, which did not write it: ${cut(s.review.summary, 200)}${s.review.blocking ? " The pull request stays a draft." : ""}`);
+    } else {
+      await r.log.note(`Nobody read this change: ${cut(s.review.note ?? "", 160)}.`);
+    }
+    await r.save();
+  } catch (err) {
+    if (err instanceof LostClaim || err instanceof Park || err instanceof Yield || err instanceof BudgetStop || err instanceof EndJob) throw err;
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the change could not be read by another model");
+  }
+}
+
 export async function prPhase(r: Run): Promise<void> {
   const s = r.state;
   const d = r.deps.projects;
@@ -1228,7 +1268,8 @@ export async function prPhase(r: Run): Promise<void> {
   await r.log.step(`${pr.existing ? "Updated" : "Opened"} the draft pull request #${pr.prNumber}`);
   await r.save();
   // Ready for review only when the checks ran and found nothing this change broke.
-  const green = s.verify?.ran === true && s.verify.ok && (!s.team || teamClean(s.team));
+  // Ready needs green checks AND a reader who found nothing bad enough to stop it.
+  const green = s.verify?.ran === true && s.verify.ok && (!s.team || teamClean(s.team)) && !s.review?.blocking;
   if (green && !s.pr.ready && !s.readyDenied) {
     try {
       await r.gated("ready", "mark the pull request ready for review", (id) => markReady(d, r.userId, r.projectId, r.branch, { attended: true, ...(id ? { approvalId: id } : {}) }));
