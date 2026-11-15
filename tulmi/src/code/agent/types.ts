@@ -25,6 +25,7 @@
  * A phase is entered, worked and left; the state says which, and what was decided
  * on the way. Nothing in this file reaches a network or a store.
  */
+import type { FloorFinding } from "./floor.js";
 import type { JobReview } from "./review.js";
 import type { Approval } from "../approvals.js";
 import type { ContextStrategy } from "./mask.js";
@@ -355,6 +356,11 @@ export interface ScreensState {
   startedAt?: number;
   /** Why there are no real screens, in a sentence for the report. */
   skipped?: string;
+  /**
+   * What the page needs whatever its design says, read off the page the browser drew (floor.ts). Absent: the page could not be read (no renderer
+   * here, or it would not answer), which is not a fault of the change and is not reported. Empty: it was read and the floor was sound.
+   */
+  floor?: FloorFinding[];
 }
 
 /** The most of an approved design's source the checkpoint keeps, and the most of it the model is shown in one turn. */

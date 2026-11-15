@@ -12,6 +12,11 @@
  *                phone only for a phone-first app); each picture is kept in the job's store (jobShots.ts: R2, the owner's key) and its id goes
  *                in the report, which the app shows by a signed link
  *
+ * AND THE FLOOR (floor.ts). While the app is still running, the page is read as the browser drew it, and the things a page needs whatever its design
+ * says are checked on it: a viewport tag, alt text, labels on the fields, a name on every button, a language, an outline whose levels do not skip.
+ * Nobody asks for those and everybody wants them, so they are checked rather than hoped for. Free (no model, no second run), and like the pictures it
+ * never blocks anything: a server with no renderer, or a page that will not answer, and the floor is simply not checked and not mentioned.
+ *
  * NO MODEL IS ASKED and nothing is compared: these are the pictures, not a judgement. IT NEVER BLOCKS THE COMMIT: no runner, no dev script, a dev server
  * that will not start, no browser or a failed shot, and the round ends with one sentence the report says ("No real screens: ..."), so the person knows
  * to ask for a drawn one, clearly marked as drawn. Each stage is saved, so a restart or a wait picks it up where it was and nothing is shot twice.
@@ -20,6 +25,7 @@ import { getConfig } from "../../config.js";
 import { cut, oneLine } from "../work/model.js";
 import { Refused } from "./changeset.js";
 import { isWebProject, previewCommand, targetRoute, viewportsFor } from "./design.js";
+import { checkFloor, floorLines } from "./floor.js";
 import { LostClaim, Yield, type Run } from "./run.js";
 import { RunPending } from "./runner.js";
 import { DESIGN_START_MS, type ScreenShot, type ScreensState } from "./types.js";
@@ -60,13 +66,19 @@ async function finish(r: Run, why?: string): Promise<void> {
 /** The report's words for the screens: where they were taken, or why there are none. Links are added by whoever shows them. */
 export function screensLines(sc: ScreensState | undefined, link?: (shotId: string) => string | null): string[] {
   if (!sc) return [];
-  if (!sc.shots.length) return sc.skipped ? [`No real screens: ${sc.skipped} Ask for a drawn one if a picture helps; it will say it is drawn.`] : [];
+  const floor = floorLines(sc.floor ?? []);
+  // No pictures: say why, and still say what the floor found, because a page that would not photograph may still have been read.
+  if (!sc.shots.length) {
+    const why = sc.skipped ? [`No real screens: ${sc.skipped} Ask for a drawn one if a picture helps; it will say it is drawn.`] : [];
+    return floor.length ? [...why, ...(why.length ? [""] : []), ...floor] : why;
+  }
   const sizes = [...new Set(sc.shots.map((s) => (s.viewport === "mobile" ? "a phone" : "a computer")))].join(" and ");
   const out = [`Real screens: ${sc.route ?? "/"} on ${sizes}, taken from the running app.`];
   for (const s of sc.shots) {
     const url = link?.(s.id);
     if (url) out.push(`- ${s.viewport === "mobile" ? "Phone" : "Computer"}: ${url}`);
   }
+  if (floor.length) out.push("", ...floor);
   return out;
 }
 
@@ -169,6 +181,28 @@ export async function screensPhase(r: Run): Promise<void> {
       // One picture is an advance's work.
       if (r.env.turnsPerAdvance !== undefined && i < todo.length - 1) throw new Yield();
     }
+    await theFloor(r, new URL(sc.route ?? "/", st.url).href);
     return finish(r, failed || undefined);
   }
+}
+
+/**
+ * The floor, on the page the pictures were taken of, while the app is still running. Never throws and never blocks: no renderer here, or a page that
+ * will not answer, and `floor` stays absent, which the report says nothing about. A sound page records an empty list, which is also nothing to say.
+ */
+async function theFloor(r: Run, url: string): Promise<void> {
+  const sc = r.state.screens!;
+  if (sc.floor || !r.deps.screens?.read) return;
+  let html: string;
+  try {
+    html = await r.deps.screens.read(url);
+  } catch (err) {
+    if (err instanceof LostClaim) throw err;
+    return;
+  }
+  sc.floor = checkFloor(html);
+  if (sc.floor.length) {
+    await r.log.note(`The floor: ${sc.floor.map((f) => f.rule).join(", ")} — ${sc.floor.length} thing(s) the page needs whatever its design says.`);
+  }
+  await r.save();
 }

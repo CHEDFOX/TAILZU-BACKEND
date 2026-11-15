@@ -77,6 +77,12 @@ export interface ScreensDeps {
   shoot: (url: string, viewport: DesignViewport) => Promise<Uint8Array>;
   store: JobShotStore;
   link?: (o: { userId: string; jobId: string; shotId: string }) => string | null;
+  /**
+   * The page's HTML once its scripts have run, for the floor (agent/floor.ts): the things a page needs whatever its design says, which nobody asks
+   * for and everybody wants. `web/browser` getRenderer() is this on a server, and Cloudflare's rendering on the Worker. Absent, or a page it cannot
+   * read, and the floor is simply not checked: the pictures are what the round is for, and the floor must never cost a job anything.
+   */
+  read?: (url: string) => Promise<string>;
 }
 
 /**

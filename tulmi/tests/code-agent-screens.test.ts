@@ -1,7 +1,8 @@
 /**
  * The screens round (src/code/agent/screens.ts) and a job's pictures (jobShots.ts, routes/code/jobShots.ts): a job that changed what people see runs
  * the app, keeps real screenshots of the page in its store and shows them by a signed link; one that changed nothing people see does not; one that
- * cannot says why, and the commit is never held.
+ * cannot says why, and the commit is never held. And the floor (floor.ts): while the app is still up, the page is read as the browser drew it and
+ * the things a page needs whatever its design says are checked on it — reported with the pictures, never blocking, and silent when it cannot be read.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -53,19 +54,27 @@ function fakePreview(script: PreviewState[] = [{ state: "ready", url: "https://t
   return p;
 }
 
-async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean } = {}) {
+/** A page the floor has two things to say about: no viewport tag, and an image with no alt. */
+const LOW_PAGE = '<!doctype html><html lang="en"><head><title>Pricing</title></head><body><h1>Pricing</h1><img src="/pro.png"></body></html>';
+const SOUND_PAGE = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"></head><body><h1>Pricing</h1></body></html>';
+
+async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean; page?: string; readFails?: boolean } = {}) {
   const preview = o.preview === null ? null : o.preview ?? fakePreview();
   const blobs = new MemoryBlobStore();
   const shot: Array<{ url: string; viewport: string }> = [];
+  const read: string[] = [];
   const screens = {
     shoot: async (url: string, viewport: "mobile" | "desktop") => { shot.push({ url, viewport }); if (o.shootFails) throw new Error("Browser Rendering said 429"); return PNG; },
     store: new BlobJobShots(blobs),
     link: ({ jobId, shotId }: { userId: string; jobId: string; shotId: string }) => `https://api.example/v1/code/shots/u/${jobId}/${shotId}?exp=9&sig=s`,
+    ...(o.page || o.readFails
+      ? { read: async (url: string) => { read.push(url); if (o.readFails) throw new Error("Browser Rendering said 429"); return o.page!; } }
+      : {}),
   };
   const r = await agentRig({ files: FILES, rows: ROWS, structure: STRUCTURE, ...(preview ? { live: { preview } } : {}), screens });
   r.json.on("work.plan", UTIL_PLAN);
   const { job } = await r.start(UTIL_TASK);
-  return { r, preview, shot, blobs, jobId: job.id };
+  return { r, preview, shot, read, blobs, jobId: job.id };
 }
 
 describe("what counts as something people see", () => {
@@ -79,6 +88,10 @@ describe("what counts as something people see", () => {
       .toEqual(["Real screens: /pricing on a phone and a computer, taken from the running app.", "- Phone: https://x/js_1", "- Computer: https://x/js_2"]);
     expect(screensLines({ stage: "done", viewports: ["mobile"], shots: [], skipped: "the app's dev server did not start." })[0]).toMatch(/^No real screens: the app's dev server did not start\. Ask for a drawn one/);
     expect(screensLines(undefined)).toEqual([]);
+    // The floor rides with the pictures, and a page with nothing wrong adds not one word.
+    const withFloor = screensLines({ stage: "done", route: "/pricing", viewports: ["mobile"], shots: [{ id: "js_1", route: "/pricing", viewport: "mobile" }], floor: [{ rule: "viewport", count: 1, text: "The page has no viewport meta tag." }] }, () => null);
+    expect(withFloor.at(-1)).toBe("- The page has no viewport meta tag.");
+    expect(screensLines({ stage: "done", route: "/pricing", viewports: ["mobile"], shots: [{ id: "js_1", route: "/pricing", viewport: "mobile" }], floor: [] }, () => null)).toHaveLength(1);
   });
 });
 
@@ -127,13 +140,65 @@ describe("the screens round", () => {
     expect((await dead.r.stateNow(dead.jobId)).report!.text).toMatch(/No real screens: the app's dev server did not start: vite: command not found/);
   });
 
-  it("a browser that fails: no pictures, said plainly", async () => {
+  it("a browser that fails: no pictures, said plainly, and the floor it did read is still reported", async () => {
+    const withPage = await setup({ shootFails: true, page: LOW_PAGE });
+    withPage.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await withPage.r.orch.idle();
+    const w = await withPage.r.stateNow(withPage.jobId);
+    expect(w.report!.text).toMatch(/No real screens: the screenshot failed/);
+    expect(w.report!.text).toContain("What the page needs whatever its design says");
+
     const s = await setup({ shootFails: true });
     s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
     await s.r.orch.idle();
     const st = await s.r.stateNow(s.jobId);
     expect(st.report!.shots).toBeUndefined();
     expect(st.report!.text).toMatch(/No real screens: the screenshot failed \(Browser Rendering said 429\)/);
+  });
+});
+
+describe("the floor, on the page that was shot", () => {
+  it("reads the page the pictures were taken of, and the report says what it needs whatever its design says", async () => {
+    const s = await setup({ page: LOW_PAGE });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price on the card."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    // The same address the pictures were taken of, read once, not once a size.
+    expect(s.read).toEqual(["https://tok.preview.example/pricing"]);
+    expect(st.screens!.floor!.map((f) => f.rule)).toEqual(["viewport", "img.alt"]);
+    expect(st.report!.text).toContain("What the page needs whatever its design says");
+    expect(st.report!.text).toMatch(/no viewport meta tag/);
+    // And it held nothing up.
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+
+  it("says nothing at all about a page with nothing wrong with it", async () => {
+    const s = await setup({ page: SOUND_PAGE });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.floor).toEqual([]);
+    expect(st.report!.text).not.toContain("What the page needs");
+    expect(st.report!.text).toContain("Real screens");
+  });
+
+  it("a server with no renderer, or a page that will not answer: not checked, not mentioned, nothing held up", async () => {
+    const none = await setup();
+    none.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await none.r.orch.idle();
+    const a = await none.r.stateNow(none.jobId);
+    expect(a.screens!.floor).toBeUndefined();
+    expect(a.report!.text).not.toContain("What the page needs");
+    expect(a.report!.text).toContain("Real screens");
+
+    const broken = await setup({ readFails: true });
+    broken.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await broken.r.orch.idle();
+    const b = await broken.r.stateNow(broken.jobId);
+    expect(b.screens!.floor).toBeUndefined();
+    expect(b.report!.text).not.toContain("What the page needs");
+    expect(broken.r.fake.commitCount(broken.r.repo)).toBe(2);
   });
 });
 

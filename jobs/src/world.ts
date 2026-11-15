@@ -101,6 +101,10 @@ export function buildDesign(env: Env): DesignDeps | undefined {
  * The screens round (code/agent/screens.ts): shots by Cloudflare's Browser Rendering of the job's preview, the pictures kept in the SHOTS bucket
  * under the owner's key, and 7-day links to them signed for the owner, which this Worker answers (http.ts). Off with CODE_SCREENS=false, or without
  * a browser or the bucket.
+ *
+ * `read` is the same browser's content endpoint (web/browser/cloudflare.ts), for the floor (code/agent/floor.ts): the page as it was drawn, so the
+ * things a page needs whatever its design says can be checked on it. It is the preview's own address, which the shots already open, so it needs
+ * nothing new; absent, and the floor is simply not checked.
  */
 export function buildScreens(env: Env): ScreensDeps | undefined {
   const cfg = getConfig();
@@ -109,9 +113,11 @@ export function buildScreens(env: Env): ScreensDeps | undefined {
   if (!cfg.CODE_SCREENS || !blobs || shootProblem(shoot)) return undefined;
   const secret = cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || "";
   const origin = String(env.CODE_JOBS_URL ?? "").replace(/\/+$/, "");
+  const render = cloudflareRendererFromConfig();
   return {
     shoot: (url, viewport) => shootUrl(url, { viewport }, shoot),
     store: new BlobJobShots(blobs),
+    ...(render ? { read: async (url: string) => (await render(url)).html } : {}),
     ...(secret && /^https?:\/\//.test(origin) ? { link: ({ userId, jobId, shotId }) => `${origin}${signJobShotPath({ secret, userId, jobId, shotId })}` } : {}),
   };
 }
