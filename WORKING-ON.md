@@ -1,6 +1,7 @@
 # Being built right now (read before you start)
 
-Updated 15 Nov 2026, 17:39 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 15 Nov 2026, 22:19 UTC. One session is building the items below. Do not edit the files they hold until the item is
+
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 **How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
@@ -64,11 +65,15 @@ look. The apps are renderers: build server data with the existing blocks and cat
   language picker (85 languages, the list is the server's), and seven routes under `/v1/lingo/`. 165 tests.
   Holds: `tulmi/src/lingo/**`, `tulmi/src/routes/bots/lingo.ts`, `tulmi/scripts/lingo-seed.ts`, `tulmi/tests/lingo-*.test.ts`,
   migrations **0087**, **0089**, **0092**.
-  Next, none of it client code: Lingo's `l.*` moments as data in `shared/bots/looks.json` (one gesture per grader reason, so the
-  movement carries the information: the missing accent plucked out of the air and set over the word, the wrong letter spat out and
-  the right one caught, two cards swapped for the wrong order, the right word mouthed slowly, a hand cupped to the ear when nothing
-  was heard), then its screens in `experience/bots/screens/bots/lingoPage.ts`, **vocabulary 1** so a lesson can never answer
-  "Open X0 again", then sentences from the bank into sessions.
+  Its `l.*` moments are in `shared/bots/looks.json` (v5) and its four screens in `experience/bots/screens/bots/lingoPage.ts`,
+  **vocabulary 1** so a lesson can never answer "Open X0 again". One gesture per grader reason, so the movement carries the
+  information: the missing accent plucked out of the air and set over the word, the wrong letter spat out and the right one caught,
+  two cards swapped for the wrong order, the right word mouthed slowly, a hand cupped to the ear when nothing was heard. Two more are
+  idlings on a loop, asked for by its own screens and in nobody's `idle.moments`: `l.mutter` and `l.hum`. The territory wears one of
+  them instead of a heading — Lingo alive across the top of the page, muttering while a word is due anywhere, humming once nothing
+  is. Holds `shared/bots/looks.json` and, generated from it, `TAILZU-FRONTEND/app/src/botTiles/starter.ts` and
+  `TAILZU-DESKTOP/botLooks.js` (`node src/botTiles/genStarter.mjs` in TAILZU-FRONTEND/app writes both).
+  Next: sentences from the bank into sessions, and the call that rings the phone to practise speaking.
   **A colour question that was open here is now answered and done** (`6222f21`): `bots/builtin.ts` and `experience/bots/palette.ts`
   each carried their own copy of the four shipped bots' colours and had disagreed for as long as both existed — builtin.ts said Xode
   was pine while palette.ts drew it moss. palette.ts keeps the icons and reads the colour from builtin.ts now, and builtin.ts was set
@@ -92,8 +97,10 @@ look. The apps are renderers: build server data with the existing blocks and cat
   organises the note. The call screen says it is there and draws the document beside the call (a window) or under it (a phone),
   and the link everyone joined by carries the document once the call is over — all server data, nothing new in either app.
   Migrations **0095** (meetings.brief) and **0096** (rooms.note_id, rooms.brief). Switch `MEETING_BRIEF`, off.
-  Left: the bot speaking in a call out loud (the same adapter takes PCM back in), and a wake word in the transcript so it can be
-  asked by voice rather than in writing.
+  **It speaks, too**: a session and a track of its own at the SFU (the same adapter the other way, `location: "local"`), a seat in
+  the room that never beats and counts as nobody, the words read as 24 kHz PCM and let out in 20 ms frames — so every app hears
+  it as it hears a person. And it answers to its name: a line that starts with "X0" is a question, out loud and in writing.
+
   Holds: `tulmi/src/brief/**`, `tulmi/src/rooms/**`, `tulmi/src/meet/**`, `tulmi/src/experience/bots/screens/bots/{meetScreens,callRoom}.ts`,
   the `MEETING_BRIEF*` lines of `config.ts`, migrations **0095** and **0096**, `docs/brief.md`.
 
