@@ -26,6 +26,22 @@ import type { ExerciseKind } from "../src/lingo/types.js";
 
 const live = sampleLive();
 const ctx = (client: "phone" | "desktop" = "phone") => ctxFor(SCREENS.lingo, client, live);
+/** A build that draws the living bot and plays the catalog's moments; the plain `ctx` above is one that draws neither. */
+const ALIVE = new Set(["BotsKit", "BotsMotion", "BotBuddy", "BotMoments"]);
+const livelyCtx = (client: "phone" | "desktop" = "phone") => ctxFor(SCREENS.lingo, client, live, { can: ALIVE });
+const buddies = (n: Node[]): Array<Record<string, unknown>> => {
+  const out: Array<Record<string, unknown>> = [];
+  const walk = (x: unknown): void => {
+    if (Array.isArray(x)) return x.forEach(walk);
+    if (x && typeof x === "object") {
+      const node = x as { type?: string; props?: Record<string, unknown> };
+      if (node.type === "BotBuddy") out.push(node.props ?? {});
+      Object.values(x as Record<string, unknown>).forEach(walk);
+    }
+  };
+  walk(n);
+  return out;
+};
 
 const course = (over: Partial<CourseView> = {}): CourseView => ({
   target: "es", from: "en", level: "a1", goalMin: 10, calls: false, voice: null,
@@ -48,6 +64,7 @@ describe("every tree the kit would draw", () => {
       const c = ctxFor(SCREENS.lingo, client, live);
       expect(clean(territory(c, { courses: [course()] })), client).toEqual([]);
       expect(clean(territory(c, { courses: [] })), `${client} empty`).toEqual([]);
+      expect(clean(territory(livelyCtx(client), { courses: [course()] })), `${client} alive`).toEqual([]);
       expect(clean(picker(c, { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [{ tag: "ta", name: "தமிழ்", en: "Tamil" }] })), client).toEqual([]);
       expect(clean(leaving(c, "es", "Español")), client).toEqual([]);
       for (const k of ["choose", "blank", "write", "listen", "chips", "say", "talk"] as ExerciseKind[]) {
@@ -122,6 +139,31 @@ describe("the territory", () => {
 
   it("offers a way out of each language", () => {
     expect(json(territory(ctx(), { courses: [course()] }))).toContain(SCREENS.lingoLeave);
+  });
+
+  it("puts Lingo itself at the top, alive, instead of a heading", () => {
+    const n = territory(livelyCtx(), { courses: [course()] });
+    const [bot, ...rest] = buddies(n);
+    expect(rest).toEqual([]);
+    expect(bot?.life).toBe("page.lingo");
+    // The first thing on the page is the bot, not a title: the back bar already says Lingo.
+    expect((n[0] as { type?: string }).type).toBe("BotBuddy");
+    expect(json(n)).not.toContain("Your languages");
+  });
+
+  it("mutters while a word is due anywhere and hums once nothing is", () => {
+    const quiet = course({ progress: { items: 8, learned: 0, due: 0, unseen: 0, held: 0.5 } });
+    expect(buddies(territory(livelyCtx(), { courses: [course()] }))[0]?.moment).toBe("l.mutter");
+    expect(buddies(territory(livelyCtx(), { courses: [quiet] }))[0]?.moment).toBe("l.hum");
+    // One language with nothing due does not quieten it while another still has words waiting.
+    expect(buddies(territory(livelyCtx(), { courses: [quiet, course()] }))[0]?.moment).toBe("l.mutter");
+    expect(buddies(territory(livelyCtx(), { courses: [course()] }))[0]?.momentMode).toBe("loop");
+  });
+
+  it("gives a build that cannot draw him the words instead, so the page is never headless", () => {
+    const n = territory(ctx(), { courses: [course()] });
+    expect(buddies(n)).toEqual([]);
+    expect(json(n)).toContain("Your languages");
   });
 });
 

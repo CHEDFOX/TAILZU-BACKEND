@@ -1,9 +1,10 @@
 /**
  * LINGO'S SCREENS (src/lingo, docs/lingo.md): the territory, a set, the picker, and leaving a language.
  *
- *   bots.lingo         THE TERRITORY. Coming back does not drop somebody into a lesson: a card per language, each with how it is
- *                      going and a Continue of its own, and Add a language beside them. Several at once, by choice. A bin on each
- *                      card opens bots.lingo.leave. With no language yet, the empty state asks which one.
+ *   bots.lingo         THE TERRITORY. Coming back does not drop somebody into a lesson: Lingo alive along the top, muttering
+ *                      conjugations while something is due and humming once nothing is, then a card per language, each with how it
+ *                      is going and a Continue of its own, and Add a language beside them. Several at once, by choice. A bin on
+ *                      each card opens bots.lingo.leave. With no language yet, the empty state asks which one.
  *   bots.lingo.set     A SET. One exercise at a time, the bot above it, and what the bot makes of the set at the end — the
  *                      celebration SCALED to how it went, and Continue. The app never decides any of that: the exercises, the
  *                      marking, the gesture and the shape of the next set all come from the server (POST /v1/lingo/session,
@@ -20,12 +21,12 @@
  */
 import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  back, botLook, box, C, call, chip, col, divider, emptyState, grow, icon, listCard, listRow, meta, meter, notice, open, page,
-  primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton, sectionLabel, seq, statusMark, text, title,
-  when, type BotsCtx,
+  back, botBuddy, botKind, botLook, botMoment, box, C, call, canBuddy, chip, col, divider, emptyState, grow, icon, listCard,
+  listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
+  sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
-import { field, inputBox } from "./parts.js";
+import { field, inputBox, isDesk } from "./parts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
 import type { Exercise } from "../../../../lingo/session.js";
 import type { Gesture, Mastery, Performance } from "../../../../lingo/set.js";
@@ -94,6 +95,29 @@ function courseCard(ctx: BotsCtx, c: CourseView): Node {
   ], { gap: 10, padding: 16, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line });
 }
 
+/**
+ * THE TOP OF THE TERRITORY, where a heading would be: Lingo itself, alive, across the width of the page. It greets
+ * somebody coming back with what the territory holds: it mutters conjugations under its breath, letter tiles drifting
+ * up, while a word is due anywhere (l.mutter), and hums to itself when nothing is (l.hum). Both are idlings of its own
+ * on a loop, and no other bot is given them (shared/bots/looks.json). Its kind is the plain custom tile, so the shared
+ * engine is untouched and only the colour and the moment are Lingo's.
+ *
+ * A build that cannot draw him is given the words instead, so the page is never headless.
+ */
+function territoryHead(ctx: BotsCtx, courses: CourseView[]): Node[] {
+  if (!canBuddy(ctx)) {
+    return [title("Your languages"), meta("Learning is a set at a time. Stop whenever; it picks up where you were.", { size: 13 })];
+  }
+  const desk = isDesk(ctx);
+  const live = ctx.live.bots.find((b) => b.slug === LINGO_SLUG);
+  const due = courses.some((c) => c.progress.due > 0);
+  return [botBuddy({
+    kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`, height: desk ? 120 : 108, size: desk ? 70 : 64,
+    state: live?.working ? "working" : live?.needs ? "needs" : "idle", lookTo: "down", label: "Lingo",
+    ...botMoment(ctx, due ? "l.mutter" : "l.hum", "loop"),
+  })];
+}
+
 export function territory(ctx: BotsCtx, data: TerritoryData | undefined): Node[] {
   const courses = data?.courses ?? [];
   if (!courses.length) {
@@ -107,8 +131,7 @@ export function territory(ctx: BotsCtx, data: TerritoryData | undefined): Node[]
     ];
   }
   return [
-    title("Your languages"),
-    meta("Learning is a set at a time. Stop whenever; it picks up where you were.", { size: 13 }),
+    ...territoryHead(ctx, courses),
     ...courses.map((c) => courseCard(ctx, c)),
     secondaryButton("Add a language", open(SCREENS.lingoAdd), { icon: "plus" }),
   ];
