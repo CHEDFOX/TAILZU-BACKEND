@@ -1440,8 +1440,10 @@ export interface BotThoughtSpec {
    *  to their neighbours, so a knock runs round the edge as a wave and dies out, and his own turns and landings knock it.
    *  `urgent`: the dots are full and a ring of dots leaves it now and then, thinning as it spreads; otherwise they are small
    *  and quiet. It takes `restText`'s place entirely, so nothing is written over him at rest; send `restText` as well for the
-   *  builds that cannot draw it, which simply show the words. */
-  restMark?: { dots: number; urgent?: boolean };
+   *  builds that cannot draw it, which simply show the words.
+   *  `says`: the few words the mark announces itself with — shown beside it when it appears or changes, then faded out, so a
+   *  dot is never the first thing a person has to work out. Four or five words at most. */
+  restMark?: { dots: number; urgent?: boolean; says?: string };
   /** A state path holding true while it is open. The app writes true when the resting box is tapped and false when the veil is
    *  tapped, Escape is pressed or (phone) back is pressed; the server's actions may write it too. */
   openPath: string;

@@ -96,7 +96,7 @@ describe("what his thought holds", () => {
     expect(restMark(busy, updatesOf(busy, FEED)).text).toMatch(/^\u00b7+$/);
     // only news: one small dot
     const quiet = ctx("phone", { live: { ...live, needs: [], working: [] } });
-    expect(restMark(quiet, updatesOf(quiet, FEED))).toEqual({ dots: 1, urgent: false, text: "\u00b7", label: "2 things done" });
+    expect(restMark(quiet, updatesOf(quiet, FEED))).toEqual({ dots: 1, urgent: false, text: "\u00b7", label: "2 things done", says: "2 things done" });
     // nothing at all: no mark, so no box over his head
     expect(restMark(quiet, updatesOf(quiet, [])).text).toBe("");
   });
@@ -107,7 +107,8 @@ describe("what his thought holds", () => {
     const node = homeUpdatesBot(ctx(), FEED);
     const th = (node.props as { thought: { restText?: string; restMark?: { dots: number; urgent: boolean } }; label: string }).thought;
     // a build that draws it gets the blob of dots, and nothing is written at rest
-    expect(th.restMark).toEqual({ dots: 1, urgent: true });
+    // and the mark announces itself in a few words, so a dot is never a riddle
+    expect(th.restMark).toEqual({ dots: 1, urgent: true, says: "Xode needs you" });
     expect(th.restText).toBeUndefined();
     // one that cannot gets the same mark as characters
     const old = ctx("phone", { can: new Set(CAN.filter((c) => c !== "BotMark")) });

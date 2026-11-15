@@ -174,20 +174,28 @@ export function updatesOf(ctx: BotsCtx, rows: readonly FeedRow[] = []): { needs:
  * own motion, a ring leaving it now and then while something is waiting. Every other build is sent `text` instead — the same
  * mark as characters, a bullet a font always has rather than a glyph that might come out a square. `label` is the same thing
  * in words, for the person whose screen reads to them, and it goes on him rather than on the mark.
+ *
+ * `says` IS WHAT STOPS A DOT BEING A RIDDLE. A mark on its own tells nobody that this little bot is where everything that
+ * happened is kept, so the mark announces itself: these few words ride beside it when it appears or changes, for about as
+ * long as it takes to read them, and then fade and leave the mark alone. Short, always — it is a label, not a sentence.
  */
-export function restMark(ctx: BotsCtx, u: ReturnType<typeof updatesOf>): { dots: number; urgent: boolean; text: string; label: string } {
+export function restMark(ctx: BotsCtx, u: ReturnType<typeof updatesOf>): { dots: number; urgent: boolean; text: string; label: string; says: string } {
   if (u.needs.length) {
     const n = Math.min(u.needs.length, 3);
-    return { dots: n, urgent: true, text: "\u2022".repeat(n), label: u.needs.length === 1 ? `${u.needs[0]!.botName} needs you` : `${u.needs.length} need you` };
+    const says = u.needs.length === 1 ? `${u.needs[0]!.botName} needs you` : `${u.needs.length} need you`;
+    return { dots: n, urgent: true, text: "\u2022".repeat(n), label: says, says };
   }
   if (u.working.length) {
     const w = u.working[0]!, n = Math.min(u.working.length, 3);
-    return { dots: n, urgent: false, text: "\u00b7".repeat(n), label: u.working.length === 1 ? `${nameOf(ctx, w.bot)} is on it` : `${u.working.length} bots are working` };
+    const says = u.working.length === 1 ? `${nameOf(ctx, w.bot)} is on it` : `${u.working.length} bots are working`;
+    return { dots: n, urgent: false, text: "\u00b7".repeat(n), label: says, says };
   }
   if (u.done.length) {
-    return { dots: 1, urgent: false, text: "\u00b7", label: u.done.length === 1 ? u.done[0]!.title : `${u.done.length} things done` };
+    const n = u.done.length;
+    // The one that just finished is named in full on him, for a screen that reads aloud; what rides beside the mark is short.
+    return { dots: 1, urgent: false, text: "\u00b7", label: n === 1 ? u.done[0]!.title : `${n} things done`, says: n === 1 ? "1 thing done" : `${n} things done` };
   }
-  return { dots: 0, urgent: false, text: "", label: "Nothing new" };
+  return { dots: 0, urgent: false, text: "", label: "Nothing new", says: "" };
 }
 
 /** One row of the list: the bot's mark and name, what it is, its stage if it is running, and it opens. */
@@ -324,7 +332,7 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
     ...(voice ? { listenWhen: listening } : {}),
     // No words at rest: the mark, or nothing at all. What it stands for is said on him instead, where a screen reader finds it.
     // A build that draws the mark gets it as a blob of dots that wobbles; the rest get the same mark as characters.
-    thought: { style: "home", ...(mark.dots ? canMark(ctx) ? { restMark: { dots: mark.dots, urgent: mark.urgent } } : { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
+    thought: { style: "home", ...(mark.dots ? canMark(ctx) ? { restMark: { dots: mark.dots, urgent: mark.urgent, says: mark.says } } : { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
     label: voice ? `${mark.label}. I'm listening — say what you need, or tap the key to type.` : `${mark.label}. Tap to see what's happening.`,
   }, [col(children, { padding: 18, gap: 14, flexGrow: 1 })], {
     onPress: tapHim,

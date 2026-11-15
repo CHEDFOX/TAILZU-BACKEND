@@ -18,6 +18,8 @@ Code: `tulmi/src/experience/bots/screens/shell/homeUpdates.ts`; Home picks it in
 
 He does not stand in a white strip at the bottom of Home. He lives **behind the tab bar**: the ground back there is low, so all that clears the line is his head, and he wanders along it. Every so often he jumps the ledge, stands in full view for a few moments, and drops back behind — and he comes up by himself whenever there is something to say (an answer landing, his ear opening, his thought being opened).
 
+**While something is waiting on them he does not hide at all.** He comes over the ledge and stays there, in full view with his mark, until it is dealt with: hiding is for having nothing to say, and standing where he can be seen is half of how a person learns that he is worth tapping.
+
 It is one ledge and two floors, the way a platform is, and the jump is his own gravity: he leaves the low ground with enough speed to clear the lip, the ledge becomes his floor the instant his feet are over it, and the low ground is his again the instant he steps off. Nothing about it is tweened (`botTiles/core.ts` `Peek`, tested in `core.test.ts`).
 
 Two things follow. The strip he used to need is gone, so Home keeps that room — the page ends on the tab bar with nothing cut off by a white lid — and **a tap anywhere in what is left of it** opens what is happening, instead of asking for a tap on a bot the size of a thumbnail.
@@ -27,6 +29,8 @@ A build that cannot do it (`BotPeek`) gets exactly the stage it has today, with 
 ## 1. What he shows
 
 At rest he carries **a mark, not a sentence**: a full dot for each thing that needs them (up to three), a small dot while his bots are busy, one small dot when something has just finished, and **nothing at all** — no box over his head — when there is nothing. What the mark stands for is said on him instead, where a screen that reads aloud finds it ("2 need you", "Xode is on it", "Nothing new").
+
+**And the mark says what it is.** A dot on its own tells nobody that this little bot is where everything that happened is kept, so the mark announces itself: a few words ride beside it when it appears or changes — "Xode needs you", "2 bots are working", "2 things done" — for about as long as it takes to read them, and then they fade and leave the mark alone. Every arrival teaches the mark again, and nothing is written over him the rest of the time (`restMark.says`).
 
 The mark itself is **matter, not a shape**: a soft blob whose edge is a ring of ink dots, each sprung back to its resting radius and tied to its neighbours, so a knock runs round it as a wave and dies out. Its own travel knocks it — it wobbles when he turns, lands or jumps, and settles when he stands — and while something is waiting on them a ring of dots leaves it now and then, thinning as it spreads, with the blob taking the kick back (the apps' `Mark`, `BotMark`; a build without it is sent the same mark as characters in the box it draws today).
 
