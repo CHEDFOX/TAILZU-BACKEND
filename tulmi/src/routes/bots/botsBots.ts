@@ -5,6 +5,9 @@
  *   POST   /v1/botsapp/bots/chat/:slug { message }     -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
  *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
+ *   GET    /v1/botsapp/bots/sessions/:slug             -> { sessions }                    the bot's thread, newest first
+ *   POST   /v1/botsapp/bots/sessions/:slug             -> { session }                     the + : a new session, whatever is open
+ *   GET    /v1/botsapp/bots/session/:id                -> { session, turns }              one session, oldest first
  *   GET    /v1/botsapp/bots/draft                      -> { draft }                       Make a bot: the draft in progress, or null
  *   POST   /v1/botsapp/bots/draft { sentence }         -> { draft }                       Bots.draft, kept while it is shaped (nothing is a bot yet)
  *   PUT    /v1/botsapp/bots/draft { name?, colour?, addRule?, dropRule?, files?, web?, connector? }   -> { draft }
@@ -50,6 +53,7 @@ import { bearerKey, looksLikeKey, maskKey, prefixOf } from "../../bots/keys.js";
 import { getConfig } from "../../config.js";
 import { defaultGuard } from "../../guard/index.js";
 import { botsAreaParts, shareAsk, shareLine, shareMessage, type BotsAreaParts } from "../../botsBots/index.js";
+import { THREAD_KEEP } from "../../botsBots/sessions.js";
 import { eventStore, type EventStore } from "../../shell/events.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import { guarded } from "../../http/guarded.js";
@@ -173,7 +177,9 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
         const slug = param(req, "slug").toLowerCase(), message = bodyOf(req.body).message;
         // With Spaces off a bot reads nothing a space shared (botsBots/spacesSwitch.ts).
         const shared = spacesOn() ? await spacesArea.items.forBot(s.user.id, slug).catch(() => []) : [];
-        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared, live);
+        // A message can name the session it belongs to; with none, it joins the one last touched (sessions.ts current).
+        const session = String(bodyOf(req.body).session ?? "") || null;
+        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared, live, { ...(session ? { session } : {}) });
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
         await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: String(message), paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
           .catch((err) => req.log.warn({ error: (err as Error)?.message }, "bots area: answer not written down"));
@@ -190,6 +196,27 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   });
 
   app.delete(`${AREA}/chat/:slug`, RL, run(true, async (user, req) => ({ ok: true, cleared: await parts.chat!.clear(user.id, param(req, "slug")) })));
+
+  // ------------------------------------------------------------------ sessions (botsBots/sessions.ts)
+
+  /** A bot's thread: its sessions, newest first. Everything older than the thread holds is kept, and found by searching. */
+  app.get(`${AREA}/sessions/:slug`, RL, run(true, async (user, req) => {
+    const limit = Number(query(req, "limit") ?? THREAD_KEEP);
+    return { sessions: await parts.sessions.list(user.id, param(req, "slug").toLowerCase(), Number.isFinite(limit) ? Math.min(limit, THREAD_KEEP) : THREAD_KEEP) };
+  }));
+
+  /** The + on a bot's page: a new session, whatever is open. The next words said with no session named join it. */
+  app.post(`${AREA}/sessions/:slug`, RL, run(true, async (user, req) => ({
+    session: await parts.sessions.open(user.id, param(req, "slug").toLowerCase(), String(bodyOf(req.body).title ?? "")),
+  })));
+
+  /** One session: what was said in it, oldest first. The screen draws a dotted line wherever the gap is longer than GAP_MS. */
+  app.get(`${AREA}/session/:id`, RL, run(true, async (user, req) => {
+    const id = param(req, "id");
+    const session = await parts.sessions.get(user.id, id);
+    if (!session) throw new BotError("not_found", "There is no such session.", 404);
+    return { session, turns: await parts.chat!.ofSession(user.id, id) };
+  }));
 
   // ------------------------------------------------------------------ make a bot
 
