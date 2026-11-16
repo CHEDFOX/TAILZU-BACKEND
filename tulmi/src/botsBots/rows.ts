@@ -110,6 +110,8 @@ const AREA_TABLES = [
   "spaces", "space_members", "space_bots", "space_invites", "plan_skips", "trips",
   // migration 0052: where Plan Ease's day starts, and the travel its moves saved
   "plan_prefs",
+  // migration 0099: places worth keeping (src/discover) — cards built for one person, and who searched for what
+  "discover_cards", "discover_asks",
 ] as const;
 export type AreaTable = (typeof AREA_TABLES)[number];
 

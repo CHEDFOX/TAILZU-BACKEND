@@ -39,6 +39,7 @@ import type { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
 import type { BotDef, PendingApproval } from "./types.js";
 import { EVERYDAY_TOOLS, everydayKindsFor, runEveryday } from "../everyday/tools.js";
+import { DISCOVER_TOOLS, discoverFor, runDiscover } from "../discover/tools.js";
 import type { Card } from "../everyday/index.js";
 
 /** Everything the tools of one request write down, for the answer. */
@@ -179,6 +180,15 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
       const def = EVERYDAY_TOOLS[kind];
       defs.push({ ...def });
       handlers.set(def.name, (a) => runEveryday(e, userId, kind, a, (card) => { if (env.record.cards.length < 6) env.record.cards.push(card); }));
+    }
+  }
+
+  // ---- places worth keeping: our own catalogue (src/discover/tools.ts says who gets it)
+  if (ports.discover && discoverFor(bot)) {
+    const d = ports.discover;
+    for (const def of DISCOVER_TOOLS) {
+      defs.push({ ...def });
+      handlers.set(def.name, async (a) => runDiscover(d, userId, def.name, a, (card) => { if (env.record.cards.length < 6) env.record.cards.push(card); }));
     }
   }
 
