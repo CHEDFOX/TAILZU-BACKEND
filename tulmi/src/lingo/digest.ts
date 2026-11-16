@@ -16,6 +16,16 @@ import { lingoStore, type LingoStore } from "./store.js";
 
 const DUE_SHOWN = 25;
 const NEW_SHOWN = 10;
+/** The seven codes (types.ts WHY_CODES) as a sentence the model can use. Their own words matter more and come after. */
+const WHY_WORDS: Record<string, string> = {
+  someone: "somebody they love speaks it",
+  trip: "a trip they are taking",
+  living: "they live there, or are moving there",
+  work: "their work",
+  family: "it is their family's language",
+  study: "they are studying it",
+  curious: "they simply want to",
+};
 const NONE = "They have not started a language yet. Ask them which language they want to learn and which language they already speak, then start it for them.";
 
 export interface DigestDeps {
@@ -37,6 +47,12 @@ export async function lingoDigest(userId: string, o: DigestDeps = {}): Promise<s
   lines.push(`Learning: ${course.target}. Speaks: ${course.from}. Level: ${course.level}. ${course.goalMin} minutes a day.`);
   if (courses.length > 1) lines.push(`Also learning: ${courses.slice(1).map((c) => c.target).join(", ")}.`);
   lines.push(`Streak: ${course.streakDays} day${course.streakDays === 1 ? "" : "s"}.`);
+  // WHAT THEY CAME FOR (bots.lingo.why). Everything else here is counts; this is the only line that says what the
+  // language is actually for, so the conversation can be about that and not about a bear drinking beer.
+  const why = course.why ? WHY_WORDS[course.why] : "";
+  if (why) lines.push(`Why they are learning it: ${why}.`);
+  if (course.whyNote) lines.push(`In their own words: ${course.whyNote}`);
+  if (why || course.whyNote) lines.push("Keep what you teach and what you talk about pointed at that.");
   lines.push(`Words and phrases: ${p.items}, of which ${p.learned} are learned (said out loud), ${p.due} are due now and ${p.unseen} are new.`);
 
   const ready = due(items, now, DUE_SHOWN);

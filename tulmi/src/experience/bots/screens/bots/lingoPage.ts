@@ -1,5 +1,5 @@
 /**
- * LINGO'S SCREENS (src/lingo, docs/lingo.md): the territory, a set, the picker, and leaving a language.
+ * LINGO'S SCREENS (src/lingo, docs/lingo.md): the territory, a set, the picker, what the language is for, and leaving one.
  *
  *   bots.lingo         THE TERRITORY. Coming back does not drop somebody into a lesson: Lingo alive along the top, muttering
  *                      conjugations while something is due and humming once nothing is, then a card per language, each with how it
@@ -21,7 +21,7 @@
  */
 import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, col, divider, emptyState, grow, listCard,
+  back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, chips, col, divider, emptyState, grow, listCard,
   listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
   sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
 } from "../../kit.js";
@@ -142,16 +142,59 @@ export function territory(ctx: BotsCtx, data: TerritoryData | undefined): Node[]
 
 /** One language, named in itself with the English name beside it, because somebody looks for the word they call it by. */
 function languageRow(l: LanguageRow): Node {
-  const start = call("PUT", `${PATH}/course`, { target: l.tag }, {
-    ok: seq(toast(`Learning ${l.name}`), open(SCREENS.lingoSet, { target: l.tag })),
-    fail: toast("Couldn't start that one. Try again in a moment.", "error"),
-  });
+  // Picking one does not start the course: it asks what the language is FOR first, and that answer starts it. Going
+  // straight in used to land on "Nothing due", because a course nobody has said anything to has no words in it yet.
   return listRow({
     label: l.name,
     ...(l.en && l.en !== l.name ? { value: l.en } : {}),
     chevron: true,
-    onPress: start,
+    onPress: open(SCREENS.lingoWhy, { target: l.tag, name: l.name }),
   });
+}
+
+// ===================================================================== what the language is for
+
+/**
+ * Seven answers that between them hold most of the reasons anybody learns a language, and not one of them is a country,
+ * a region or a kind of person: the same seven, in the same order, whichever language was picked. "My family speaks it"
+ * is there because people learning the language of their own grandparents are a huge share of learners and almost every
+ * app writes them out.
+ */
+const WHY_REASONS: Array<{ label: string; value: string }> = [
+  { label: "Someone I love", value: "someone" },
+  { label: "A trip", value: "trip" },
+  { label: "Living there", value: "living" },
+  { label: "Work", value: "work" },
+  { label: "My family speaks it", value: "family" },
+  { label: "Studying it", value: "study" },
+  { label: "Just because", value: "curious" },
+];
+
+/**
+ * WHAT THE LANGUAGE IS FOR, asked once, as it is added — the only question Lingo ever asks before teaching anything.
+ *
+ * The box underneath is worth more than the chips and is the reason the chips are not the whole screen: "my partner's
+ * mother is in Seville and I meet her in March" tells Lingo what a hundred taps could not. Both are optional, Skip is
+ * one tap, and backing out adds no language at all.
+ */
+export function whyScreen(_ctx: BotsCtx, target: string, name: string): Node[] {
+  const begin = (why: unknown, whyNote: unknown): ActionRef => call("PUT", `${PATH}/course`, { target, why, whyNote }, {
+    ok: seq(toast(`Learning ${name}`), { kind: "navigate", screenId: SCREENS.lingo, replace: true }),
+    fail: toast("Couldn't start that one. Try again in a moment.", "error"),
+  });
+  return [
+    title(`What's ${name} for?`),
+    meta("It decides what Lingo teaches you first and what it talks to you about. Nothing here is a test, and you can tell it more any time.", { size: 13 }),
+    chips(WHY_REASONS, "why"),
+    col([
+      sectionLabel("In your own words"),
+      inputBox([field("lingo-for", "note", "Who you'll speak it with, and when. A line is plenty.", { multiline: true })], { radius: RADIUS.card }),
+    ], { gap: 8 }),
+    col([
+      primaryButton("Start learning", begin("$state.why", "$state.note")),
+      quietButton("Skip", begin("", "")),
+    ], { gap: 8 }),
+  ];
 }
 
 export function picker(ctx: BotsCtx, data: PickerData | undefined): Node[] {
@@ -363,6 +406,17 @@ export const LINGO_SCREENS: BotsScreen[] = [
       backTitle: "Languages",
       body: setScreen(ctx, String(ctx.params?.target ?? ""), data),
       state: { said: "", mark: null },
+    }),
+  }),
+  screen({
+    id: SCREENS.lingoWhy,
+    build: (ctx) => page(ctx, {
+      nav: LINGO_SLUG,
+      title: "Getting started",
+      back: true,
+      backTitle: "Languages",
+      body: whyScreen(ctx, String(ctx.params?.target ?? ""), String(ctx.params?.name ?? "it")),
+      state: { why: "", note: "" },
     }),
   }),
   screen({

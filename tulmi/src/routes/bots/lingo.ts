@@ -26,7 +26,7 @@ import { againAfter } from "../../lingo/order.js";
 import { gestureFor, mastery, performanceOf, readSet, shapeNext, SET_SIZE, type Answered, type SetShape } from "../../lingo/set.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
-import { EXERCISE_KINDS, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type Verdict } from "../../lingo/types.js";
+import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type Verdict, type Why } from "../../lingo/types.js";
 import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
 
 export interface LingoRouteDeps {
@@ -42,6 +42,8 @@ export interface LingoRouteDeps {
 const TAG_MAX = 16;
 const TEXT_MAX = 200;
 const GLOSS_MAX = 300;
+/** Their own words for what the language is for. A line is plenty; the column holds 400. */
+const WHY_NOTE_MAX = 400;
 const WORDS_PER_CALL = 50;
 /** Sentences fetched per word that needs one. A handful is plenty: the shortest usable one is taken. */
 const SENTENCES_PER_WORD = 4;
@@ -118,9 +120,14 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     if (!user) return reply;
     const b = (req.body ?? {}) as Record<string, unknown>;
     const target = str(b["target"], TAG_MAX);
-    const from = str(b["from"], TAG_MAX);
     if (!isTag(target)) return bad(reply, "Which language do you want to learn?");
-    if (!isTag(from)) return bad(reply, "Which language do you already speak?");
+    // The language they already speak, if they did not say: the one their other courses are taught in, else English.
+    // Asking the screen to send it meant the screen had to know it, and the screen that adds the FIRST language is
+    // the one place nobody knows it yet — so every first language was refused, which is what used to happen here.
+    const said = str(b["from"], TAG_MAX);
+    if (said && !isTag(said)) return bad(reply, "Which language do you already speak?");
+    const kept0 = await store().courses(user.id).catch(() => []);
+    const from = said || kept0.find((c) => c.target !== target)?.from || "en";
     if (target === from) return bad(reply, "Those are the same language.");
 
     const at = now();
@@ -138,6 +145,10 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       lastDay: kept?.lastDay ?? null,
       usedMs: at,
       updatedMs: at,
+      // What it is FOR, asked once as it is added. Skipping is a complete answer, so neither of these is required and
+      // an empty one is never written over an answer they already gave.
+      ...(isWhy(b["why"]) && b["why"] ? { why: b["why"] as Why } : kept?.why ? { why: kept.why } : {}),
+      ...(str(b["whyNote"], WHY_NOTE_MAX) ? { whyNote: str(b["whyNote"], WHY_NOTE_MAX) } : kept?.whyNote ? { whyNote: kept.whyNote } : {}),
     };
     const saved = await store().setCourse(user.id, learner, at);
     return reply.send({ course: saved });
