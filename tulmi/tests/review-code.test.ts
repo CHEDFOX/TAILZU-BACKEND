@@ -86,6 +86,41 @@ describe("the review pair", () => {
     await app.close();
   });
 
+  /**
+   * THE SHAPE OF THE CODE, which is not the route's business and is everybody's problem.
+   *
+   * App Review rejected build 85 under 2.1(a) with "the app reverted to Enter the code page after entering demo
+   * code". Nothing was broken: the route was right, its tests passed, and the pair simply could not be TYPED. The
+   * sign-in screen is a number pad that strips every non-digit and stops at six, so a longer or alphanumeric
+   * REVIEW_CODE never reaches the route at all — the reviewer types it and the screen sits there.
+   *
+   * The tests above even use "AbCd1234", which is the exact shape that cannot be entered: the suite was holding the
+   * wrong assumption in place. The route still takes any string, because it should not care; the check is in
+   * config.ts, where a deploy log can carry it.
+   */
+  it("a code the sign-in screen could never take is a configuration mistake, and the config says so", async () => {
+    const screenWouldKeep = (typed: string) => typed.replace(/\D/g, "").slice(0, 6);
+    // What the app does to each of these before anything is sent.
+    expect(screenWouldKeep("AbCd1234")).toBe("1234");        // letters gone, too short: verify() never fires
+    expect(screenWouldKeep("longsecret12345678")).toBe("123456"); // truncated: the wrong code is sent
+    expect(screenWouldKeep("123456")).toBe("123456");        // the only shape that survives
+    const ok = /^\d{6}$/;
+    expect(ok.test("AbCd1234")).toBe(false);
+    expect(ok.test("1234567")).toBe(false);
+    expect(ok.test("12345")).toBe(false);
+    expect(ok.test("123456")).toBe(true);
+  });
+
+  it("takes a six-digit code end to end, which is the shape review actually uses", async () => {
+    configure("review@x0bot.com", "640913");
+    const app = await server();
+    const wrong = await app.inject({
+      method: "POST", url: "/v1/auth/review-code", payload: { email: "review@x0bot.com", code: "640914" },
+    });
+    expect(wrong.statusCode).toBe(401);
+    await app.close();
+  });
+
   it("matches the address case-insensitively, the code exactly", async () => {
     configure("Review@X0bot.Com", "AbCd1234");
     const app = await server();

@@ -371,6 +371,11 @@ is deployed.
   cover. If you would rather start sleep with the reviewer alone, set it to their id now and add to section 10: "On
   approval day: `./deploy/set-env.sh PERM_HEALTH_SLEEP_IOS_USERS= && ./deploy/ship.sh`" — until you run it, the
   Description and What's New promise sleep to people who cannot see it.
+* **The review sign-in — `REVIEW_CODE` MUST BE EXACTLY SIX DIGITS.** This is what build 85 was rejected for
+  (2.1(a), "the app reverted to Enter the code page after entering demo code"). Nothing was broken: the code screen is
+  the same number pad every user types an emailed code into, so it strips every letter and stops at six characters. A
+  longer or alphanumeric code cannot be typed at all — the reviewer enters it, the app keeps nothing, and the screen
+  sits there looking dead. `config.ts` now warns in the deploy log when the shape is wrong; read it before submitting.
 * **The review sign-in:** check `REVIEW_EMAIL` and `REVIEW_CODE` are **both** set
   (`./deploy/set-env.sh --show REVIEW_EMAIL REVIEW_CODE` prints both values — neither name looks like a secret to the
   script, and `--show` with no names after it prints nothing at all), that they **match App Review Information's User Name and Password exactly**, and that they **stay set until

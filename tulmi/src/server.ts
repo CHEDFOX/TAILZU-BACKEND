@@ -56,6 +56,13 @@ import { registerBotHealthRoutes } from "./routes/bots/botHealth.js";
 import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerPlanShareRoutes } from "./routes/bots/botsPlanShare.js";
+import { registerSitesRoutes } from "./routes/bots/botsSites.js";
+import { startSitesClock } from "./sites/clock.js";
+import { Panels } from "./sites/panel.js";
+import { cloudBrowserOn } from "./sites/gate.js";
+import { SITE_READ_PAISE } from "./sites/read.js";
+import { Sites } from "./sites/service.js";
+import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -543,6 +550,25 @@ const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts })
 // plan can only be shared with someone you already share a space with) and the same meter the You tab shows. Every route answers
 // 404 while PLAN_SHARE is off, which is the default.
 registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending: you.spending });
+// A BROWSER THAT BELONGS TO THE PERSON (src/sites, docs/sites.md): signed in once, read while something is actually
+// happening, so "where is my order" works on a site with no API. Read only — nothing in there can press, type or spend.
+// Every route answers 404 while CLOUD_BROWSER is off, which is the default, and with no local Chrome there is no visitor
+// and the whole thing stays dark however the switches are set.
+{
+  const visit = cloudBrowserOn() ? getVisitor() : null;
+  if (visit) {
+    const sites = new Sites({ visit, read: { maxPaise: SITE_READ_PAISE } });
+    // The panel needs a page HELD open while a person looks at it, which only the local engine can do; `hold` is
+    // absent otherwise and the sign-in routes answer 503 rather than pretending.
+    const hold = getHolder();
+    const panels = hold ? new Panels({ hold }) : undefined;
+    registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
+    const stopSites = startSitesClock({ sites, log: app.log });
+    app.addHook("onClose", async () => { stopSites(); await panels?.closeAll(); });
+  } else if (cloudBrowserOn()) {
+    app.log.warn("CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be \"local\" with Chrome): sites stay off.");
+  }
+}
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 // The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.
@@ -769,6 +795,32 @@ if (process.env.NODE_ENV !== "test") {
         ` expoToken=${cfg.EXPO_ACCESS_TOKEN ? "set" : "not set"}`);
     } else {
       console.log(`[push] smart notifications off (${cfg.PUSH_ENGINE ? "no Supabase" : "PUSH_ENGINE=false"})`);
+    }
+
+    /**
+     * THE REVIEW SIGN-IN, OUT LOUD ON EVERY BOOT.
+     *
+     * App Review rejected build 85 under 2.1(a) — "the app reverted to Enter the code page after entering demo
+     * code" — because the pair had lapsed. Nothing was broken and nothing said anything: unset is the normal state,
+     * so silence meant both "nobody is reviewing" and "the reviewer cannot get in", and those read the same.
+     *
+     * Three different faults look identical to a reviewer (no pair, a stale account, a code the number pad cannot
+     * take), so the only honest thing is to say which state this server is actually in. Never the code itself: the
+     * email is public to every client, the code is the whole secret, and a log is not the place for it.
+     */
+    {
+      const email = (cfg.REVIEW_EMAIL ?? "").trim();
+      const code = (cfg.REVIEW_CODE ?? "").trim();
+      if (!email && !code) {
+        console.log("[review] sign-in OFF — no demo account. Normal, EXCEPT while an app build is in review.");
+      } else if (!email || !code) {
+        console.log(`[review] sign-in BROKEN — only ${email ? "REVIEW_EMAIL" : "REVIEW_CODE"} is set; both are needed, so nobody can sign in.`);
+      } else if (!/^\d{6}$/.test(code)) {
+        console.log(`[review] sign-in BROKEN — the code is ${code.length} characters${/\D/.test(code) ? " and not all digits" : ""};`
+          + " the sign-in screen is a number pad that keeps six digits, so App Review cannot type it.");
+      } else {
+        console.log(`[review] sign-in ON for ${email} — six-digit code set. Clear both once the build is approved.`);
+      }
     }
     // Announce the EFFECTIVE speech config on every boot.
     //

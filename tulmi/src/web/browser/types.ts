@@ -95,6 +95,32 @@ export interface VisitOptions {
   timeoutMs?: number;
 }
 
+/**
+ * A PAGE HELD OPEN WHILE A PERSON LOOKS AT IT (src/sites/panel.ts, docs/sites.md §panel). The one place in here that
+ * keeps a browser context alive between calls, because a sign-in cannot be done in a single visit: they have to see
+ * the page, touch it, and see what their touch did.
+ *
+ * It holds one of the engine's places for as long as it is open, which is why the panel has a ceiling and an idle
+ * cut: a forgotten panel is a place nobody else can use.
+ */
+export interface HeldPage {
+  /** Pictures of the page as it changes. Chrome sends one only when something moved. */
+  onFrame(cb: (jpegBase64: string, meta: { width: number; height: number }) => void): void;
+  /** A tap, in the frame's own pixels. */
+  tap(x: number, y: number): Promise<void>;
+  /** Typed as keystrokes, so a page that watches each key (an OTP box that jumps on) behaves as it would for a person. */
+  type(text: string): Promise<void>;
+  key(name: "Enter" | "Backspace" | "Tab"): Promise<void>;
+  scroll(dy: number): Promise<void>;
+  /** Where it is now and what is on it, to tell a sign-in page from the page behind it. */
+  look(): Promise<Pick<VisitedPage, "finalUrl" | "title" | "elements">>;
+  /** The session as it stands. Taken when they are through, and not before. */
+  state(): Promise<SiteState>;
+  /** Forget everything of one host: used to throw Google's session away and keep the shop's. */
+  forgetHost(host: string): Promise<void>;
+  close(): Promise<void>;
+}
+
 export interface VisitedPage {
   finalUrl: string;
   title: string;
