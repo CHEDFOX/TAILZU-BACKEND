@@ -938,6 +938,16 @@ export interface SiteLoginView {
   needsSignIn?: boolean;
 }
 
+/** Everything the sites screens draw, from one read. */
+export interface SitesView {
+  logins: SiteLoginView[];
+  watches: SiteWatchView[];
+  /** The hosts this server allows at all (CLOUD_BROWSER_SITES). Empty means none, and the screen says so. */
+  canAdd: string[];
+  /** How many things one person may have being watched at once. */
+  most: number;
+}
+
 
 /**
  * WHAT ONE BOX OF A SIGN-IN CARD ASKS FOR. `secret` is a password: the app hides it as it is typed, and it is

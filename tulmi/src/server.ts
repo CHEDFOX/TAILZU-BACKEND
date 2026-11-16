@@ -56,6 +56,12 @@ import { registerBotHealthRoutes } from "./routes/bots/botHealth.js";
 import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerPlanShareRoutes } from "./routes/bots/botsPlanShare.js";
+import { registerSitesRoutes } from "./routes/bots/botsSites.js";
+import { startSitesClock } from "./sites/clock.js";
+import { cloudBrowserOn } from "./sites/gate.js";
+import { SITE_READ_PAISE } from "./sites/read.js";
+import { Sites } from "./sites/service.js";
+import { getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -543,6 +549,21 @@ const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts })
 // plan can only be shared with someone you already share a space with) and the same meter the You tab shows. Every route answers
 // 404 while PLAN_SHARE is off, which is the default.
 registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending: you.spending });
+// A BROWSER THAT BELONGS TO THE PERSON (src/sites, docs/sites.md): signed in once, read while something is actually
+// happening, so "where is my order" works on a site with no API. Read only — nothing in there can press, type or spend.
+// Every route answers 404 while CLOUD_BROWSER is off, which is the default, and with no local Chrome there is no visitor
+// and the whole thing stays dark however the switches are set.
+{
+  const visit = cloudBrowserOn() ? getVisitor() : null;
+  if (visit) {
+    const sites = new Sites({ visit, read: { maxPaise: SITE_READ_PAISE } });
+    registerSitesRoutes(app, botsAreaDeps, { sites });
+    const stopSites = startSitesClock({ sites, log: app.log });
+    app.addHook("onClose", async () => { stopSites(); });
+  } else if (cloudBrowserOn()) {
+    app.log.warn("CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be \"local\" with Chrome): sites stay off.");
+  }
+}
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 // The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.

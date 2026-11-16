@@ -17,6 +17,12 @@ import { fenced } from "../agent/prompt.js";
 import type { SiteCard, SiteStage } from "../../../shared/types/api.js";
 import type { VisitedPage } from "../web/browser/types.js";
 
+/**
+ * WHAT ONE LOOK MAY COST. A tiny model on six thousand characters is a fraction of a paisa; this is the ceiling that
+ * stops a strange page from turning into a bill, not a budget anybody has to think about.
+ */
+export const SITE_READ_PAISE = 30;
+
 /** Caps, so one long page cannot become one long card. */
 const TITLE_MAX = 80, LINE_MAX = 120, DETAIL_MAX = 160, OWED_MAX = 80, STAGE_MAX = 40, STAGES_MAX = 8;
 /** What the model is shown of the page: enough for a status, far short of a novel. */

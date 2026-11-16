@@ -20,12 +20,14 @@
  */
 import { getConfig } from "../../config.js";
 import { BrowserEngine, rendererFrom, type Renderer } from "./engine.js";
+import type { VisitOptions, VisitedPage } from "./types.js";
 import { findChrome } from "./chrome.js";
 import { cloudflareRendererFromConfig } from "./cloudflare.js";
 
 export { BrowserEngine, BrowserError, rendererFrom } from "./engine.js";
 export type { RenderedPage, RenderOptions, Renderer } from "./engine.js";
 export type { ShotOptions, Screenshotter } from "./types.js";
+export type { SiteState, VisitOptions, VisitedPage } from "./types.js";
 export { findChrome } from "./chrome.js";
 
 let engine: BrowserEngine | null = null;
@@ -52,5 +54,23 @@ export function getRenderer(): Renderer | null {
     engine = new BrowserEngine({ chromePath, userAgent: cfg.WEB_BOT_UA });
   }
   return rendererFrom(engine);
+}
+
+/**
+ * THE VISITOR: opens a page AS SOMEBODY and hands the session back (src/sites, docs/sites.md). Null when this server has
+ * no Chrome of its own.
+ *
+ * Only the local engine can do this. Cloudflare's Browser Rendering renders a page and gives back HTML; it cannot be
+ * handed a person's cookies and asked for the ones that came back, which is the whole of what a signed-in visit is. So a
+ * server on WEB_BROWSER=cloudflare has no cloud browser, and says so rather than quietly reading pages as a stranger —
+ * which would answer "please sign in" for every watch and look like a bug.
+ */
+export function getVisitor(): ((o: VisitOptions) => Promise<VisitedPage>) | null {
+  const cfg = getConfig();
+  if (cfg.WEB_BROWSER !== "local") return null;
+  // Share the one engine with the reader: same Chrome, same three places, same queue.
+  if (!getRenderer()) return null;
+  const e = engine;
+  return e ? (o: VisitOptions) => e.visit(o) : null;
 }
 

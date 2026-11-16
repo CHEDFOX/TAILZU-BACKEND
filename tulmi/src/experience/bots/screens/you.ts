@@ -14,6 +14,7 @@
  * Built with the kit (../kit.ts) the way screens/shell.ts builds bots.home; one id serves the phone and the window (ctx.client).
  */
 
+import { sitesScreens } from "./sites.js";
 import { spaceScreens } from "./you/space.js";
 import { devicesScreens } from "./you/devicesPage.js";
 import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
@@ -705,6 +706,7 @@ export const youScreens: BotsScreen[] = [
   ...devicesScreens, // Terminal sign-ins (screens/you/devicesPage.ts)
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
   ...planShareScreens, // Share with someone / Ask for a plan (screens/you/planShareCard.ts)
+  ...sitesScreens, // What a site said about their order (screens/sites.ts; CLOUD_BROWSER, off: the screen then draws "not switched on")
   ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({
     id,
     load: async (ctx, deps) => {
