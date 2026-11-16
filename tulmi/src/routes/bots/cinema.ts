@@ -16,6 +16,10 @@
  *   DELETE /v1/cinema/cast/:key                      -> { ok: true }
  *   POST   /v1/cinema/pictures                       { words, photos?: [{ data (base64), type }], tier? } -> 201 { picture }
  *   DELETE /v1/cinema/pictures/:id                   -> { ok: true }
+ * The same bot's 3D (src/cinema/scene, docs/cinema-3d.md) — a scene built as data, rendered by Blender here:
+ *   GET    /v1/cinema/scenes                         -> { render: { ok, version }, scenes: [SceneView] }
+ *   POST   /v1/cinema/scenes                         { ask, creation?, keepBlend? } -> 202 { id, creation, version }
+ *   GET    /v1/cinema/scenes/:id                     -> SceneView (status working until the loop stops)
  * Anyone with the link (the signature is the key, media.ts):
  *   GET    /v1/cinema/media/<key>?exp=&sig=          a still, a take, a film or its subtitles
  *
@@ -24,8 +28,10 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
-import { MEDIA_PATH, ownerOfKey, typeOfKey, verifyMedia } from "../../cinema/media.js";
+import { MEDIA_PATH, ownerOfKey, signMedia, typeOfKey, verifyMedia } from "../../cinema/media.js";
 import { CinemaError, type CinemaService } from "../../cinema/service.js";
+import type { SceneRecord } from "../../cinema/scene/store.js";
+import type { SceneService } from "../../cinema/scene/service.js";
 import { effectiveLanguage } from "../../profile/language.js";
 import { enforceQuota } from "../../usage/metering.js";
 
@@ -37,6 +43,8 @@ export interface CinemaRouteDeps {
   service: CinemaService | null;
   /** The plan allowance; enforceQuota when not given. */
   quota?: (user: AuthedUser) => Promise<string | null>;
+  /** The same bot's 3D. Null: no renderer here, and the three scene doors answer 404 cinema_off like the rest. */
+  scenes?: SceneService | null;
 }
 
 const BASE = "/v1/cinema";
@@ -188,6 +196,68 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
     const got = await begin(req, reply);
     if (!got) return reply;
     try { await got.s.deletePicture(got.user.id, idOf(req)); return send(reply, { ok: true }); } catch (err) { return fail(reply, err); }
+  });
+
+  // ---------------------------------------------------------------- the same bot's 3D (src/cinema/scene)
+  // A creation is a thing a person made and comes back to, not a job: the row is written before the loop starts, the
+  // loop runs for a minute or two in the background, and the phone asks again. `render` says whether this machine has a
+  // Blender at all, so a build with none can say so instead of offering a button that fails.
+  const sceneView = (r: SceneRecord): Record<string, unknown> => ({
+    id: r.id, creation: r.creation, version: r.version, ask: r.ask, status: r.status, why: r.why,
+    rounds: r.rounds, objects: r.objects, mime: r.mime, error: r.error, at: r.createdAt,
+    // Only the keys that were kept, each as a signed link of ours and never the bucket's own address.
+    ...(r.kept.preview ? { preview: signMedia(r.kept.preview) } : {}),
+    ...(r.kept.final ? { picture: signMedia(r.kept.final) } : {}),
+    ...(r.kept.script ? { script: signMedia(r.kept.script) } : {}),
+    ...(r.kept.blend ? { blend: signMedia(r.kept.blend) } : {}),
+  });
+  const scenesOn = async (req: FastifyRequest, reply: FastifyReply): Promise<{ user: AuthedUser; s: SceneService } | null> => {
+    const got = await begin(req, reply);
+    if (!got) return null;
+    if (!deps.scenes) { off(reply); return null; }
+    return { user: got.user, s: deps.scenes };
+  };
+
+  app.get(`${BASE}/scenes`, rl, async (req, reply) => {
+    const got = await scenesOn(req, reply);
+    if (!got) return reply;
+    try {
+      const [render, scenes] = await Promise.all([got.s.ready(), got.s.list(got.user.id)]);
+      return send(reply, { render, scenes: scenes.map(sceneView) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post(`${BASE}/scenes`, rl, async (req, reply) => {
+    const got = await scenesOn(req, reply);
+    if (!got) return reply;
+    const b = body(req);
+    if (!(await allowed(got.user, reply))) return reply;
+    // A machine with no Blender is told apart from one that is busy: the first is a 503 about this server, the second a 429
+    // about them. Neither is a stack trace.
+    const render = await got.s.ready();
+    if (!render.ok) return reply.code(503).send({ code: "no_renderer", message: "This server cannot render 3D yet." });
+    try {
+      const started = await got.s.start(got.user.id, str(b.ask), {
+        ...(str(b.creation) ? { creation: str(b.creation) } : {}),
+        ...(b.keepBlend === true ? { keepBlend: true } : {}),
+      });
+      return send(reply, started, 202);
+    } catch (err) {
+      const why = (err as Error)?.message ?? "";
+      if (why === "one at a time") return reply.code(429).send({ code: "one_at_a_time", message: "One scene at a time. Wait for this one to finish." });
+      if (why === "say what to build") return reply.code(400).send({ code: "bad_request", message: "Say what to build first." });
+      return fail(reply, err);
+    }
+  });
+
+  app.get(`${BASE}/scenes/:id`, rl, async (req, reply) => {
+    const got = await scenesOn(req, reply);
+    if (!got) return reply;
+    try {
+      const r = await got.s.get(got.user.id, idOf(req));
+      if (!r) return reply.code(404).send({ code: "not_found", message: "That scene is not there." });
+      return send(reply, sceneView(r));
+    } catch (err) { return fail(reply, err); }
   });
 
   app.get(`${MEDIA_PATH}*`, rl, async (req, reply) => {

@@ -38,8 +38,19 @@ FROM node:22-slim AS runtime
 # the images (to WebP) and the video (to H.264), so one package covers both
 # and there is no native Node addon to build. Without it that endpoint
 # answers 503 and says so; everything else runs fine.
+#
+# WITH_BLENDER=1 also installs Blender, and this is the whole of putting 3D on a server: Blender is a command-line
+# program that happens to ship with a window, and --background opens none — no screen, no X, no desktop session. It
+# reads a Python file, writes pictures and exits (src/cinema/scene/blender.ts, docs/cinema-3d.md). The fonts come with
+# it because a bare container has none and a `text` object would render as empty boxes.
+#
+# It is off by default and on for a deploy (docker-compose.yml), because it is the largest thing in this image by far
+# and CI builds the image on every push. With it off, CINEMA_BLENDER names a binary that is not there, ready() says so,
+# and the 3D half answers that this machine renders nothing. Nothing else changes.
+ARG WITH_BLENDER=0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ffmpeg \
+ && if [ "$WITH_BLENDER" = "1" ]; then apt-get install -y --no-install-recommends blender fonts-dejavu-core; fi \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production

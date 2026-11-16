@@ -18,6 +18,7 @@ import { meetService } from "../../meet/service.js";
 import { roomService } from "../../rooms/service.js";
 import { tombstoneAccount } from "../../trust/store.js";
 import { cinemaService } from "../../cinema/service.js";
+import { sceneService } from "../../cinema/scene/service.js";
 import { unauthorized } from "../../http/helpers.js";
 
 export interface AccountRouteDeps {
@@ -123,6 +124,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     try { await roomService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: calls could not be closed"); }
     // Their films' and pictures' files are in a bucket (src/cinema): they go, with the films' rows; best effort, it never fails the delete.
     try { await cinemaService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the cinema bot's files could not be removed"); }
+    // The same bot's 3D creations (src/cinema/scene): the rows go here, and their blobs are under the person's own c/ keys.
+    try { await sceneService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the cinema bot's 3D rows could not be removed"); }
 
     const summary = {
       personality: false, profile: false, usageEvents: 0,

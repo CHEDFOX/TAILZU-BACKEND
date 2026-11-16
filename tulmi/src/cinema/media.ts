@@ -13,7 +13,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getConfig } from "../config.js";
 
-const KEY_RE = /^u\/[A-Za-z0-9_-]{1,80}\/cinema\/[A-Za-z0-9._\-/]{1,200}$/;
+// Two shapes, one bot. The film half keeps its work under u/<person>/cinema/; the 3D half keeps a CREATION under
+// c/<person>/<creation>/v<n>/ (scene/ports.ts), where the version is part of the key so one never writes over the one
+// before it. Both are a person's own folder with their id in the same place, which is what ownerOfKey reads, so one
+// signed link serves both and neither can name anybody else's file.
+const KEY_RE = /^(?:u\/[A-Za-z0-9_-]{1,80}\/cinema|c\/[A-Za-z0-9_-]{1,80})\/[A-Za-z0-9._\-/]{1,200}$/;
 export const LINK_TTL_MS = 24 * 3_600_000;
 export const MEDIA_PATH = "/v1/cinema/media/";
 

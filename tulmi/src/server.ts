@@ -98,6 +98,7 @@ import { roomService } from "./rooms/service.js";
 import { registerLingoRoutes } from "./routes/bots/lingo.js";
 import { registerCinemaRoutes } from "./routes/bots/cinema.js";
 import { buildCinemaService } from "./cinema/index.js";
+import { buildSceneService } from "./cinema/scene/service.js";
 import { cinemaOn } from "./bots/builtin.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
@@ -657,10 +658,18 @@ if (roomService()) {
 // The cinema bot (src/cinema, docs/cinema.md): films made shot by shot and pictures, every model through OpenRouter. Its tick moves each film
 // on (the stills, the takes, the checks, the cut) every few seconds; only while it is switched on (CINEMA=true) and BOTS is on.
 const cinema = bots && cinemaOn() ? buildCinemaService() : null;
-registerCinemaRoutes(app, { rateLimit: AUTHED_RL, bots, service: cinema });
+// The same bot's 3D (src/cinema/scene, docs/cinema-3d.md): a scene built as data and rendered by Blender on this machine. It is built
+// alongside the film half under the one CINEMA switch, because the 3D is a part of this bot and not a bot of its own. Whether this
+// machine can actually render is a question it answers for itself (blender.ts ready): with no Blender here the doors still exist and
+// say so, which is the honest answer and the one a build can show.
+const scenes = cinema ? buildSceneService() : null;
+registerCinemaRoutes(app, { rateLimit: AUTHED_RL, bots, service: cinema, scenes });
 if (cinema) {
   const stopCinema = cinema.start();
   app.addHook("onClose", async () => { stopCinema(); });
+  // A restart leaves creations saying they are building that nothing is building: the process that was is gone. They are failed once,
+  // here, so a person sees what happened instead of a thing that never finishes.
+  void scenes?.sweep().catch((err) => app.log.warn({ err: (err as Error)?.message }, "cinema: the 3D sweep failed"));
 }
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).

@@ -2,9 +2,28 @@
 
 A person asks for a thing in three dimensions — a product shot, a turntable, a title, a room — and the cinema bot builds it, renders it, **looks at what came out**, fixes what is wrong, and renders the real one. The loop is whole on its own: it is handed a way to run Blender and a way to keep bytes, and it hands back a scene, the script that makes it again, and the pictures.
 
-**It is wired to nothing yet.** `CINEMA` is off, no route reaches it and no bot calls it. The stages, the progress and the decision cards that make it part of the cinema bot come after, and nothing in here needs to change for them.
+**It is connected.** Three doors under the cinema bot's own path, a row a person comes back to, and Blender in the image:
 
-Code: `tulmi/src/cinema/`. Tests: `tulmi/tests/cinema-scene.test.ts`, `cinema-script.test.ts`, `cinema-make.test.ts`.
+```
+GET    /v1/cinema/scenes          { render: { ok, version }, scenes: [...] }   what this machine can do, and their list
+POST   /v1/cinema/scenes          { ask, creation?, keepBlend? } -> 202        the row is written, then the loop runs
+GET    /v1/cinema/scenes/:id      the creation, with signed links              asked again until the status stops being `working`
+```
+
+A CREATION, NOT A JOB. The loop runs for a minute or two and is gone; what a person comes back to is the thing it made and the
+version they are on. So the row is `(creation, version)` and it is written BEFORE the loop starts — ask and close the app, and it is
+still there. Asking again with the same `creation` is its next version, under its own keys, never over the one before. A restart
+fails what it stranded, once, so nothing says it is building when nothing is.
+
+ONE AT A TIME, TWICE OVER. `blenderRunner` queues renders on one lane, because two on one box share the cores and take the app down
+with them; and a person may have one creation going, so a second ask is refused in words rather than queued where nobody can see it.
+Both are the point, not an apology: this is a box that also serves the app.
+
+`CINEMA` is still off, so none of it is reachable until it is switched on. Whether this machine can render at all is a question it
+answers for itself (`ready()`): with no Blender here the doors exist and say so, which is what a build can show a person.
+
+Code: `tulmi/src/cinema/scene/` (`service.ts` and `store.ts` are the connection; the loop and the renderer are the rest).
+Tests: `tulmi/tests/cinema-scene.test.ts`, `cinema-script.test.ts`, `cinema-make.test.ts`, `cinema-scene-service.test.ts`.
 
 * [1. The one decision: a scene is data](#1-the-one-decision-a-scene-is-data)
 * [2. The loop](#2-the-loop)
@@ -67,6 +86,10 @@ Blender is a command-line program that happens to ship with a window. `--backgro
 apt-get install -y blender          # or the official tarball, which is newer
 blender --version                   # what `ready()` asks before anything is sent here
 ```
+
+This is in the image already, behind a build flag: `WITH_BLENDER=1` in `docker-compose.yml` installs Blender and a font package for a
+deploy, and CI builds without it, because it is the largest thing in the image and CI builds on every push. With it off, nothing breaks
+— `ready()` says there is no Blender here and the doors say so.
 
 Then `CINEMA_BLENDER` names it and `renderHere()` is the renderer. Nobody's computer is involved: a person on a phone asks, the backend builds the scene, renders it, puts it in the bucket, and the phone is handed a URL. The desktop app is an **optimisation** — their card, their files, free — not a requirement.
 
