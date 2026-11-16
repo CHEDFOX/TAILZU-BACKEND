@@ -415,9 +415,13 @@ function taskParts(i: ContextInput, k: Knobs, o: { transcript: boolean }): { sta
   if (brief) add(false, brief);
   // WHAT THIS PROJECT ALREADY LOOKS LIKE (artifacts/kit.ts, read once at the start of work): its own tokens, fonts and components, so a frontend
   // job BUILDS TO THE PROJECT'S LOOK instead of discovering it by reading files, or inventing one. Stable, and only for work people see.
+  // A project with nothing to read gets a DERIVED direction instead (agent/referent.ts): one concrete thing, whose restrictions come with it.
+  if (s.work.direction) add(false, s.work.direction);
   if (s.work.look) add(false, `What this project already looks like — build to this, and reach for its own components before writing new ones:\n${dataBlock("project_look", "", s.work.look)}`);
   // WHAT THIS PROJECT ALREADY LOOKS LIKE (artifacts/kit.ts, read once at the start of work): its own tokens, fonts and components, so a
   // frontend job BUILDS TO THE PROJECT'S LOOK instead of discovering it by reading files, or inventing one. Stable, and only for UI work.
+  // A project with nothing to read gets a DERIVED direction instead (agent/referent.ts): one concrete thing, whose restrictions come with it.
+  if (s.work.direction) add(false, s.work.direction);
   if (s.work.look) add(false, `What this project already looks like — build to this, and reach for its own components before writing new ones:\n${dataBlock("project_look", "", s.work.look)}`);
   if (s.located?.targets.length) {
     add(false, `Where a search says this belongs: ${s.located.targets.slice(0, 5).map((t) => `${t.path} (${cut(t.why, 80)})`).join("; ")}`);

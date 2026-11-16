@@ -530,6 +530,11 @@ export interface AgentState {
      * model. Read once at the start of work and only for a job on files people see. "" when there is nothing to read, or no store to read it with.
      */
     look?: string;
+    /**
+     * The design direction for a project that has no look to read (agent/referent.ts): one concrete thing from the product's own world, derived
+     * once and then shown to every later job. "" when the project already has a look, or when nothing could be derived.
+     */
+    direction?: string;
     /** What the running page measured wrong, handed back for a repair round (coherence.ts repairBrief). Cleared once the round has been taken. */
     pageFeedback?: string;
     /**

@@ -18,6 +18,7 @@
  */
 import { screensDue, screensLines } from "./screens.js";
 import { seenByPeople } from "./floor.js";
+import { referentBrief, referentFor } from "./referent.js";
 import { designKit, workspaceFiles } from "../../artifacts/kit.js";
 import { ConnectorError } from "../../connectors/state.js";
 import { classifyRequest } from "../brain/classify.js";
@@ -379,6 +380,28 @@ export async function lookOf(r: Run): Promise<string> {
   }
 }
 
+/**
+ * A DESIGN DIRECTION FOR A PROJECT THAT HAS NO LOOK TO READ (agent/referent.ts).
+ *
+ * Only when there is nothing: a project whose kit came back empty, on work people will see. A project that already looks like something is not
+ * given a direction — it has one, and the kit is it.
+ *
+ * It derives rather than asks, because a person with no design idea cannot answer a question about design, and it is cheap: one call on the small
+ * tier, once in a project's life, recorded afterwards so no later job spends it again. Nothing could be derived, or no model to derive with, and
+ * the work goes on with no direction at all, which is where it was anyway.
+ */
+export async function directionOf(r: Run): Promise<string> {
+  const s = r.state;
+  if (s.work.look || !uiPaths(s).some(seenByPeople)) return "";
+  // What this is, in the words there are: the person's own task, and whatever the book knows about the project.
+  const book = await r.brain.status().catch(() => null);
+  const what = [s.task, book?.welcome ?? ""].filter(Boolean).join(" ");
+  const got = await referentFor({ what, seed: r.jobId }, r.model()).catch(() => null);
+  if (!got || got.kind !== "one") return "";
+  await r.log.note(`This project has no look of its own yet, so the design is built to one thing: ${got.chosen.thing}.`);
+  return referentBrief(got.chosen, got.rut);
+}
+
 /** The first lines of the files the search points at, as they are now, for the model's first message. */
 async function excerptsOf(r: Run): Promise<string> {
   const out: string[] = [];
@@ -639,6 +662,7 @@ export async function workPhase(r: Run): Promise<void> {
     w.excerpts = s.mode === "freeform" && !s.located?.targets.length ? "" : await excerptsOf(r);
     if (s.mode === "freeform" && w.hints === undefined) w.hints = await hintsOf(r);
     if (w.look === undefined) w.look = await lookOf(r);
+    if (w.direction === undefined) w.direction = await directionOf(r);
     await r.log.note("Starting the work.");
   }
   let rounds = 0;

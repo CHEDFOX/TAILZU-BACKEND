@@ -52,6 +52,7 @@ const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { JobReviewVerdict } = await import("../src/code/agent/review.js");
 const { NameReply, PickReply: WhichPick } = await import("../src/code/chat/naming.js");
+const { ReferentReply } = await import("../src/code/agent/referent.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
@@ -303,6 +304,10 @@ describe("a known-good answer for each role", () => {
       reads: (t) => JobReviewVerdict.parse(JSON.parse(t)),
     },
     code_name: { text: '{"name":"login redirect"}', reads: (t) => NameReply.parse(JSON.parse(t)) },
+    code_referent: {
+      text: '{"candidates":[{"thing":"a hand-lettered butcher\'s window card","why":"the trade its customers grew up with","look":"ink on waxed white, fat condensed caps, a single red price","family":"signage"},{"thing":"a 1950s enamel kitchen scale","why":"weighing is what the shop does","look":"cream enamel, chrome lip, one black needle","family":"instrument"},{"thing":"a market stall awning","why":"where its customers already buy this","look":"broad green and white stripes, canvas texture","family":"textile"},{"thing":"a greaseproof wrapping sheet","why":"what every order leaves in","look":"warm off-white, a faint repeated crest","family":"print"}],"rut":"a dark hero photograph with a gold script logo"}',
+      reads: (t) => ReferentReply.parse(JSON.parse(t)),
+    },
     code_which: { text: '{"projectId":"p3","confidence":0.9,"why":"the bakery site is shopfront"}', reads: (t) => WhichPick.parse(JSON.parse(t)) },
     // The bots platform (src/bots): the maker's draft, the front door's pick, a bot's own turn (plain text), and its memory of its owner.
     bot_builder: {
