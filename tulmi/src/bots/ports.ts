@@ -15,6 +15,7 @@ import type { UseOutcome } from "../connectors/tasks.js";
 import type { WebToolDeps, WebTools } from "../code/webTools.js";
 import type { KnowledgeMedia } from "./knowledge.js";
 import type { Everyday } from "../everyday/index.js";
+import type { Discover } from "../discover/index.js";
 
 export interface ConnectorToolInfo {
   name: string;
@@ -50,6 +51,8 @@ export interface BotPorts {
   web?: (d: WebToolDeps) => WebTools;
   /** The everyday tools (src/everyday): flights, hotels, currency, weather, with no sign-in of the person's. */
   everyday?: Everyday | null;
+  /** Places worth keeping (src/discover): our own written catalogue, behind the Travel bot's ideas. */
+  discover?: Discover | null;
 }
 
 /** The connectors the server has, as a bot sees them. */
