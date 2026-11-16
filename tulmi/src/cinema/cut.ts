@@ -65,6 +65,9 @@ export interface Levels { y: number; u: number; v: number }
  * pull is a share of the distance (PULL) and is capped (MAX_*), and a shot already within SKIP of the middle is left alone. The middle is
  * the median rather than the mean, so one wildly wrong shot cannot drag the whole film after it.
  */
+/** The room under the film, and the sounds of what is seen: quiet enough that a line is never fought for. */
+export const TONE_LEVEL = 0.1, SPOT_LEVEL = 0.42;
+
 const PULL = 0.65, SKIP = 3, MAX_Y = 26, MAX_C = 14, MAX_SAT = 0.18, GREY = 4;
 
 const median = (v: readonly number[]): number => {
@@ -128,6 +131,10 @@ export interface Loudness { input_i: string; input_tp: string; input_lra: string
 export interface CutPlan {
   shots: CutShot[];
   music: string | null;
+  /** The room the film is in, running under the whole of it, looped to length and kept well down. */
+  tone?: string | null;
+  /** The sounds of what is seen, each placed where it happens. */
+  spots?: { file: string; at: number }[];
   aspect: Aspect;
   /** "1080" for the finished film, "720" for a quick one. */
   height: 720 | 1080;
@@ -394,6 +401,16 @@ export function cutArgs(p: CutPlan, o: CutOpts = {}): string[] {
     musicIdx = args.filter((a) => a === "-i").length;
     args.push("-stream_loop", "-1", "-i", p.music);
   }
+  let toneIdx = -1;
+  if (p.tone) {
+    toneIdx = args.filter((a) => a === "-i").length;
+    args.push("-stream_loop", "-1", "-i", p.tone);
+  }
+  const spotIdx: { input: number; at: number }[] = [];
+  for (const sp of p.spots ?? []) {
+    spotIdx.push({ input: args.filter((a) => a === "-i").length, at: sp.at });
+    args.push("-i", sp.file);
+  }
   let srtIdx = -1;
   if (p.srt) {
     srtIdx = args.filter((a) => a === "-i").length;
@@ -435,7 +452,8 @@ export function cutArgs(p: CutPlan, o: CutOpts = {}): string[] {
   const layers = [`[${a}]`];
   if (voIdx.length) {
     voIdx.forEach((x, k) => f.push(`[${x.input}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,adelay=${Math.round(x.start * 1000)}:all=1[vo${k}]`));
-    f.push(`${voIdx.map((_, k) => `[vo${k}]`).join("")}amix=inputs=${voIdx.length}:normalize=0:duration=longest,apad=whole_dur=${T},atrim=0:${T},asplit=2[vomix][vokey]`);
+    const keys = p.tone ? "3[vomix][vokey][vokey2]" : "2[vomix][vokey]";
+    f.push(`${voIdx.map((_, k) => `[vo${k}]`).join("")}amix=inputs=${voIdx.length}:normalize=0:duration=longest,apad=whole_dur=${T},atrim=0:${T},asplit=${keys}`);
     layers.push("[vomix]");
   }
   if (musicIdx >= 0) {
@@ -449,6 +467,21 @@ export function cutArgs(p: CutPlan, o: CutOpts = {}): string[] {
   } else if (voIdx.length) {
     f.push(`[vokey]anullsink`);
   }
+  // The room: the place the film is in, under everything, ducked under the voice the way the music is so a line is never fought.
+  if (toneIdx >= 0) {
+    f.push(`[${toneIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=0:${T},asetpts=PTS-STARTPTS,volume=${TONE_LEVEL},afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, total - 2).toFixed(3)}:d=2[tone]`);
+    if (voIdx.length) {
+      f.push(`[tone][vokey2]sidechaincompress=threshold=0.05:ratio=4:attack=30:release=600[toneduck]`);
+      layers.push("[toneduck]");
+    } else {
+      layers.push("[tone]");
+    }
+  }
+  // The sounds of what is seen, each laid where it happens.
+  spotIdx.forEach((x, k) => {
+    f.push(`[${x.input}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${SPOT_LEVEL},adelay=${Math.round(Math.max(0, x.at) * 1000)}:all=1,apad=whole_dur=${T},atrim=0:${T}[sp${k}]`);
+    layers.push(`[sp${k}]`);
+  });
   const m = o.measured;
   const heard = m ? `:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` : "";
   const norm = `loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11${o.measureOnly ? ":print_format=json" : heard}`;

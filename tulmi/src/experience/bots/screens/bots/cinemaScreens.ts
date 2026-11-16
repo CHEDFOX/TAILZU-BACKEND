@@ -251,11 +251,11 @@ function decision(ctx: BotsCtx, v: FilmView): Node | null {
   if (f.status === "board") {
     // The animatic, if it was made: the whole film at its real length, in the frames he drew, with the words over it. Say go to a
     // thing you have watched, not to a page of pictures.
-    const board = f.cut.board ? v.links[f.cut.board] : null;
+    const board = f.cut.animatic ? v.links[f.cut.animatic] : null;
     return card([
       text(board ? "Watch it, then say go" : "Ready to film", { size: 16, weight: 600, lineHeight: 21 }),
       meta(board
-        ? `Here is the whole film as it will run${f.cut.boardSeconds ? ` - ${Math.round(f.cut.boardSeconds)} seconds` : ""} - the stills held for as long as each shot lasts, with the voice-over over them. Nothing has been filmed yet, so change anything you like first.`
+        ? `Here is the whole film as it will run${f.cut.animaticSeconds ? ` - ${Math.round(f.cut.animaticSeconds)} seconds` : ""} - the stills held for as long as each shot lasts, with the voice-over over them. Nothing has been filmed yet, so change anything you like first.`
         : `Each of the ${cards.length} shots is filmed from its still, checked, and made again if it isn't right, then cut together with the voice-over, music and subtitles.`,
         { size: 13, lineHeight: 18 }),
       row([

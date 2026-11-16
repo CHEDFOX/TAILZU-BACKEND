@@ -88,7 +88,7 @@ function pickedUp(label: string): Node {
  */
 function filmInTalk(ctx: BotsCtx, m: Extract<MadeInSession, { kind: "film" }>, desk: boolean, color: string): Node {
   const F = `${CINEMA}/films/${m.id}`;
-  const line = m.status === "board" && m.board
+  const line = m.status === "board" && m.animatic
     ? "Watch the storyboard, then say go"
     : statusLine({ status: m.status, hold: m.hold, shots: m.shots, done: m.done });
   const act = m.status === "script"
@@ -110,8 +110,8 @@ function filmInTalk(ctx: BotsCtx, m: Extract<MadeInSession, { kind: "film" }>, d
     : [];
   // The animatic, while the storyboard waits on them: the whole film, at its real length, in the frames he drew, with the
   // words over it. It is what "say go" should mean - you have seen it - and it cost nothing to make.
-  const watchBoard = m.status === "board" && m.board
-    ? [secondaryButton(m.boardSeconds ? `Watch it: ${Math.round(m.boardSeconds)}s` : "Watch it", { kind: "openUrl", url: abs(m.board), external: true } as ActionSpec, { size: "md" })]
+  const watchBoard = m.status === "board" && m.animatic
+    ? [secondaryButton(m.animaticSeconds ? `Watch it: ${Math.round(m.animaticSeconds)}s` : "Watch it", { kind: "openUrl", url: abs(m.animatic), external: true } as ActionSpec, { size: "md" })]
     : [];
   return col([
     frame,

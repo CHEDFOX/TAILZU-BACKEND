@@ -55,7 +55,7 @@ function rig(o: {
   const blobs = new Map<string, Buffer>();
   const charged: number[] = [];
   const pushes: string[] = [];
-  const calls = { images: 0, videos: [] as { model: string; prompt: string; last: boolean; voice: boolean; source: string | null }[], tts: 0, cuts: 0, music: 0, holds: [] as { seconds: number; w: number; drift: number }[] };
+  const calls = { images: 0, videos: [] as { model: string; prompt: string; last: boolean; voice: boolean; source: string | null }[], tts: 0, cuts: 0, music: 0, holds: [] as { seconds: number; w: number; drift: number }[], sfx: [] as { words: string; secs: number }[], mixes: [] as { tone: boolean; spots: number }[] };
   const clock = { t: 1_800_000_000_000 };
   let ids = 0;
   let takeChecks = 0;
@@ -103,8 +103,10 @@ function rig(o: {
     slice: async (_b, starts) => starts.map((_s, i) => ({ video: Buffer.from(`piece${i}`), last: Buffer.from(`last${i}`), seconds: 4 })),
     seconds: async () => 9.4,
     hold: async (bytes, h) => { calls.holds.push({ seconds: h.seconds, w: h.width, drift: h.drift ?? 0 }); return Buffer.from(`held:${bytes.toString("utf8")}`); },
+    sfx: async (words, secs) => { calls.sfx.push({ words, secs }); return { bytes: Buffer.from(`sfx:${words.slice(0, 20)}`), usd: 0.02 }; },
     cut: async (input) => {
       calls.cuts++;
+      calls.mixes.push({ tone: !!input.tone, spots: input.spots?.length ?? 0 });
       return { video: Buffer.from(`film of ${input.shots.length} at ${input.aspect}`), srt: "1\n00:00:00,000 --> 00:00:01,000\nHi\n", seconds: 14, ...(input.captions ? { captions: true } : {}) };
     },
   };
@@ -477,8 +479,8 @@ describe("a whole film", () => {
     const board = await r.until("u1", made.film.id, "board");
 
     // It is there before the person is asked to say go, and it is a film of its own.
-    expect(board.cut.board).toBeTruthy();
-    expect(board.cut.boardSeconds).toBeGreaterThan(0);
+    expect(board.cut.animatic).toBeTruthy();
+    expect(board.cut.animaticSeconds).toBeGreaterThan(0);
     expect(board.cut.video).toBeNull();
     // One frame held for each shot, each for as long as its shot will run, and the drift turns so it is not a slideshow.
     expect(r.calls.holds.length).toBe(board.shots.length);
@@ -490,12 +492,47 @@ describe("a whole film", () => {
     expect(r.calls.music).toBe(0);
 
     // Redraw a frame and the animatic is made again; nothing else is touched.
-    const was = board.cut.board;
+    const was = board.cut.animatic;
     await r.svc.revise("u1", made.film.id, { note: "make the stall busier", n: 1 });
     const after = await r.until("u1", made.film.id, "board");
-    expect(after.cut.board).toBeTruthy();
-    expect(after.cut.board).not.toBe(was);
+    expect(after.cut.animatic).toBeTruthy();
+    expect(after.cut.animatic).not.toBe(was);
     expect(r.charged.length).toBeGreaterThanOrEqual(spent);
+  });
+
+  it("puts the film in a room and lays the sounds of what is seen where they happen", async () => {
+    const r = rig();
+    const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    await r.until("u1", made.film.id, "board");
+    await r.svc.approveBoard("u1", made.film.id);
+    const done = await r.until("u1", made.film.id, "done");
+
+    // One room under the whole film, kept on it so another cut does not pay for it again.
+    expect(done.cut.tone).toBeTruthy();
+    const room = r.calls.sfx.filter((x) => /ambience/i.test(x.words));
+    expect(room.length).toBe(1);
+    expect(room[0]!.words).toContain("the stall");
+    expect(room[0]!.words).toMatch(/no music/i);
+
+    // The sound of what is seen, only for the shots whose card says what that is.
+    const spots = r.calls.sfx.filter((x) => /sound effect/i.test(x.words));
+    expect(spots.length).toBe(1);
+    expect(spots[0]!.words).toMatch(/rain on tin/i);
+
+    // Both reached the mix, and the animatic before them did not have them.
+    const film = r.calls.mixes.at(-1)!;
+    expect(film.tone).toBe(true);
+    expect(film.spots).toBe(1);
+    expect(r.calls.mixes[0]!.tone).toBe(false);
+
+    // Another shape of the same film reuses the room and the sounds rather than making them again.
+    const was = r.calls.sfx.length;
+    await r.svc.edition("u1", made.film.id, { aspect: "9:16", captions: false });
+    await r.svc.idle();
+    await r.until("u1", made.film.id, "done");
+    expect(r.calls.sfx.length).toBe(was);
   });
 
   it("deletes a film's files with it", async () => {

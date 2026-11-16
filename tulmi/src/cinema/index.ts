@@ -21,7 +21,7 @@ import { pushEngine } from "../push/index.js";
 import { chargeUsd, ttsUsd } from "../usage/cost.js";
 import { enforceQuota } from "../usage/metering.js";
 import { contactSheet, cut, frames, levels, seconds, slice, stillClip } from "./ffmpeg.js";
-import { fetchVideo, liveModels, makeImage, makeMusic, startVideo, videoStatus } from "./openrouter.js";
+import { fetchVideo, liveModels, makeImage, makeMusic, makeSound, startVideo, videoStatus } from "./openrouter.js";
 import type { Think } from "./plan.js";
 import { CinemaService, setCinemaService, type CinemaNotify } from "./service.js";
 import { cinemaStore } from "./store.js";
@@ -72,6 +72,11 @@ export function buildCinemaService(): CinemaService {
       sheet: contactSheet,
       hold: stillClip,
       levels,
+      sfx: async (words, secs) => {
+        const made = await makeSound(words, secs);
+        if (!made) throw new Error("no sound came back");
+        return made;
+      },
       slice,
     },
     charge: (userId, usd) => chargeUsd(userId, usd, CINEMA_SLUG),

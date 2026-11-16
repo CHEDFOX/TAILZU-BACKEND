@@ -237,6 +237,25 @@ export async function fetchVideo(url: string): Promise<Buffer> {
   return bytes;
 }
 
+/**
+ * A SOUND THAT IS NOT MUSIC: the room a film is in, or the sound of what is seen in a shot. The same endpoint makes it, told plainly that
+ * it is not being asked for music - what comes back otherwise is a tune, and a tune under a tune is a mess. Null when it gives none.
+ */
+export async function makeSound(prompt: string, seconds: number): Promise<{ bytes: Buffer; usd: number } | null> {
+  const r = (await call("/chat/completions", {
+    method: "POST",
+    timeoutMs: 180_000,
+    body: JSON.stringify({
+      model: "google/lyria-3-clip-preview",
+      modalities: ["text", "audio"],
+      messages: [{ role: "user", content: `Sound design, not music. No melody, no instruments, no singing, no speech. About ${Math.round(seconds)} seconds of: ${prompt}` }],
+    }),
+  })) as { choices?: { message?: { audio?: { data?: unknown } } }[]; usage?: { cost?: unknown } } | null;
+  const data = r?.choices?.[0]?.message?.audio?.data;
+  if (typeof data !== "string" || !data) return null;
+  return { bytes: Buffer.from(data, "base64"), usd: typeof r?.usage?.cost === "number" ? r.usage.cost : 0.02 };
+}
+
 /** Music: one clip from Lyria (OpenRouter's chat API with sound out). Null when it gives none. */
 export async function makeMusic(prompt: string, seconds: number): Promise<{ bytes: Buffer; usd: number } | null> {
   const model = seconds > 30 ? "google/lyria-3-pro-preview" : "google/lyria-3-clip-preview";

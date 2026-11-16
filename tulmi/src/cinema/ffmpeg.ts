@@ -218,6 +218,10 @@ export interface CutInput {
     vo: { audio: Buffer; text: string; seconds: number; words?: { word: string; start: number; end: number }[] } | null;
   })[];
   music: Buffer | null;
+  /** The room the film is in, under the whole of it. */
+  tone?: Buffer | null;
+  /** The sounds of what is seen: each one and where in the film it happens, in seconds. */
+  spots?: { audio: Buffer; at: number }[];
   aspect: CutPlan["aspect"];
   height: CutPlan["height"];
   /** How a take that is not this shape is fitted (cut.ts CutPlan.fit). The film pads; another shape of it crops. */
@@ -264,6 +268,19 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
       await writeFile(music, input.music);
       await probeFile(music);
     }
+    let tone: string | null = null;
+    if (input.tone) {
+      tone = join(dir, "tone.mp3");
+      await writeFile(tone, input.tone);
+      await probeFile(tone).catch(() => { tone = null; });
+    }
+    const spots: { file: string; at: number }[] = [];
+    for (const [i, sp] of (input.spots ?? []).entries()) {
+      const file = join(dir, `sfx${i}.mp3`);
+      await writeFile(file, sp.audio);
+      const ok = await probeFile(file).then(() => true).catch(() => false);
+      if (ok) spots.push({ file, at: sp.at });
+    }
     const srt = srtOf(shots);
     const srtFile = srt ? join(dir, "words.srt") : null;
     if (srtFile && srt) await writeFile(srtFile, srt, "utf8");
@@ -278,7 +295,7 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
       }
     }
     const out = join(dir, "film.mp4");
-    const plan: CutPlan = { shots, music, aspect: input.aspect, height: input.height, out, srt: srtFile, ...(input.fit ? { fit: input.fit } : {}), burn };
+    const plan: CutPlan = { shots, music, tone, ...(spots.length ? { spots } : {}), aspect: input.aspect, height: input.height, out, srt: srtFile, ...(input.fit ? { fit: input.fit } : {}), burn };
 
     // 1. Listen to the mix, so the normalising is exact rather than half a unit out. A measure that fails is not fatal: the cut goes
     //    ahead with a single pass, which is what it did before.

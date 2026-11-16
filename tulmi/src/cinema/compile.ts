@@ -454,6 +454,29 @@ export function animaticPrint(o: { stills: readonly (string | null)[]; voices: r
   return print([o.stills, o.voices, o.seconds, o.aspect]);
 }
 
+/**
+ * THE ROOM THE FILM IS IN. One bed of ambience under the whole film, from the places it visits and the mood it is in, so the cuts sit in
+ * one world instead of seven. Null when the film has no places to be in.
+ */
+export function tonePrint(bible: Bible, seconds: number): string | null {
+  const places = bible.places.map((p) => p.name).filter(Boolean).slice(0, 3);
+  return places.length ? print([places, bible.tone, Math.round(seconds / 10)]) : null;
+}
+
+export function tonePrompt(bible: Bible): string {
+  const places = bible.places.map((p) => p.name).filter(Boolean).slice(0, 3).join(", ");
+  return `Continuous background ambience of ${places}. ${sentence(bible.tone)} No music, no speech, no melody - only the room: a steady bed that can run under a film.`;
+}
+
+/** The sound of what is seen in one shot, placed where it happens. Null when the card says nothing about sound. */
+export function spotPrint(card: ShotCard, bible: Bible): string | null {
+  return card.sound ? print([card.sound, bible.tone]) : null;
+}
+
+export function spotPrompt(card: ShotCard): string {
+  return `A short sound effect: ${sentence(card.sound)} Close and dry, no music, no speech, no reverb tail.`;
+}
+
 /** What a voice-over is recorded from. */
 export function voicePrint(card: ShotCard, bible: Bible, voice: string): string | null {
   return card.vo ? print([card.vo, bible.language, voice]) : null;

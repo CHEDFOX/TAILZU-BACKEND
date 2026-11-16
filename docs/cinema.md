@@ -277,6 +277,22 @@ Every take and every still is already ours, so the same film can be cut again fo
 The film's music is kept with the cut (`Cut.music`, `musicOf`), so cutting the same film again - after a change, or into another shape - never
 pays for it twice.
 
+### The sound of a place
+
+A take brings back whatever sound its model felt like making, and seven of those do not add up to a place. So the film is given its own:
+
+- **One room, under the whole of it** (`compile.ts tonePrompt`, `service.ts tone`). An ambience bed from the places the film visits and the
+  mood it is in, looped to length, kept well down (`TONE_LEVEL`) and **ducked under the voice** the way the music is, so a line is never
+  fought for.
+- **The sounds of what is seen** (`spotPrompt`, `service.ts spots`). Every shot card already says what its shot sounds like - rain on tin,
+  chai hitting the glass - and until now that only went into the prompt. Now each is made as its own short sound and laid a beat into its
+  shot, so it lands with the picture rather than on the cut. At most `SPOTS_MAX` of them, on the longest shots, because a film with a sound
+  on every cut is a cartoon.
+
+Both are asked for as **sound design and not music** (`openrouter.ts makeSound`: no melody, no instruments, no speech), and both are kept -
+the room on the film, each sound on its shot - so another shape of the same film, or the words burned into it, costs nothing more. A build
+without a sound generator (`CinemaDeps.media.sfx` absent) cuts exactly as it did before.
+
 ### One film, not seven clips
 
 Shots come back from whichever model routed best for each of them, and those models do not agree about exposure, contrast, or how warm the

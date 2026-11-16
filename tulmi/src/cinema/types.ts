@@ -293,6 +293,9 @@ export interface ShotState {
   saidOf?: string | null;
   /** How long the spoken line runs, in seconds. */
   saidSeconds?: number;
+  /** Media key of this shot's spot effect - the sound of what is seen in it - and what it was made from. */
+  spot?: string | null;
+  spotOf?: string | null;
   /** When the recogniser reported them, each word of the voice-over and when it was said: the subtitles are timed from these (cut.ts). */
   voiceWords?: { word: string; start: number; end: number }[];
 }
@@ -309,11 +312,14 @@ export interface Cut {
   music?: string | null;
   /** What the music was made from (its words and the film's length): a change makes it again. */
   musicOf?: string | null;
+  /** Media key of the room the film is in, kept so a film cut again does not pay for it twice. */
+  tone?: string | null;
+  toneOf?: string | null;
   /** Media key of the animatic: the storyboard cut to time with the voice-over over it, so the film can be watched before it is filmed. */
-  board?: string | null;
+  animatic?: string | null;
   /** How long the animatic runs, and what it was made from, so a changed storyboard makes another one. */
-  boardSeconds?: number;
-  boardOf?: string | null;
+  animaticSeconds?: number;
+  animaticOf?: string | null;
   /** Media key of the same film enlarged, once asked for. */
   big?: string | null;
   /** The cut the enlargement was made from, so a changed film is enlarged again. */

@@ -25,7 +25,7 @@
 import { randomUUID } from "node:crypto";
 import { usdToPaise } from "../code/brain/money.js";
 import { asPerson } from "../privacy/aiGate.js";
-import { animaticPrint, castVoice, characterSheetPrompt, linePrint, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
+import { animaticPrint, castVoice, characterSheetPrompt, linePrint, spotPrint, spotPrompt, tonePrint, tonePrompt, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
 import { frameOf } from "./cut.js";
 import { animaticOf, blankShot, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
 import { stillModel, type CatalogImageModel } from "./imageModels.js";
@@ -50,6 +50,8 @@ export const WRITING_MS = 10 * 60_000;
 export const BOARD_SPARE = 0.25;
 /** How many other cuts of one film we keep: three shapes, with and without captions, is more than anyone needs. */
 const EDITIONS_MAX = 5;
+/** How many of the sounds of what is seen a film gets, and how long each runs: a sound on every cut is a cartoon. */
+const SPOTS_MAX = 6, SPOT_SECONDS = 3;
 /** An enlargement: how much bigger, the largest film we can send as bytes, and how long we wait for it. */
 const BIG_FACTOR = 2;
 const BIG_MAX_BYTES = 24 * 1024 * 1024;
@@ -100,7 +102,12 @@ export interface MediaPorts {
       /** What the take's picture measures, so the cut can match the shots to each other (cut.ts gradeOf). */
       levels?: { y: number; u: number; v: number } | null;
     }[];
-    music: Buffer | null; aspect: Aspect; height: 720 | 1080;
+    music: Buffer | null;
+    /** The room the film is in, under the whole of it. */
+    tone?: Buffer | null;
+    /** The sounds of what is seen: each one, and where in the film it happens. */
+    spots?: { audio: Buffer; at: number }[];
+    aspect: Aspect; height: 720 | 1080;
     /** "crop" fills the frame and loses the edges, for another shape of the same film; the film itself pads. */
     fit?: "pad" | "crop";
     /** Draw the words into the picture as well. `language` says which letters they are in, so a font for them can be found. */
@@ -113,6 +120,8 @@ export interface MediaPorts {
   hold?: (bytes: Buffer, o: { seconds: number; width: number; height: number; drift?: -1 | 0 | 1 }) => Promise<Buffer>;
   /** What a take's picture measures, for the grade that makes one film of shots from several models. Absent: the takes are left as they came. */
   levels?: (bytes: Buffer) => Promise<{ y: number; u: number; v: number } | null>;
+  /** A sound that is not music: the room a film is in, or the sound of what is seen in a shot. Absent: the film keeps only what the takes came with. */
+  sfx?: (words: string, seconds: number) => Promise<{ bytes: Buffer; usd: number }>;
   /** One take cut apart at the beats, for several shots filmed in one go (ffmpeg.ts slice). Absent: each shot is filmed on its own. */
   slice?: (bytes: Buffer, starts: readonly number[]) => Promise<{ video: Buffer; last: Buffer; seconds: number }[]>;
 }
@@ -156,7 +165,7 @@ export type MadeInSession =
     kind: "film"; id: string; at: number; title: string; status: Film["status"]; hold: Film["hold"]; aspect: Aspect;
     seconds: number; shots: number; done: number; poster?: string; film?: string;
     /** The animatic, while the storyboard waits to be approved: the film as it will run, before it is filmed. */
-    board?: string; boardSeconds?: number;
+    animatic?: string; animaticSeconds?: number;
   }
   | { kind: "picture"; id: string; at: number; title: string; url: string };
 
@@ -442,7 +451,7 @@ export class CinemaService {
         status: f.status, hold: f.hold, aspect: f.aspect, seconds: f.cut.seconds || f.length,
         shots: f.script?.shots.length ?? 0, done: f.shots.filter((s) => s.status === "ok").length,
         ...(poster ? { poster: signMedia(poster) } : {}),
-        ...(f.cut.board ? { board: signMedia(f.cut.board), boardSeconds: f.cut.boardSeconds ?? 0 } : {}),
+        ...(f.cut.animatic ? { animatic: signMedia(f.cut.animatic), animaticSeconds: f.cut.animaticSeconds ?? 0 } : {}),
         ...(f.cut.video ? { film: signMedia(f.cut.video) } : {}),
       };
     });
@@ -1204,10 +1213,79 @@ export class CinemaService {
     const key = filmKey(f.ownerId, f.id, `board-${of}`, "video/mp4");
     await this.d.blobs.put(key, out.video, "video/mp4");
     await this.update(f.ownerId, f.id, (x) => {
-      const old = x.cut.board;
+      const old = x.cut.animatic;
       if (old && old !== key) void this.d.blobs.delete(old).catch(() => undefined);
-      x.cut = { ...x.cut, board: key, boardOf: of, boardSeconds: Math.round(out.seconds * 10) / 10 };
+      x.cut = { ...x.cut, animatic: key, animaticOf: of, animaticSeconds: Math.round(out.seconds * 10) / 10 };
     });
+  }
+
+  /**
+   * THE ROOM THE FILM IS IN: one bed of ambience under the whole of it, from the places it visits. A take brings whatever sound its model
+   * felt like making, and seven of those do not add up to a place; one room under all of them does. Kept, like the music, so a film cut
+   * again - another shape, the words burned in - does not pay for it twice.
+   */
+  private async tone(f: Film, seconds: number): Promise<{ bytes: Buffer | null; key: string | null; of: string | null; usd: number }> {
+    const bible = f.script!.bible;
+    const of = this.d.media.sfx ? tonePrint(bible, seconds) : null;
+    if (!of) return { bytes: null, key: null, of: null, usd: 0 };
+    if (f.cut.tone && f.cut.toneOf === of) {
+      const kept = await this.d.blobs.get(f.cut.tone).catch(() => null);
+      if (kept) return { bytes: kept, key: f.cut.tone, of, usd: 0 };
+    }
+    const made = await this.d.media.sfx!(tonePrompt(bible), Math.min(30, Math.max(8, Math.round(seconds)))).catch(() => null);
+    if (!made) return { bytes: null, key: null, of: null, usd: 0 };
+    const key = filmKey(f.ownerId, f.id, `tone-${this.id().slice(0, 8)}`, "audio/mpeg");
+    await this.d.blobs.put(key, made.bytes, "audio/mpeg");
+    return { bytes: made.bytes, key, of, usd: made.usd };
+  }
+
+  /**
+   * THE SOUNDS OF WHAT IS SEEN: rain on the awning, chai hitting the glass, the bus going past. Each shot card already says what its shot
+   * sounds like, and until now that only went into the prompt and came back as whatever the model felt like. Here it is made as its own
+   * short sound and laid where it happens, so the same thing is heard in the same way every time the film is cut.
+   *
+   * At most SPOTS_MAX of them, on the longest shots, because a film with a sound on every cut is a cartoon. Each is kept on its shot, so
+   * only a shot whose sound changed is made again.
+   */
+  private async spots(f: Film): Promise<{ list: { audio: Buffer; at: number }[]; usd: number }> {
+    const sfx = this.d.media.sfx;
+    const script = f.script!;
+    if (!sfx) return { list: [], usd: 0 };
+    const starts: number[] = [];
+    let at = 0;
+    for (const c of script.shots) { starts.push(at); at += c.seconds; }
+    const want = script.shots
+      .map((card, i) => ({ card, i, of: spotPrint(card, script.bible) }))
+      .filter((x) => !!x.of)
+      .sort((a, b) => b.card.seconds - a.card.seconds)
+      .slice(0, SPOTS_MAX)
+      .sort((a, b) => a.i - b.i);
+    const list: { audio: Buffer; at: number }[] = [];
+    let usd = 0;
+    for (const { card, i, of } of want) {
+      const st = shotOf(f, card.n);
+      let key = st?.spot && st.spotOf === of ? st.spot : null;
+      let bytes = key ? await this.d.blobs.get(key).catch(() => null) : null;
+      if (!bytes) {
+        const made = await sfx(spotPrompt(card), SPOT_SECONDS).catch(() => null);
+        if (!made) continue;
+        key = filmKey(f.ownerId, f.id, `spot-${card.n}-${this.id().slice(0, 8)}`, "audio/mpeg");
+        await this.d.blobs.put(key, made.bytes, "audio/mpeg");
+        bytes = made.bytes;
+        usd += made.usd;
+        const k = key, o = of!;
+        await this.update(f.ownerId, f.id, (x) => {
+          const sh = x.shots.find((y) => y.n === card.n);
+          if (!sh) return;
+          if (sh.spot && sh.spot !== k) void this.d.blobs.delete(sh.spot).catch(() => undefined);
+          sh.spot = k;
+          sh.spotOf = o;
+        });
+      }
+      // A beat into the shot, so it lands with the picture rather than on the cut.
+      list.push({ audio: bytes, at: (starts[i] ?? 0) + Math.min(0.35, card.seconds * 0.15) });
+    }
+    return { list, usd };
   }
 
   private async cutFilm(f: Film): Promise<void> {
@@ -1216,10 +1294,15 @@ export class CinemaService {
     const shots = await this.cutShots(f);
     const total = shots.length ? script.shots.reduce((n, c) => n + c.seconds, 0) : 30;
     const music = await this.music(f, total);
+    const tone = await this.tone(f, total);
+    const spots = await this.spots(f);
     const height = f.tier === "draft" ? 720 : 1080;
     // Filmed in one shape, cut to the one that was asked for: a 4:5 film is 9:16 takes cropped towards the subject.
     const fit = f.aspect === this.shot(f) ? undefined : "crop" as const;
-    const out = await this.d.media.cut({ shots, music: music.bytes, aspect: f.aspect, height, ...(fit ? { fit } : {}) });
+    const out = await this.d.media.cut({
+      shots, music: music.bytes, tone: tone.bytes, ...(spots.list.length ? { spots: spots.list } : {}),
+      aspect: f.aspect, height, ...(fit ? { fit } : {}),
+    });
     const blanks = out.blanks?.length ? `The film goes blank at ${out.blanks.map((s) => `${s}s`).join(", ")}: look at those shots.` : "";
     const videoKey = filmKey(f.ownerId, f.id, `film-${p.cut}`, "video/mp4");
     await this.d.blobs.put(videoKey, out.video, "video/mp4");
@@ -1229,10 +1312,13 @@ export class CinemaService {
       await this.d.blobs.put(srtKey, Buffer.from(out.srt, "utf8"), "text/plain");
     }
     await this.update(f.ownerId, f.id, (x) => {
-      this.spend(f, x, music.usd);
-      const keep = new Set([videoKey, srtKey, music.key]);
-      for (const old of [x.cut.video, x.cut.srt, x.cut.music]) if (old && !keep.has(old)) void this.d.blobs.delete(old).catch(() => undefined);
-      x.cut = { video: videoKey, srt: srtKey, seconds: Math.round(out.seconds * 10) / 10, of: p.cut, music: music.key, musicOf: music.of };
+      this.spend(f, x, music.usd + tone.usd + spots.usd);
+      const keep = new Set([videoKey, srtKey, music.key, tone.key]);
+      for (const old of [x.cut.video, x.cut.srt, x.cut.music, x.cut.tone]) if (old && !keep.has(old)) void this.d.blobs.delete(old).catch(() => undefined);
+      x.cut = {
+        video: videoKey, srt: srtKey, seconds: Math.round(out.seconds * 10) / 10, of: p.cut, music: music.key, musicOf: music.of,
+        tone: tone.key, toneOf: tone.of, animatic: x.cut.animatic, animaticOf: x.cut.animaticOf, animaticSeconds: x.cut.animaticSeconds,
+      };
       if (blanks) x.notes = [blanks, ...x.notes].slice(0, 20);
     });
   }
@@ -1249,8 +1335,11 @@ export class CinemaService {
     const total = script.shots.reduce((n, c) => n + c.seconds, 0);
     const music = await this.music(f, total);
     const height = f.tier === "draft" ? 720 : 1080;
+    const tone = await this.tone(f, total);
+    const spots = await this.spots(f);
     const out = await this.d.media.cut({
-      shots, music: music.bytes, aspect, height,
+      shots, music: music.bytes, tone: tone.bytes, ...(spots.list.length ? { spots: spots.list } : {}),
+      aspect, height,
       fit: aspect === f.aspect ? "pad" : "crop",
       ...(captions ? { captions: true, language: script.bible.language } : {}),
     });
@@ -1398,7 +1487,7 @@ export class CinemaService {
     b?.places.forEach((p) => link(p.ref));
     f.shots.forEach((s) => { link(s.still); link(s.voice); link(s.said); });
     f.takes.forEach((t) => { if (f.shots.some((s) => s.take === t.id)) link(t.video); });
-    link(f.cut.board);
+    link(f.cut.animatic);
     link(f.cut.video);
     link(f.cut.srt);
     link(f.cut.big);

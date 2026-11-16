@@ -216,7 +216,7 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
     // The animatic first: the storyboard held to time with the words over it. It is what the person says go to, so it is made before
     // they are asked, and it is ffmpeg only - a film that cannot have one (no frames yet) is handed over without it.
     const want = ctx.animatic ? animaticPrint(animaticOf(film)) : null;
-    if (want && film.cut.boardOf !== want) {
+    if (want && film.cut.animaticOf !== want) {
       const s: Step = { kind: "animatic" };
       if (!busy.has(stepKey(s))) out.push(s);
       return out;
