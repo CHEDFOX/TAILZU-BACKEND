@@ -22,7 +22,7 @@ import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import {
-  BOT_CROWD_COMPONENT, BOT_MARK_CAPABILITY, BOT_PEEK_CAPABILITY, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
+  BOT_CROWD_COMPONENT, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
   MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type LiveWordsProps,
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
@@ -488,18 +488,6 @@ export const canSpaces2 = (ctx: BotsCtx): boolean =>
 export const hasSpaces = (ctx: BotsCtx): boolean => ctx.spaces !== false;
 /** A build that draws Home's Ask as his thought (a tiny bot walking the bottom with "Talk freely" over him). */
 export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.can.has(BOT_STAGE_COMPONENT) && ctx.can.has(KIT_EXTRAS_CAPABILITY);
-/**
- * A build that can have him live behind the bar at the foot of the page instead of standing in a strip of his own
- * (BOT_PEEK_CAPABILITY, BotStage `stand: "peek"`): only his head over the line, wandering, and over the ledge into full view
- * every so often. Every other build gets the stage it gets today, with him standing on it.
- */
-export const canPeek = (ctx: BotsCtx): boolean => ctx.can.has(BOT_PEEK_CAPABILITY) && ctx.can.has(BOT_STAGE_COMPONENT);
-/**
- * A build that draws the mark he carries at rest as a blob of ink dots whose edge answers his own motion
- * (BOT_MARK_CAPABILITY, BotThoughtSpec.restMark). Every other build is sent the same mark as characters in the box it draws
- * today, so nothing is ever written over him at rest either way.
- */
-export const canMark = (ctx: BotsCtx): boolean => ctx.can.has(BOT_MARK_CAPABILITY) && ctx.can.has(BOT_STAGE_COMPONENT);
 /**
  * A build that listens with live words (voiceLive), draws them (LiveWords) and takes a double tap. Every voice piece (liveWords, the
  * voice actions, onDoubleTap, a tile's doubleTap, listenWhen, the "double-tap me" lines, talkTo) goes only to it: a phone whose stream

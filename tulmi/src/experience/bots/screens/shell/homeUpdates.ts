@@ -26,7 +26,7 @@ import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../s
 import { getConfig } from "../../../../config.js";
 import type { FeedRow } from "../../../../shell/feed.js";
 import {
-  ASK_PATH, C, FACE, SCREENS, answerParams, botStage, box, canMark, canPeek, canVoice, talkFor, col, grow, icon, keptOffline, labelled, liveWords, meta, needsCard,
+  ASK_PATH, C, FACE, SCREENS, answerParams, botStage, box, canVoice, talkFor, col, grow, icon, keptOffline, labelled, liveWords, meta, needsCard,
   open, roamFor, roundButton, row, sectionLabel, seq, statusMark, text, voiceLive, voiceStop, when, canScroll, scrollBox, type BotsCtx,
 } from "../../kit.js";
 import type { Node as SduiNode } from "../../../../../../shared/types/sdui.js";
@@ -320,19 +320,23 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
   // close button, which shuts his ear with the box.
   const tapHim: ActionRef = setState("askOpen", true);
 
-  // He does not stand in a strip of his own: he lives behind the bar at the foot of the page, only his head over the line,
-  // wandering, and over the ledge into full view every few moments — so the white band under the page goes, and what is left
-  // is his. A build that cannot do it keeps the stage it has today. `hit: "stage"` makes the whole of that room his, so a tap
-  // anywhere near him opens what is happening, not only a tap on a bot the size of a thumbnail.
-  const peek = canPeek(ctx);
+  // He stands on his own stage at the foot of the page. `hit: "stage"` makes the whole of that room his, so a tap anywhere
+  // near him opens what is happening, not only a tap on a bot the size of a thumbnail.
+  //
+  // HE USED TO LIVE BEHIND THE BAR, clipped by it with only his head over the line, jumping the ledge now and then. That
+  // wanted two new classes in the apps' motion engine and a stage whose floor sits below its own bottom edge — renderer
+  // geometry, which no amount of server data can express. It was taken out rather than shipped: this file drives what every
+  // build already draws, and nothing here waits on a store build. What a moment CAN do, it does — see `roam` and
+  // `talkMoments`, both named from the server's catalog, which every app fetches and the server can change any day.
   const stage = botStage({
-    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: peek ? 0 : desk ? 140 : 136, toys: false, roam: roamFor(ctx), talkMoments: talkFor(ctx),
-    ...(peek ? { stand: "peek" as const } : {}), hit: "stage",
+    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 140 : 136, toys: false, roam: roamFor(ctx), talkMoments: talkFor(ctx),
+    hit: "stage",
     thinkWhen: { all: [asking, { falsy: "reply.text" }] }, cheerWhen: answered,
     ...(voice ? { listenWhen: listening } : {}),
-    // No words at rest: the mark, or nothing at all. What it stands for is said on him instead, where a screen reader finds it.
-    // A build that draws the mark gets it as a blob of dots that wobbles; the rest get the same mark as characters.
-    thought: { style: "home", ...(mark.dots ? canMark(ctx) ? { restMark: { dots: mark.dots, urgent: mark.urgent, says: mark.says } } : { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
+    // The mark at rest, as characters — a bullet every font has, rather than a glyph that might come out a square. What it
+    // stands for is said on him as well, where a screen reader finds it. There was a second form of this, a blob of sprung
+    // dots drawn by the apps; it went with the peek, for the same reason.
+    thought: { style: "home", ...(mark.dots ? { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
     label: voice ? `${mark.label}. I'm listening — say what you need, or tap the key to type.` : `${mark.label}. Tap to see what's happening.`,
   }, [col(children, { padding: 18, gap: 14, flexGrow: 1 })], {
     onPress: tapHim,

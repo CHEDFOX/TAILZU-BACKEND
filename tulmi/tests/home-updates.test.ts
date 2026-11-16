@@ -105,16 +105,11 @@ describe("what his thought holds", () => {
     on();
     const live = sampleLive();
     const node = homeUpdatesBot(ctx(), FEED);
-    const th = (node.props as { thought: { restText?: string; restMark?: { dots: number; urgent: boolean } }; label: string }).thought;
-    // a build that draws it gets the blob of dots, and nothing is written at rest
-    // and the mark announces itself in a few words, so a dot is never a riddle
-    expect(th.restMark).toEqual({ dots: 1, urgent: true, says: "Xode needs you" });
-    expect(th.restText).toBeUndefined();
-    // one that cannot gets the same mark as characters
-    const old = ctx("phone", { can: new Set(CAN.filter((c) => c !== "BotMark")) });
-    const th2 = (homeUpdatesBot(old, FEED).props as { thought: { restText?: string; restMark?: unknown } }).thought;
-    expect(th2.restText).toBe("\u2022");
-    expect(th2.restMark).toBeUndefined();
+    const th = (node.props as { thought: { restText?: string; restMark?: unknown }; label: string }).thought;
+    // THE MARK IS CHARACTERS, for every build there is. The other form of it — a blob of sprung ink dots on his own
+    // canvas — needed drawing machinery in each app, so it went; nothing here waits on a store build any more.
+    expect(th.restText).toBe("\u2022");
+    expect((th as { restMark?: unknown }).restMark).toBeUndefined();
     // either way the words are on him, where a screen reader finds them
     expect((node.props as { label: string }).label).toMatch(/needs you/i);
     const nothing = ctx("phone", { live: { ...live, needs: [], working: [] } });
@@ -234,35 +229,26 @@ describe("where he lives", () => {
     off();
   });
 
-  it("lives behind the bar, with the whole strip his to tap", () => {
+  it("STANDS ON HIS STAGE, and every build gets the same one", () => {
+    // He was going to live behind the bar, clipped by it, jumping the ledge now and then. That wanted a stage whose
+    // floor sits below its own bottom edge and two new classes in the apps' motion engine — renderer geometry and
+    // renderer physics, which no server data can express — so it was taken out rather than shipped behind a
+    // capability no build would ever declare. What is left is one stage, drawn by every app in the world today.
     on();
     const node = homeUpdatesBot(ctx(), FEED);
     const props = node.props as { stand?: string; hit?: string; height: number };
-    expect(props.stand).toBe("peek");
-    // no white strip of his own: the app gives him only what he needs over the bar
-    expect(props.height).toBe(0);
-    // a tap anywhere near him opens what is happening, not only a tap on a bot the size of a thumbnail
-    expect(props.hit).toBe("stage");
-    off();
-  });
-
-  it("stands on his stage, as he does today, for a build that cannot do it", () => {
-    on();
-    const old = ctx("phone", { can: new Set(CAN.filter((c) => c !== "BotPeek")) });
-    const props = homeUpdatesBot(old, FEED).props as { stand?: string; hit?: string; height: number };
     expect(props.stand).toBeUndefined();
     expect(props.height).toBeGreaterThan(100);
+    // A tap anywhere near him opens what is happening, not only a tap on a bot the size of a thumbnail.
     expect(props.hit).toBe("stage");
+    // And it is the same for a build with nothing declared beyond the stage itself.
+    const bare = ctx("phone", { can: new Set(["BotsKit", "BotStage", "BotsMotion"]) });
+    const bareProps = homeUpdatesBot(bare, FEED).props as { stand?: string; height: number };
+    expect(bareProps.stand).toBeUndefined();
+    expect(bareProps.height).toBe(props.height);
     off();
   });
 
-  it("gives his strip no padding of its own, so it sits straight on the tab bar", async () => {
-    on();
-    const screen = await buildBotsScreen(req(), fakeDeps({ api: { "GET /v1/shell/activity?tz=330": { now: Date.UTC(2026, 9, 28, 14), week: { done: 0, paise: 0, minutesSaved: 0 }, rows: FEED } } }));
-    const foot = walk(screen!.root!).find((n) => JSON.stringify(n).includes('"stand":"peek"') && n.type === "Stack")!;
-    expect(foot.style?.paddingBottom ?? 0).toBe(0);
-    off();
-  });
 });
 
 describe("on the screen", () => {
