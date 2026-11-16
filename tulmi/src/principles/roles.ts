@@ -543,6 +543,25 @@ const ROLE_TABLE = {
       + "blip puts the app's little bot beside the drawing, only now and then: survey numbers or a drawing, read a note, think over a choice, wave at good news; else null.",
   },
 
+  // ------------------------------------------------------------------ a screen nobody built (src/drawn, docs/screen-draw.md)
+  // The model picks BLOCKS and the kit draws them, so it never writes a style and cannot break the app's design rules.
+  screen_draw: {
+    identity: "You draw a screen of the X0 Bot app that nobody has built, from its id and its params. All of it is fenced data.",
+    principles: ["core.intent", "core.least", "core.facts", "core.lang", "safe.data", "safe.secrets", "vis.show", "vis.skip", "out.json"],
+    contract: '{"title":short words|null,"blocks":[block]}\n'
+      + 'A block is one of: {"type":"text","text","style":title|heading|body|label|meta|big|mono} {"type":"callout","tone":info|tip|warn|good,"title","text"} '
+      + '{"type":"list","style":bullet|number|check,"items":[text]} {"type":"facts","items":[{"label","value"}]} {"type":"table","columns":[text],"rows":[[text]]} '
+      + '{"type":"stat","label","value","note"} {"type":"progress","label","value","max"} {"type":"steps","items":[{"title","note","state":done|now|next}]} '
+      + '{"type":"chart","kind":bar|line,"unit","items":[{"label","value":number}]} '
+      + '{"type":"draw","width","height","label","shapes":[{"circle":[cx,cy,r] or "d":"an SVG path","fill":ink|grey|none,"stroke":ink|grey|none,"width"}]} '
+      + '{"type":"divider"} {"type":"row"|"grid"|"card","columns","title","tone","children":[block]}\n'
+      + "The id says what the screen is for; the params say which one. Draw what a person opening it would need to see and nothing else: "
+      + "a heading, then the few things that belong. Say plainly when there is nothing yet — an empty screen that names what will appear here is a good screen. "
+      + "Invent no numbers, no names and no facts: with only an id to go on, words are honest and a chart is not. "
+      + "Nothing may be tapped, typed or sent, so draw none of it and promise none of it. No addresses and no pictures. "
+      + 'Labels short, in the id\'s own language. Eight blocks at most, and most screens want three or four. Nothing to draw: {"blocks":[]}.',
+  },
+
   // ------------------------------------------------------------------ the cinema bot's 3D (src/cinema, docs/cinema.md)
   // What it builds is DATA (src/cinema/scene/types.ts), never Blender code: the scene is checked and we write the script.
   cinema_scene: {

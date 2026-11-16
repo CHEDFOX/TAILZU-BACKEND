@@ -59,6 +59,9 @@ const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { readMood } = await import("../src/talk/speak.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { ShowReply } = await import("../src/show/design.js");
+const { DrawReply } = await import("../src/drawn/draw.js");
+const { checkShown } = await import("../src/show/check.js");
+const { Seen } = await import("../src/show/links.js");
 const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
 const { checkScene } = await import("../src/cinema/scene/check.js");
@@ -341,6 +344,16 @@ describe("a known-good answer for each role", () => {
     bot_show: {
       text: '{"blocks":[{"type":"choice","question":"Which one should I plan?","options":[{"label":"Lonavala","note":"1.5 hours"},{"label":"Mahabaleshwar","note":"3 hours"},{"label":"Alibaug","note":"3 hours"}]}],"lists":"drawn"}',
       reads: (t) => ShowReply.parse(JSON.parse(t)),
+    },
+    screen_draw: {
+      text: '{"title":"Saved places","blocks":[{"type":"text","text":"Saved places","style":"title"},{"type":"text","text":"Nothing saved yet. Places you keep from the travel bot are shown here.","style":"body"}]}',
+      // The call site does not stop at the schema: every block goes through the chat's own checker, with an empty
+      // `Seen`, so a known-good answer has to survive that too or the screen would be served empty.
+      reads: (t) => {
+        const shown = checkShown({ blocks: DrawReply.parse(JSON.parse(t)).blocks }, { seen: new Seen() });
+        if (!shown?.blocks.length) throw new Error("screen_draw: the checker kept none of its blocks");
+        return shown;
+      },
     },
     cinema_scene: {
       text: '{"look":{"engine":"cycles","samples":128,"width":1600,"height":1200,"sky":"studio"},"camera":{"at":[2.2,-2.6,1.2],"to":[0,0,0.55],"lens":85,"blur":{"fStop":3.2}},"lights":[{"kind":"key","at":[2.5,-2,3],"power":420,"size":3},{"kind":"fill","at":[-3,-1.5,1.6],"power":90,"size":4},{"kind":"rim","at":[-1.2,2.6,2.2],"power":220,"size":1.5}],"materials":{"shell":{"colour":"#17171a","metallic":0.1,"roughness":0.55},"concrete":{"colour":"#b9b5ae","metallic":0,"roughness":0.85},"brass":{"colour":"#b58b3a","metallic":1,"roughness":0.3}},"objects":[{"id":"floor","shape":"plane","at":[0,0,0],"size":14,"material":"concrete"},{"id":"plinth","shape":"cube","at":[0,0,0.09],"size":[0.6,0.5,0.09],"material":"concrete","mods":[{"kind":"bevel","width":0.006,"segments":2}]},{"id":"speaker","shape":"cube","at":[0,0,0.52],"size":[0.19,0.15,0.34],"material":"shell","mods":[{"kind":"bevel","width":0.012,"segments":3},{"kind":"smooth"}],"parts":[{"id":"driver","shape":"cylinder","at":[0,-0.15,0.58],"turn":[90,0,0],"size":[0.09,0.09,0.012],"material":"brass"}]}],"seed":7}',

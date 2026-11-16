@@ -868,6 +868,16 @@ const EnvSchema = z.object({
   BOT_SHOW: bool(false),
   BOT_SHOW_USERS: orDefault(""),
   /**
+   * A SCREEN NOBODY BUILT, DRAWN BY A MODEL (src/drawn, docs/screen-draw.md): an id the Bots app does not have a builder for is
+   * answered "coming soon" today. With this on, one small call picks the BLOCKS for that screen from the same vocabulary a bot draws under
+   * its words, and the kit draws them — so the model never writes a style, and a drawing that does not survive the checker or the app's
+   * design rules is the "coming soon" it was before. Nothing on it can be tapped or typed: a screen has no chat turn to send to.
+   * Off by default; SCREEN_DRAW_USERS, a comma-separated list of account ids, is the stage before everyone, as BOT_SHOW_USERS is.
+   * No built screen goes near this: they are answered from BOTS_SCREENS exactly as they are today.
+   */
+  SCREEN_DRAW: bool(false),
+  SCREEN_DRAW_USERS: orDefault(""),
+  /**
    * THE BOT AT THE FOOT OF HOME, AS WHAT IS HAPPENING (experience/bots/screens/shell/homeThought.ts, docs/home-updates.md): instead of a
    * box to type in, his thought holds the updates — what needs the person, what their bots are working on, what just finished — each
    * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is

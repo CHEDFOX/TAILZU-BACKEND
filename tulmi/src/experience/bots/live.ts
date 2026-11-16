@@ -17,6 +17,8 @@
  *               You tab's ring draws the stretch. Unknown without the You tab's source (tests, the render check): the jobs' month as a fraction
  */
 import type { ActionSpec } from "../../../../shared/types/sdui.js";
+import type { GatewayDeps } from "../../code/brain/gateway.js";
+import type { CallFn } from "../../code/work/model.js";
 import type { TabLive } from "./glyphs.js";
 import { SCREENS } from "./ids.js";
 import { BUILTIN_SLUGS, botLook, type BotLook } from "./palette.js";
@@ -90,6 +92,12 @@ export interface BotsDeps {
    * what it needs through this, so a new screen needs no new plumbing. Throws on a non-2xx answer (`status` on the error).
    */
   api<T = unknown>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T>;
+  /**
+   * The model door for A SCREEN NOBODY BUILT (src/drawn/draw.ts, docs/screen-draw.md), and what it may spend. The route
+   * supplies it; absent — every test, the render check, every caller that has not been given one — an id with no builder is the
+   * "coming soon" it has always been. A built screen never reaches it.
+   */
+  drawn?: { call?: CallFn; gateway?: GatewayDeps; leftPaise: number; signal?: AbortSignal };
 }
 
 /** 50,000 paise a month: ours, the yardstick for the jobs' month when the usage meter is not known. Never shown. */
