@@ -47,6 +47,10 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   care_review: "cheap", care_conflict: "cheap",
   team_split: "strong", team_review: "review",
   bot_builder: "cheap", bot_pick: "tiny", ask_decide: "tiny", talk_reply: "cheap", bot_run: "cheap", bot_memory: "tiny", bot_show: "tiny", cinema_scene: "code", cinema_eye: "vision",
+  // The cinema bot's film half, at the tier each of its call sites asks: the director and a revision are the whole film's
+  // shape, the two eyes on a still and a take look at pictures, and the rest are cheap reads.
+  cinema_propose: "cheap", cinema_direct: "strong", cinema_revise: "strong", cinema_picture_read: "cheap",
+  cinema_picture_check: "vision", cinema_still: "vision", cinema_take: "vision",
   widget_digest: "tiny",
   site_read: "tiny",
   ask_planner: "cheap", ask_vision: "vision", writer: "cheap", edit_selection: "cheap", answer_about: "cheap", converse: "cheap",

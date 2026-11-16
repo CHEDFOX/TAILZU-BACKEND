@@ -177,13 +177,22 @@ function repeated(checked: readonly Take[], v: Verdict): boolean {
 }
 
 /** What the eye is told about a shot, as the words beside the pictures. `kind` says whether it looks at a still or at a take's frames. */
-export function checkBrief(card: ShotCard, bible: Bible, kind: "still" | "take"): string {
+/**
+ * THE SHOT'S OWN FACTS, for the eye that checks a still or a take (the roles `cinema_still` and `cinema_take`).
+ *
+ * It used to be the system prompt: who the model was, how to score, and this shot's facts, built fresh for every shot. Two of
+ * those three are the same for every shot in every film, so they are the role now, and only the facts are built here. The
+ * prompt the model is sent is a third shorter for it, and every shot of every film shares one cached opening instead of
+ * carrying its own.
+ *
+ * Fenced, because it is the film's own words (a title, a line of dialogue, a person's look) and not an instruction to follow.
+ */
+export function shotFacts(card: ShotCard, bible: Bible, kind: "still" | "take"): string {
   const cast = card.cast.map((k) => bible.characters.find((c) => c.key === k)).filter(Boolean).map((c) => `- ${c!.name}: ${c!.look}; wearing ${c!.wardrobe}`);
   const lines = card.lines.map((l) => `${bible.characters.find((c) => c.key === l.who)?.name ?? l.who}: "${l.text}"`);
   return [
-    kind === "still"
-      ? "You are checking one storyboard still for a film before it is animated. Image 1 is the still; any images after it are the reference sheets of the people and the place, in the order listed."
-      : "You are checking one generated video take for a film. Image 1 is the approved still the take started from; the next images are frames from the take, in time order. If a final image is labelled as the previous shot's last frame, check continuity against it.",
+    "The shot:",
+    "<<<",
     `Shot ${card.n}: ${card.size}, ${card.angle} angle, ${card.move} camera, ${card.lens}mm, ${card.seconds}s.`,
     card.intent ? `What the shot is for: ${card.intent}` : "",
     `It should show: ${card.frame}${card.composition ? ` Composition: ${card.composition}` : ""}`,
@@ -195,8 +204,6 @@ export function checkBrief(card: ShotCard, bible: Bible, kind: "still" | "take")
     card.text ? `These words must be readable and spelled exactly: "${card.text}".` : "There must be no text, captions or watermarks.",
     lines.length && kind === "take" ? `Lines spoken (lips should move with them): ${lines.join(" ")}` : "",
     `Look of the film: ${bible.look.palette}; ${bible.look.light}; ${bible.look.stock}.`,
-    'Answer with JSON only: {"scores":{"identity":0-10,"action":0-10,"camera":0-10,"quality":0-10,"continuity":0-10},"issues":[{"kind":"identity|wardrobe|action|camera|anatomy|artifact|morph|text|continuity|physics|framing|lipsync|safety","major":true|false,"note":"a few words"}],"fix":"one short instruction for the next attempt, or null"}',
-    "Score action on whether the take delivers what the shot is for: the action, the acting and the ending as described. Score camera on the move, its speed and the focus.",
-    "Be strict about faces, hands, bodies, melting or morphing, and anything that contradicts the shot. Mark a problem major only if a viewer would notice it at once. The fix is one concrete instruction about what must be seen (\"his right hand stays on the kettle handle\"), not a general wish.",
+    ">>>",
   ].filter(Boolean).join("\n");
 }

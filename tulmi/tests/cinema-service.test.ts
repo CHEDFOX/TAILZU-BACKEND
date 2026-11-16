@@ -74,15 +74,16 @@ function rig(o: {
     }
     if (q.purpose === "cinema.check.take") {
       takeChecks++;
+      // The shot's facts are in the MESSAGE now, not a prompt built per shot: who the model is and how to score are the
+      // role `cinema_take` (principles/roles.ts), and qc.ts shotFacts opens the message with this shot's own lines.
+      const said = typeof q.user === "string" ? q.user : q.user.map((part) => ("text" in part ? part.text : "")).join("\n");
       if (o.verdictFor) {
-        const m = /Shot (\d+):/.exec(typeof q.system === "string" ? q.system : "");
+        const m = /Shot (\d+):/.exec(said);
         const shot = m ? Number(m[1]) : 0;
         shotChecks[shot] = (shotChecks[shot] ?? 0) + 1;
         return { json: o.verdictFor(shot, shotChecks[shot]!) ?? good, text: "", usd: 0.001 };
       }
-      const txt = Array.isArray(q.user) ? "" : q.user;
-      void txt;
-      const forShot3 = typeof q.system === "string" && q.system.includes("Shot 3:");
+      const forShot3 = said.includes("Shot 3:");
       return { json: forShot3 && o.failFirstTakeOf === 3 && takeChecks <= 3 && !calls.videos.some((v) => v.prompt.includes("Important:")) ? bad : good, text: "", usd: 0.001 };
     }
     if (q.purpose === "cinema.picture.read") return { json: { kind: "poster", text: "CHAI", aspect: "2:3", prompt: "A poster of a chai glass in the rain", cast: [] }, text: "", usd: 0.001 };

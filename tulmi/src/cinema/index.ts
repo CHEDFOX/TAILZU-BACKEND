@@ -10,6 +10,7 @@
  *
  * Built once, by server.ts, when the bot is on (bots/builtin.ts cinemaOn).
  */
+import { compose } from "../principles/index.js";
 import { callModel } from "../code/brain/gateway.js";
 import { getConfig } from "../config.js";
 import { botTopic } from "../live/topics.js";
@@ -37,7 +38,10 @@ const thinkAs = (userId: string): Think => async (o) => {
     json: true,
     maxTokens: o.maxTokens,
     budget: { maxPaise: o.capPaise },
-    messages: [{ role: "system", content: o.system }, { role: "user", content: o.user }],
+    // ONE DOOR, AND IT COMPOSES. Every cinema call names a role (principles/roles.ts) and the stable block is built from
+    // it: the shared principles first, so two roles that start with the same ones share their first bytes and a provider
+    // that caches a prefix hits on them. Nothing here writes a system prompt, and no call site can.
+    messages: compose(o.role, [{ role: "user", content: o.user }]),
   });
   return { json: r.json, text: r.text, usd: r.costUsd };
 };

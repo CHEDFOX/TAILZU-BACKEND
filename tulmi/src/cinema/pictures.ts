@@ -8,7 +8,7 @@
  *   2. ROUTE   imageModels.ts routeImage picks the model by what the picture needs: words → the models that spell; a face that must stay
  *              someone's → the ones that keep a reference; a logo → a vector model.
  *   3. MAKE    two candidates at once when the picture has faces or words (where pictures most often go wrong), else one
- *   4. LOOK    a vision model checks each against the ask (`IMAGE_CHECK`): does it match, is it well made, are the words spelled exactly, is
+ *   4. LOOK    a vision model checks each against the ask (the role `cinema_picture_check`): does it match, is it well made, are the words spelled exactly, is
  *              the person the person in the reference. The better passing one is kept. When none passes, one more try on the next model
  *              with the fix line; then the best is given, with a note saying what is off.
  *
@@ -33,31 +33,13 @@ export interface ReadAsk {
   cast: string[];
 }
 
-const READ_SYSTEM = `You are an art director and photographer. You turn a person's request for a picture into a brief an image model will follow exactly. Image models only know what you write: be concrete, visual and specific, with precise nouns, materials, colours, directions and measures. Vague words (beautiful, cinematic, epic, stunning, masterpiece, 8k) make generic pictures; leave them out.
-
-First decide what the picture is FOR (sell a product, announce a sale, flatter a face, explain a thing, set a mood) and make every choice serve that result. Then write the brief, covering in this order, each in a sentence or two:
-1. Subject: who or what, in full: age, skin tone, face, eyes, hair, build, expression and pose for a person; shape, material, colour, finish, size and brand details they asked for for a product.
-2. Action and moment: what is happening at this instant.
-3. Setting: the place, its materials, props, time of day and weather.
-4. Composition: the framing (close-up, medium, wide), the angle, where the subject sits (thirds, centre), the foreground and background, the negative space (and where text will go, for a poster).
-5. Camera: the lens in mm, the aperture and depth of field, the focus point.
-6. Lighting: the key light's direction and quality, the colour temperature, the fill, the rim or back light, the practicals, reflections.
-7. Colour: three or four named colours, the grade, the contrast.
-8. Texture and medium: photograph (film stock or digital), illustration (medium and style), 3D render, vector.
-9. Mood: two or three words of feeling.
-10. Text, for a poster or a label: the exact words, the typeface style (bold condensed sans, elegant serif, hand lettering), the size and placement, the colour and the hierarchy.
-Rules: "edit" when they sent photos and want them changed: say exactly what to change and what must stay as it is (the face, the product, the background). Keep their language for any words in the picture. Never real people's likenesses unless it is an edit of the photo they sent, never brands they did not ask for, nothing sexual involving minors, no gore or hate.
-
-Answer with JSON only:
-{"kind":"photo|portrait|product|poster|illustration|logo|edit","text":"words that must appear in the picture exactly, or null","aspect":"1:1|4:5|3:4|2:3|9:16|16:9|3:2|4:3|21:9","prompt":"the brief: 120 to 220 words, the ten parts above as one flowing description","cast":["keys of the listed people the request names"]}`;
-
 export async function readAsk(think: Think, words: string, o: { photos: number; cast: readonly Character[] }): Promise<ReadAsk> {
   const user = [
     `Request: <<<${words.slice(0, 3000)}>>>`,
     o.photos ? `They sent ${o.photos} photo(s) with it.` : "No photos came with it.",
     o.cast.length ? `People they have: ${o.cast.map((c) => `${c.key} (${c.name})`).join(", ")}` : "",
   ].filter(Boolean).join("\n");
-  const r = await think({ purpose: "cinema.picture.read", tier: "cheap", system: READ_SYSTEM, user, maxTokens: 1400, capPaise: 60 });
+  const r = await think({ purpose: "cinema.picture.read", tier: "cheap", role: "cinema_picture_read", user, maxTokens: 1400, capPaise: 60 });
   return normalizeAsk(r.json ?? r.text, words, o);
 }
 
@@ -105,10 +87,6 @@ export function picturePrompt(a: ReadAsk, refs: { role: string }[]): string {
 }
 
 export interface ImageVerdict { scores: { match: number; quality: number; text: number; identity: number }; issues: string[]; fix: string | null; pass: boolean }
-
-export const IMAGE_CHECK = `You check a generated picture against what was asked. The first image is the picture; any images after it are references it had to follow. Answer with JSON only:
-{"scores":{"match":0-10,"quality":0-10,"text":0-10,"identity":0-10},"issues":["a few words each"],"major":true|false,"fix":"one short instruction for another try, or null"}
-match: does it show what was asked. quality: anatomy, hands, faces, artifacts, melting, odd geometry. text: are the required words there, spelled exactly and readable (10 when no words were required and there are none; low when there is unwanted text). identity: does each person look like their reference (10 when there is no reference). major: true if a viewer would notice a problem at once.`;
 
 const n10 = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.min(10, v)) : d);
 
@@ -197,7 +175,7 @@ async function look(d: PictureDeps, g: { bytes: Buffer; type: string }, p: Pictu
   const r = await d.think({
     purpose: "cinema.picture.check",
     tier: "vision",
-    system: IMAGE_CHECK,
+    role: "cinema_picture_check",
     user: [{ type: "text", text: asked }, { type: "image_url", image_url: { url: d.dataUrl(g.bytes, g.type) } }, ...p.refs.slice(0, 3).map((r) => ({ type: "image_url" as const, image_url: { url: r.url } }))],
     maxTokens: 500,
     capPaise: 10,

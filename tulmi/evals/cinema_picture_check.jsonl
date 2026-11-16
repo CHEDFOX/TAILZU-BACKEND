@@ -1,0 +1,2 @@
+{"input": "Asked for: a matte black speaker standing on a pale concrete floor, studio light, product shot\nNo words were required.", "expect": {"has": ["scores", "major"], "exclude": ["```"]}, "images": ["render-speaker.png"]}
+{"input": "Asked for: a bright white kitchen in full daylight, a bowl of lemons on the counter\nNo words were required.", "expect": {"has": ["scores", "major"], "exclude": ["```"]}, "images": ["render-dark.png"]}

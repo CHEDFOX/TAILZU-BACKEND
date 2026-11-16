@@ -69,11 +69,18 @@ const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
 const { CONNECTOR_ADDENDUM } = await import("../src/connectors/index.js");
 const { DEVICE_ADDENDUM } = await import("../src/connectors/device.js");
+// The cinema reads its own answers by hand: these are the real readers its call sites use.
+const { readProposal } = await import("../src/cinema/propose.js");
+const { normalize: readScript } = await import("../src/cinema/plan.js");
+const { normalizeAsk, parseImageVerdict } = await import("../src/cinema/pictures.js");
+const { parseVerdict } = await import("../src/cinema/qc.js");
 type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
 
 /** The roles that read a picture: their fixtures name one, and they are told it is evidence rather than that it is data. */
-const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye"];
+const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye",
+  // The film half's three eyes: on a finished picture, on a storyboard still, and on a video take.
+  "cinema_picture_check", "cinema_still", "cinema_take"];
 
 describe("the fixture files", () => {
   it("are one per role, and nothing else is in evals/ that looks like one", () => {
@@ -340,6 +347,34 @@ describe("a known-good answer for each role", () => {
       reads: (t) => checkScene(SceneReply.parse(JSON.parse(t))).scene,
     },
     cinema_eye: { text: '{"ok":true,"issues":[],"fix":""}', reads: (t) => EyeReply.parse(JSON.parse(t)) },
+    cinema_propose: {
+      text: '{"ready":true,"concept":"A coffee cart at dawn: the owner pulls a shot, steam rising off the cup, and hands it to the first customer of the day.","seconds":24,"aspect":"9:16","because":"you said under half a minute, and a reel"}',
+      reads: (t) => readProposal(JSON.parse(t)),
+    },
+    cinema_direct: {
+      text: '{"bible":{"title":"One Bottle","logline":"A runner and a steel bottle at sunrise.","genre":"ad","tone":"warm","style":"live","language":"en","look":{"palette":"steel grey, dawn gold, asphalt black","light":"low sun from the east","lens":"crisp modern glass","stock":"digital cinema","grade":"warm highlights, held shadows","texture":"clean"},"characters":[{"key":"runner","name":"Maya","look":"early 30s, warm brown skin, short black hair tied back, lean build","wardrobe":"a grey running vest, black shorts, worn blue trainers","voice":"low, even, slightly breathless"}],"places":[{"key":"park","name":"Park tap","look":"a brass tap on a concrete post, wet gravel, plane trees behind"},{"key":"hill","name":"Hill top","look":"a bare ridge of dry grass above the city"}],"music":"a single pulsing synth, slow, rising"},"shots":[{"beat":"the fill","intent":"that the water is ordinary and free","size":"medium","angle":"eye","move":"static","lens":50,"camera":"static","cast":["runner"],"place":"park","frame":"Maya holds the bottle under the brass tap, water just starting to run.","composition":"She sits left of centre, the tap in the near foreground, trees soft behind.","action":"The water fills the bottle and she caps it.","performance":"her eyes stay on the bottle, a small nod when it is full","atmosphere":"steam off wet gravel","light":"low sun from frame left, warm","end":"the capped bottle in her hand","seconds":5,"lines":[],"vo":null,"sound":"water into steel; birds","link":"cut","motion":1,"physics":true,"crowd":false,"text":null,"cover":null},{"beat":"the summit","intent":"that it lasted the whole run","size":"wide","angle":"low","move":"static","lens":35,"camera":"static","cast":["runner"],"place":"hill","frame":"Maya on the ridge, the bottle raised, the city behind her.","composition":"She stands right of centre against open sky.","action":"She drinks, lowers the bottle, and breathes out.","performance":"her shoulders drop, a long breath","atmosphere":"dust in the light","light":"full sun behind her, rim light on her arms","end":"the bottle at her side, label to camera","seconds":6,"lines":[],"vo":null,"sound":"wind; a swallow","link":"cut","motion":1,"physics":false,"crowd":false,"text":null,"cover":null}]}',
+      reads: (t) => readScript(JSON.parse(t), { length: 20, language: "en" }).script,
+    },
+    cinema_revise: {
+      text: '{"bible":{"title":"One Bottle","logline":"A runner and a steel bottle at sunrise.","genre":"ad","tone":"warm","style":"live","language":"en","look":{"palette":"steel grey, dawn gold, asphalt black","light":"low sun from the east","lens":"crisp modern glass","stock":"digital cinema","grade":"warm highlights, held shadows","texture":"clean"},"characters":[{"key":"runner","name":"Maya","look":"early 30s, warm brown skin, short black hair tied back, lean build","wardrobe":"a grey running vest, black shorts, worn blue trainers","voice":"low, even, slightly breathless"}],"places":[{"key":"park","name":"Park tap","look":"a brass tap on a concrete post, wet gravel, plane trees behind"},{"key":"hill","name":"Hill top","look":"a bare ridge of dry grass above the city"}],"music":"a single pulsing synth, slow, rising"},"shots":[{"beat":"the fill","intent":"that the water is ordinary and free","size":"medium","angle":"eye","move":"static","lens":50,"camera":"static","cast":["runner"],"place":"park","frame":"Maya holds the bottle under the brass tap, water just starting to run.","composition":"She sits left of centre, the tap in the near foreground, trees soft behind.","action":"The water fills the bottle and she caps it.","performance":"her eyes stay on the bottle, a small nod when it is full","atmosphere":"steam off wet gravel","light":"low sun from frame left, warm","end":"the capped bottle in her hand","seconds":5,"lines":[],"vo":null,"sound":"water into steel; birds","link":"cut","motion":1,"physics":true,"crowd":false,"text":null,"cover":null},{"beat":"the summit","intent":"that it lasted the whole run","size":"wide","angle":"low","move":"static","lens":35,"camera":"static","cast":["runner"],"place":"hill","frame":"Maya on the ridge, the bottle raised, the city behind her.","composition":"She stands right of centre against open sky.","action":"She drinks, lowers the bottle, and breathes out.","performance":"her shoulders drop, a long breath","atmosphere":"dust in the light","light":"full sun behind her, rim light on her arms","end":"the bottle at her side, label to camera","seconds":6,"lines":[],"vo":null,"sound":"wind; a swallow","link":"cut","motion":1,"physics":false,"crowd":false,"text":null,"cover":null}]}',
+      reads: (t) => readScript(JSON.parse(t), { length: 20, language: "en", keepLength: true }).script,
+    },
+    cinema_picture_read: {
+      text: '{"kind":"product","text":null,"aspect":"4:5","prompt":"A matte black bluetooth speaker, 180mm tall, standing upright on a pale grey concrete floor. Its fabric grille is a fine charcoal weave; the top plate is anodised aluminium with four flush buttons. Lit by a large soft box high and to the left, a weaker fill from the right, and a narrow rim light behind to lift its edge off the background. The background is the same concrete, falling into soft shadow. Shot on a 100mm lens at f/8, focus on the grille, the whole object sharp. Three colours only: charcoal, pale concrete grey, a cool white highlight. A clean studio photograph, no props, no text. Calm, exact, premium.","cast":[]}',
+      reads: (t) => normalizeAsk(JSON.parse(t), "a matte black bluetooth speaker on pale concrete", { photos: 0, cast: [] }),
+    },
+    cinema_picture_check: {
+      text: '{"scores":{"match":9,"quality":8,"text":10,"identity":10},"issues":["the floor edge is a little soft"],"major":false,"fix":null}',
+      reads: (t) => parseImageVerdict(JSON.parse(t)),
+    },
+    cinema_still: {
+      text: '{"scores":{"identity":10,"action":8,"camera":8,"quality":9,"continuity":10},"issues":[],"fix":null}',
+      reads: (t) => parseVerdict(JSON.parse(t), false),
+    },
+    cinema_take: {
+      text: '{"scores":{"identity":10,"action":8,"camera":7,"quality":8,"continuity":9},"issues":[{"kind":"camera","major":false,"note":"the dolly stops a beat early"}],"fix":"hold the move to the end of the shot"}',
+      reads: (t) => parseVerdict(JSON.parse(t), false),
+    },
     widget_digest: { text: '{"line":"Xode finished the cart fix; Plan Ease needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
     site_read: {
       text: '{"title":"Behrouz Biryani","line":"Out for delivery, arriving by 9:42 pm",'

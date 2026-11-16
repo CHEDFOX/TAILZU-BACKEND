@@ -91,6 +91,17 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   bot_show: 2420,
   cinema_scene: 2494,
   cinema_eye: 1231,
+  // The film half's seven replaced real constants in src/cinema, so each has a true "before": the length of the system
+  // message that call site sent, plus the 60 the gateway adds for a JSON answer. cinema_still and cinema_take had no
+  // constant at all - qc.ts built their prompt per shot, the shot's own facts inside it - so theirs is one representative
+  // shot's brief. Those two are the only ones that got smaller, and by a third, because the facts are a message now.
+  cinema_propose: 1471,
+  cinema_direct: 6004,
+  cinema_revise: 6259,
+  cinema_picture_read: 2506,
+  cinema_picture_check: 789,
+  cinema_still: 1719,
+  cinema_take: 2172,
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".
   widget_digest: 776,
   site_read: 1392,

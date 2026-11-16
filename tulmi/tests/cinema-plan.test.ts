@@ -76,7 +76,9 @@ describe("making a script safe to spend money on", () => {
   });
 
   it("asks the director for every detail the prompts need", async () => {
-    const { DIRECTOR_SYSTEM } = await import("../src/cinema/plan.js");
+    // The director's words are a role now (principles/roles.ts cinema_direct), not a constant in plan.ts.
+    const { ROLES } = await import("../src/principles/roles.js");
+    const DIRECTOR_SYSTEM = ROLES.cinema_direct.contract;
     for (const field of ['"intent"', '"performance"', '"camera"', '"composition"', '"atmosphere"', '"grade"', '"texture"', '"voice"']) expect(DIRECTOR_SYSTEM).toContain(field);
   });
 

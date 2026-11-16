@@ -36,20 +36,6 @@ export interface Proposal {
   because: string;
 }
 
-export const PROPOSE_SYSTEM = `You read a conversation between a person and a film-making bot, and say whether the person has said enough for a film to be made.
-
-Answer with JSON only: {"ready":true|false,"concept":"","seconds":0,"aspect":"16:9|9:16|1:1|4:5|5:4|4:3|3:4|21:9","because":""}
-
-ready is true only when you know WHAT the film shows and WHO or WHAT it is for. A single vague line ("something for my shop", "a video") is not enough: answer ready false and nothing else matters.
-
-concept: the film in one or two plain sentences, as you would describe it back to them - what happens, where, the feeling. Concrete nouns, no empty words (cinematic, stunning, epic). Never promise a shot you were not told about.
-
-seconds: from what they said. "Under half a minute" is not 30: pick what the film needs inside what they said. A single moment is 8 to 15 seconds; an ad with a few beats is 20 to 30; a story with a turn is 45 to 90. Between 5 and 180.
-
-aspect: from where they said it goes. Reels, Shorts, stories, "for the feed on my phone" -> 9:16. Instagram feed, "square" -> 1:1 or 4:5. YouTube, a screen, a TV, a website header -> 16:9. Something wide and filmic -> 21:9. If they did not say, choose by what it is for: an ad for a phone audience is 9:16, anything else 16:9.
-
-because: a few words naming what in their own message decided the length and the shape ("you said under half a minute, and reels"). Empty if they said neither.`;
-
 /** A number of seconds we will actually film. */
 export const clampSeconds = (n: unknown): number | null => {
   const v = Math.round(Number(n));
@@ -88,6 +74,6 @@ export async function propose(think: Think, turns: readonly { role: "me" | "bot"
   const said = turns.filter((t) => t.role === "me").map((t) => t.text).join(" ").trim();
   if (said.length < 12) return { proposal: null, usd: 0 };
   const user = turns.slice(-12).map((t) => `${t.role === "me" ? "THEM" : "BOT"}: ${t.text.slice(0, 600)}`).join("\n");
-  const r = await think({ purpose: "cinema.propose", tier: "cheap", system: PROPOSE_SYSTEM, user, maxTokens: 500, capPaise: 40 }).catch(() => null);
+  const r = await think({ purpose: "cinema.propose", tier: "cheap", role: "cinema_propose", user, maxTokens: 500, capPaise: 40 }).catch(() => null);
   return { proposal: r ? readProposal(r.json ?? r.text) : null, usd: r?.usd ?? 0 };
 }

@@ -15,13 +15,15 @@
  * The model is reached through a port (`Think`) the service fills with the gateway (code/brain/gateway.ts callModel), so all of this is
  * tested without a model.
  */
+import type { RoleId } from "../principles/roles.js";
 import { ANGLES, LINKS, MOVES, SHOT_SIZES, type Angle, type Aspect, type Bible, type Character, type Line, type Link, type Move, type Place, type Script, type ShotCard, type ShotSize } from "./types.js";
 
 /** One model call. The service turns it into callModel with json: true. */
 export type Think = (o: {
   purpose: string;
   tier: "strong" | "cheap" | "vision";
-  system: string;
+  /** Who the model is for this call (principles/roles.ts). The door composes it; no caller writes a system prompt. */
+  role: RoleId;
   user: string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[];
   maxTokens: number;
   capPaise: number;
@@ -32,41 +34,6 @@ export const MAX_PEOPLE = 6;
 export const MAX_PLACES = 6;
 /** How many words a second can carry, said aloud at an easy pace. */
 export const WORDS_PER_SECOND = 2.6;
-
-export const DIRECTOR_SYSTEM = `You are a film director, cinematographer and production designer. You turn a request into a production bible and a shot list that an AI crew will shoot shot by shot: each shot is first made as a still by an image model, then animated from that still by a video model for its few seconds. Those models only know what you write, so every field must be concrete, visual and specific: what a camera would actually see and a microphone would actually hear. Vague words (beautiful, cinematic, epic, nice, stunning) make generic pictures; precise nouns, materials, directions, colours and actions make good ones.
-
-The result comes first. Know what the film is for (sell, move, explain, delight) and give every shot an "intent": what the viewer should feel or understand by its end. Then craft each shot to deliver it.
-
-The craft you follow:
-- Structure: open on an establishing shot of a new place (wide or extreme-wide), then cover the action in closer sizes. Vary shot sizes; never three of the same size in a row. One clear action per shot. A shot is 2 to 15 seconds, most 3 to 8; about one shot for every 4 to 6 seconds of the film. Ads: a hook in the first two seconds, the product or name clearly seen near the end. Vertical 9:16: centre-weighted compositions and closer sizes.
-- Continuity: keep the 180-degree rule and screen direction (exit right, enter left); match eyelines; cut on action; "continue" only when the next shot is the very same moment carrying on in the same place. Never change wardrobe, hair or props between shots unless the story does.
-- "frame": the OPENING still: who and what is where, what they are doing at that instant, what is in focus.
-- "composition": the frame's layers and balance: a foreground element, the subject's place (thirds, centre), the background, the depth, where the eye goes, the space left in front of a face or a movement.
-- "action": only what moves during the shot, in order, as physical events with their direction and speed.
-- "performance": two to four visible cues of the acting: what the face, eyes, hands and body do. Show a feeling, never name it ("her eyes drop to the cup, a small smile, she exhales through her nose", never "she is happy"). Empty when nobody is in frame.
-- "camera": the ONE move in detail: its speed and direction, the framing it starts and ends on, what the focus does (holds on the eyes, racks from the kettle to his face, deep focus). "static" says the camera holds completely still.
-- "light": the key light's direction and quality (soft window light from frame left), its colour temperature (warm 3200K tungsten, cool overcast daylight), the practicals in frame (a bare bulb, neon, candles), the fill and any rim or back light, the time of day.
-- "atmosphere": what moves in the air and the place: rain streaks, steam curling, dust in a light beam, wind in fabric, haze, flicker. Empty when nothing does.
-- "end": the shot's last moment, as a still: where everyone and everything has arrived.
-- "sound": the ambience, then the effects tied to what happens ("rain drumming on tin; the kettle's hiss as he pours; a glass set down").
-- Spoken lines go in "lines", only for someone in the shot, short enough to say in the shot's seconds; narration goes in "vo". Write lines and narration in the film's language exactly as people speak it (Hinglish stays Hinglish, in Latin letters).
-- Words that must be readable in frame go in "text" (a sign, a label), at most a few words.
-- Mark "physics" for water, rain, fire, smoke, cloth or hair in wind, and things falling or breaking; "crowd" for many people; "motion" 0 (still) to 3 (fast action).
-- "cover": on the TWO OR THREE beats the film turns on - and no others - name a second size for the same beat, so it can be shot both ways and the edit can choose (a wide that also wants a close on the face; a close that also wants the wide that explains it). It must be a different size from "size". Leave it null on every other shot.
-
-The bible:
-- Each person's "look" is what makes them the same person in every shot: age, skin tone, face shape, eyes, eyebrows, hair (colour, length, style), facial hair, marks (a scar, a mole, glasses), build, posture, a mannerism. "wardrobe": each garment with its colour, fabric and fit, shoes, jewellery. "voice": pitch, pace, accent and manner of speech.
-- Each place's "look": its geography and architecture, materials and textures, key props and set dressing, the time of day and the weather, the colours there.
-- The film's "look": the palette (three or four named colours), the light, the lens character (anamorphic flares, vintage softness, crisp modern glass), the stock (35mm film, 16mm, digital cinema, or the animation's medium), the colour "grade" (how highlights, shadows and contrast are treated), the "texture" (grain, halation, bloom, clean digital).
-- Never real people's names or likenesses, brands the person did not ask for, anything sexual involving minors, gore, or hate.
-
-Answer with JSON only, in this shape:
-{"bible":{"title":"","logline":"","genre":"","tone":"","style":"live|animated","language":"BCP-47 tag","look":{"palette":"","light":"","lens":"","stock":"","grade":"","texture":""},"characters":[{"key":"a-z0-9-","name":"","look":"","wardrobe":"","voice":""}],"places":[{"key":"","name":"","look":""}],"music":"instruments, tempo and feeling, or null"},
-"shots":[{"beat":"","intent":"","size":"extreme-wide|wide|full|medium|medium-close|close|extreme-close|insert","angle":"eye|low|high|overhead|dutch|pov","move":"static|pan|tilt|dolly-in|dolly-out|truck|tracking|crane|orbit|handheld|zoom|drone","lens":35,"camera":"","cast":["key"],"place":"key","frame":"","composition":"","action":"","performance":"","atmosphere":"","light":"","end":"","seconds":5,"lines":[{"who":"key","text":""}],"vo":"or null","sound":"","link":"cut|continue|dissolve","motion":0,"physics":false,"crowd":false,"text":"or null","cover":"a second size for this beat, or null"}]}`;
-
-const REVISE_SYSTEM = `${DIRECTOR_SYSTEM}
-
-You are given the film's current bible and shot list as JSON and a note from the person. Change only what the note asks for, and keep every other field exactly as it is, word for word. Answer with the complete bible and shot list in the same JSON shape.`;
 
 export interface DirectAsk {
   idea: string;
@@ -98,7 +65,7 @@ export async function direct(think: Think, a: DirectAsk): Promise<{ script: Scri
     a.places?.length ? `Places the person already has, which must stay the same place (use their keys): ${JSON.stringify(a.places.map((x) => ({ key: x.key, name: x.name, look: x.look })))}` : "",
   ].filter(Boolean).join("\n");
   for (let attempt = 0; attempt < 2; attempt++) {
-    const r = await think({ purpose: "cinema.direct", tier: "strong", system: DIRECTOR_SYSTEM, user: attempt ? `${user}\n\nYour last answer was not usable JSON in the required shape. Answer again with JSON only.` : user, maxTokens: 8000, capPaise: 3000 });
+    const r = await think({ purpose: "cinema.direct", tier: "strong", role: "cinema_direct", user: attempt ? `${user}\n\nYour last answer was not usable JSON in the required shape. Answer again with JSON only.` : user, maxTokens: 8000, capPaise: 3000 });
     try {
       const out = normalize(r.json ?? r.text, { length: a.length, language: a.language });
       keepCast(out.script.bible, a.cast ?? []);
@@ -114,7 +81,7 @@ export async function direct(think: Think, a: DirectAsk): Promise<{ script: Scri
 /** Revises the film from a note. `n`: only that shot may change. */
 export async function revise(think: Think, script: Script, note: string, o: { length: number; n?: number }): Promise<{ script: Script; notes: string[] }> {
   const user = `Current film: ${JSON.stringify(script)}\n\nNote${o.n ? ` about shot ${o.n}` : ""}: <<<${note.slice(0, 2000)}>>>`;
-  const r = await think({ purpose: "cinema.revise", tier: "strong", system: REVISE_SYSTEM, user, maxTokens: 8000, capPaise: 3000 });
+  const r = await think({ purpose: "cinema.revise", tier: "strong", role: "cinema_revise", user, maxTokens: 8000, capPaise: 3000 });
   let out: { script: Script; notes: string[] };
   try {
     out = normalize(r.json ?? r.text, { length: o.length, language: script.bible.language, keepLength: true });

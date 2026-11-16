@@ -36,7 +36,7 @@ import { propose, type Proposal } from "./propose.js";
 import { compareSaid, spellNumbers, type Heard } from "./voiceCheck.js";
 import { publicFilm, publicPicture, type FilmPublic, type PictureView } from "./public.js";
 import { direct, revise, type Think } from "./plan.js";
-import { afterCheck, checkBrief, MAX_TRIES, parseVerdict, PROVIDER_FAILS } from "./qc.js";
+import { afterCheck, MAX_TRIES, parseVerdict, PROVIDER_FAILS, shotFacts } from "./qc.js";
 import { boardQuote, candidatesFor, filmQuote } from "./quote.js";
 import { editUsd, editable, pickJob, route, runFrom, wantsLipSync, whyNone } from "./route.js";
 import { upscaleUsd } from "./models.js";
@@ -685,10 +685,11 @@ export class CinemaService {
       for (const r of made) {
         if (r.status !== "fulfilled") continue;
         usd += r.value.usd;
-        const brief = checkBrief(card, b, "still");
+        // The shot's facts open the message; who the model is and how to score are the role (qc.ts shotFacts).
+        const facts = shotFacts(card, b, "still");
         const seen = await think({
-          purpose: "cinema.check.still", tier: "vision", system: brief, maxTokens: 600, capPaise: 50,
-          user: [{ type: "text", text: "Check this still." }, { type: "image_url", image_url: { url: dataUrl(r.value.bytes, r.value.type) } }, ...refUrls.map((u) => ({ type: "image_url" as const, image_url: { url: u } }))],
+          purpose: "cinema.check.still", tier: "vision", role: "cinema_still", maxTokens: 600, capPaise: 50,
+          user: [{ type: "text", text: `${facts}\nCheck this still.` }, { type: "image_url", image_url: { url: dataUrl(r.value.bytes, r.value.type) } }, ...refUrls.map((u) => ({ type: "image_url" as const, image_url: { url: u } }))],
         }).catch(() => null);
         usd += seen?.usd ?? 0;
         const verdict = seen ? parseVerdict(seen.json ?? seen.text, card.cast.length > 0) : null;
@@ -1096,7 +1097,8 @@ export class CinemaService {
     const how = sheet
       ? `Check this take. The second picture holds ${frameBytes.length} frames of it in time order, left to right and top to bottom; say which frame is wrong by its number.`
       : "Check this take.";
-    const user: Exclude<Parameters<Think>[0]["user"], string> = [{ type: "text", text: `${how}${prevLast ? " The last image is the previous shot's last frame." : ""}` }];
+    const facts = shotFacts(card, script.bible, "take");
+    const user: Exclude<Parameters<Think>[0]["user"], string> = [{ type: "text", text: `${facts}\n${how}${prevLast ? " The last image is the previous shot's last frame." : ""}` }];
     if (still) user.push({ type: "image_url", image_url: { url: dataUrl(still, "image/png") } });
     if (sheet) user.push({ type: "image_url", image_url: { url: dataUrl(sheet, "image/jpeg") } });
     else for (const fr of frameBytes) user.push({ type: "image_url", image_url: { url: dataUrl(fr, "image/jpeg") } });
@@ -1104,7 +1106,7 @@ export class CinemaService {
     let verdict: Verdict | null = null;
     let usd = 0;
     for (let i = 0; i < 2 && !verdict; i++) {
-      const r = await this.d.think(f.ownerId)({ purpose: "cinema.check.take", tier: "vision", system: checkBrief(card, script.bible, "take"), user, maxTokens: 700, capPaise: 80 }).catch(() => null);
+      const r = await this.d.think(f.ownerId)({ purpose: "cinema.check.take", tier: "vision", role: "cinema_take", user, maxTokens: 700, capPaise: 80 }).catch(() => null);
       usd += r?.usd ?? 0;
       verdict = r ? parseVerdict(r.json ?? r.text, card.cast.length > 0) : null;
     }
