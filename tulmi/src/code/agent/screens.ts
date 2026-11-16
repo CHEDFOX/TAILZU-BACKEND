@@ -26,6 +26,8 @@ import { cut, oneLine } from "../work/model.js";
 import { Refused } from "./changeset.js";
 import { isWebProject, previewCommand, targetRoute, viewportsFor } from "./design.js";
 import { checkFloor, floorLines, seenByPeople } from "./floor.js";
+import { runProbe } from "./probe.js";
+import { coherenceLines } from "./coherence.js";
 import { LostClaim, Yield, type Run } from "./run.js";
 import { RunPending } from "./runner.js";
 import { DESIGN_START_MS, type ScreenShot, type ScreensState } from "./types.js";
@@ -61,7 +63,7 @@ async function finish(r: Run, why?: string): Promise<void> {
 /** The report's words for the screens: where they were taken, or why there are none. Links are added by whoever shows them. */
 export function screensLines(sc: ScreensState | undefined, link?: (shotId: string) => string | null): string[] {
   if (!sc) return [];
-  const floor = floorLines(sc.floor ?? []);
+  const floor = [...floorLines(sc.floor ?? []), ...(sc.probe ? coherenceLines(sc.probe) : [])];
   // No pictures: say why, and still say what the floor found, because a page that would not photograph may still have been read.
   if (!sc.shots.length) {
     const why = sc.skipped ? [`No real screens: ${sc.skipped} Ask for a drawn one if a picture helps; it will say it is drawn.`] : [];
@@ -176,7 +178,9 @@ export async function screensPhase(r: Run): Promise<void> {
       // One picture is an advance's work.
       if (r.env.turnsPerAdvance !== undefined && i < todo.length - 1) throw new Yield();
     }
-    await theFloor(r, new URL(sc.route ?? "/", st.url).href);
+    const page = new URL(sc.route ?? "/", st.url).href;
+    await theFloor(r, page);
+    await theMeasure(r, page);
     return finish(r, failed || undefined);
   }
 }
@@ -198,6 +202,31 @@ async function theFloor(r: Run, url: string): Promise<void> {
   sc.floor = checkFloor(html);
   if (sc.floor.length) {
     await r.log.note(`The floor: ${sc.floor.map((f) => f.rule).join(", ")} — ${sc.floor.length} thing(s) the page needs whatever its design says.`);
+  }
+  await r.save();
+}
+
+/**
+ * The deeper look, on the page a browser actually drew: the things that exist only after layout and the cascade (agent/probe.ts). Two loads of the
+ * same page, one of them with reduced motion emulated, at phone width because that is where a layout breaks. Never throws, never blocks, and
+ * absent entirely where this server has no browser that will run an expression in a page.
+ */
+async function theMeasure(r: Run, url: string): Promise<void> {
+  const sc = r.state.screens!;
+  if (sc.probe || !r.deps.screens?.measure) return;
+  try {
+    const got = await runProbe(r.deps.screens.measure, url);
+    if (!got.walked && got.trouble.length) {
+      r.deps.log?.warn({ jobId: r.jobId, why: got.trouble[0] }, "code agent: the page could not be measured");
+      return;
+    }
+    sc.probe = got;
+    const said = coherenceLines(got);
+    if (said.length) await r.log.note(`Measured the page as it was drawn: ${said.length - 1} thing(s) worth saying.`);
+  } catch (err) {
+    if (err instanceof LostClaim) throw err;
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the page could not be measured");
+    return;
   }
   await r.save();
 }

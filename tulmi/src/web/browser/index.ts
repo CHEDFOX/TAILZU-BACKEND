@@ -20,6 +20,7 @@
  */
 import { getConfig } from "../../config.js";
 import { BrowserEngine, rendererFrom, type Renderer } from "./engine.js";
+import type { RenderOptions } from "./types.js";
 import { findChrome } from "./chrome.js";
 import { cloudflareRendererFromConfig } from "./cloudflare.js";
 
@@ -54,3 +55,13 @@ export function getRenderer(): Renderer | null {
   return rendererFrom(engine);
 }
 
+/**
+ * The server's own browser as a MEASURER (code/agent/probe.ts): it draws a page at a given size, can tell it the person has asked for less motion,
+ * and runs one expression in it. Only the real Chrome can do this — Cloudflare's content endpoint returns HTML and runs nothing of ours — so this
+ * is null wherever WEB_BROWSER is not "local", and the round that wanted it simply keeps its pictures and the free floor.
+ */
+export function getMeasurer(): ((url: string, o: RenderOptions) => Promise<{ value?: unknown }>) | null {
+  if (getConfig().WEB_BROWSER !== "local") return null;
+  const render = getRenderer();
+  return render ? (url, o) => render(url, o) : null;
+}

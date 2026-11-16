@@ -21,6 +21,7 @@ const { sym, route } = await import("./work-fixtures.js");
 const { MemoryBlobStore } = await import("../src/media/blob.js");
 const { BlobJobShots, signJobShotPath, verifyJobShotLink, isJobShotId } = await import("../src/code/agent/jobShots.js");
 const { seenFiles, screensLines } = await import("../src/code/agent/screens.js");
+const { noProbe } = await import("../src/code/agent/probe.js");
 const { serveJobShot, isJobShotPath } = await import("../src/code/agent/jobShots.js");
 type PreviewState = import("../src/code/live/ports.js").PreviewState;
 
@@ -58,7 +59,22 @@ function fakePreview(script: PreviewState[] = [{ state: "ready", url: "https://t
 const LOW_PAGE = '<!doctype html><html lang="en"><head><title>Pricing</title></head><body><h1>Pricing</h1><img src="/pro.png"></body></html>';
 const SOUND_PAGE = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"></head><body><h1>Pricing</h1></body></html>';
 
-async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean; page?: string; readFails?: boolean } = {}) {
+/** A measurer that answers with a page that was drawn: used where a real Chrome would be. */
+function fakeMeasure(over: Partial<import("../src/code/agent/probe.js").ProbeResult> = {}) {
+  const asked: Array<{ url: string; reduced: boolean }> = [];
+  const render = async (url: string, o: { reducedMotion?: boolean; script?: string }) => {
+    asked.push({ url, reduced: o.reducedMotion === true });
+    const base = {
+      ...noProbe(), walked: 40, viewport: { w: 320, h: 720 }, doc: { scrollWidth: 320, clientWidth: 320 },
+      text: [{ px: 16, weight: 400, chars: 300, fg: "17,24,39", bg: "255,255,255", at: "p" }], ...over,
+    };
+    // The motion pass is the only one that reports animations, as the real one does.
+    return { value: o.reducedMotion ? { ...base, text: [], animations: over.animations ?? [] } : { ...base, animations: [] } };
+  };
+  return { render, asked };
+}
+
+async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean; page?: string; readFails?: boolean; measure?: ReturnType<typeof fakeMeasure> } = {}) {
   const preview = o.preview === null ? null : o.preview ?? fakePreview();
   const blobs = new MemoryBlobStore();
   const shot: Array<{ url: string; viewport: string }> = [];
@@ -70,6 +86,7 @@ async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shoot
     ...(o.page || o.readFails
       ? { read: async (url: string) => { read.push(url); if (o.readFails) throw new Error("Browser Rendering said 429"); return o.page!; } }
       : {}),
+    ...(o.measure ? { measure: o.measure.render as never } : {}),
   };
   const r = await agentRig({ files: FILES, rows: ROWS, structure: STRUCTURE, ...(preview ? { live: { preview } } : {}), screens });
   r.json.on("work.plan", UTIL_PLAN);
@@ -199,6 +216,52 @@ describe("the floor, on the page that was shot", () => {
     expect(b.screens!.floor).toBeUndefined();
     expect(b.report!.text).not.toContain("What the page needs");
     expect(broken.r.fake.commitCount(broken.r.repo)).toBe(2);
+  });
+});
+
+describe("the deeper look, on the page a browser drew", () => {
+  it("measures the page twice — once as drawn, once with reduced motion — and the report carries what it found", async () => {
+    const m = fakeMeasure({ animations: [{ at: "div.pulse", ms: null, forever: true, name: "spin" }], focus: [{ at: "button.buy", changed: "", visible: true }] });
+    const s = await setup({ measure: m });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    // Two loads of the same page, the second one lying about reduced motion.
+    expect(m.asked.map((a) => a.reduced)).toEqual([false, true]);
+    expect(new Set(m.asked.map((a) => a.url))).toEqual(new Set(["https://tok.preview.example/pricing"]));
+    expect(st.screens!.probe!.walked).toBe(40);
+    expect(st.report!.text).toMatch(/still running with prefers-reduced-motion/);
+    expect(st.report!.text).toMatch(/nothing at all when it takes keyboard focus/);
+    // And it held nothing up.
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+
+  it("says nothing when the page measures clean, and nothing at all where there is no browser to measure with", async () => {
+    const clean = await setup({ measure: fakeMeasure() });
+    clean.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await clean.r.orch.idle();
+    const a = await clean.r.stateNow(clean.jobId);
+    expect(a.screens!.probe).toBeTruthy();
+    expect(a.report!.text).not.toContain("What the running page showed");
+
+    const none = await setup();
+    none.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await none.r.orch.idle();
+    const b = await none.r.stateNow(none.jobId);
+    expect(b.screens!.probe).toBeUndefined();
+    expect(b.report!.text).toContain("Real screens");
+  });
+
+  it("a browser that throws mid-measure never costs the job anything", async () => {
+    const broken = { render: async () => { throw new Error("Chrome closed under the page"); }, asked: [] };
+    const s = await setup({ measure: broken as never });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.probe).toBeUndefined();
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
   });
 });
 

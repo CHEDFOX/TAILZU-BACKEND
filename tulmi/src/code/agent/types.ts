@@ -26,6 +26,7 @@
  * on the way. Nothing in this file reaches a network or a store.
  */
 import type { FloorFinding } from "./floor.js";
+import type { ProbeResult } from "./probe.js";
 import type { JobReview } from "./review.js";
 import type { Approval } from "../approvals.js";
 import type { ContextStrategy } from "./mask.js";
@@ -361,6 +362,11 @@ export interface ScreensState {
    * here, or it would not answer), which is not a fault of the change and is not reported. Empty: it was read and the floor was sound.
    */
   floor?: FloorFinding[];
+  /**
+   * What the page measured like once a browser had drawn it (agent/probe.ts, read by agent/coherence.ts). Absent: this server has no browser that
+   * will run an expression in a page, or the page would not be measured — which is not a fault of the change and is not reported.
+   */
+  probe?: ProbeResult;
 }
 
 /** The most of an approved design's source the checkpoint keeps, and the most of it the model is shown in one turn. */

@@ -16,6 +16,7 @@
  * loop asks of it; the real one is `brainOf(code.brain)`.
  */
 import type { JobShotStore } from "./jobShots.js";
+import type { ProbeRender } from "./probe.js";
 import type { EffortMode } from "./effort.js";
 import type { FetchLike } from "../../connectors/egressTypes.js";
 import type { GatewayDeps } from "../brain/gateway.js";
@@ -84,6 +85,13 @@ export interface ScreensDeps {
    * read, and the floor is simply not checked: the pictures are what the round is for, and the floor must never cost a job anything.
    */
   read?: (url: string) => Promise<string>;
+  /**
+   * Measures the page as the browser DREW it (agent/probe.ts): the computed styles, the boxes, the contrast of the text that came out, whether
+   * anything shows on focus, whether the motion stops when asked. None of it exists in the HTML, so this needs a browser that will run one
+   * expression in the page — a real Chrome (web/browser/engine.ts). Absent, or a page it cannot measure, and the round keeps its pictures and
+   * the free floor and says once that the deeper look was not taken.
+   */
+  measure?: ProbeRender;
 }
 
 /**
