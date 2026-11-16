@@ -130,17 +130,17 @@ describe("owner only", () => {
     }
   });
 
-  it("lists the four X0 Bot ships and then yours, with the palette", async () => {
+  it("lists the five X0 Bot ships and then yours, with the palette", async () => {
     const s = await served();
     await s.post("/v1/bots", ALICE, DEF);
     const res = await s.get("/v1/bots");
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.bots.map((b: { slug: string }) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "api-bot"]);
+    expect(body.bots.map((b: { slug: string }) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk", "api-bot"]);
     expect(body.bots.slice(0, 4).every((b: { builtin: boolean; ownerId: null }) => b.builtin && b.ownerId === null)).toBe(true);
     expect(body.palette).toEqual(["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"]);
     expect(body.limits).toMatchObject({ bots: 20, rules: 12, rule: 120 });
-    expect((await s.get("/v1/bots", BOB)).json().bots.map((b: { slug: string }) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
+    expect((await s.get("/v1/bots", BOB)).json().bots.map((b: { slug: string }) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
   });
 
   it("makes another person's bot a 404 on every route, never a 403", async () => {
@@ -211,7 +211,7 @@ describe("making one: draft, approve, test", () => {
     expect(body.draft.tests).toHaveLength(3);
     expect(body.draft.connectors).toEqual([{ id: "google-calendar", name: "Google Calendar", status: "not_connected" }]);
     expect(s.r.store.size).toBe(0);
-    expect((await s.get("/v1/bots")).json().bots).toHaveLength(4);
+    expect((await s.get("/v1/bots")).json().bots).toHaveLength(5);
     expect((await s.post("/v1/bots/draft", ALICE, { sentence: 5 })).statusCode).toBe(400);
     expect((await s.post("/v1/bots/draft", ALICE, {})).statusCode).toBe(400);
     expect((await s.post("/v1/bots/draft", ALICE, { sentence: "ab" })).json().code).toBe("bad_request");

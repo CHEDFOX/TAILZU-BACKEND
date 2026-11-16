@@ -49,9 +49,9 @@ const req = (message: string, o: Record<string, unknown> = {}) => ({
 
 describe("the Oracle among the bots", () => {
   it("is listed only where its service is set up", async () => {
-    expect(builtinBots().map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
+    expect(builtinBots().map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
     on();
-    expect(builtinBots().map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "oracle"]);
+    expect(builtinBots().map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk", "oracle"]);
     expect(builtinBot("oracle")).toMatchObject({ name: "Oracle", colour: "plum", ownerId: null, skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] } });
     const r = await rig();
     expect((await r.bots.list(ALICE)).map((b) => b.slug)).toContain("oracle");

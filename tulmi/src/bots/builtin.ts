@@ -43,6 +43,7 @@ export const CODE_SLUG = "code";
 
 /** What each is for, in a line: the front door picks a bot by it. */
 const PURPOSE = {
+  talk: "Just talk to it: questions, ideas, writing, working something out, and it looks things up when the answer has to be current.",
   code: "Reads your projects, answers questions about the code, and changes it through pull requests.",
   keybot: "Writes, rewrites and replies in your own voice, in any language you mix.",
   plan: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.",
@@ -105,6 +106,37 @@ const DEFS: readonly BotDef[] = [
     ],
     skills: skills({ web: true, research: true, artifacts: true, connectors: ["maps", "booking"] }),
     knowledge: [], tone: "warm and concrete", visibility: "private", budgets: { perRequestPaise: 300, dailyPaise: 1000 },
+  },
+  {
+    // THE ONE THAT IS NOT A SPECIALIST. Every other built-in is for a job — code, a trip, a calendar, a film — and a
+    // person who just wants to ask something had nowhere to go. This is that place, and it is deliberately the
+    // plainest bot here: no service of its own, no store, no tick, no migration. It is the chat loop
+    // (botsBots/chat.ts) and the role bot_run, which is all a conversation needs.
+    //
+    // Slate, a neutral of its own: the bot that is not about one thing should not borrow a specialist's colour, and
+    // the other two neutrals were taken (stone may not ship, ash is Lingo's).
+    //
+    // NOT `tailzu`: that slug is X0 ITSELF, the product speaking in its own name — palette.ts gives it the app's ink
+    // and its own mark, and live.ts reads it back as "X0" on an approval that came from no bot. Taking it for a bot
+    // would have put a bot's face on the app's own voice. Not `chat` either: that is a live route segment under the
+    // bots area, the very thing RESERVED_SLUGS exists to keep clear.
+    //
+    // `talk` is free of both, and the NAME is a working one: the bots are to be named together, and until BOTS is
+    // switched on there is no history keyed to this slug, so renaming it costs nothing. After that it does.
+    id: "talk", ownerId: null, slug: "talk", name: "Talk", colour: "slate",
+    purpose: PURPOSE.talk,
+    principles: [
+      "Answer what was actually asked, in the language it was asked in.",
+      "Short by default. Go long only where the length is the answer.",
+      "Say when you do not know, and say which part you looked up rather than knew.",
+      "Never claim to have done a thing you cannot do here: you talk, you search, and you read what they attach.",
+      "No preamble and no summary of what you are about to say. Begin with the answer.",
+    ],
+    // The web, so an answer can be current, and files, so a thing they attach can be read. Nothing else: artifacts,
+    // Xode and the researched answer are other bots' work, and a general chat that quietly did all of it would be
+    // slower and dearer at every message for the few that need it.
+    skills: skills({ web: true, files: true }),
+    knowledge: [], tone: "plain and warm", visibility: "private", budgets: { perRequestPaise: 200, dailyPaise: 1000 },
   },
 ];
 
