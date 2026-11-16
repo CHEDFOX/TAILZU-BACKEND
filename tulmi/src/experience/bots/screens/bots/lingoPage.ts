@@ -21,12 +21,13 @@
  */
 import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  back, botBuddy, botKind, botLook, botMoment, box, C, call, canBuddy, chip, col, divider, emptyState, grow, icon, listCard,
+  back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, col, divider, emptyState, grow, listCard,
   listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
   sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { field, inputBox, isDesk } from "./parts.js";
+import { searchField, searchLine } from "../keybotParts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
 import type { Exercise } from "../../../../lingo/session.js";
 import type { Gesture, Mastery, Performance } from "../../../../lingo/set.js";
@@ -153,17 +154,17 @@ function languageRow(l: LanguageRow): Node {
   });
 }
 
-export function picker(_ctx: BotsCtx, data: PickerData | undefined): Node[] {
+export function picker(ctx: BotsCtx, data: PickerData | undefined): Node[] {
   const suggested = data?.suggested ?? [];
   const all = data?.languages ?? [];
+  const q = String(ctx.params?.q ?? "").trim();
   const out: Node[] = [
     title("Add a language"),
     data?.fromName ? meta(`Taught in ${data.fromName}, which is what you already speak.`, { size: 13 }) : meta("Search in any language.", { size: 13 }),
-    // The search runs on the server, so the list never ships in the app: typing reopens this screen with `q`.
-    row([
-      icon("search", { size: 16, color: C.meta }),
-      box([text("$state.q", { size: 15, color: C.meta })], { flexGrow: 1 }),
-    ], { gap: 8, padding: 12, borderRadius: RADIUS.input, borderWidth: 1, borderColor: C.line, alignItems: "center" }),
+    // The search runs on the server (the list of languages never ships in the app), so Enter opens this screen again
+    // with `q` and the server answers with what matches. The same field every other search in the app uses.
+    searchField(SCREENS.lingoAdd, "Search in any language, or in English"),
+    ...(q ? [searchLine(SCREENS.lingoAdd, q)] : []),
   ];
   if (suggested.length) {
     out.push(sectionLabel("Suggested"), listCard(suggested.map(languageRow)));

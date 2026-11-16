@@ -168,6 +168,26 @@ describe("the territory", () => {
 });
 
 describe("the picker", () => {
+  it("has a search box that can actually be typed in, not a picture of one", () => {
+    const n = picker(ctx(), { from: "en", fromName: "English", suggested: [], languages: [{ tag: "ta", name: "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", en: "Tamil" }] });
+    const fields: Array<Record<string, unknown>> = [];
+    const walk = (x: unknown): void => {
+      if (Array.isArray(x)) return x.forEach(walk);
+      if (x && typeof x === "object") {
+        const node = x as { type?: string };
+        if (node.type === "TextField") fields.push(x as Record<string, unknown>);
+        Object.values(x as Record<string, unknown>).forEach(walk);
+      }
+    };
+    walk(n);
+    expect(fields.length, "one field to type the search into").toBe(1);
+    expect((fields[0] as { bind?: { value?: string } }).bind?.value).toBe("q");
+    // A binding drawn as words is the bug this is here for: it ships the string "$state.q" in the box.
+    expect(json(n)).not.toContain('"content":"$state.q"');
+    // Enter asks the server again, because the list of languages is the server's and never ships in the app.
+    expect(json(n)).toContain(SCREENS.lingoAdd);
+  });
+
   it("names a language in itself as well as in English", () => {
     const data: PickerData = {
       from: "en", fromName: "English",
