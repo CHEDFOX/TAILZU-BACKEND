@@ -192,12 +192,49 @@ await b.file("src/lib/api.ts"); await b.paths();             // one file's row; 
 await b.deps();                                              // what the manifests declare: name, ecosystem, range
 await b.hotspots(); await b.coChanged("src/lib/api.ts");
 await b.memory();                                            // the TAILZU.md text
+await b.learn(candidates, { jobId });                        // what a job learned about the project, for the next one
+await b.learned(); await b.sayOnLearned(text, "forget");     // what it has learned; the owner's word on one
 await b.baselinePlan();                                      // [{ kind, cwd, cmd }]
 ```
 
 Every call is a read of the kept rows: no GitHub call, no model. In Supabase, `findFiles`, `findSymbols` and `findTexts` use generated `tsvector` columns with prefix matching (`to_tsquery('simple', 'tok:*')`), then the same scoring as the in-memory twin (`search.ts`), so the two behave alike.
 
 **The baseline.** `baselinePlan` is the list of checks to run before the first edit (`install`, `typecheck`, `lint`, `test`, `build`, with the package manager's prefix and the folder to run it in; the root's command stands for the whole repo, and only where the root has none are the packages' own used, four at most per kind). **Nothing here runs a command.** The agent loop hands the plan to the environment router (`docs/code-router.md`) and, once it has run, calls `recordBaseline(projectId, headSha, results)` with `[{ kind, exitCode, durationMs, summary, failing? }]`. It is kept with the commit it was run at (the health line in the memory and the welcome is brought up to date), after anything that looks like a secret is replaced by a note and every line is cut (300 characters a summary, 200 a name, 20 names a check).
+
+## 8a. What earlier work learned here (`learned.ts`)
+
+Every other fact the brain holds is read from the repository: a file, a commit, a pull request, an issue, the project's own checks, or the owner's
+own words. That is most of what is worth knowing and it costs nothing. It is not everything. A job that spends three fix rounds finding out that the
+suite needs a service up first has learned something true about this project that is written down nowhere in it, and today that dies with the job.
+
+So a job can keep a fact for the next one. They live in `BookState` (`code_brain.book`), beside the owner's answers, because they are the other thing
+a rebuild cannot recompute, and every rebuild of the book merges them back in (`BookInput.learned`), so the default branch moving does not forget them.
+**No migration: that column is already JSON.**
+
+**How one is earned, and how it dies.** A fact starts as a **guess**, from one job. Seen again *by another job* it becomes **found** (the same job
+repeating itself proves nothing). Only the **owner** makes one **confirmed**, which is the rule everywhere else in the book, and their word outranks
+anything the work inferred whenever it arrives. A guess no second job saw within `GUESS_LIFE_MS` (a fortnight) is dropped, so is anything naming files
+the project no longer has, and past `LEARNED_MAX` (40) the weakest and oldest go first. A wrong note therefore costs one job a bad hint and then leaves,
+while a true one hardens.
+
+**What a job offers, with no model.** At the end of a job (`agent/phases.ts keepLearned`), from what it already has:
+
+| | |
+| --- | --- |
+| the person's own answers | a question the model had to ask and what they said, kept as one line with the question that gives it meaning: **confirmed**, because they said it |
+| a check already broken | a check that was failing on the default branch too, so the next job does not spend a fix round on something this change never broke |
+
+A candidate is refused unless it names a chapter these facts may use (`run`, `state`, `rules`: the repository's own chapters are not the work's to
+write), says more than a few words, and is **not phrased as an order** ("always...", "you must...") — these are facts about the project, not rules for
+the reader.
+
+**What they are never.** Not permission. They reach a job inside the book, fenced as data like every other text from outside, and nothing in them
+changes what Tailzu may do: the policy decides that whatever any text says. A job is shown at most `LEARNED_SHOWN` (8) of them under "What earlier work
+here learned", each with how sure it is — a guess says so — and the owner reads them in the book with their source, "earlier work here", and can confirm
+or forget any of them.
+
+Tests: `tests/code-project-learned.test.ts` (the cleaning, the second sighting, the owner's word, every way a fact dies, how they reach the book and a
+job) and the "what the job learned about the project" group in `tests/code-agent-loop.test.ts` (end to end: a job learns, the next job is shown it).
 
 ## 9. Data (migration 0028)
 

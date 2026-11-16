@@ -462,6 +462,7 @@ A job that changed what people see keeps real screenshots of it, which show in i
 2. Start the dev server behind the preview door (section 11).
 3. Wait for it to answer.
 4. Shoot the changed page with Browser Rendering, at phone and computer sizes (phone only for a phone-first app).
+5. **The floor**: read the same page through Browser Rendering's content endpoint (`web/browser/cloudflare.ts`, the `read` dep) and check the things a page needs whatever its design says — `docs/code-agent.md` section 4e. Free, no model, and silent when the page can't be read.
 
 No model is asked, and the round never holds the commit. When it can't run, the report says why in one sentence ("No real screens: ...").
 

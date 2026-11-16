@@ -775,7 +775,12 @@ export class BrowserEngine {
       await page.send("Page.enable");
       await page.send("Network.enable");
       await page.send("Page.setLifecycleEventsEnabled", { enabled: true });
-      await page.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+      const view = opts.viewport ?? { width: 1280, height: 900 };
+      await page.send("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height, deviceScaleFactor: 1, mobile: view.mobile === true });
+      // Asked for BEFORE the page loads, so the page's own media queries see it from the first paint.
+      if (opts.reducedMotion) {
+        await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] }).catch(() => undefined);
+      }
       if (this.o.userAgent) await page.send("Network.setUserAgentOverride", { userAgent: this.o.userAgent });
       if (opts.blockResources !== false) {
         stops.push(page.on("Fetch.requestPaused", (p) => {
@@ -815,7 +820,17 @@ export class BrowserEngine {
 
       let finalUrl = u.href;
       try { const f = new URL(v.href); if (f.protocol === "http:" || f.protocol === "https:") finalUrl = f.href; } catch { /* keep what was asked for */ }
-      return { html: v.html, finalUrl, title: String(v.title ?? ""), status: status ?? 200 };
+      // The measurement, if one was asked for. After the snapshot and never instead of it: a script that throws costs its own value, not the page.
+      let value: unknown;
+      if (opts.script) {
+        try {
+          const got = await page.send<{ result?: { value?: unknown }; exceptionDetails?: unknown }>(
+            "Runtime.evaluate", { expression: opts.script, returnByValue: true, awaitPromise: true }, left() + 5_000,
+          );
+          if (!got.exceptionDetails) value = got.result?.value;
+        } catch { /* a page that will not be measured is still a page that rendered */ }
+      }
+      return { html: v.html, finalUrl, title: String(v.title ?? ""), status: status ?? 200, ...(value === undefined ? {} : { value }) };
     } catch (err) {
       if (err instanceof BrowserError) throw err;
       if (err instanceof CdpError) {

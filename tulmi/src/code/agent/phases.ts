@@ -17,6 +17,9 @@
  * that is not charged to the job (every call carries the job and "job" as its budget).
  */
 import { screensDue, screensLines } from "./screens.js";
+import { seenByPeople } from "./floor.js";
+import { referentBrief, referentFor } from "./referent.js";
+import { designKit, workspaceFiles } from "../../artifacts/kit.js";
 import { ConnectorError } from "../../connectors/state.js";
 import { classifyRequest } from "../brain/classify.js";
 import { callModel } from "../brain/gateway.js";
@@ -47,11 +50,12 @@ import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
 import { getConfig } from "../../config.js";
-import { buildContext, digestOf, fold, projectContext } from "./context.js";
+import { buildContext, digestOf, fold, projectContext, uiPaths } from "./context.js";
 import { isStrategy, type ContextStrategy } from "./mask.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret, type ToolOutcome } from "./tools.js";
 import { REMOVAL_ASKED, lostFeedback, lostSurface, surfaceInput, type Lost } from "./surface.js";
+import { reviewJob } from "./review.js";
 import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
@@ -61,7 +65,7 @@ import {
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
 import { GithubRefusal, type CommitFile } from "../github.js";
-import { mapMarkdown, MAP_DIR } from "../project/index.js";
+import { mapMarkdown, MAP_DIR, type Candidate } from "../project/index.js";
 import { afterConflict, afterContracts, teamClean } from "../team/lead.js";
 import { afterPlan } from "../team/when.js";
 import { isHelperState } from "../team/types.js";
@@ -286,7 +290,10 @@ export async function planPhase(r: Run): Promise<void> {
   const paths = plan.steps.flatMap((st) => st.files.map((f) => f.path));
   const asks = await planAsks(r, paths);
   if (asks.denied) throw new EndJob("failed", asks.denied);
-  if (plan.risk === "high" || asks.asking.length || s.planFirst) {
+  // THE TASK IS THE PERMISSION. A plan no longer waits merely for being risky: the person asked for the work, and everything the job
+  // then does on its own branch is free (policy.ts). It still waits when the POLICY asks about part of it (a file outside the branch,
+  // a workflow, something that looks like a secret) and when the person has asked to see every plan first (planFirst).
+  if (asks.asking.length || s.planFirst) {
     const top = asks.asking.find((x) => x.faceId) ?? asks.asking[0];
     const action = top?.action ?? "job.plan";
     const approval = r.deps.projects.approvals.issue({
@@ -301,10 +308,10 @@ export async function planPhase(r: Run): Promise<void> {
         needs: asks.asking.map((x) => ({ action: x.action, label: ACTIONS[x.action].label, faceId: x.faceId })),
       },
     };
-    const must = plan.risk === "high" || asks.asking.length > 0;
-    await r.log.decision(must ? `The plan is ${plan.risk} risk${asks.asking.length ? " and the policy asks about part of it" : ""}, so it waits for your OK.` : "You asked to see the plan first, so it waits for your OK.");
+    const must = asks.asking.length > 0;
+    await r.log.decision(must ? "The policy asks about part of this plan, so it waits for your OK." : "You asked to see the plan first, so it waits for your OK.");
     throw new Park("approval", must
-      ? `The plan for this is ${plan.risk} risk${plan.riskReasons[0] ? ` (${cut(plan.riskReasons[0], 100)})` : ""}. It needs your OK before I change anything.`
+      ? `Part of this plan needs your OK before I change anything: ${asks.asking.map((x) => ACTIONS[x.action].label.toLowerCase()).slice(0, 3).join(", ")}.`
       : `Here is the plan (${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}, ${plan.risk} risk). You asked to see it first: it needs your OK before I change anything.`);
   }
   s.planOk = true;
@@ -348,6 +355,51 @@ export async function hintsOf(r: Run): Promise<string> {
   const top = fused[0]?.score ?? 0;
   return fused.filter((f, i) => i < HINTS_MAX && f.score >= 0.3 * top && !isSecretPath(f.path))
     .map((f) => `${f.path}: ${cut((f.whys.length ? f.whys.slice(0, 2).join("; ") : f.signals.join(", ")).replace(/\s+/g, " "), 160)}`).join("\n");
+}
+
+/**
+ * WHAT THE PROJECT ALREADY LOOKS LIKE, for a job on files people see: its own tokens, fonts, icon library and components, read by the kit with no
+ * model (artifacts/kit.ts) and cached against the brain's head, so it costs a few file reads once per commit and nothing after.
+ *
+ * Only for work people see: on anything else the kit is not read at all, and the context carries not a word of it. Empty on any trouble — no store
+ * to read it with, a read that fails, a project with nothing to read — because a job that cannot see the look must still do the work.
+ */
+export async function lookOf(r: Run): Promise<string> {
+  if (!r.deps.kit || !uiPaths(r.state).some(seenByPeople)) return "";
+  try {
+    const { kit, cached } = await designKit(
+      { store: r.deps.kit, files: workspaceFiles(r.ws), brain: r.brain },
+      { id: r.projectId, userId: r.userId },
+    );
+    const prompt = typeof kit.prompt === "string" ? kit.prompt : "";
+    if (prompt) await r.log.note(`The project's own look: ${kit.systems?.length ? kit.systems.join(", ") : "its tokens"}${cached ? " (already read for this commit)" : ""}.`);
+    return prompt;
+  } catch (err) {
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the project's look could not be read");
+    return "";
+  }
+}
+
+/**
+ * A DESIGN DIRECTION FOR A PROJECT THAT HAS NO LOOK TO READ (agent/referent.ts).
+ *
+ * Only when there is nothing: a project whose kit came back empty, on work people will see. A project that already looks like something is not
+ * given a direction — it has one, and the kit is it.
+ *
+ * It derives rather than asks, because a person with no design idea cannot answer a question about design, and it is cheap: one call on the small
+ * tier, once in a project's life, recorded afterwards so no later job spends it again. Nothing could be derived, or no model to derive with, and
+ * the work goes on with no direction at all, which is where it was anyway.
+ */
+export async function directionOf(r: Run): Promise<string> {
+  const s = r.state;
+  if (s.work.look || !uiPaths(s).some(seenByPeople)) return "";
+  // What this is, in the words there are: the person's own task, and whatever the book knows about the project.
+  const book = await r.brain.status().catch(() => null);
+  const what = [s.task, book?.welcome ?? ""].filter(Boolean).join(" ");
+  const got = await referentFor({ what, seed: r.jobId }, r.model()).catch(() => null);
+  if (!got || got.kind !== "one") return "";
+  await r.log.note(`This project has no look of its own yet, so the design is built to one thing: ${got.chosen.thing}.`);
+  return referentBrief(got.chosen, got.rut);
 }
 
 /** The first lines of the files the search points at, as they are now, for the model's first message. */
@@ -609,6 +661,8 @@ export async function workPhase(r: Run): Promise<void> {
     // A free-form job is not shown slivers of files it may not need (the guided flow's excerpts led the work to them); it is shown where the index points, once.
     w.excerpts = s.mode === "freeform" && !s.located?.targets.length ? "" : await excerptsOf(r);
     if (s.mode === "freeform" && w.hints === undefined) w.hints = await hintsOf(r);
+    if (w.look === undefined) w.look = await lookOf(r);
+    if (w.direction === undefined) w.direction = await directionOf(r);
     await r.log.note("Starting the work.");
   }
   let rounds = 0;
@@ -780,7 +834,7 @@ async function modelTurn(r: Run): Promise<void> {
   const thinker = route.model ?? tierSet?.models[0];
   const room = Math.max(tierSet?.maxTokens ?? WORK_TOKENS, thinker && tierSet ? WORK_TOKENS + reasoningAllowance(reasoningParam(thinker, tierSet.reasoning)) : WORK_TOKENS);
   // Adaptive effort (agent/effort.ts): a free-form turn that carries out a decision thinks at "low"; one that decides keeps the tier's level.
-  const feedback = feedbackMark(w.feedback ?? w.spotFeedback ?? w.testFeedback ?? w.designFeedback ?? w.reviewFeedback ?? "");
+  const feedback = feedbackMark(w.feedback ?? w.spotFeedback ?? w.testFeedback ?? w.designFeedback ?? w.pageFeedback ?? w.reviewFeedback ?? "");
   let reasoning: Reasoning | undefined;
   if (s.mode === "freeform" && (d.effort ?? getConfig().CODE_EFFORT) === "adaptive" && tierSet) {
     const e = turnEffort({ exchanges: w.exchanges, freshFeedback: !!feedback && feedback !== w.feedbackSeen, answered: w.answeredAt === w.turns, said: (w.said?.length ?? 0) > saidBefore });
@@ -1038,6 +1092,9 @@ export async function verifyPhase(r: Run): Promise<void> {
       v.lost = lost.map((l) => `${l.label} (${l.path})`);
       await r.log.note(`Still missing after the round, so it is in the report: ${v.lost.slice(0, 4).join("; ")}.`);
     }
+    // Read by another model while the change is still staged: the commit clears the changeset, so this is the last place the
+    // diff exists. It cannot stop the commit; what it finds keeps the PULL REQUEST a draft (prPhase).
+    await readTheChange(r);
     // What the checks passed on is written down: the commit is made of exactly this, and of nothing the checks did not see.
     s.verified = stagedFingerprint(r);
     // A job built from an approved design runs the app and looks at it before it is committed (design.ts); every other job commits.
@@ -1193,6 +1250,42 @@ export async function commitPhase(r: Run): Promise<void> {
 
 // ---------------------------------------------------------------------- pr
 
+/**
+ * ONE JOB'S CHANGE, READ BY ANOTHER MODEL (review.ts), once the checks have passed and while the edits are still STAGED: the commit
+ * clears the changeset, so this is the last moment the diff exists. It cannot stop the commit; a blocker keeps the PULL REQUEST a draft. A team's part and a chat's answer have
+ * long been read by a second model; a plain job's diff was the one thing nothing looked at. It is one call, it can only report, and a
+ * blocker or a major leaves the pull request a draft with the reason. Skipped for a team or a merge (they have their own review), for a
+ * job that changed nothing, and when `CODE_JOB_REVIEW` is off. A review nobody could make is said to be skipped, never recorded as a pass.
+ */
+async function readTheChange(r: Run): Promise<void> {
+  const s = r.state;
+  if (s.review || s.team || s.part || s.merge || s.care) return;
+  if (!(r.deps.jobReview ?? getConfig().CODE_JOB_REVIEW)) return;
+  if (r.tools.changes.empty) return;
+  try {
+    const money = await r.money();
+    const changes = await Promise.all(r.tools.changes.files.map(async (f) => ({
+      path: f.path, before: await r.tools.onBranch(f.path).catch(() => null), after: f.content,
+    })));
+    s.review = await reviewJob({
+      task: s.task, summary: s.work.doneSummary ?? "", changes, checks: s.verify?.summary ?? "",
+      ...(s.plan?.steps.length ? { plan: s.plan.steps.map((x) => x.do) } : {}),
+      ...(s.classification ? { classification: s.classification } : {}),
+      ...(s.work.lastModel ? { writerModel: s.work.lastModel } : {}),
+      remainingPaise: money.remaining,
+    }, r.model(), r.now());
+    if (s.review.status === "read") {
+      await r.log.decision(`Read by ${s.review.model}, which did not write it: ${cut(s.review.summary, 200)}${s.review.blocking ? " The pull request stays a draft." : ""}`);
+    } else {
+      await r.log.note(`Nobody read this change: ${cut(s.review.note ?? "", 160)}.`);
+    }
+    await r.save();
+  } catch (err) {
+    if (err instanceof LostClaim || err instanceof Park || err instanceof Yield || err instanceof BudgetStop || err instanceof EndJob) throw err;
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the change could not be read by another model");
+  }
+}
+
 export async function prPhase(r: Run): Promise<void> {
   const s = r.state;
   const d = r.deps.projects;
@@ -1228,7 +1321,8 @@ export async function prPhase(r: Run): Promise<void> {
   await r.log.step(`${pr.existing ? "Updated" : "Opened"} the draft pull request #${pr.prNumber}`);
   await r.save();
   // Ready for review only when the checks ran and found nothing this change broke.
-  const green = s.verify?.ran === true && s.verify.ok && (!s.team || teamClean(s.team));
+  // Ready needs green checks AND a reader who found nothing bad enough to stop it.
+  const green = s.verify?.ran === true && s.verify.ok && (!s.team || teamClean(s.team)) && !s.review?.blocking;
   if (green && !s.pr.ready && !s.readyDenied) {
     try {
       await r.gated("ready", "mark the pull request ready for review", (id) => markReady(d, r.userId, r.projectId, r.branch, { attended: true, ...(id ? { approvalId: id } : {}) }));
@@ -1354,12 +1448,48 @@ export async function newProjectPhase(r: Run): Promise<void> {
 
 // ------------------------------------------------------------------ report
 
+/**
+ * WHAT THIS JOB LEARNED ABOUT THE PROJECT, KEPT FOR THE NEXT ONE (project/learned.ts). Read from what the job already has, with
+ * NO MODEL and no extra call:
+ *
+ *   the person's own answers   a question the model had to ask, and what they said: the one thing that is a fact from the start,
+ *                              because they said it (status "confirmed"). The question is what makes the answer mean anything, so
+ *                              both are kept in the one line
+ *   a check already broken     the project's own check that failed on the default branch too, so the next job does not spend a fix
+ *                              round on something this change never broke
+ *
+ * It never fails a job: a project that cannot keep the lesson loses the lesson, not the work.
+ */
+async function keepLearned(r: Run): Promise<void> {
+  const s = r.state;
+  if (typeof r.brain.learn !== "function") return;
+  const candidates: Candidate[] = [];
+  // What the person answered, in their words, with the question that gives it its meaning.
+  for (const e of (await r.log.entries({ kinds: ["question"] }).catch(() => []))) {
+    const said = typeof e.data?.answer === "string" ? e.data.answer.trim() : "";
+    if (!said) continue;
+    candidates.push({ chapter: "rules", text: `Asked "${cut(e.text, 120)}", the owner said: ${cut(said, 140)}`, owner: true });
+  }
+  // A check that was failing before this job touched anything: worth knowing before the next one reads a red suite as its own doing.
+  for (const name of (s.verify?.alreadyBroken ?? []).slice(0, 3)) {
+    candidates.push({ chapter: "state", text: `The project's own check ${cut(name, 120)} was already failing on the default branch when a job last ran it.` });
+  }
+  if (!candidates.length) return;
+  try {
+    await r.brain.learn(candidates, { jobId: r.jobId });
+    await r.log.note(`Kept ${candidates.length === 1 ? "one thing" : `${candidates.length} things`} learned about this project for the next job.`);
+  } catch (err) {
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: what this job learned was not kept");
+  }
+}
+
 export async function reportPhase(r: Run): Promise<void> {
   const s = r.state;
   const money = await r.money();
   const outcome = s.commits.length === 0 && r.tools.changes.empty ? "answer" : "done";
   if (s.team) await linkPulls(r);
   const screens = screensLines(s.screens, r.deps.screens?.link ? (shotId) => r.deps.screens!.link!({ userId: r.userId, jobId: r.jobId, shotId }) : undefined);
+  await keepLearned(r);
   const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r), screens, ...(s.team ? { team: teamLines(s.team) } : {}) });
   s.report = { at: r.now(), outcome, text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent, ...(s.screens?.shots.length ? { shots: s.screens.shots } : {}) };
   s.phase = "done";

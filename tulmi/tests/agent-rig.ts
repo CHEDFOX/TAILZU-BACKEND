@@ -177,6 +177,9 @@ export function scriptedModel(jobStore: MemoryJobStore) {
     seen: [] as SeenTurn[],
     /** Paise a call costs, and the worst case the guard assumes. */
     paise: 4,
+    /** What the model that writes the code is called. A test that needs a reviewer of ANOTHER family (agent/review.ts) sets it,
+     *  because the fixture's JSON answers all come from "fake/model": with the default both are the family "fake". */
+    slug: undefined as string | undefined,
     need: 10,
     /** Turn ids are unique across the whole script, which is how a model's are. */
     n: 0,
@@ -214,7 +217,7 @@ export function scriptedModel(jobStore: MemoryJobStore) {
         await m.afterTurn?.(m.turns);
         const toolCalls = turn.calls.map((c) => ({ id: `call_${(m.n += 1)}`, name: c.name, arguments: typeof c.args === "string" ? c.args : JSON.stringify(c.args) }));
         result = {
-          text: turn.text ?? "", json: undefined, toolCalls, model: `fake/${input.tier ?? "code"}`, ...(input.tier ? { tier: input.tier } : {}), promptTokens: 100, completionTokens: 50,
+          text: turn.text ?? "", json: undefined, toolCalls, model: m.slug ?? `fake/${input.tier ?? "code"}`, ...(input.tier ? { tier: input.tier } : {}), promptTokens: 100, completionTokens: 50,
           costUsd: 0.0001, paise: m.paise, costSource: "reported", truncated: false, ms: 1, calls: 1, trail: [],
         } as CallResult<T>;
       } else {
@@ -256,8 +259,12 @@ export interface AgentRigOptions {
   design?: DesignDeps;
   /** The screens round's browser, picture store and links (code/agent/screens.ts). */
   screens?: ScreensDeps;
+  /** Where the project's kit is kept (artifacts/kit.ts): what the project already LOOKS like, shown to a job on files people see. Absent: not read, not shown. */
+  kit?: Pick<import("../src/artifacts/store.js").ArtifactStore, "getKit" | "putKit">;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts). Absent: the agent's default. */
   contextStrategy?: ContextStrategy;
+  /** Have another model read the change before the pull request is ready (agent/review.ts). Absent: on, as the product has it. */
+  jobReview?: boolean;
   /** Ask once for a focused test of the change before the checks run (agent/phases.ts testWanted). Off in the suite (tests/setup.ts) unless a test turns it on: most scripts end a job with one `done`. */
   proveFix?: boolean;
   /** What the GitHub App was given on the install (Contents, Pull requests and Metadata unless said otherwise): PR care needs Checks, Commit statuses and Actions (read) as well. */
@@ -336,10 +343,11 @@ export async function agentRig(o: AgentRigOptions = {}) {
       code, jobs, store: jobStore, brain, call: model.call as never, worklog, intake, routeStats, notify, now, sleep, log, web: { store: null, cache: null, fetchFn: webFetch as never },
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: 2000 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one",
-      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}), ...(o.screens ? { screens: o.screens } : {}),
+      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}), ...(o.screens ? { screens: o.screens } : {}), ...(o.kit ? { kit: o.kit } : {}),
       ...(over.passive ? { passive: true } : {}), ...(over.team ? { team: over.team } : {}), ...(over.leaseMs ? { leaseMs: over.leaseMs } : {}),
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
       ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
+    ...(o.jobReview !== undefined ? { jobReview: o.jobReview } : {}),
       ...(o.jobMode === null ? {} : { jobMode: o.jobMode ?? "guided" }),
       ...(o.effort ? { effort: o.effort } : {}),
     })!;
@@ -347,10 +355,11 @@ export async function agentRig(o: AgentRigOptions = {}) {
   const orch = orchestrator();
 
   /** A work branch for a task, and an agent job on it, enqueued. */
-  async function start(task: string, over: { budgetPaise?: number | undefined; enqueue?: boolean } = {}) {
+  async function start(task: string, over: { budgetPaise?: number | undefined; enqueue?: boolean; planFirst?: boolean } = {}) {
     const { branch } = await createWorkBranch(d, "alice", project.id, task);
     const job = await jobs.createJob("alice", project.id, branch, task, "budgetPaise" in over ? over.budgetPaise : undefined, { agent: true });
-    if (over.enqueue !== false) await orch.enqueue(job.id, task);
+    // planFirst is how a test makes a plan wait for a yes: a plan no longer waits merely for being risky (phases.ts planPhase).
+    if (over.enqueue !== false) await orch.enqueue(job.id, task, over.planFirst !== undefined ? { planFirst: over.planFirst } : {});
     return { job, branch };
   }
 

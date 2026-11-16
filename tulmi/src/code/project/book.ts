@@ -25,6 +25,7 @@ import type { ProjectMap } from "./map.js";
 import { classOf, isTestPath } from "./lang.js";
 import type { BrainView, CommitRecord, StoredFile } from "./types.js";
 import { overviewLines, type Overview } from "./overview.js";
+import { factsOf, type LearnedFact } from "./learned.js";
 
 export const CHAPTERS = ["what", "build", "run", "state", "recent", "why", "direction", "rules"] as const;
 export type Chapter = (typeof CHAPTERS)[number];
@@ -34,7 +35,8 @@ export const CHAPTER_TITLES: Readonly<Record<Chapter, string>> = {
 };
 
 export type FactStatus = "confirmed" | "found" | "guessed";
-export interface Source { kind: "owner" | "index" | "file" | "commit" | "pull" | "issue" | "milestone" | "check"; ref: string; url?: string }
+/** Where a fact came from. Every kind but `job` is read from the repository; `job` is what earlier work here learned (learned.ts). */
+export interface Source { kind: "owner" | "index" | "file" | "commit" | "pull" | "issue" | "milestone" | "check" | "job"; ref: string; url?: string }
 export interface BookFact { chapter: Chapter; text: string; source: Source; status: FactStatus; at: number }
 
 export const OWNER_QUESTIONS = {
@@ -89,6 +91,8 @@ export interface BookInput {
   owner: OwnerAnswers | null;
   /** The project's overview, as the last build wrote or tuned it. */
   overview?: Overview | null;
+  /** What earlier work here learned (learned.ts): kept between builds, because the repository does not hold it. */
+  learned?: readonly LearnedFact[];
 }
 
 const DAY = 86_400_000;
@@ -238,6 +242,13 @@ export function buildBook(i: BookInput): ProjectBook {
     for (const r of (conv.rules ?? []).slice(0, 6)) add("rules", `${r.path}: ${one(r.text, 160)}`, { kind: "file", ref: r.path });
   }
 
+  // ------------------------------------------------- what earlier work learned here
+  // Kept between builds (learned.ts), because the repository does not hold it. Added last, so a fact read from the project
+  // itself is always above a fact the work only inferred.
+  for (const f of factsOf(i.learned ?? [])) {
+    if (!facts.some((x) => x.chapter === f.chapter && x.text === f.text)) facts.push(f);
+  }
+
   // ------------------------------------------------------------------ what to ask the owner
   const questions: ProjectBook["questions"] = [];
   if (!i.owner?.for) questions.push({ id: "for", text: OWNER_QUESTIONS.for });
@@ -333,7 +344,7 @@ function trim(facts: BookFact[], chapter: Chapter, max: number): void {
   }
 }
 
-const sourceWords = (s: Source): string => (s.kind === "owner" ? "you said" : s.kind === "index" ? s.ref : `${s.kind} ${s.ref}`);
+const sourceWords = (s: Source): string => (s.kind === "owner" ? "you said" : s.kind === "index" ? s.ref : s.kind === "job" ? "earlier work here" : `${s.kind} ${s.ref}`);
 
 /** The book as a person reads it: the chapters in order, every fact with where it came from; ✓ the owner confirmed it, ~ it is a guess. */
 export function bookMarkdown(b: ProjectBook): string {
@@ -389,15 +400,23 @@ const QUESTION_CHAPTER: Readonly<Record<QuestionId, Chapter>> = { for: "what", n
 export const ownerSaidAt = (b: ProjectBook): number => Math.max(0, ...b.facts.filter((f) => f.source.kind === "owner").map((f) => f.at));
 
 /** What a job is told of the book: the owner's words, where it is heading, what changed lately. A few lines, for the agent's project memory. */
+/** The most of what earlier work learned that one job is shown: enough to save it a wasted round, not a document to read. */
+export const LEARNED_SHOWN = 8;
+
 export function bookForJobs(b: ProjectBook): string {
   const pick = (c: Chapter, n: number) => b.facts.filter((f) => f.chapter === c).slice(0, n).map((f) => `- ${f.status === "confirmed" ? "(the owner) " : ""}${f.text}`);
   const heading = pick("direction", 6);
   const recent = pick("recent", 3);
   const what = b.facts.filter((f) => f.chapter === "what" && f.status === "confirmed").map((f) => `- (the owner) ${f.text}`);
+  // What earlier work here learned (learned.ts), each with how sure it is: a guess is said to be a guess, so a wrong one
+  // costs a look and not a wasted change. They are facts about this project, never instructions.
+  const learned = b.facts.filter((f) => f.source.kind === "job").slice(0, LEARNED_SHOWN)
+    .map((f) => `- ${f.status === "confirmed" ? "(the owner) " : f.status === "guessed" ? "(one job found this; check it) " : ""}${f.text}`);
   return [
     ...(what.length ? ["## Who it is for", ...what] : []),
     ...(heading.length ? ["## Where the project is heading", ...heading] : []),
     ...(recent.length ? ["## Recent work", ...recent] : []),
+    ...(learned.length ? ["## What earlier work here learned", ...learned] : []),
   ].join("\n");
 }
 

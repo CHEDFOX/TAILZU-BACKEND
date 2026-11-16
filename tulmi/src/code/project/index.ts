@@ -57,10 +57,12 @@ import {
 
 import { buildMap, type ProjectMap } from "./map.js";
 import { buildBook, cleanAnswers, RUN_FILE, type ProjectBook } from "./book.js";
+import { learn, ownerSays, prune, type Candidate, type LearnedFact } from "./learned.js";
 import { mapAfterChanges, type MapChange } from "./mapupdate.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
 export { buildMap, checkSymbol, checkSymbols, componentCard, findInMap, keepMeanings, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap, type SymbolCheck } from "./map.js";
 export { bookBrief, bookForJobs, bookMarkdown, buildBook, cleanAnswers, CHAPTERS, CHAPTER_TITLES, OWNER_QUESTIONS, type BookFact, type Chapter, type OwnerAnswers, type ProjectBook } from "./book.js";
+export { cleanCandidate, factsOf, learn, ownerSays, prune, sameFact, GUESS_LIFE_MS, LEARNED_MAX, type Candidate, type LearnedFact } from "./learned.js";
 export { gitBlobSha, mapAfterChanges, MAP_DIR, type MapChange } from "./mapupdate.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";
@@ -393,6 +395,12 @@ export interface BrainHandle {
   projectMap(): Promise<ProjectMap | null>;
   /** The project book (book.ts): what the project is, how it stands, what changed, why, where it is heading; null before the brain is built. */
   book(): Promise<ProjectBook | null>;
+  /** Keeps what a job learned about this project for the next one (learned.ts). */
+  learn(candidates: readonly Candidate[], o: { jobId: string }): Promise<void>;
+  /** What earlier work learned here, as it is kept. */
+  learned(): Promise<LearnedFact[]>;
+  /** The owner's word on one of them: confirmed, or forgotten. Answers with what is left. */
+  sayOnLearned(text: string, verdict: "confirm" | "forget"): Promise<LearnedFact[]>;
   /** The owner's answers to the book's questions (who it is for, what comes next, what must not change), kept, and the book made again. */
   answerBook(answers: unknown): Promise<ProjectBook | null>;
   /** The project map as the code will be after these changes (mapupdate.ts): only the changed files are read again. */
@@ -556,10 +564,37 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
         view: { welcome: b.welcome, structure: b.structure, features: b.features, conventions: b.conventions, baseline: b.baseline },
         docs: Object.fromEntries(docs.filter(([, t]) => t)), ops: Object.fromEntries(ops.filter(([, t]) => t)), owner: b.book?.owner ?? null,
         overview: b.book?.overview ?? null,
+        // What earlier work learned (learned.ts), pruned against the files the project has now: a fact about files that have all gone goes.
+        learned: prune(b.book?.learned ?? [], { now, paths: new Set(files.map((f) => f.path)) }),
       });
       books.set(id, { key, at: now, book: made });
       while (books.size > GRAPHS_KEPT) books.delete(books.keys().next().value as string);
       return made;
+    },
+    /**
+     * What this job learned about the project, kept for the next one (learned.ts). A candidate nobody has seen before is a guess; one
+     * another job already found is seen again. Never throws into a job: a project that cannot keep them loses the lesson, not the work.
+     */
+    async learn(candidates, o) {
+      if (!candidates.length) return;
+      const b = await row();
+      if (!b) return;
+      const now = (d.now ?? Date.now)();
+      const next = learn(b.book?.learned ?? [], candidates, { job: o.jobId, now });
+      await store.saveBrain(id, { book: { ...(b.book ?? {}), learned: next } });
+      books.delete(id);
+    },
+    async learned() {
+      const b = await row();
+      return b?.book?.learned ?? [];
+    },
+    async sayOnLearned(text, verdict) {
+      const b = await row();
+      if (!b) return [];
+      const next = ownerSays(b.book?.learned ?? [], text, verdict, (d.now ?? Date.now)());
+      await store.saveBrain(id, { book: { ...(b.book ?? {}), learned: next } });
+      books.delete(id);
+      return next;
     },
     async answerBook(answers) {
       const b = await row();

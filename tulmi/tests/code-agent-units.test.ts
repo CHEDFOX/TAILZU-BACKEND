@@ -397,6 +397,28 @@ describe("the last six results", () => {
     expect(ctx.messages[2]).toMatchObject({ role: "assistant", content: null, tool_calls: [{ id: "call_1", name: "read_file" }] });
     expect(ctx.messages[3]).toMatchObject({ role: "tool", tool_call_id: "call_1" });
   });
+
+  it("carry the floor only for work on a page people look at, and never a word of it otherwise (floor.ts)", () => {
+    const plain = state();
+    plain.plan = { steps: [{ n: 1, do: "Trim the dashes", files: [{ path: "src/util.ts", action: "edit" }] }] } as never;
+    const task = (x: AgentState, staged: string[] = []) => String(buildContext({ state: x, project: "", tools: AGENT_TOOLS, stagedLines: staged, checks: [] }).messages[1]!.content);
+    expect(task(plain)).not.toContain("clear the floor");
+
+    // The plan names a page: the floor rides with the task from the first turn.
+    const page = state();
+    page.plan = { steps: [{ n: 1, do: "Show the price", files: [{ path: "src/components/PricingCard.tsx", action: "edit" }] }] } as never;
+    expect(task(page)).toContain("clear the floor");
+
+    // A free-form job with no plan: where the index points is enough.
+    const free = state();
+    free.mode = "freeform";
+    free.work.hints = "src/pages/Pricing.tsx: the pricing page\nsrc/util.ts: string helpers";
+    expect(task(free)).toContain("clear the floor");
+
+    // AND IT DOES NOT MOVE WITH WHAT IS STAGED: a block that appeared halfway through would cost the job its cached prefix.
+    expect(task(plain, ["src/components/Card.tsx (added)"])).not.toContain("clear the floor");
+    expect(task(page, [])).toBe(task(page, ["src/components/PricingCard.tsx (changed)"]).replace("\n\nStaged so far (not committed): src/components/PricingCard.tsx (changed)", ""));
+  });
 });
 
 // =================================================================== report

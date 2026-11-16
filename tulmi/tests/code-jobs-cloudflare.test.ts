@@ -181,7 +181,7 @@ describe("the person's word", () => {
     const { r, w, s, id, wk } = await parkedJob(RISKY, (r) => {
       r.json.on("work.plan", UTIL_PLAN);
       r.model.push(call("edit_file", UTIL_EDIT), done("ok"));
-    });
+    }, { planFirst: true });
     const q = (await s.api("alice", "POST", `/v1/code/jobs/${id}/approve`, {})).json() as { approvalId: string; needsApproval: boolean };
     expect(q.needsApproval).toBe(true);
     expect(w.seen).toEqual([]);
@@ -192,7 +192,7 @@ describe("the person's word", () => {
   });
 
   it("stop: the job is cancelled in the database, then the Workflow is told to end", async () => {
-    const { r, w, s, id, wk } = await parkedJob(RISKY, (r) => { r.json.on("work.plan", UTIL_PLAN); });
+    const { r, w, s, id, wk } = await parkedJob(RISKY, (r) => { r.json.on("work.plan", UTIL_PLAN); }, { planFirst: true });
     const stopped = await s.api("alice", "POST", `/v1/code/jobs/${id}/stop`);
     expect(stopped.json().job.state).toBe("cancelled");
     expect(w.seen).toEqual([{ path: "/v1/event", body: { jobId: id, kind: "stop" } }]);
@@ -201,7 +201,7 @@ describe("the person's word", () => {
   });
 
   it("deny: a plan not approved ends the job, and the Workflow is told", async () => {
-    const { s, id, w } = await parkedJob(RISKY, (r) => { r.json.on("work.plan", UTIL_PLAN); });
+    const { s, id, w } = await parkedJob(RISKY, (r) => { r.json.on("work.plan", UTIL_PLAN); }, { planFirst: true });
     expect((await s.api("alice", "POST", `/v1/code/jobs/${id}/deny`)).json().job.state).toBe("cancelled");
     expect(w.seen).toEqual([{ path: "/v1/event", body: { jobId: id, kind: "deny" } }]);
   });

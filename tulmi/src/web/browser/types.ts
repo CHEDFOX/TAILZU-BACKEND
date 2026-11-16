@@ -13,6 +13,16 @@ export interface RenderOptions {
   timeoutMs?: number;
   /** Fail images, media and fonts. Default true. */
   blockResources?: boolean;
+  /** The size to draw the page at. Default 1280x900, not mobile. A measurement of a phone layout sets this. */
+  viewport?: { width: number; height: number; mobile?: boolean };
+  /** Tell the page the person has asked for less motion, before it loads: what is still moving afterwards is motion the page did not turn off. */
+  reducedMotion?: boolean;
+  /**
+   * An expression to evaluate in the page once it has settled, whose value comes back as `value`. For MEASURING a page the browser has drawn
+   * (code/agent/probe.ts): the computed styles, the boxes, what happens on focus — none of which exist in the HTML. It runs after the snapshot,
+   * so a script that throws costs its own value and not the page. Never pass anything a page could have written.
+   */
+  script?: string;
 }
 
 export interface RenderedPage {
@@ -23,6 +33,8 @@ export interface RenderedPage {
   title: string;
   /** The status of the page's own document (200 when the browser did not say). */
   status: number;
+  /** What `script` returned, when one was given and it ran. Undefined when there was none, or it threw. */
+  value?: unknown;
 }
 
 /** What readPage takes to render a page that needs its scripts. */
