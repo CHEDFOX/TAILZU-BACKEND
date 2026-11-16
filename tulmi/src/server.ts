@@ -96,6 +96,9 @@ import { registerMeetRoutes } from "./routes/bots/meet.js";
 import { registerRoomsRoutes } from "./routes/bots/rooms.js";
 import { roomService } from "./rooms/service.js";
 import { registerLingoRoutes } from "./routes/bots/lingo.js";
+import { registerCinemaRoutes } from "./routes/bots/cinema.js";
+import { buildCinemaService } from "./cinema/index.js";
+import { cinemaOn } from "./bots/builtin.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
@@ -650,6 +653,14 @@ if (roomService()) {
   const roomTick = setInterval(() => { void roomService()!.tick().catch((err) => app.log.warn({ err: (err as Error)?.message }, "rooms: tick failed")); }, 60_000);
   roomTick.unref();
   app.addHook("onClose", async () => { clearInterval(roomTick); });
+}
+// The cinema bot (src/cinema, docs/cinema.md): films made shot by shot and pictures, every model through OpenRouter. Its tick moves each film
+// on (the stills, the takes, the checks, the cut) every few seconds; only while it is switched on (CINEMA=true) and BOTS is on.
+const cinema = bots && cinemaOn() ? buildCinemaService() : null;
+registerCinemaRoutes(app, { rateLimit: AUTHED_RL, bots, service: cinema });
+if (cinema) {
+  const stopCinema = cinema.start();
+  app.addHook("onClose", async () => { stopCinema(); });
 }
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
