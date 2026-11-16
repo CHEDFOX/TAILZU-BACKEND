@@ -220,6 +220,56 @@ describe("which shots can be filmed as one take", () => {
   });
 });
 
+describe("coverage: the beats the film turns on, shot twice", () => {
+  const covered = (over: Partial<Film> = {}) => {
+    const f = boarded({ status: "rendering", budgetPaise: 1_000_000, ...over });
+    f.script!.shots[0]!.cover = "close";
+    return f;
+  };
+
+  it("films the other size beside the first take, and only on the first attempt", () => {
+    const f = covered();
+    const k = kinds(steps(f, { now: 0, busy: none, cost: flat(10) }));
+    expect(k).toContain("render:1");
+    expect(k).toContain("cover:1");
+    // The shot with no second size written gets one camera, as it always did.
+    expect(k).toContain("render:2");
+    expect(k).not.toContain("cover:2");
+
+    // Once a take of this card exists, the choice has been made: a retake is a repair, not more coverage.
+    const p = prints(f);
+    f.takes.push(take(1, p.take.get(1)!, { status: "done", verdict: verdict(3) }));
+    expect(kinds(steps(f, { now: 0, busy: none, cost: flat(10) }))).not.toContain("cover:1");
+  });
+
+  it("leaves the second camera out when the money is only enough for the first", () => {
+    const f = covered({ budgetPaise: 15 });
+    const k = kinds(steps(f, { now: 0, busy: none, cost: flat(10) }));
+    expect(k).toContain("render:1");
+    expect(k).not.toContain("cover:1");
+  });
+
+  it("sees a second angle through even after the shot has its take, and waits for it before cutting", () => {
+    const f = covered();
+    const p = prints(f);
+    const first = take(1, p.take.get(1)!, { status: "done", video: "v1", lastFrame: "lf1", verdict: verdict(8), size: "wide" });
+    const second = take(1, p.take.get(1)!, { status: "done", video: "v1b", lastFrame: "lf1b", size: "close" });
+    f.takes.push(first, second);
+    f.shots[0]!.take = first.id;
+    f.shots[0]!.takeOf = first.of;
+    for (const s of f.shots.slice(1)) {
+      const t = take(s.n, p.take.get(s.n)!, { status: "done", video: `v${s.n}`, lastFrame: `lf${s.n}`, verdict: verdict(9) });
+      f.takes.push(t);
+      s.take = t.id;
+      s.takeOf = t.of;
+    }
+    const k = kinds(steps(f, { now: 0, busy: none, cost: flat(10) }));
+    // The one still unchecked is checked, and the film does not go to the cut while it is in the air.
+    expect(k).toContain("check");
+    expect(k).not.toContain("move:cutting:");
+  });
+});
+
 describe("the order of work", () => {
   it("makes nothing before the script is approved", () => {
     expect(steps(film({ status: "script" }), { now: 0, busy: none, cost: flat(10) })).toEqual([]);

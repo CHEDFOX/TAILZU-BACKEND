@@ -173,6 +173,12 @@ export interface ShotCard {
   performance: string;
   /** The camera in detail: the move's speed and direction, where it starts and ends, what the focus does. */
   camera: string;
+  /**
+   * A SECOND SIZE FOR THE BEATS THAT CARRY THE FILM. A real unit shoots a wide and a close of the moment that matters and lets the edit
+   * choose; the director marks two or three such beats and says what the other size is. Filmed alongside the first take, checked the same
+   * way, and the better of the two is the one that is cut in - the other stays as an alternate the person can switch to.
+   */
+  cover?: ShotSize | null;
   /** The opening frame, as a still: who and what is where. */
   frame: string;
   /** The frame's layers and balance: foreground, subject, background, where the eye goes, the space left. */
@@ -244,6 +250,8 @@ export interface Take {
   seconds: number;
   status: TakeStatus;
   paise: number;
+  /** The size this one was filmed at: the card's, or its `cover` when this is the second angle on the beat. */
+  size?: ShotSize;
   /** Media key of the clip, once fetched. */
   video: string | null;
   /** What its picture measures (ffmpeg signalstats), kept so the grade is worked out once and every later cut is free. */

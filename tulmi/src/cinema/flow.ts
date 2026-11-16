@@ -31,6 +31,8 @@ export type Step =
   | { kind: "still"; n: number }
   | { kind: "voice"; n: number }
   | { kind: "render"; n: number }
+  /** The same beat at its other size, filmed beside the first take so the edit can choose (ShotCard.cover). */
+  | { kind: "cover"; n: number }
   | { kind: "poll"; take: string }
   | { kind: "check"; take: string }
   | { kind: "cut" }
@@ -49,6 +51,7 @@ export function stepKey(s: Step): string {
     case "still": return `still:${s.n}`;
     case "voice": return `voice:${s.n}`;
     case "render": return `render:${s.n}`;
+    case "cover": return `cover:${s.n}`;
     case "poll": return `poll:${s.take}`;
     case "check": return `check:${s.take}`;
     case "cut": return "cut";
@@ -231,21 +234,27 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
   }
 
   // 4. Takes: poll the running ones, check the finished ones, start the next ones the money covers.
-  let renderSlots = lim.renders - film.takes.filter((t) => t.status === "running").length - running("render:");
+  let renderSlots = lim.renders - film.takes.filter((t) => t.status === "running").length - running("render:") - running("cover:");
   let hold: Hold = short ? "budget" : null;
   let allOk = true;
   for (const card of cards) {
     const status = shotStatus(film, card, p, busy);
-    if (status === "ok") continue;
-    allOk = false;
-    if (status === "failed") { hold = "shot"; continue; }
-    if (status === "planned" || status === "boarding") continue;
-    const tp = p.take.get(card.n)!;
-    const mine = film.takes.filter((t) => t.n === card.n && t.of === tp);
-    for (const t of mine) {
+    const tp0 = p.take.get(card.n);
+    // Every take of this card's version is seen through, even on a shot that already has its take: a second angle may still be in the
+    // air, and it may turn out to be the better one. The film waits for it rather than cutting without it.
+    const inAir = tp0 ? film.takes.filter((t) => t.n === card.n && t.of === tp0) : [];
+    for (const t of inAir) {
       if (t.status === "running" && t.job && (t.polledAt === null || ctx.now - t.polledAt >= lim.pollMs) && !busy.has(`poll:${t.id}`)) out.push({ kind: "poll", take: t.id });
       if (t.status === "done" && !t.verdict && !busy.has(`check:${t.id}`)) out.push({ kind: "check", take: t.id });
     }
+    if (status === "ok") {
+      if (inAir.some((t) => t.status === "running" || (t.status === "done" && !t.verdict))) allOk = false;
+      continue;
+    }
+    allOk = false;
+    if (status === "failed") { hold = "shot"; continue; }
+    if (status === "planned" || status === "boarding") continue;
+    const mine = inAir;
     if (status !== "queued") continue;
     if (card.link === "continue" && card.n > 1) {
       const prevCard = cards[cards.indexOf(card) - 1];
@@ -259,6 +268,11 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
     if (!afford(s)) { hold = hold ?? "budget"; continue; }
     out.push(s);
     renderSlots--;
+    // The other size of a beat the film turns on, filmed beside the first take and never on a retake: coverage is a choice made once.
+    if (card.cover && mine.length === 0) {
+      const c: Step = { kind: "cover", n: card.n };
+      if (renderSlots > 0 && !busy.has(stepKey(c)) && ctx.cost(c) !== null && afford(c)) { out.push(c); renderSlots--; }
+    }
   }
 
   // 5. The cut, once every shot has its take and every voice-over is recorded; and the film's status and hold.

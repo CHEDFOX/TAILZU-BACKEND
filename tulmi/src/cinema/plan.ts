@@ -52,6 +52,7 @@ The craft you follow:
 - Spoken lines go in "lines", only for someone in the shot, short enough to say in the shot's seconds; narration goes in "vo". Write lines and narration in the film's language exactly as people speak it (Hinglish stays Hinglish, in Latin letters).
 - Words that must be readable in frame go in "text" (a sign, a label), at most a few words.
 - Mark "physics" for water, rain, fire, smoke, cloth or hair in wind, and things falling or breaking; "crowd" for many people; "motion" 0 (still) to 3 (fast action).
+- "cover": on the TWO OR THREE beats the film turns on - and no others - name a second size for the same beat, so it can be shot both ways and the edit can choose (a wide that also wants a close on the face; a close that also wants the wide that explains it). It must be a different size from "size". Leave it null on every other shot.
 
 The bible:
 - Each person's "look" is what makes them the same person in every shot: age, skin tone, face shape, eyes, eyebrows, hair (colour, length, style), facial hair, marks (a scar, a mole, glasses), build, posture, a mannerism. "wardrobe": each garment with its colour, fabric and fit, shoes, jewellery. "voice": pitch, pace, accent and manner of speech.
@@ -61,7 +62,7 @@ The bible:
 
 Answer with JSON only, in this shape:
 {"bible":{"title":"","logline":"","genre":"","tone":"","style":"live|animated","language":"BCP-47 tag","look":{"palette":"","light":"","lens":"","stock":"","grade":"","texture":""},"characters":[{"key":"a-z0-9-","name":"","look":"","wardrobe":"","voice":""}],"places":[{"key":"","name":"","look":""}],"music":"instruments, tempo and feeling, or null"},
-"shots":[{"beat":"","intent":"","size":"extreme-wide|wide|full|medium|medium-close|close|extreme-close|insert","angle":"eye|low|high|overhead|dutch|pov","move":"static|pan|tilt|dolly-in|dolly-out|truck|tracking|crane|orbit|handheld|zoom|drone","lens":35,"camera":"","cast":["key"],"place":"key","frame":"","composition":"","action":"","performance":"","atmosphere":"","light":"","end":"","seconds":5,"lines":[{"who":"key","text":""}],"vo":"or null","sound":"","link":"cut|continue|dissolve","motion":0,"physics":false,"crowd":false,"text":"or null"}]}`;
+"shots":[{"beat":"","intent":"","size":"extreme-wide|wide|full|medium|medium-close|close|extreme-close|insert","angle":"eye|low|high|overhead|dutch|pov","move":"static|pan|tilt|dolly-in|dolly-out|truck|tracking|crane|orbit|handheld|zoom|drone","lens":35,"camera":"","cast":["key"],"place":"key","frame":"","composition":"","action":"","performance":"","atmosphere":"","light":"","end":"","seconds":5,"lines":[{"who":"key","text":""}],"vo":"or null","sound":"","link":"cut|continue|dissolve","motion":0,"physics":false,"crowd":false,"text":"or null","cover":"a second size for this beat, or null"}]}`;
 
 const REVISE_SYSTEM = `${DIRECTOR_SYSTEM}
 
@@ -228,6 +229,7 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
       beat: str(s.beat, 160),
       intent: str(s.intent, 240),
       size: oneOf<ShotSize>(s.size, SHOT_SIZES, "medium"),
+      cover: SHOT_SIZES.includes(String(s.cover) as ShotSize) && String(s.cover) !== String(s.size) ? (String(s.cover) as ShotSize) : null,
       angle: oneOf<Angle>(s.angle, ANGLES, "eye"),
       move: oneOf<Move>(s.move, MOVES, "static"),
       lens: Math.round(num(s.lens, 12, 200, 35)),

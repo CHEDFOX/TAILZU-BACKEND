@@ -277,6 +277,20 @@ Every take and every still is already ours, so the same film can be cut again fo
 The film's music is kept with the cut (`Cut.music`, `musicOf`), so cutting the same film again - after a change, or into another shape - never
 pays for it twice.
 
+### Coverage: the beats the film turns on, shot twice
+
+A real unit shoots a wide **and** a close of the moment that matters and lets the edit choose. The director now does the same: on the two
+or three beats the film turns on - and no others - it names a second size in the shot card's `cover`, and that beat is filmed **both
+ways**, beside the first take rather than after it (`Step "cover"`, `flow.ts`).
+
+Both are checked by the same eye, and the better of the two is the one that is cut in (`qc.ts afterCheck`: where a beat is covered, a take
+that passes no longer wins just for coming back first - the scores decide). The other stays in the film's takes, and the shot's page lists
+it, so the person can switch to it.
+
+Three rules keep it from running away with the film: coverage is filmed **only on the first attempt** (a retake is a repair, not more
+coverage); it is filmed only when the money covers it, like any take; and a second angle still in the air **holds the cut** - a film does
+not go to the edit while one of its two cameras is still coming back.
+
 ### The sound of a place
 
 A take brings back whatever sound its model felt like making, and seven of those do not add up to a place. So the film is given its own:

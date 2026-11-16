@@ -560,6 +560,7 @@ export class CinemaService {
           const chars = (card?.vo?.length ?? 0) + (card?.lines[0]?.text.length ?? 0);
           return usdToPaise((chars / 1000) * 0.03, this.d.fx);
         }
+        case "cover":
         case "render": {
           const card = f.script?.shots.find((c) => c.n === s.n);
           if (!card || !f.script) return null;
@@ -619,6 +620,7 @@ export class CinemaService {
       case "still": return this.still(f, s.n, models.image);
       case "voice": return this.voice(f, s.n);
       case "render": return this.render(f, s.n, models.video, models.jobs);
+      case "cover": return this.render(f, s.n, models.video, models.jobs, true);
       case "poll": return this.poll(f, s.take);
       case "check": return this.check(f, s.take, models.jobs);
       case "cut": return this.cutFilm(f);
@@ -925,19 +927,27 @@ export class CinemaService {
     return null;
   }
 
-  private async render(f: Film, n: number, video: CatalogModel[], jobs: JobModel[] = []): Promise<void> {
+  /**
+   * One take of a shot. `cover` films the same beat at its other size (ShotCard.cover): the same still, the same seconds, the same
+   * everything except how close the camera is, filmed beside the first take so the eye can choose between them. A covering take never
+   * mends, never lip-syncs and never joins a run - those are about the take that is being kept, and this one is a choice, not a repair.
+   */
+  private async render(f: Film, n: number, video: CatalogModel[], jobs: JobModel[] = [], cover = false): Promise<void> {
     const script = f.script!;
-    const card = script.shots.find((c) => c.n === n)!;
+    const written = script.shots.find((c) => c.n === n)!;
+    const card = cover && written.cover ? { ...written, size: written.cover } : written;
     const st = shotOf(f, n)!;
     const p = prints(f);
     const of = p.take.get(n)!;
     // A take with one local fault is mended, not filmed again (qc.ts "edit"). When the mend cannot be started we carry straight on and
     // film it again, so an edit model that will not take our clip costs the film nothing but one refused request.
-    if (st.mend && (await this.mend(f, n, of, st.mend, jobs))) return;
-    // One person, speaking, close, in a language the video models guess at: our own recording drives the mouth instead.
-    if (await this.lipSync(f, n, of, jobs)) return;
-    // Shots that carry one moment on: filmed as one unbroken take and cut apart, so there is no join between them.
-    if (this.d.media.slice && (await this.runTake(f, n, video))) return;
+    if (!cover) {
+      if (st.mend && (await this.mend(f, n, of, st.mend, jobs))) return;
+      // One person, speaking, close, in a language the video models guess at: our own recording drives the mouth instead.
+      if (await this.lipSync(f, n, of, jobs)) return;
+      // Shots that carry one moment on: filmed as one unbroken take and cut apart, so there is no join between them.
+      if (this.d.media.slice && (await this.runTake(f, n, video))) return;
+    }
     const pick = route({ card, style: script.bible.style, aspect: this.shot(f), tier: f.tier, models: video, blamed: st.blamed })[0];
     if (!pick) {
       await this.update(f.ownerId, f.id, (x) => {
@@ -961,7 +971,7 @@ export class CinemaService {
     }
     const prompt = motionPrompt(card, script.bible, { dialect: pick.model.dialect, maxChars: pick.model.maxPrompt, audio: pick.audio, seconds: pick.seconds, fix: st.fix });
     const take: Take = {
-      id: this.id(), n, model: pick.model.id, of, job: null, prompt, seconds: pick.seconds, status: "running", paise: usdToPaise(pick.usd * pick.seconds, this.d.fx),
+      id: this.id(), n, model: pick.model.id, of, size: card.size, job: null, prompt, seconds: pick.seconds, status: "running", paise: usdToPaise(pick.usd * pick.seconds, this.d.fx),
       video: null, lastFrame: null, verdict: null, error: null, startedAt: this.now(), endedAt: null, polledAt: null,
     };
     try {

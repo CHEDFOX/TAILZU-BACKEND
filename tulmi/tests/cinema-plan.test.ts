@@ -63,6 +63,18 @@ describe("making a script safe to spend money on", () => {
     expect(script.shots[0]!.performance).toBe("");
   });
 
+  it("takes a second size for a beat, and refuses one that is not a size or is the same size", () => {
+    const r = raw();
+    Object.assign((r.shots as Record<string, unknown>[])[0]!, { cover: "close" });
+    Object.assign((r.shots as Record<string, unknown>[])[1]!, { cover: "close-up" });
+    Object.assign((r.shots as Record<string, unknown>[])[2]!, { cover: "medium" });
+    const { script } = normalize(r, { length: 15, language: "hi" });
+    expect(script.shots[0]!.cover).toBe("close");
+    // Not a size the engine knows, and the same size as the shot itself: both are nothing.
+    expect(script.shots[1]!.cover).toBeNull();
+    expect(script.shots[2]!.cover).toBeNull();
+  });
+
   it("asks the director for every detail the prompts need", async () => {
     const { DIRECTOR_SYSTEM } = await import("../src/cinema/plan.js");
     for (const field of ['"intent"', '"performance"', '"camera"', '"composition"', '"atmosphere"', '"grade"', '"texture"', '"voice"']) expect(DIRECTOR_SYSTEM).toContain(field);

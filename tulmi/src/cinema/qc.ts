@@ -111,7 +111,14 @@ export function afterCheck(
 ): AfterCheck {
   const people = card.cast.length > 0;
   const v = latest.verdict;
-  if (v && v.pass) return { kind: "keep", take: latest.id };
+  if (v && v.pass) {
+    // A beat that was covered twice is not settled by whichever angle came back first: both are checked, and the better one is cut in.
+    if (!card.cover) return { kind: "keep", take: latest.id };
+    const passed = takes.filter((t) => t.verdict?.pass);
+    const pick = (passed.length > 1 ? bestTake(passed, people) : null) ?? latest;
+    if (pick.id === latest.id) return { kind: "keep", take: latest.id };
+    return { kind: "best", take: pick.id, note: `Shot ${card.n}: kept the ${pick.size ?? card.size} over the ${latest.size ?? card.size}.` };
+  }
   const checked = takes.filter((t) => t.verdict);
   const best = bestTake(checked, people);
   const unsafe = v?.issues.some((i) => i.kind === "safety") ?? false;
