@@ -35,10 +35,10 @@ import { isBlockedAddress } from "../../connectors/egress.js";
 import { CdpClient, CdpError, type CdpSession } from "./cdp.js";
 import { launch, type LaunchedChrome } from "./chrome.js";
 import { startGuard, type Guard, type GuardOptions } from "./guard.js";
-import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer, type ShotOptions, type SiteState, type VisitElement, type VisitOptions, type VisitedPage } from "./types.js";
+import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer, type HeldPage, type ShotOptions, type SiteState, type VisitElement, type VisitOptions, type VisitedPage } from "./types.js";
 
 export { BrowserError };
-export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer, ShotOptions, SiteState, VisitElement, VisitOptions, VisitedPage };
+export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer, HeldPage, ShotOptions, SiteState, VisitElement, VisitOptions, VisitedPage };
 
 /**
  * THE THREE SCRIPTS THAT RUN INSIDE THE PAGE (visit()). Plain strings, stringified into Runtime.evaluate, so they
@@ -500,6 +500,144 @@ export class BrowserEngine {
       if (now >= deadline) { if (!loaded()) throw new BrowserError("timeout"); return; }
       if (loaded() && inflight() === 0 && now - lastActivity() >= QUIET_MS) return;
       await sleep(Math.min(POLL_MS, deadline - now));
+    }
+  }
+
+  // ------------------------------------------------------------ a page HELD OPEN while a person looks at it
+
+  /**
+   * OPEN A PAGE AND KEEP IT, for the seconds somebody spends signing in (src/sites/panel.ts, docs/sites.md §panel).
+   *
+   * The only thing in this file that outlives its call. It holds one of the engine's places the whole time, which is
+   * why the panel above it has an idle cut and a ceiling: a forgotten panel is a place nobody else can use.
+   *
+   * Input is dispatched as real events — a press and a release for a tap, a key at a time for text — because a
+   * sign-in page watches for them. A box that jumps to the next digit on each keystroke does nothing at all if the
+   * value is simply set.
+   */
+  async hold(o: { url: string; state?: SiteState; viewport?: { width: number; height: number }; allow?: RegExp[] }): Promise<HeldPage> {
+    let u: URL;
+    try { u = new URL(o.url); } catch { throw new BrowserError("bad_url"); }
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new BrowserError("bad_url");
+    const bare = u.hostname.replace(/^\[|\]$/g, "");
+    const port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
+    if (net.isIP(bare) && isBlockedAddress(bare) && !this.o.guard?.allow?.(bare.toLowerCase(), port)) throw new BrowserError("blocked");
+
+    await this.take();
+    const run = await this.ensure();
+    const { cdp } = run;
+    const stops: Array<() => void> = [];
+    let contextId: string | undefined;
+    let released = false;
+    const view = o.viewport ?? { width: 412, height: 915 };
+
+    const letGo = async (): Promise<void> => {
+      if (released) return;
+      released = true;
+      for (const stop of stops) stop();
+      if (contextId && !cdp.closed) await cdp.send("Target.disposeBrowserContext", { browserContextId: contextId }, undefined, 5_000).catch(() => {});
+      this.release();
+    };
+
+    try {
+      contextId = (await cdp.send<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: true })).browserContextId;
+      await cdp.send("Browser.setDownloadBehavior", { behavior: "deny", browserContextId: contextId });
+      const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
+      const page: CdpSession = await cdp.attach(targetId);
+
+      stops.push(page.on("Page.javascriptDialogOpening", () => { page.send("Page.handleJavaScriptDialog", { accept: false }).catch(() => {}); }));
+      if (o.allow) {
+        const allow = o.allow;
+        // While a person is looking, the page may reach only where the panel says. This is what keeps a sign-in
+        // panel from wandering somewhere else entirely, and it is the same allowlist shots already use.
+        stops.push(page.on("Fetch.requestPaused", (p) => {
+          const url = String(p.request?.url ?? "");
+          if (allow.some((re) => re.test(url))) page.send("Fetch.continueRequest", { requestId: p.requestId }).catch(() => {});
+          else page.send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" }).catch(() => {});
+        }));
+      }
+
+      await page.send("Page.enable");
+      await page.send("Network.enable");
+      await page.send("Runtime.enable");
+      await page.send("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height, deviceScaleFactor: 2, mobile: true });
+      if (this.o.userAgent) await page.send("Network.setUserAgentOverride", { userAgent: this.o.userAgent });
+      if (o.allow) await page.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
+      const cookies = Array.isArray(o.state?.cookies) ? o.state!.cookies : [];
+      if (cookies.length) await page.send("Network.setCookies", { cookies }).catch(() => {});
+
+      await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, 30_000);
+
+      let onFrame: ((jpeg: string, meta: { width: number; height: number }) => void) | null = null;
+      stops.push(page.on("Page.screencastFrame", (p) => {
+        const data = String((p as { data?: string }).data ?? "");
+        const sid = (p as { sessionId?: number }).sessionId;
+        // Acknowledged at once whatever we do with it: an unacknowledged frame stops Chrome sending the next.
+        if (sid !== undefined) page.send("Page.screencastFrameAck", { sessionId: sid }).catch(() => {});
+        const md = (p as { metadata?: { deviceWidth?: number; deviceHeight?: number } }).metadata ?? {};
+        if (data && onFrame) onFrame(data, { width: Number(md.deviceWidth ?? view.width), height: Number(md.deviceHeight ?? view.height) });
+      }));
+      // quality 60 is plenty for reading a form on a phone, and a third of the bytes of 90.
+      await page.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: view.width, maxHeight: view.height, everyNthFrame: 1 });
+
+      const held: HeldPage = {
+        onFrame(cb) { onFrame = cb; },
+        async tap(x, y) {
+          for (const type of ["mousePressed", "mouseReleased"] as const) {
+            await page.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 }, 5_000).catch(() => {});
+          }
+        },
+        async type(text) {
+          for (const ch of [...text].slice(0, 200)) {
+            await page.send("Input.dispatchKeyEvent", { type: "keyDown", text: ch }, 5_000).catch(() => {});
+            await page.send("Input.dispatchKeyEvent", { type: "keyUp", text: ch }, 5_000).catch(() => {});
+          }
+        },
+        async key(name) {
+          const codes = { Enter: 13, Backspace: 8, Tab: 9 } as const;
+          for (const type of ["keyDown", "keyUp"] as const) {
+            await page.send("Input.dispatchKeyEvent", { type, key: name, windowsVirtualKeyCode: codes[name], nativeVirtualKeyCode: codes[name] }, 5_000).catch(() => {});
+          }
+        },
+        async scroll(dy) {
+          await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: view.width / 2, y: view.height / 2, deltaX: 0, deltaY: dy }, 5_000).catch(() => {});
+        },
+        async look() {
+          const r = await page.send<{ result?: { value?: { title: string; url: string; elements: VisitElement[] } } }>(
+            "Runtime.evaluate", { expression: `(${READ_PAGE})()`, returnByValue: true }, 15_000).catch(() => null);
+          const v = r?.result?.value;
+          return { finalUrl: v?.url ?? u.href, title: v?.title ?? "", elements: v?.elements ?? [] };
+        },
+        async state() {
+          const after = await page.send<{ cookies?: unknown[] }>("Network.getAllCookies", {}, 10_000).catch(() => ({ cookies: [] }));
+          const keep = await page.send<{ result?: { value?: Array<[string, string, string]> } }>(
+            "Runtime.evaluate", { expression: `(${TAKE_STORAGE})()`, returnByValue: true }, 10_000).catch(() => ({ result: { value: [] } }));
+          return {
+            cookies: Array.isArray(after.cookies) ? after.cookies : [],
+            ...(keep.result?.value?.length ? { storage: keep.result.value } : {}),
+          };
+        },
+        async forgetHost(host) {
+          // Everything of one host, gone: the cookies and the storage both. Used to throw Google's session away the
+          // moment the handshake is done and keep only the shop's, which is the whole safety of a social sign-in.
+          const h = host.toLowerCase();
+          const got = await page.send<{ cookies?: Array<{ name: string; domain: string; path?: string }> }>("Network.getAllCookies", {}, 10_000).catch(() => ({ cookies: [] }));
+          for (const c of got.cookies ?? []) {
+            const d = String(c.domain ?? "").replace(/^\./, "").toLowerCase();
+            if (d === h || d.endsWith(`.${h}`)) {
+              await page.send("Network.deleteCookies", { name: c.name, domain: c.domain, ...(c.path ? { path: c.path } : {}) }, 5_000).catch(() => {});
+            }
+          }
+          await page.send("Storage.clearDataForOrigin", { origin: `https://${h}`, storageTypes: "all" }, 10_000).catch(() => {});
+        },
+        close: letGo,
+      };
+      return held;
+    } catch (err) {
+      await letGo();
+      if (err instanceof BrowserError) throw err;
+      if (err instanceof CdpError) throw new BrowserError(err.code === "closed" ? "crashed" : "navigation_failed", err.method);
+      throw err;
     }
   }
 
