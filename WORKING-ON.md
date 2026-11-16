@@ -1,6 +1,6 @@
 # Being built right now (read before you start)
 
-Updated 16 Nov 2026, 12:55 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 16 Nov 2026, 13:55 UTC. One session is building the items below. Do not edit the files they hold until the item is
 
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
@@ -8,6 +8,42 @@ marked landed here; if you must, write a line under "Notes from other sessions" 
 look. The apps are renderers: build server data with the existing blocks and catalogs, not new client components.
 
 ## Landed today (on main, every switch off by default)
+
+### 16 Nov, late: four sessions' branches merged into main
+
+One session walked every branch in the four repos and merged what was ready. **Every migration below was renumbered
+on the way in**, because three branches were cut before their numbers were taken and `migrate-pending.sh` runs only
+what is numbered above `LIVE_MIGRATION` — a colliding number does not fail, it is silently never run.
+
+- **Discover, places worth keeping** (`claude/discover-travel-bot`, pull request 3), migration **0099**. The engine,
+  the catalogue, the store and 2 test files are on main. **It is dark by construction**: `ports.discover` is declared
+  but nothing supplies it, so the tools never attach to a bot. Wiring it up is what is left.
+- **Xode's standing job, the reality trend, the design floor** (`claude/zen-bohr-7xgu6f`), migration **0095 -> 0100**.
+  `CODE_SCHEDULES` is off. That migration is the one worth knowing about: as a second 0095 it would never have run,
+  and `code_schedules` would simply have been missing from the database with nothing to say so.
+- **The cinema bot's 3D and the bot at the foot of Home** (`claude/keen-allen-podunv`), across backend, phone and
+  window. `CINEMA` and `HOME_UPDATES` are off. A scene is DATA: the model picks from shapes, lights and materials,
+  the checker clamps it, and we write the Blender script, so nothing a model writes is executed.
+- **The site's phone screen** (`claude/loving-goldberg-wvp95p`, TAILZU-WEB) and **the Blip structure sheet**
+  (`claude/jolly-brown-p8nhu2`, brand assets only).
+
+**NOT merged, and why.** `claude/kind-ptolemy-9f3jlg` (25 commits, the cinema bot that makes FILMS shot by shot) was
+started and backed out. Two things need a person:
+1. **`src/cinema/` now belongs to the 3D half.** Both branches write `src/cinema/types.ts` and `docs/cinema.md` and
+   both define `CINEMA`, and they are different subsystems — films vs Blender scenes. They are complements (the 3D
+   half's own doc says it is to be fitted to the cinema bot later), but one of them has to move, and inventing a
+   namespace for somebody else's module is not a merge's call.
+2. **The two branches disagree about what a chat turn IS.** main prunes to the newest 200 per person per bot; that
+   branch keeps every turn for good and hangs them off sessions (`bot_sessions`). Reconciling them changes retention
+   for every bot, so it is a decision, not a conflict resolution.
+   Its three migrations also collide (0089/0090/0091 are all taken); 0101/0102/0103 are free.
+
+**Branches deliberately left alone**: `serene-lovelace-y9fcnj`, `keen-cori-wg8dpw`, `code-agent-core`,
+`repo-analysis-verdict-6lpyaw`, `repos-deploy-analysis-w3uaxp`, `dreamy-franklin-rFLIX`. Each is 79 to 241 commits
+behind a base from July to early November; merging one would undo months, not add to it.
+
+**MIGRATIONS PENDING ON THE LIVE DATABASE: 0097, 0098, 0099, 0100.** `LIVE_MIGRATION` says 0096, so four are waiting,
+two of them from before today. Run `tulmi/supabase/migrate-pending.sh` and set LIVE_MIGRATION to 0100.
 
 - Native looks: the server draws the widgets, the Live Activity, the Android "Bots at work" notice and the keyboard's key
   faces (`docs/native-looks.md`). Every card shows its own bot.
