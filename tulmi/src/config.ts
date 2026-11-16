@@ -878,6 +878,12 @@ const EnvSchema = z.object({
   SCREEN_DRAW: bool(false),
   SCREEN_DRAW_USERS: orDefault(""),
   /**
+   * How long a drawn screen is kept, in minutes (60; 0 keeps nothing and draws it on every request, which is dear). Kept per process, in
+   * memory, keyed by a hash of the exact message the model was given — so two requests share an answer only where the model would have
+   * been asked the very same thing. A screen nobody built does not change until somebody builds it, so an hour is short rather than long.
+   */
+  SCREEN_DRAW_CACHE_MIN: z.coerce.number().int().min(0).max(1440).default(60),
+  /**
    * THE BOT AT THE FOOT OF HOME, AS WHAT IS HAPPENING (experience/bots/screens/shell/homeThought.ts, docs/home-updates.md): instead of a
    * box to type in, his thought holds the updates — what needs the person, what their bots are working on, what just finished — each
    * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is

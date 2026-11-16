@@ -35,8 +35,15 @@ Holds: `tulmi/src/drawn/draw.ts` (new), the `screen_draw` role in `principles/ro
 (`experience/bots/live.ts`), the `!def` branch of `buildBotsScreen` (`experience/bots/index.ts`),
 `tests/screen-draw.test.ts` (18 cases), `docs/screen-draw.md`. No migration.
 
-**Not done, and worth knowing before this is pointed anywhere people visit:** nothing caches it (a screen is
-drawn per request), and it is told nothing but the id and its params — there is no `load` for a screen nobody
+**It is drawn once** (`SCREEN_DRAW_CACHE_MIN`, 60 minutes). What is kept is the BLOCKS, not the built screen, so one
+entry serves a phone and the window both; the key is a hash of the exact message the model was given, which is the
+proof rather than a shortcut — two requests share an answer only where the model would have been asked the very same
+thing, and if that message ever grows to carry the person's own facts the key grows with it. A "nothing to draw" is
+kept for two minutes; a call that FAILED is kept nowhere, so a model down for a moment cannot blank a screen for an
+hour; everyone asking at once gets one call (`guard/coalesce.ts`); and a kept drawing is not held to the money check
+because no call is made for it.
+
+**Not done, and worth knowing before this is pointed anywhere people visit:** it is told nothing but the id and its params — there is no `load` for a screen nobody
 built, so it draws from the id alone and is told to invent no numbers and no names. Vocabulary 1 by
 construction; once `SDUI_V2` is on it could draw to the blocks a client declares (`hasBlock`). The fixtures are
 written but no eval has been run against a real model.

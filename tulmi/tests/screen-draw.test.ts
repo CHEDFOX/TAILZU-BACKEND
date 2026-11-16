@@ -12,7 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true"; });
 
 const { resetConfigForTests } = await import("../src/config.js");
-const { drawScreen, drawUser, drawnOn, screenFrom, withoutAsking, DRAW_CAP_PAISE } = await import("../src/drawn/draw.js");
+const { drawScreen, drawUser, drawnOn, screenFrom, withoutAsking, DRAW_CAP_PAISE, drawnKept, resetDrawnCacheForTests } = await import("../src/drawn/draw.js");
+const { resetCoalescerForTests } = await import("../src/guard/coalesce.js");
 const { ctxFor } = await import("../src/experience/bots/fixtures.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { emptyDeps } = await import("../src/experience/bots/deps.js");
@@ -33,8 +34,11 @@ const door = (json: unknown) => {
   return { call, calls };
 };
 
-beforeEach(() => { process.env.SCREEN_DRAW = "true"; resetConfigForTests(); });
-afterEach(() => { delete process.env.SCREEN_DRAW; delete process.env.SCREEN_DRAW_USERS; resetConfigForTests(); });
+beforeEach(() => { process.env.SCREEN_DRAW = "true"; resetConfigForTests(); resetDrawnCacheForTests(); resetCoalescerForTests(); });
+afterEach(() => {
+  delete process.env.SCREEN_DRAW; delete process.env.SCREEN_DRAW_USERS; delete process.env.SCREEN_DRAW_CACHE_MIN;
+  resetConfigForTests(); resetDrawnCacheForTests(); resetCoalescerForTests();
+});
 
 describe("the switch", () => {
   it("is off unless SCREEN_DRAW is on", () => {
@@ -155,6 +159,86 @@ describe("what the model is asked", () => {
     expect(await drawScreen(ctxFor("bots.x", "phone"), { call: down, userId: USER, leftPaise: 100 }, { screenId: "bots.x" })).toBeNull();
     const junk = door({ blocks: [{ type: "nonsense" }, 7, null] });
     expect(await drawScreen(ctxFor("bots.x", "phone"), { call: junk.call, userId: USER, leftPaise: 100 }, { screenId: "bots.x" })).toBeNull();
+  });
+});
+
+describe("what is kept", () => {
+  const ctx = () => ctxFor("bots.travel.saved", "phone");
+  const drew = { title: "Saved places", blocks: [TEXT("Nothing saved yet.")] };
+
+  it("draws a screen once: the next request for the same thing asks no model and still renders", async () => {
+    const d = door(drew);
+    const first = await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    const again = await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    expect(first).not.toBeNull();
+    expect(again).not.toBeNull();
+    expect(d.calls).toHaveLength(1);
+    expect(drawnKept()).toBe(1);
+  });
+
+  it("keeps the blocks and not the screen, so a phone and the window each get their own tree from one call", async () => {
+    const d = door(drew);
+    const phone = await drawScreen(ctxFor("bots.travel.saved", "phone"), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    const window = await drawScreen(ctxFor("bots.travel.saved", "desktop"), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    expect(d.calls).toHaveLength(1);
+    // Same blocks, each client's own page: the trees are not the same object and not the same shape.
+    expect(JSON.stringify(phone)).not.toEqual(JSON.stringify(window));
+    for (const s of [phone, window]) {
+      const words = [...walk(s!.root!)].map((n) => (n.props as { content?: unknown } | undefined)?.content).filter((c) => typeof c === "string").join(" ");
+      expect(words).toContain("Nothing saved yet.");
+    }
+  });
+
+  it("asks again when the model would be asked something else: a different id, or different params", async () => {
+    const d = door(drew);
+    await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.other" });
+    await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved", params: { city: "Jaipur" } });
+    expect(d.calls).toHaveLength(3);
+  });
+
+  it("costs nothing once kept: it is not held to the money left, because no call is made", async () => {
+    const d = door(drew);
+    await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    const broke = await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 0 }, { screenId: "bots.travel.saved" });
+    expect(broke).not.toBeNull();
+    expect(d.calls).toHaveLength(1);
+  });
+
+  it("keeps a 'nothing to draw', so a bare id is not paid for on every open", async () => {
+    const d = door({ blocks: [] });
+    expect(await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" })).toBeNull();
+    expect(await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" })).toBeNull();
+    expect(d.calls).toHaveLength(1);
+  });
+
+  it("keeps nothing from a call that FAILED: a model down for a moment must not blank a screen for an hour", async () => {
+    let fail = true;
+    const calls: unknown[] = [];
+    const call = (async (o: unknown) => { calls.push(o); if (fail) throw new Error("down"); return { json: drew, paise: 3, model: "m" }; }) as never;
+    expect(await drawScreen(ctx(), { call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" })).toBeNull();
+    expect(drawnKept()).toBe(0);
+    fail = false;
+    expect(await drawScreen(ctx(), { call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" })).not.toBeNull();
+    expect(calls).toHaveLength(2);
+  });
+
+  it("draws once for everyone who asks at the same moment", async () => {
+    let started = 0;
+    const call = (async () => { started += 1; await new Promise((r) => setTimeout(r, 10)); return { json: drew, paise: 3, model: "m" }; }) as never;
+    const many = await Promise.all([1, 2, 3, 4, 5].map(() =>
+      drawScreen(ctx(), { call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" })));
+    expect(started).toBe(1);
+    expect(many.every((s) => s !== null)).toBe(true);
+  });
+
+  it("keeps nothing at all with SCREEN_DRAW_CACHE_MIN=0", async () => {
+    process.env.SCREEN_DRAW_CACHE_MIN = "0"; resetConfigForTests();
+    const d = door(drew);
+    await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    await drawScreen(ctx(), { call: d.call, userId: USER, leftPaise: 100 }, { screenId: "bots.travel.saved" });
+    expect(d.calls).toHaveLength(2);
+    expect(drawnKept()).toBe(0);
   });
 });
 

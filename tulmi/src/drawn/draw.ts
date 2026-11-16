@@ -26,8 +26,13 @@
  * IT NEVER FAILS A REQUEST. Off, no money left, a model that is down, blocks that do not survive the checker, an
  * empty drawing, or a tree the design rules refuse: the screen is the "coming soon" it was before.
  */
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getConfig } from "../config.js";
+import { coalescer } from "../guard/coalesce.js";
+// The house's own small TTL cache, oldest-used dropped first. It lives under places/ because that is where it was first
+// needed; its doc presents it as a general one, and a second copy here would be the worse of the two choices.
+import { TtlCache } from "../places/cache.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import { askJson, type CallFn } from "../code/work/model.js";
 import { neutral } from "../bots/prompt.js";
@@ -158,20 +163,79 @@ export function screenFrom(ctx: BotsCtx, shown: Shown, title?: string): ScreenRe
   return screen;
 }
 
+// ------------------------------------------------------------------ kept, so the same screen is drawn once
+
+/** What was drawn, before a client turned it into nodes: the blocks and the title, which is all the model answered. */
+export interface Drawn { shown: Shown; title?: string }
+
 /**
- * The screen a model draws for an id nobody built, or null: off, no money, a model that is down, or a drawing that
- * did not survive the checker and the rules. Never throws.
+ * WHAT IS KEPT, AND WHY THE KEY IS THE MODEL'S OWN MESSAGE.
+ *
+ * A drawn screen is a model call in front of a page, so drawing it on every request is both slow and dear. What is kept is
+ * the **blocks**, never the built screen: the blocks depend only on what the model was told, while the screen depends on
+ * the client as well (a phone and the window draw the same blocks differently), so one entry serves both and rendering it
+ * again is a pure function.
+ *
+ * The key is a hash of `drawUser(i)` — the exact message the model is given. That is not a shortcut, it is the proof: two
+ * requests share an answer only when the model would have been asked the very same thing. If the input ever grows to
+ * carry the person's own facts, the key grows with it and the sharing narrows by itself, with nothing here to remember.
+ *
+ * A "nothing to draw" is kept too (`null`), so an id the model has already judged bare is not paid for again on every
+ * open. A call that FAILED is not kept at all: a model down for a moment must not blank a screen for an hour.
  */
-export async function drawScreen(ctx: BotsCtx, dctx: DrawCtx, i: DrawInput): Promise<ScreenResponse | null> {
-  if (dctx.signal?.aborted) return null;
-  if (dctx.leftPaise < DRAW_MIN_PAISE) return null;
+const KEPT_MAX = 500;
+const drawnCache = new TtlCache<Drawn>(KEPT_MAX);
+/** A drawing the model declined to make is kept for less than one it made: it is the cheaper mistake to re-ask. */
+const NOTHING_TTL_MS = 2 * 60_000;
+
+const keyOf = (input: string): string => createHash("sha256").update(input).digest("hex").slice(0, 32);
+
+/** How long a drawing is kept, from `SCREEN_DRAW_CACHE_MIN` (60 minutes; 0 keeps nothing). */
+function keptMs(): number {
+  try { return Math.max(0, getConfig().SCREEN_DRAW_CACHE_MIN) * 60_000; } catch { return 0; }
+}
+
+export function resetDrawnCacheForTests(): void { drawnCache.clear(); }
+/** For a test: how many drawings are being kept. */
+export const drawnKept = (): number => drawnCache.size;
+
+/** One call, its blocks checked. `null` means the model answered and there was nothing worth drawing; it throws for nothing. */
+async function askDraw(dctx: DrawCtx, input: string): Promise<{ ok: true; drawn: Drawn | null } | { ok: false }> {
   const r = await askJson({
     ...(dctx.call ? { call: dctx.call } : {}), ...(dctx.gateway ? { gateway: dctx.gateway } : {}), userId: dctx.userId,
     budget: { maxPaise: Math.min(DRAW_CAP_PAISE, dctx.leftPaise) }, ...(dctx.signal ? { signal: dctx.signal } : {}),
-  }, { tier: "cheap", purpose: "screen.draw", role: "screen_draw", user: drawUser(i), schema: DrawReply, maxTokens: DRAW_TOKENS });
-  if (!r.ok) return null;
+  }, { tier: "cheap", purpose: "screen.draw", role: "screen_draw", user: input, schema: DrawReply, maxTokens: DRAW_TOKENS });
+  if (!r.ok) return { ok: false };
   // An empty `Seen`: a screen read nothing, so the checker drops every link and image by its own rule.
   const shown = checkShown({ blocks: r.value.blocks }, { seen: new Seen() });
-  if (!shown) return null;
-  return screenFrom(ctx, shown, titleOf(r.value.title));
+  if (!shown || !withoutAsking(shown.blocks).length) return { ok: true, drawn: null };
+  const title = titleOf(r.value.title);
+  return { ok: true, drawn: { shown, ...(title ? { title } : {}) } };
+}
+
+/**
+ * The screen a model draws for an id nobody built, or null: off, no money, a model that is down, or a drawing that did not
+ * survive the checker and the rules. Never throws.
+ *
+ * A drawing already kept costs nothing and is NOT held to the money check — no call is made for it. One that is not kept is
+ * drawn once however many ask for it at the same moment (`Coalescer`), so a link everybody opens at once is one call.
+ */
+export async function drawScreen(ctx: BotsCtx, dctx: DrawCtx, i: DrawInput): Promise<ScreenResponse | null> {
+  if (dctx.signal?.aborted) return null;
+  const input = drawUser(i);
+  const key = keyOf(input);
+
+  const kept = drawnCache.get(key);
+  if (kept !== undefined) return kept ? screenFrom(ctx, kept.shown, kept.title) : null;
+
+  if (dctx.leftPaise < DRAW_MIN_PAISE) return null;
+  const got = await coalescer().run(`drawn:${key}`, async () => {
+    const r = await askDraw(dctx, input);
+    if (!r.ok) return null;
+    const ttl = keptMs();
+    if (ttl > 0) drawnCache.set(key, r.drawn, r.drawn ? ttl : Math.min(NOTHING_TTL_MS, ttl));
+    return r.drawn;
+  }, { ...(dctx.signal ? { signal: dctx.signal } : {}) }).catch(() => null);
+
+  return got ? screenFrom(ctx, got.shown, got.title) : null;
 }

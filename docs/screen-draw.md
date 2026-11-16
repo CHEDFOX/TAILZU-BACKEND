@@ -82,6 +82,31 @@ It needs a door to a model, `deps.drawn` (`experience/bots/live.ts` `BotsDeps`).
 given one — the tests, the render check, `emptyDeps()` — behaves as before, which is how this landed without
 touching any existing screen.
 
+## 4a. What is kept, and why the key is the model's own message
+
+A drawn screen is a model call in front of a page, so drawing it per request is both slow and dear. It is drawn
+**once**.
+
+What is kept is the **blocks**, never the built screen. The blocks depend only on what the model was told; the
+screen depends on the client as well, since a phone and the window draw the same blocks differently. So one
+entry serves both, and rendering it again is a pure function.
+
+The key is a hash of `drawUser(i)` — the exact message the model is given. That is not a shortcut, it is the
+proof: two requests share an answer only when the model would have been asked the very same thing. If the input
+ever grows to carry the person's own facts (section 7), the key grows with it and the sharing narrows by itself,
+with nothing here to remember.
+
+| | |
+|---|---|
+| A drawing | kept `SCREEN_DRAW_CACHE_MIN` minutes (60; 0 keeps nothing). A screen nobody built does not change until somebody builds it, so an hour is short rather than long |
+| A "nothing to draw" | kept, but for two minutes at most: it is the cheaper mistake to re-ask |
+| A call that **failed** | not kept at all. A model down for a moment must not blank a screen for an hour |
+| Everyone asking at once | one call. `Coalescer` (`guard/coalesce.ts`) hands the joiners the leader's own promise, so a link a hundred people open at once is one drawing |
+| A kept drawing | costs nothing, and is **not** held to the money check: no call is made for it |
+
+In memory, per process, 500 entries, oldest-used dropped first (`TtlCache`). A restart forgets, which costs one
+drawing per screen again.
+
 ## 5. Money
 
 `DRAW_CAP_PAISE` (60) at most, and never with under 6 paise left on the request, taken as the smaller of the
@@ -99,17 +124,15 @@ ssh root@<server> 'cd ~/tulmi && ./deploy/set-env.sh SCREEN_DRAW=true SCREEN_DRA
 
 ## 7. What is built, and what is not
 
-**Built:** the role and its fixtures, the whole path of section 2, the switch and its stage, the wiring in
-`buildBotsScreen`, and `tests/screen-draw.test.ts` (18 cases: the switch, the asking blocks at depth, the
-addresses, the tree against the app's own design rules and `lintTree`, the call's role, tier and cap, a model
-that is down or answers rubbish, and a built screen never being drawn).
+**Built:** the role and its fixtures, the whole path of section 2, what is kept (section 4a), the switch and its
+stage, the wiring in `buildBotsScreen`, and `tests/screen-draw.test.ts` (26 cases: the switch, the asking blocks
+at depth, the addresses, the tree against the app's own design rules and `lintTree`, the call's role, tier and
+cap, a model that is down or answers rubbish, a built screen never being drawn, and for the cache — one call for
+a second request, one for both clients, a fresh call when the message would differ, a kept "nothing", a failed
+call kept nowhere, five at once drawing once, and nothing kept at 0).
 
 **Not built yet:**
 
-* **Nothing caches it.** A screen is drawn on every request for it. That is fine for an id nobody opens twice
-  and wrong for anything else, and it is the first thing to fix before this is pointed at a surface people
-  visit: key it on the screen id, the person and the shape of the data behind it, serve the built screen while
-  the first draw runs, and revalidate behind.
 * **It is told nothing but the id.** No data is loaded for a screen nobody built — there is no `load` to run —
   so the model draws from the id and its params alone. Giving it the person's own facts would make it far more
   useful and is a real decision about what a drawing may see, not a small change.
