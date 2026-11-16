@@ -16,7 +16,7 @@
  * asks for them (`keepHeavy`), because they are the things that fill a bucket.
  */
 import { createHash } from "node:crypto";
-import type { BlobStore } from "../media/blob.js";
+import type { BlobStore } from "../../media/blob.js";
 
 /** One picture out of a render: a still, or the frame a move was previewed at. */
 export interface Shot {

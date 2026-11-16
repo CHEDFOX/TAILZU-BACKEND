@@ -8,7 +8,7 @@
  * short answer, and never fails the job: an eye that is down or over budget simply means the round passes unjudged.
  */
 import { z } from "zod";
-import { askJson, cut, fence, type ModelCtx } from "../code/work/model.js";
+import { askJson, cut, fence, type ModelCtx } from "../../code/work/model.js";
 
 export interface Verdict {
   ok: boolean;

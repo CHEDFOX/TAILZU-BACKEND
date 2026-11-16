@@ -1,5 +1,5 @@
 /**
- * THE DOOR A SCENE COMES IN BY (src/cinema/check.ts, docs/cinema.md):
+ * THE DOOR A SCENE COMES IN BY (src/cinema/check.ts, docs/cinema-3d.md):
  *
  *   - nothing a model answers can throw: rubbish in, a scene that renders out, with a note for every change
  *   - the caps are clamps, never refusals: too many objects is the first eighty, not an error
@@ -8,8 +8,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-const { checkScene, frameCount, sceneSize } = await import("../src/cinema/check.js");
-const { CAPS } = await import("../src/cinema/types.js");
+const { checkScene, frameCount, sceneSize } = await import("../src/cinema/scene/check.js");
+const { CAPS } = await import("../src/cinema/scene/types.js");
 
 describe("whatever came back", () => {
   it("never throws, whatever it is", () => {

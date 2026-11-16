@@ -879,7 +879,7 @@ const EnvSchema = z.object({
    * ear either way.
    */
   /**
-   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema.md): a scene as data, checked, written out as a Blender script, rendered
+   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema-3d.md): a scene as data, checked, written out as a Blender script, rendered
    * where there is a Blender to run it, and looked at by a model that fixes what it sees. Off by default and WIRED TO
    * NOTHING yet: the loop is complete on its own, and the bot's own stages, progress and cards come after.
    *

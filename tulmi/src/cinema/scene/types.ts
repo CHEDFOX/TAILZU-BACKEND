@@ -1,5 +1,5 @@
 /**
- * WHAT A SCENE IS: A FEW PARTS THAT COMPOSE, NOT A FILE. The story is in docs/cinema.md.
+ * WHAT A SCENE IS: A FEW PARTS THAT COMPOSE, NOT A FILE. The story is in docs/cinema-3d.md.
  *
  * A scene is DATA, never a .blend and never Python a model wrote. The model proposes this shape, check.ts reads every field and
  * drops or clamps what it cannot have, and script.ts turns what survives into a Blender script. Nothing a model writes is ever
