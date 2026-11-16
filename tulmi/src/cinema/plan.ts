@@ -76,6 +76,8 @@ export interface DirectAsk {
   language: string;
   /** The person's cast: characters they made before and want to use again. */
   cast?: Character[];
+  /** The person's places, kept across films so a world holds together from one to the next. */
+  places?: Place[];
 }
 
 export class DirectorError extends Error {
@@ -93,12 +95,14 @@ export async function direct(think: Think, a: DirectAsk): Promise<{ script: Scri
     `Request: <<<${a.idea.slice(0, 4000)}>>>`,
     `Length: about ${a.length} seconds. Frame: ${a.aspect}. Language unless the request says otherwise: ${a.language}.`,
     a.cast?.length ? `People the person already has and wants kept exactly as they are (use their keys): ${JSON.stringify(a.cast.map((c) => ({ key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, voice: c.voice })))}` : "",
+    a.places?.length ? `Places the person already has, which must stay the same place (use their keys): ${JSON.stringify(a.places.map((x) => ({ key: x.key, name: x.name, look: x.look })))}` : "",
   ].filter(Boolean).join("\n");
   for (let attempt = 0; attempt < 2; attempt++) {
     const r = await think({ purpose: "cinema.direct", tier: "strong", system: DIRECTOR_SYSTEM, user: attempt ? `${user}\n\nYour last answer was not usable JSON in the required shape. Answer again with JSON only.` : user, maxTokens: 8000, capPaise: 3000 });
     try {
       const out = normalize(r.json ?? r.text, { length: a.length, language: a.language });
       keepCast(out.script.bible, a.cast ?? []);
+      keepPlaces(out.script.bible, a.places ?? []);
       return { script: out.script, notes: [...out.notes, ...lint(out.script)] };
     } catch {
       /* one more try */
@@ -293,6 +297,14 @@ function keepCast(bible: Bible, cast: readonly Character[]): void {
   for (const c of bible.characters) {
     const mine = cast.find((x) => x.key === c.key);
     if (mine) Object.assign(c, { name: mine.name, look: mine.look, wardrobe: mine.wardrobe, voice: mine.voice || c.voice, ref: mine.ref });
+  }
+}
+
+/** Places the person already has keep their own look and sheet, so the stall in this film is the stall in the last one. */
+function keepPlaces(bible: Bible, places: readonly Place[]): void {
+  for (const p of bible.places) {
+    const mine = places.find((x) => x.key === p.key);
+    if (mine) Object.assign(p, { name: mine.name, look: mine.look, ref: mine.ref });
   }
 }
 

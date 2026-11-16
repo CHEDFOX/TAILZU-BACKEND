@@ -229,11 +229,13 @@ export class CinemaService {
     await this.d.store.createFilm(film);
     const all = await this.d.store.cast(userId);
     const cast = all.filter((c) => o.cast?.includes(c.key));
+    // Places are kept by themselves rather than chosen: a world should hold together from one film to the next without being asked to.
+    const places = await this.d.store.places(userId).catch(() => []);
     const language = o.language && o.language !== "auto" ? o.language : "en";
     this.writing.add(film.id);
     this.track(film.id, async () => {
       try {
-        const r = await asPerson(userId, () => direct(this.d.think(userId), { idea, length, aspect, language, cast }));
+        const r = await asPerson(userId, () => direct(this.d.think(userId), { idea, length, aspect, language, cast, places }));
         await this.update(userId, film.id, (f) => {
           f.script = r.script;
           f.shots = r.script.shots.map((s) => blankShot(s.n));
@@ -609,6 +611,7 @@ export class CinemaService {
     });
     const title = out.script?.bible.title || "Your film";
     const data = { f: out.id };
+    if (status === "board" && before.status !== "board") await this.remember(out);
     if (status === "board" && before.status !== "board") await this.push(out.ownerId, { kind: "cinema_board", key: `${out.id}:board:${out.shots.map((s) => s.still ?? "").join(",").slice(-400)}`, vars: { title }, data });
     if (status === "done" && before.status !== "done") await this.push(out.ownerId, { kind: "cinema_ready", key: `${out.id}:ready:${out.cut.of ?? ""}`, vars: { title }, data });
     if (hold && hold !== before.hold) await this.push(out.ownerId, { kind: "cinema_hold", key: `${out.id}:hold:${hold}:${out.updatedAt}`, vars: { title }, data });
@@ -1296,6 +1299,44 @@ export class CinemaService {
       list.push({ audio: bytes, at: (starts[i] ?? 0) + Math.min(0.35, card.seconds * 0.15) });
     }
     return { list, usd };
+  }
+
+  /**
+   * THE ASSET BIBLE. When a storyboard is handed over, every person and place it drew a reference sheet for is kept - the look as
+   * written, and a copy of the sheet under the person's own name rather than the film's, so deleting the film does not take the face
+   * with it. The next film they make finds them already there (plan.ts keepCast, keepPlaces) and is told to use them, which is what
+   * makes Ravi the same man and the stall the same stall from one film to the next.
+   *
+   * It is done for them rather than asked of them: nobody thinks to press Keep before they need it.
+   */
+  private async remember(f: Film): Promise<void> {
+    const b = f.script?.bible;
+    if (!b) return;
+    const mine = async (ref: string, what: string): Promise<string | null> => {
+      const bytes = await this.d.blobs.get(ref).catch(() => null);
+      if (!bytes) return null;
+      const key = `u/${f.ownerId}/cinema/kept/${what}-${this.id().slice(0, 8)}.png`;
+      await this.d.blobs.put(key, bytes, "image/png");
+      return key;
+    };
+    const had = await Promise.all([this.d.store.cast(f.ownerId).catch(() => []), this.d.store.places(f.ownerId).catch(() => [])]);
+    const [people, spots] = had;
+    for (const c of b.characters) {
+      if (!c.ref || people.some((x) => x.key === c.key && x.look === c.look && x.wardrobe === c.wardrobe)) continue;
+      const ref = await mine(c.ref, `person-${c.key}`);
+      if (!ref) continue;
+      const was = people.find((x) => x.key === c.key)?.ref;
+      await this.d.store.putCast(f.ownerId, { key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, voice: c.voice, ref }).catch(() => undefined);
+      if (was && was !== ref) void this.d.blobs.delete(was).catch(() => undefined);
+    }
+    for (const p of b.places) {
+      if (!p.ref || spots.some((x) => x.key === p.key && x.look === p.look)) continue;
+      const ref = await mine(p.ref, `place-${p.key}`);
+      if (!ref) continue;
+      const was = spots.find((x) => x.key === p.key)?.ref;
+      await this.d.store.putPlace(f.ownerId, { key: p.key, name: p.name, look: p.look, ref }).catch(() => undefined);
+      if (was && was !== ref) void this.d.blobs.delete(was).catch(() => undefined);
+    }
   }
 
   private async cutFilm(f: Film): Promise<void> {

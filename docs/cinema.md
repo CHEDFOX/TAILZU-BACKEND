@@ -277,6 +277,23 @@ Every take and every still is already ours, so the same film can be cut again fo
 The film's music is kept with the cut (`Cut.music`, `musicOf`), so cutting the same film again - after a change, or into another shape - never
 pays for it twice.
 
+### The asset bible: the same woman in shot 1 and shot 7, and in the next film
+
+Holding a face still across seven shots is what separates a film from a pile of clips, and holding it across seven *films* is what nobody
+else does at all. Three things make it happen, and none of them asks the person for anything:
+
+- **A reference sheet per person and per place**, drawn before any still, and every still of that shot is made from it. That is what keeps
+  shot 1 and shot 7 the same woman (section 4).
+- **Handing over the storyboard remembers them** (`service.ts remember`). Every person and place the film drew a sheet for is kept - the
+  look exactly as written, and **a copy of the sheet under the person's own name rather than the film's**, so deleting the film does not
+  take the face with it. Nobody thinks to press Keep before they need it, so it is not asked of them.
+- **The next film finds them already there.** The director is told about them and must use their keys, and whatever it writes is then
+  overwritten with the kept look, wardrobe, voice and sheet (`plan.ts keepCast`, `keepPlaces`). Ravi is the same man; the stall is the same
+  stall. Places are new here: they used to be redrawn each time, which is the thing that stopped a run of films feeling like one world
+  (migration `0091_cinema_places.sql` puts them beside people in `cinema_cast`, told apart by `kind`).
+
+What is kept is only what there is a face for: a person seen in a single shot never had a sheet drawn, so there is nothing to hold on to.
+
 ### Coverage: the beats the film turns on, shot twice
 
 A real unit shoots a wide **and** a close of the moment that matters and lets the edit choose. The director now does the same: on the two

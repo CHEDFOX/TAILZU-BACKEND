@@ -60,9 +60,11 @@ function rig(o: {
   let ids = 0;
   let takeChecks = 0;
   const logs: string[] = [];
+  const directed: string[] = [];
   const shotChecks: Record<number, number> = {};
   const think = (): Think => async (q) => {
     if (q.purpose === "cinema.direct" || q.purpose === "cinema.revise") {
+      if (q.purpose === "cinema.direct") directed.push(typeof q.user === "string" ? q.user : JSON.stringify(q.user));
       if (q.purpose === "cinema.revise") {
         const s = structuredClone(SCRIPT);
         s.shots[2]!.lines = [{ who: "ravi", text: "Lo beta, garam chai." }];
@@ -140,7 +142,7 @@ function rig(o: {
     }
     return (await svc.film(userId, id)).film;
   };
-  return { svc, store, blobs, charged, pushes, calls, clock, until, logs };
+  return { svc, store, blobs, charged, pushes, calls, clock, until, logs, directed };
 }
 
 describe("a whole film", () => {
@@ -535,6 +537,31 @@ describe("a whole film", () => {
     expect(r.calls.sfx.length).toBe(was);
   });
 
+  it("keeps the people and places a film drew, so the next film is the same world", async () => {
+    const r = rig();
+    const first = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", first.film.id);
+    await r.until("u1", first.film.id, "board");
+
+    // Nobody pressed anything: handing the storyboard over is what remembers them.
+    const cast = await r.store.cast("u1");
+    const places = await r.store.places("u1");
+    // Only what there is a face for: a person seen in one shot never had a reference sheet drawn, so there is nothing to keep.
+    expect(cast.map((c) => c.key)).toEqual(["ravi"]);
+    expect(places.map((p) => p.key)).toEqual(["stall"]);
+    // Their sheets are their own, under the person rather than under the film.
+    for (const a of [...cast, ...places]) expect(a.ref).toContain("/cinema/kept/");
+    expect(cast.find((c) => c.key === "ravi")!.look).toBe("fifties");
+
+    // The next film is told about them, and keeps their looks and sheets rather than inventing them again.
+    await r.svc.create("u1", { idea: "another chai ad", length: 12 });
+    await r.svc.idle();
+    const asked = r.directed.at(-1) ?? "";
+    expect(asked).toContain("Places the person already has");
+    expect(asked).toContain("stall");
+  });
+
   it("deletes a film's files with it", async () => {
     const r = rig();
     const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
@@ -543,7 +570,10 @@ describe("a whole film", () => {
     await r.until("u1", made.film.id, "board");
     expect(r.blobs.size).toBeGreaterThan(0);
     await r.svc.remove("u1", made.film.id);
-    expect(r.blobs.size).toBe(0);
+    // What is left is the asset bible: the people and places the film drew belong to the person, not to the film, and outlive it.
+    const left = [...r.blobs.keys()];
+    expect(left.every((k) => k.includes("/cinema/kept/"))).toBe(true);
+    expect(left.length).toBeGreaterThan(0);
   });
 });
 

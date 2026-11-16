@@ -12,7 +12,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
-import type { Character, Film, FilmStatus } from "./types.js";
+import type { Character, Film, FilmStatus, Place } from "./types.js";
 
 export interface Picture {
   id: string;
@@ -48,6 +48,10 @@ export interface CinemaStore {
   cast(userId: string): Promise<Character[]>;
   putCast(userId: string, c: Character): Promise<void>;
   dropCast(userId: string, key: string): Promise<void>;
+  /** The places kept across films, so the stall in the next one is the same stall. */
+  places(userId: string): Promise<Place[]>;
+  putPlace(userId: string, p: Place): Promise<void>;
+  dropPlace(userId: string, key: string): Promise<void>;
   /** Everything of a person's, for the account's deletion: the rows go, and the media keys come back for the blobs to go too. */
   forAccountDelete(userId: string): Promise<string[]>;
 }
@@ -72,6 +76,7 @@ export class MemoryCinemaStore implements CinemaStore {
   private films = new Map<string, Film>();
   private pictures = new Map<string, Picture>();
   private casts = new Map<string, Character[]>();
+  private spots = new Map<string, Place[]>();
 
   async createFilm(f: Film): Promise<void> {
     if (this.films.size >= MEMORY_MAX) this.films.delete(this.films.keys().next().value!);
@@ -124,6 +129,16 @@ export class MemoryCinemaStore implements CinemaStore {
   async dropCast(userId: string, key: string): Promise<void> {
     this.casts.set(userId, (this.casts.get(userId) ?? []).filter((x) => x.key !== key));
   }
+  async places(userId: string): Promise<Place[]> {
+    return copy(this.spots.get(userId) ?? []);
+  }
+  async putPlace(userId: string, p: Place): Promise<void> {
+    const list = (this.spots.get(userId) ?? []).filter((x) => x.key !== p.key);
+    this.spots.set(userId, [...list, { ...p }].slice(-50));
+  }
+  async dropPlace(userId: string, key: string): Promise<void> {
+    this.spots.set(userId, (this.spots.get(userId) ?? []).filter((x) => x.key !== key));
+  }
   async forAccountDelete(userId: string): Promise<string[]> {
     const keys: string[] = [];
     for (const f of [...this.films.values()].filter((x) => x.ownerId === userId)) {
@@ -135,7 +150,9 @@ export class MemoryCinemaStore implements CinemaStore {
       this.pictures.delete(p.id);
     }
     for (const c of this.casts.get(userId) ?? []) if (c.ref) keys.push(c.ref);
+    for (const x of this.spots.get(userId) ?? []) if (x.ref) keys.push(x.ref);
     this.casts.delete(userId);
+    this.spots.delete(userId);
     return [...new Set(keys)];
   }
 }
@@ -248,16 +265,29 @@ export class SupabaseCinemaStore implements CinemaStore {
     if (error) throw new Error("cinema_pictures delete failed");
   }
   async cast(userId: string): Promise<Character[]> {
-    const { data, error } = await this.db.from("cinema_cast").select("*").eq("user_id", userId).order("created_at", { ascending: true }).limit(50);
+    const { data, error } = await this.db.from("cinema_cast").select("*").eq("user_id", userId).eq("kind", "person").order("created_at", { ascending: true }).limit(50);
     if (error) throw new Error("cinema_cast read failed");
     return (data as { key: string; name: string; look: string; wardrobe: string; voice: string | null; ref: string | null }[]).map((r) => ({ key: r.key, name: r.name, look: r.look, wardrobe: r.wardrobe, voice: r.voice ?? "", ref: r.ref }));
   }
   async putCast(userId: string, c: Character): Promise<void> {
-    const { error } = await this.db.from("cinema_cast").upsert({ user_id: userId, key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, voice: c.voice, ref: c.ref }, { onConflict: "user_id,key" });
+    const { error } = await this.db.from("cinema_cast").upsert({ user_id: userId, key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, voice: c.voice, ref: c.ref, kind: "person" }, { onConflict: "user_id,key" });
     if (error) throw new Error("cinema_cast upsert failed");
   }
   async dropCast(userId: string, key: string): Promise<void> {
     const { error } = await this.db.from("cinema_cast").delete().eq("user_id", userId).eq("key", key);
+    if (error) throw new Error("cinema_cast delete failed");
+  }
+  async places(userId: string): Promise<Place[]> {
+    const { data, error } = await this.db.from("cinema_cast").select("*").eq("user_id", userId).eq("kind", "place").order("created_at", { ascending: true }).limit(50);
+    if (error) throw new Error("cinema_cast read failed");
+    return (data as { key: string; name: string; look: string; ref: string | null }[]).map((r) => ({ key: r.key, name: r.name, look: r.look, ref: r.ref }));
+  }
+  async putPlace(userId: string, p: Place): Promise<void> {
+    const { error } = await this.db.from("cinema_cast").upsert({ user_id: userId, key: p.key, name: p.name, look: p.look, wardrobe: "", voice: "", ref: p.ref, kind: "place" }, { onConflict: "user_id,key" });
+    if (error) throw new Error("cinema_cast upsert failed");
+  }
+  async dropPlace(userId: string, key: string): Promise<void> {
+    const { error } = await this.db.from("cinema_cast").delete().eq("user_id", userId).eq("key", key).eq("kind", "place");
     if (error) throw new Error("cinema_cast delete failed");
   }
   async forAccountDelete(userId: string): Promise<string[]> {
@@ -265,6 +295,7 @@ export class SupabaseCinemaStore implements CinemaStore {
     for (const f of await this.listFilms(userId, 100)) keys.push(...filmKeys(f));
     for (const p of await this.listPictures(userId, 100)) keys.push(p.key);
     for (const c of await this.cast(userId)) if (c.ref) keys.push(c.ref);
+    for (const x of await this.places(userId)) if (x.ref) keys.push(x.ref);
     for (const table of ["cinema_films", "cinema_pictures", "cinema_cast"]) {
       const { error } = await this.db.from(table).delete().eq("user_id", userId);
       if (error) throw new Error(`${table} delete failed`);
