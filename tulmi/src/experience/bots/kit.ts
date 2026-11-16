@@ -735,6 +735,14 @@ export const CROWD_MOMENTS = { moments: ["dance", "juggle", "shrug", "hiccup", "
 const playable = (ctx: BotsCtx, ids: string[]): string[] => (canMoments(ctx) ? ids.filter((id) => !!momentProps(ctx.can, id).moment) : []);
 /** ROAM, with the moments this build plays. */
 export const roamFor = (ctx: BotsCtx): BotRoam => ({ ...ROAM, moments: playable(ctx, ROAM.moments) });
+/**
+ * WHAT HE DOES WITH HIMSELF WHILE HE SPEAKS (BotStageProps.talkMoments): small, conversational things — a hum, a mutter, a
+ * look, a shrug — one every couple of seconds, so an answer is never said by a bot standing perfectly still. Never a dance:
+ * he is talking, not performing.
+ */
+export const TALK_MOMENTS = ["l.hum", "l.mutter", "react.look", "shrug", "l.accent"];
+/** TALK_MOMENTS, with only the ones this build plays. */
+export const talkFor = (ctx: BotsCtx): string[] => playable(ctx, TALK_MOMENTS);
 /** CROWD_MOMENTS, with the moments this build plays. */
 export const crowdSurprises = (ctx: BotsCtx): BotCrowdProps["surprises"] => ({ ...CROWD_MOMENTS, moments: playable(ctx, CROWD_MOMENTS.moments) });
 
@@ -1276,6 +1284,8 @@ export interface PageOpts {
   body: Node[];
   /** Pinned under the content: the ask bar, a screen's one primary button. */
   footer?: Node[];
+  /** The footer with no padding of its own, straight on top of the bar under it (the bot who lives behind that bar). */
+  footerFlush?: boolean;
   state?: Record<string, unknown>;
   actions?: Record<string, ActionSpec>;
   /** Between the body's blocks (22 on the phone, 28 in the window by default). */
@@ -1404,7 +1414,14 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
       },
       // The footer sits outside the scroll, so nothing moved it for the keyboard: its field (the ask bar, "Tell Xode what to do")
       // went under the keyboard as it opened. `keyboard: "above"` keeps it just above the keyboard while one of its fields has it.
-      ...(footer.length ? [{ ...col(footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }), props: { keyboard: "above" } }] : []),
+      // `footerFlush`: no room round it at all, so what it holds sits straight on the bar under it — the bot who lives behind
+      // that bar is cut off exactly at its edge, instead of hanging in a white strip over it.
+      ...(footer.length ? [{
+        ...col(footer, o.footerFlush
+          ? { gap: 0, backgroundColor: C.paper }
+          : { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }),
+        props: { keyboard: "above" },
+      }] : []),
       ...(o.tab ? [tabBar(o.tab, ctx.live)] : []),
     ],
   };

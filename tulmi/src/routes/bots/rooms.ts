@@ -26,6 +26,9 @@
  *                                              person's sound (docs/brief.md). The token is minted per listener, held only in
  *                                              this server's memory, and is the whole of its authority: it names one track of
  *                                              one call and can do nothing else. Nothing is ever sent back down it.
+ *   GET    /v1/rooms/voice/:token              CLOUDFLARE'S OWN, the other way: the socket it dials to TAKE the bot's voice
+ *                                              from us, as PCM, which it publishes in the call as a track of the bot's own.
+ *                                              Nothing that arrives on it is read.
  *
  * JOINING CAPTURES NOTHING. A seat starts with no tracks of its own, so no light comes on for walking into a call; the microphone and
  * the camera are published by `/seat/publish` when the person turns one on, and the permission for them was asked once, after
@@ -69,11 +72,15 @@ export interface RoomsRoutesService {
 /** What the SFU's socket gives us, which is a WebSocket and nothing of Fastify's. */
 interface WebSocketish {
   on(event: "message", f: (data: Buffer, isBinary: boolean) => void): void;
+  on(event: "close", f: () => void): void;
+  send(data: Buffer): void;
   close(): void;
 }
 
 /** The ears the SFU's socket feeds (rooms/sitIn.ts). Null where the bot does not sit in calls on this server. */
 type EarsLike = { knows(token: string): boolean; feed(token: string, message: Buffer): void } | null;
+/** The voice the SFU's other socket takes from us. */
+type SpeakerLike = { knows(token: string): boolean; attach(token: string, socket: { send(d: Buffer): void; close(): void }): boolean; detach(token: string): void } | null;
 
 export interface RoomsRouteDeps {
   rateLimit: unknown;
@@ -83,6 +90,8 @@ export interface RoomsRouteDeps {
   nameOf?: (user: AuthedUser) => Promise<string>;
   /** The ears the SFU's socket feeds; the server's own when not given. */
   ears?: EarsLike;
+  /** The voice it takes; the server's own when not given. */
+  speaker?: SpeakerLike;
 }
 
 const BASE = "/v1/rooms";
@@ -115,15 +124,19 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
   // The ears are the server's own unless a test hands in its own set. Found once, a tick after boot: the room service is
   // what builds them, and the SFU does not dial before a call has started.
   let earsOnce: EarsLike | undefined = deps.ears;
-  if (earsOnce === undefined) {
+  let speakerOnce: SpeakerLike | undefined = deps.speaker;
+  if (earsOnce === undefined || speakerOnce === undefined) {
     void (async () => {
       try {
         (await import("../../rooms/service.js")).roomService();
-        earsOnce = (await import("../../rooms/sitIn.js")).earsNow();
-      } catch { earsOnce = null; }
+        const sit = await import("../../rooms/sitIn.js");
+        if (earsOnce === undefined) earsOnce = sit.earsNow();
+        if (speakerOnce === undefined) speakerOnce = sit.speakerNow();
+      } catch { earsOnce = earsOnce ?? null; speakerOnce = speakerOnce ?? null; }
     })();
   }
   const earsOf = (): EarsLike => earsOnce ?? null;
+  const speakerOf = (): SpeakerLike => speakerOnce ?? null;
   const off = (reply: FastifyReply) => reply.code(404).send({ code: "rooms_off", message: "Calls are not switched on." });
   const notFound = (reply: FastifyReply) => reply.code(404).send({ code: "not_found", message: "Not found." });
   const noCall = (reply: FastifyReply) => reply.code(404).send({ code: "not_found", message: "This link isn't a call. Check it and try again." });
@@ -347,6 +360,20 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
       if (!isBinary) return;
       try { ears.feed(token, Buffer.isBuffer(raw) ? raw : Buffer.from(raw)); } catch { /* one bad packet is not the call */ }
     });
+  });
+
+  /**
+   * THE VOICE. The same adapter the other way: Cloudflare dials this and we write the bot's words into it as PCM, which it
+   * publishes in the call as a track of the bot's own. Nothing that arrives here is read — this socket is ours to talk on.
+   */
+  app.get<{ Params: { token: string } }>(`${BASE}/voice/:token`, { websocket: true, config: { rateLimit: RL.look } }, (socket: WebSocketish, req) => {
+    const speaker = speakerOf();
+    const token = String((req.params as { token?: string }).token ?? "");
+    if (!speaker || !/^[a-f0-9]{16,64}$/i.test(token) || !speaker.attach(token, socket as never)) {
+      try { socket.close(); } catch { /* it is gone either way */ }
+      return;
+    }
+    socket.on("close", () => speaker.detach(token));
   });
 
   app.post(`${BASE}/seat/leave`, at("seat"), async (req, reply) => {

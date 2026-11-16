@@ -282,6 +282,8 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
         // model that keeps missing is seen here, and nowhere else.
         ...(result?.draws ? { draws: result.draws } : {}),
         ...(result?.drawsDropped ? { drawsDropped: result.drawsDropped } : {}),
+        // The same for a sign-in card: boxes the planner named that this screen does not have.
+        ...(result?.cardDropped ? { cardDropped: result.cardDropped } : {}),
       },
     }, "agent step");
   });

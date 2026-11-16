@@ -40,8 +40,25 @@ Cloudflare sends us the sound itself.
 | who said what | free: the track is theirs, so the words are theirs. Nothing is diarized |
 | what it keeps | every ~25 seconds of sound written down and appended to the note, under that person's name |
 | what it costs | the sound is taken to 16 kHz mono before anything is kept, so a speaker-minute is ~2 MB rather than 11.5; Cloudflare bills it as ordinary egress ($0.05/GB, the first 1,000 GB free) |
-| it answers | a question asked in the call (`POST /v1/rooms/seat/ask`), from what was said in this call and nothing private, at most one answer every 20 seconds |
+| it answers | a question asked in the call — typed (`POST /v1/rooms/seat/ask`) or **said out loud**: a line that starts with its name ("X0, what did we decide?") is a question, a name in the middle of a sentence is somebody talking about it. From what was said in this call and nothing private, at most one answer every 20 seconds |
+| it speaks | the answer is read aloud **in the call** as well as written on every screen (`rooms/speaker.ts`) |
 | the last person out | the ears closed, the last pass written, the note organised like any other recording |
+
+### Its voice
+
+The same adapter the other way round. The bot takes **a session of its own** at the SFU and publishes one track on it fed
+from a socket Cloudflare dials (`sfu.speak`, `location: "local"`, `inputCodec: "pcm"`), and it takes **a seat in the room**
+— so every app pulls its voice exactly as it pulls a person's microphone, and **nothing in any app had to learn about it**.
+
+Its seat differs from a person's in three ways, all of them in `Seat.bot`: it never beats (so it is never dropped for going
+quiet), it does not count towards the call's size, and a call with nobody in it but the bot is an empty call.
+
+The words are read by the speech service as 24 kHz mono PCM (`pipeline/tts.ts`, format `pcm`), lifted to the 48 kHz stereo
+the SFU takes (`up48`: each sample becomes itself and the midpoint to the next, in both ears), and handed to the **mouth**,
+which lets them out in 20 ms frames on a clock. That pacing is the point: a call is a live thing, a second of speech written
+in one go is a second of speech the SFU would throw away, and a queue that is let out a frame at a time is also a queue that
+can be dropped the moment it should stop talking. A frame is only taken off the queue once it has gone out, so words spoken
+before Cloudflare dialled wait for it instead of vanishing. Sound going **into** the SFU is not charged.
 
 **The ear is not a person's route.** `GET /v1/rooms/ears/:token` is the socket the SFU dials. There is no sign-in because
 there is nobody to sign in: the authority is a token this server minted a moment earlier for one track of one call, held in
@@ -139,3 +156,7 @@ the end.
 a breath), and the last person out.
 `tulmi/tests/rooms-page.test.ts` — the bot and its document on the call screen, and a call with no bot saying nothing about
 one.
+`tulmi/tests/rooms-voice.test.ts` — 24 kHz mono to 48 kHz stereo, a sentence let out a frame at a time at the speed it is
+spoken, the last frame padded rather than cut, words held while nothing is listening, hushed at once, and a voice per call.
+`tulmi/tests/rooms-speaker.test.ts` — the session, the track, the seat nobody counts, the words reaching the socket the SFU
+dialled, and everything taken away when the call ends.

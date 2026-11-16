@@ -1,7 +1,8 @@
 /**
  * The screens round (src/code/agent/screens.ts) and a job's pictures (jobShots.ts, routes/code/jobShots.ts): a job that changed what people see runs
  * the app, keeps real screenshots of the page in its store and shows them by a signed link; one that changed nothing people see does not; one that
- * cannot says why, and the commit is never held.
+ * cannot says why, and the commit is never held. And the floor (floor.ts): while the app is still up, the page is read as the browser drew it and
+ * the things a page needs whatever its design says are checked on it — reported with the pictures, never blocking, and silent when it cannot be read.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -20,6 +21,7 @@ const { sym, route } = await import("./work-fixtures.js");
 const { MemoryBlobStore } = await import("../src/media/blob.js");
 const { BlobJobShots, signJobShotPath, verifyJobShotLink, isJobShotId } = await import("../src/code/agent/jobShots.js");
 const { seenFiles, screensLines } = await import("../src/code/agent/screens.js");
+const { noProbe } = await import("../src/code/agent/probe.js");
 const { serveJobShot, isJobShotPath } = await import("../src/code/agent/jobShots.js");
 type PreviewState = import("../src/code/live/ports.js").PreviewState;
 
@@ -53,19 +55,52 @@ function fakePreview(script: PreviewState[] = [{ state: "ready", url: "https://t
   return p;
 }
 
-async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean } = {}) {
+/** A page the floor has two things to say about: no viewport tag, and an image with no alt. */
+const LOW_PAGE = '<!doctype html><html lang="en"><head><title>Pricing</title></head><body><h1>Pricing</h1><img src="/pro.png"></body></html>';
+const SOUND_PAGE = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"></head><body><h1>Pricing</h1></body></html>';
+
+type Probe = import("../src/code/agent/probe.js").ProbeResult;
+
+/**
+ * A measurer that answers with a page that was drawn, used where a real Chrome would be. `then` is what the SECOND measurement sees, so a test can
+ * say "the page was broken, the job fixed it, and the next look found it fixed" — which is the whole repair loop.
+ */
+function fakeMeasure(over: Partial<Probe> = {}, then?: Partial<Probe>) {
+  const asked: Array<{ url: string; reduced: boolean }> = [];
+  let pass = 0;
+  const render = async (url: string, o: { reducedMotion?: boolean; script?: string }) => {
+    asked.push({ url, reduced: o.reducedMotion === true });
+    // One measurement is two loads; `then` takes over from the second measurement onward.
+    const now = then && asked.length > 2 ? then : over;
+    const base = {
+      ...noProbe(), walked: 40, viewport: { w: 320, h: 720 }, doc: { scrollWidth: 320, clientWidth: 320 },
+      text: [{ px: 16, weight: 400, chars: 300, fg: "17,24,39", bg: "255,255,255", at: "p" }], ...now,
+    };
+    if (!o.reducedMotion) pass += 1;
+    // The motion pass is the only one that reports animations, as the real one does.
+    return { value: o.reducedMotion ? { ...base, text: [], animations: now.animations ?? [] } : { ...base, animations: [] } };
+  };
+  return { render, asked, get passes() { return pass; } };
+}
+
+async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean; page?: string; readFails?: boolean; measure?: ReturnType<typeof fakeMeasure> } = {}) {
   const preview = o.preview === null ? null : o.preview ?? fakePreview();
   const blobs = new MemoryBlobStore();
   const shot: Array<{ url: string; viewport: string }> = [];
+  const read: string[] = [];
   const screens = {
     shoot: async (url: string, viewport: "mobile" | "desktop") => { shot.push({ url, viewport }); if (o.shootFails) throw new Error("Browser Rendering said 429"); return PNG; },
     store: new BlobJobShots(blobs),
     link: ({ jobId, shotId }: { userId: string; jobId: string; shotId: string }) => `https://api.example/v1/code/shots/u/${jobId}/${shotId}?exp=9&sig=s`,
+    ...(o.page || o.readFails
+      ? { read: async (url: string) => { read.push(url); if (o.readFails) throw new Error("Browser Rendering said 429"); return o.page!; } }
+      : {}),
+    ...(o.measure ? { measure: o.measure.render as never } : {}),
   };
   const r = await agentRig({ files: FILES, rows: ROWS, structure: STRUCTURE, ...(preview ? { live: { preview } } : {}), screens });
   r.json.on("work.plan", UTIL_PLAN);
   const { job } = await r.start(UTIL_TASK);
-  return { r, preview, shot, blobs, jobId: job.id };
+  return { r, preview, shot, read, blobs, jobId: job.id };
 }
 
 describe("what counts as something people see", () => {
@@ -79,6 +114,10 @@ describe("what counts as something people see", () => {
       .toEqual(["Real screens: /pricing on a phone and a computer, taken from the running app.", "- Phone: https://x/js_1", "- Computer: https://x/js_2"]);
     expect(screensLines({ stage: "done", viewports: ["mobile"], shots: [], skipped: "the app's dev server did not start." })[0]).toMatch(/^No real screens: the app's dev server did not start\. Ask for a drawn one/);
     expect(screensLines(undefined)).toEqual([]);
+    // The floor rides with the pictures, and a page with nothing wrong adds not one word.
+    const withFloor = screensLines({ stage: "done", route: "/pricing", viewports: ["mobile"], shots: [{ id: "js_1", route: "/pricing", viewport: "mobile" }], floor: [{ rule: "viewport", count: 1, text: "The page has no viewport meta tag." }] }, () => null);
+    expect(withFloor.at(-1)).toBe("- The page has no viewport meta tag.");
+    expect(screensLines({ stage: "done", route: "/pricing", viewports: ["mobile"], shots: [{ id: "js_1", route: "/pricing", viewport: "mobile" }], floor: [] }, () => null)).toHaveLength(1);
   });
 });
 
@@ -127,13 +166,168 @@ describe("the screens round", () => {
     expect((await dead.r.stateNow(dead.jobId)).report!.text).toMatch(/No real screens: the app's dev server did not start: vite: command not found/);
   });
 
-  it("a browser that fails: no pictures, said plainly", async () => {
+  it("a browser that fails: no pictures, said plainly, and the floor it did read is still reported", async () => {
+    const withPage = await setup({ shootFails: true, page: LOW_PAGE });
+    withPage.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await withPage.r.orch.idle();
+    const w = await withPage.r.stateNow(withPage.jobId);
+    expect(w.report!.text).toMatch(/No real screens: the screenshot failed/);
+    expect(w.report!.text).toContain("What the page needs whatever its design says");
+
     const s = await setup({ shootFails: true });
     s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
     await s.r.orch.idle();
     const st = await s.r.stateNow(s.jobId);
     expect(st.report!.shots).toBeUndefined();
     expect(st.report!.text).toMatch(/No real screens: the screenshot failed \(Browser Rendering said 429\)/);
+  });
+});
+
+describe("the floor, on the page that was shot", () => {
+  it("reads the page the pictures were taken of, and the report says what it needs whatever its design says", async () => {
+    const s = await setup({ page: LOW_PAGE });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price on the card."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    // The same address the pictures were taken of, read once, not once a size.
+    expect(s.read).toEqual(["https://tok.preview.example/pricing"]);
+    expect(st.screens!.floor!.map((f) => f.rule)).toEqual(["viewport", "img.alt"]);
+    expect(st.report!.text).toContain("What the page needs whatever its design says");
+    expect(st.report!.text).toMatch(/no viewport meta tag/);
+    // And it held nothing up.
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+
+  it("says nothing at all about a page with nothing wrong with it", async () => {
+    const s = await setup({ page: SOUND_PAGE });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.floor).toEqual([]);
+    expect(st.report!.text).not.toContain("What the page needs");
+    expect(st.report!.text).toContain("Real screens");
+  });
+
+  it("a server with no renderer, or a page that will not answer: not checked, not mentioned, nothing held up", async () => {
+    const none = await setup();
+    none.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await none.r.orch.idle();
+    const a = await none.r.stateNow(none.jobId);
+    expect(a.screens!.floor).toBeUndefined();
+    expect(a.report!.text).not.toContain("What the page needs");
+    expect(a.report!.text).toContain("Real screens");
+
+    const broken = await setup({ readFails: true });
+    broken.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await broken.r.orch.idle();
+    const b = await broken.r.stateNow(broken.jobId);
+    expect(b.screens!.floor).toBeUndefined();
+    expect(b.report!.text).not.toContain("What the page needs");
+    expect(broken.r.fake.commitCount(broken.r.repo)).toBe(2);
+  });
+});
+
+describe("the deeper look, on the page a browser drew", () => {
+  it("measures the page twice — once as drawn, once with reduced motion — and reports what only a drawn page can show", async () => {
+    // Two colours a person cannot tell apart: worth reporting, but not a fault to be repaired, so the job measures once and goes on.
+    const m = fakeMeasure({ styles: { ...noProbe().styles, color: { "17,24,39": 90, "18,25,40": 2 }, fontSize: { "16px": 40, "13px": 1, "12px": 30 } } });
+    const s = await setup({ measure: m });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    // One measurement is two loads of the same page, the second one telling it the person asked for less motion.
+    expect(m.asked.map((a) => a.reduced)).toEqual([false, true]);
+    expect(new Set(m.asked.map((a) => a.url))).toEqual(new Set(["https://tok.preview.example/pricing"]));
+    expect(st.screens!.probe!.walked).toBe(40);
+    expect(st.screens!.round, "nothing objective was wrong, so no round was spent").toBeUndefined();
+    expect(st.report!.text).toMatch(/indistinguishable from another one already there/);
+    expect(st.report!.text).toMatch(/13px is used once, 1px from 12px/);
+    expect(st.report!.text).toMatch(/nobody knows what the right number is/);
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+
+  it("says nothing when the page measures clean, and nothing at all where there is no browser to measure with", async () => {
+    const clean = await setup({ measure: fakeMeasure() });
+    clean.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await clean.r.orch.idle();
+    const a = await clean.r.stateNow(clean.jobId);
+    expect(a.screens!.probe).toBeTruthy();
+    expect(a.report!.text).not.toContain("What the running page showed");
+
+    const none = await setup();
+    none.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await none.r.orch.idle();
+    const b = await none.r.stateNow(none.jobId);
+    expect(b.screens!.probe).toBeUndefined();
+    expect(b.report!.text).toContain("Real screens");
+  });
+
+  it("a browser that throws mid-measure never costs the job anything", async () => {
+    const broken = { render: async () => { throw new Error("Chrome closed under the page"); }, asked: [] };
+    const s = await setup({ measure: broken as never });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.probe).toBeUndefined();
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+});
+
+describe("the repair round: what is objectively wrong gets fixed, not filed", () => {
+  it("sends the job back with the measurements and the axis that fixes each one, then measures again and reports the before and after", async () => {
+    // Broken first: text nobody can read. Clean on the second look, because the job fixed it.
+    const m = fakeMeasure({ text: [{ px: 16, weight: 400, chars: 300, fg: "200,200,200", bg: "255,255,255", at: "p.hint" }] }, {});
+    const s = await setup({ measure: m });
+    s.r.model.push(
+      call("edit_file", CARD_EDIT), done("Showed the price."),
+      // The repair round: the job is back in work, and it is told what is wrong and how to fix it.
+      call("edit_file", { path: "src/components/PricingCard.tsx", old: ">Pro, ₹499 a month<", new: ">Pro, ₹499 a month<" }), done("Darkened the hint text."),
+    );
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+
+    // It went back to work and was told the axis, not just the fault.
+    const told = s.r.model.seen.map((t) => t.user).join("\n");
+    expect(told).toContain("<tool_data tool=\"page_measured\">");
+    expect(told).toMatch(/repair round 1 of 2/);
+    expect(told).toMatch(/only the LIGHTNESS of the colour/);
+    expect(told).toMatch(/not matters of taste/);
+
+    // It measured again, and the report shows the before and the after rather than the list.
+    expect(st.screens!.round).toBe(1);
+    expect(m.passes).toBeGreaterThanOrEqual(2);
+    expect(st.report!.text).toMatch(/measured, fixed and measured again: 1 thing\(s\) were wrong by any standard, 0 still are/);
+    expect(st.report!.text).toContain("Fixed: text.contrast");
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+  });
+
+  it("says honestly when the fix did not take, and stops after two rounds", async () => {
+    // Broken, and still broken however many times it looks.
+    const m = fakeMeasure({ focus: [{ at: "button.buy", changed: "", visible: true }] });
+    const s = await setup({ measure: m });
+    s.r.model.push(call("edit_file", CARD_EDIT), ...Array.from({ length: 8 }, () => done("Had a go at the focus ring.")));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.round).toBe(2);
+    expect(st.report!.text).toMatch(/Still there: focus\.none/);
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    // Two rounds, and no more: a job cannot be held open by a page it cannot fix.
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+
+  it("a page that measures clean costs the job nothing at all", async () => {
+    const m = fakeMeasure();
+    const s = await setup({ measure: m });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.round).toBeUndefined();
+    expect(m.passes).toBe(1);
+    expect(s.r.model.seen.map((t) => t.user).join("\n")).not.toContain("page_measured");
+    expect(st.report!.text).not.toMatch(/measured, fixed and measured again/);
   });
 });
 

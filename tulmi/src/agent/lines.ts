@@ -38,7 +38,7 @@
  * Either way the event is the same [x, y, w, h] and [x, y], so the device
  * never knows which model drew.
  */
-import type { AgentDraw, AgentDrawKind, AgentEvent, AgentHandoverWhy, AgentSpot } from "../../../shared/types/api.js";
+import type { AgentDraw, AgentDrawKind, AgentEvent, AgentField, AgentFieldKind, AgentHandoverCard, AgentHandoverWhy, AgentSpot, AgentWayIn } from "../../../shared/types/api.js";
 import type { Platform } from "./grammar.js";
 
 const SAY_MAX = 240;
@@ -49,6 +49,21 @@ const STEPS_MAX = 12;
 /** A PROGRESS note: one fact worth keeping. */
 const NOTE_MAX = 160;
 const HANDOVER_WHY: readonly AgentHandoverWhy[] = ["login", "code", "captcha", "payment", "other"];
+/** What a sign-in card's box may ask for. Anything else a model writes is read as plain text. */
+const FIELD_KINDS: readonly AgentFieldKind[] = ["text", "phone", "email", "secret", "code"];
+/** A sign-in page asks for one or two things; six boxes is already a form nobody should meet on a phone. */
+const FIELDS_MAX = 6;
+/** Other ways in (Google, Apple, email instead): more than four and the card is a menu. */
+const WAYS_MAX = 4;
+/** A box's label, and a way in's: a few words in their own language. */
+const FIELD_LABEL_MAX = 48;
+/**
+ * A CARD IS ONLY EVER DRAWN FOR THESE (docs/sign-in.md). Never for `payment`: Ask does not take card details, so it
+ * must not draw boxes that ask for them — a card-shaped thing asking for a card number is what a phishing page looks
+ * like, and the person should only ever meet that on the real page. Never for `captcha` either: the squiggle has to
+ * be seen, so the page itself is the answer.
+ */
+const CARD_WHY: readonly AgentHandoverWhy[] = ["login", "code"];
 const TYPE_MAX = 1000;
 const INSTRUCTION_MAX = 500;
 /** More SAYs or POINTs than this in one step is a model rambling. */
@@ -107,6 +122,10 @@ export type Line =
   | { verb: "PROGRESS"; done: number[]; note?: string }
   /** The next step is the person's: a password, a code, a CAPTCHA, card details, a choice. */
   | { verb: "HANDOVER"; why: AgentHandoverWhy; text: string }
+  /** One box of the sign-in card being built, waiting for the HANDOVER it belongs to. */
+  | { verb: "FIELD"; field: AgentField }
+  /** Another way in the page offers, waiting for the same HANDOVER. */
+  | { verb: "ALSO"; way: AgentWayIn }
   /** `draw` is null for a DRAW line that could not be read: it is still a
    *  mark the model meant, so the reader counts it as dropped. */
   | { verb: "DRAW"; draw: AgentDraw | null }
@@ -222,6 +241,28 @@ export function parseLine(raw: string, platform: Platform, opts: ParseOptions = 
       const note = bar >= 0 ? clip(unmark(unquote(arg.slice(bar + 1))), NOTE_MAX) : "";
       if (!done.length && !note) return null;
       return note ? { verb, done, note } : { verb, done };
+    }
+    case "FIELD": {
+      // "FIELD e12 phone | Phone number": the field on the page, what it wants, what to call it.
+      const id = idOf(arg);
+      if (!id) return null;
+      const rest = arg.replace(ID, "");
+      const bar = rest.indexOf("|");
+      const kindWord = (bar >= 0 ? rest.slice(0, bar) : rest.split(/\s/)[0] ?? "").trim().toLowerCase();
+      // A model that writes "password" or "otp" means what the protocol calls secret and code.
+      const kind: AgentFieldKind = kindWord === "password" ? "secret"
+        : kindWord === "otp" || kindWord === "pin" ? "code"
+        : (FIELD_KINDS as readonly string[]).includes(kindWord) ? (kindWord as AgentFieldKind)
+        : "text";
+      const label = clip(unmark(unquote(bar >= 0 ? rest.slice(bar + 1) : rest.replace(/^\S+\s*/, ""))), FIELD_LABEL_MAX);
+      return label ? { verb, field: { id, kind, label } } : null;
+    }
+    case "ALSO": {
+      // "ALSO e30 | Continue with Google": another way in, exactly as the page words it.
+      const id = idOf(arg);
+      if (!id) return null;
+      const label = clip(unmark(unquote(arg.replace(ID, "").replace(/^[|:\u2013\u2014-]\s*/, ""))), FIELD_LABEL_MAX);
+      return label ? { verb, way: { id, label } } : null;
     }
     case "HANDOVER": {
       // "HANDOVER login | Type your password, then press Continue."
@@ -632,6 +673,11 @@ export class LineReader {
    *  here, or past the cap), for the step's log line. */
   draws = 0;
   drawsDropped = 0;
+  /** The sign-in card being written, until the HANDOVER it belongs to arrives (docs/sign-in.md). */
+  private readonly fields: AgentField[] = [];
+  private readonly ways: AgentWayIn[] = [];
+  /** FIELD and ALSO lines dropped: an id not on this screen, a repeat, or past the cap. For the step's log line. */
+  cardDropped = 0;
 
   constructor(private readonly ids: Set<string>, private readonly mode: "show" | "do", rules: ReaderRules = {}) {
     this.picture = rules.picture === true;
@@ -671,11 +717,19 @@ export class LineReader {
         // Bookkeeping, honoured on a do-run only; the device keeps it in the job's ledger.
         if (this.mode !== "do" || this.picture) return [];
         return this.out(line.note ? { t: "progress", done: line.done.map((n) => n - 1), note: line.note } : { t: "progress", done: line.done.map((n) => n - 1) });
-      case "HANDOVER":
+      case "FIELD":
+        // A box of the card. Like a DRAW it never ends anything and says nothing on its own;
+        // it waits for its HANDOVER, and is forgotten if none comes.
+        return this.keepField(line.field);
+      case "ALSO":
+        return this.keepWay(line.way);
+      case "HANDOVER": {
         // The person's turn ends the step. In show mode, and with a picture, it is simply said.
         if (this.mode !== "do" || this.picture) return this.say(line.text);
         this.done = true;
-        return this.out({ t: "handover", why: line.why, text: line.text });
+        const card = this.card(line.why);
+        return this.out(card ? { t: "handover", why: line.why, text: line.text, card } : { t: "handover", why: line.why, text: line.text });
+      }
       case "USE":
         // Like an action, it is the step's last word; the run decides what it means.
         if (!this.connectors) return [];
@@ -712,6 +766,55 @@ export class LineReader {
     }
     this.draws += 1;
     return this.out({ t: "draw", ...e });
+  }
+
+  /**
+   * A box of the sign-in card. Kept only when its id is a field on THIS screen: a card that types into
+   * somewhere the planner imagined is worse than no card, because the person would believe it worked.
+   * The same id twice is the model repeating itself, not two boxes.
+   */
+  private keepField(field: AgentField): ReaderOut[] {
+    if (this.mode !== "do" || this.picture) return [];
+    if (!this.fillable(field.id) || this.fields.length >= FIELDS_MAX || this.fields.some((f) => f.id === field.id)) {
+      this.cardDropped += 1;
+      return [];
+    }
+    this.fields.push(field);
+    return [];
+  }
+
+  /**
+   * A card may only name something this screen really has and the device can really fill or press: an id from the
+   * list, and never an OCR line, whose o id is words read off the pixels with no control behind them. An action
+   * already refuses one of those; a card must too, or a box would be drawn that quietly types into nothing.
+   */
+  private fillable(id: string): boolean {
+    return this.ids.has(id) && !isOcrLine(id);
+  }
+
+  /** Another way in. Same rules; a way in that is also a box would press and fill the same thing. */
+  private keepWay(way: AgentWayIn): ReaderOut[] {
+    if (this.mode !== "do" || this.picture) return [];
+    if (!this.fillable(way.id) || this.ways.length >= WAYS_MAX
+      || this.ways.some((w) => w.id === way.id) || this.fields.some((f) => f.id === way.id)) {
+      this.cardDropped += 1;
+      return [];
+    }
+    this.ways.push(way);
+    return [];
+  }
+
+  /**
+   * The card, if there is one to draw. No boxes means no card, and the person is shown the page itself —
+   * which is the right answer whenever the planner could not read the page with confidence. `payment` and
+   * `captcha` never get one, however many FIELD lines were written (CARD_WHY).
+   */
+  private card(why: AgentHandoverWhy): AgentHandoverCard | undefined {
+    if (!this.fields.length || !(CARD_WHY as readonly string[]).includes(why)) {
+      this.cardDropped += this.fields.length + this.ways.length;
+      return undefined;
+    }
+    return this.ways.length ? { fields: [...this.fields], also: [...this.ways] } : { fields: [...this.fields] };
   }
 
   /** Every spot of the mark is one this step may draw at. */

@@ -710,6 +710,10 @@ const EnvSchema = z.object({
    * compare a run with and without the round (the e2e harness can).
    */
   CODE_PROVE_FIX: bool(true),
+  /** A model of another family reads a plain job's diff before the pull request is marked ready (code/agent/review.ts). */
+  CODE_JOB_REVIEW: bool(true),
+  /** Scheduled code work: a project's own standing job, started by the clock (code/schedule, docs/code-schedule.md). */
+  CODE_SCHEDULES: bool(false),
   CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid", "transcript"]).optional()),
   /**
    * HOW A NEW CODE JOB IS WORKED WHEN NEITHER THE JOB NOR ITS PROJECT SAYS (src/code/agent/orchestrator.ts enqueue, docs/code-agent.md): "freeform" (the
@@ -863,6 +867,45 @@ const EnvSchema = z.object({
    */
   BOT_SHOW: bool(false),
   BOT_SHOW_USERS: orDefault(""),
+  /**
+   * THE BOT AT THE FOOT OF HOME, AS WHAT IS HAPPENING (experience/bots/screens/shell/homeThought.ts, docs/home-updates.md): instead of a
+   * box to type in, his thought holds the updates — what needs the person, what their bots are working on, what just finished — each
+   * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is
+   * exactly as it is today; HOME_UPDATES_USERS stages it by account, as the other switches do.
+   *
+   * HOME_LISTEN: his ear is open the whole time Home is in front, with nothing to press — which is what the updates bot is, so it is on
+   * wherever HOME_UPDATES is. Setting it false is the way to shut an open microphone without turning him off: it means the phone shows
+   * its own mark the whole time that page is up, it costs battery, and everything said near it is heard. Opening the keyboard shuts his
+   * ear either way.
+   */
+  /**
+   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema-3d.md): a scene as data, checked, written out as a Blender script, rendered
+   * where there is a Blender to run it, and looked at by a model that fixes what it sees. Off by default and WIRED TO
+   * NOTHING yet: the loop is complete on its own, and the bot's own stages, progress and cards come after.
+   *
+   * CINEMA_BLENDER: the binary on this machine ("blender" on the path by default); none, and this machine renders nothing.
+   * CINEMA_WORK: where a render's folder goes (the system's temporary place by default; a disk with room is better).
+   * CINEMA_CAP_PAISE: the most the models may spend on one creation, over all its rounds.
+   *
+   * THE FILM HALF (src/cinema, docs/cinema.md): films made shot by shot — a director's script and shot list, a storyboard of stills, each
+   * shot animated by the video model that suits it, checked by eye and retaken, cut with voice-over, music and subtitles — and pictures.
+   * Every model is reached through OPENROUTER_API_KEY (its image and video APIs): nothing else to set up. ONE CINEMA SWITCH SERVES BOTH
+   * HALVES, because the 3D is a part of this bot and not a bot of its own. CINEMA_MEDIA_SECRET (SECRET: .env only) signs the links the
+   * apps open stills and films by; when not set a secret is made at each start (links are made fresh each time a screen is drawn, so
+   * nothing breaks). CINEMA_FILM_MAX_PAISE is the most one film may be agreed at, and CINEMA_DAILY_PAISE what one person may spend on
+   * films and pictures in a day (both on top of their plan's allowance). R2 keeps the films; needs BOTS=true to appear among the bots.
+   */
+  CINEMA: bool(false),
+  CINEMA_USERS: orDefault(""),
+  CINEMA_MEDIA_SECRET: z.string().optional(),
+  CINEMA_FILM_MAX_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(150_000),
+  CINEMA_DAILY_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(300_000),
+  CINEMA_BLENDER: orDefault("blender"),
+  CINEMA_WORK: orDefault(""),
+  CINEMA_CAP_PAISE: z.coerce.number().int().min(10).max(20_000).default(400),
+  HOME_UPDATES: bool(false),
+  HOME_UPDATES_USERS: orDefault(""),
+  HOME_LISTEN: bool(true),
   /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
@@ -1173,6 +1216,27 @@ const EnvSchema = z.object({
    */
   PLAN_SHARE: bool(false),
   PLAN_SHARE_USERS: orDefault(""),
+  /**
+   * A BROWSER THAT BELONGS TO THE PERSON (src/sites, docs/sites.md): signed in once, kept signed in, and read to
+   * answer "where is my order" for a site that has no API and never will.
+   *
+   *   CLOUD_BROWSER        off by default. With it off there is no new screen, no new row, and nothing is kept
+   *   CLOUD_BROWSER_USERS  a comma-separated list of account ids; set, only those accounts may use it
+   *   CLOUD_BROWSER_SITES  the sites it may be used on at all, comma-separated hosts. EMPTY MEANS NONE: a browser
+   *                        that holds somebody's signed-in session is not something to point at the whole web on a
+   *                        default, so a site is named here before anyone can add it
+   *   CLOUD_BROWSER_WATCHES  how many things one person may have being watched at once (6)
+   *   CLOUD_BROWSER_EVERY_MIN  the least minutes between two looks at the same thing (20). A site that sees one look
+   *                        while a delivery is live reads as a person; the same site seeing a heartbeat all day
+   *                        reads as a robot, so this is a floor and the job may always wait longer
+   *
+   * It needs CONNECTOR_TOKEN_KEY: the session is kept the way a connector's token is, or it is not kept at all.
+   */
+  CLOUD_BROWSER: bool(false),
+  CLOUD_BROWSER_USERS: orDefault(""),
+  CLOUD_BROWSER_SITES: orDefault(""),
+  CLOUD_BROWSER_WATCHES: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(1).max(50).default(6)),
+  CLOUD_BROWSER_EVERY_MIN: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(5).max(1440).default(20)),
   /**
    * LEAD AND HELPERS (src/code/team, docs/code-team.md). A goal that is big (a plan over 12 files or 3 features, or one over several projects, or one the
    * person asked a team for) is split into parts with clear file ownership; helpers build the parts in parallel on their own branches, a model of
@@ -2204,6 +2268,26 @@ export function getConfig(): AppConfig {
   }
   if (env.CUSTOM_CONNECTORS && !env.CONNECTORS) {
     console.warn("[config] CUSTOM_CONNECTORS=true does nothing while CONNECTORS is off: nobody can add an app by link.");
+  }
+
+  /**
+   * THE REVIEW PAIR HAS TO BE TYPEABLE, and nothing used to check that.
+   *
+   * The code screen is the same one every person types an emailed code into: it takes a number pad, strips every
+   * character that is not a digit, and stops at auth.codeLength (6). So a REVIEW_CODE that is longer than six, or
+   * has a letter in it, cannot be entered at all — the reviewer types it, the app keeps nothing, and the screen sits
+   * there looking broken.
+   *
+   * That is exactly how an App Review rejection reads: "the app reverted to Enter the code page after entering demo
+   * code." It cost a submission once. The shape is checked here so it is caught in a deploy log instead.
+   */
+  const reviewPairSet = !!(env.REVIEW_EMAIL ?? "").trim() && !!(env.REVIEW_CODE ?? "").trim();
+  if (reviewPairSet && !/^\d{6}$/.test((env.REVIEW_CODE ?? "").trim())) {
+    console.warn("[config] REVIEW_CODE must be EXACTLY SIX DIGITS: the sign-in screen is a number pad that keeps six digits"
+      + " and nothing else, so App Review cannot type anything longer or with a letter in it, and sign-in silently fails.");
+  }
+  if (!reviewPairSet && ((env.REVIEW_EMAIL ?? "").trim() || (env.REVIEW_CODE ?? "").trim())) {
+    console.warn("[config] REVIEW_EMAIL and REVIEW_CODE must BOTH be set or neither: one alone does nothing and review cannot sign in.");
   }
 
   // A SearXNG address that is not an https address was dropped by the schema; say so, since it is a setting someone typed.

@@ -125,8 +125,11 @@ describe("other connected apps (privacy, Section 13)", () => {
 
 describe("bots (privacy, Section 14)", () => {
   it("keeps what it says, for as long as it says", () => {
+    // 200 is how many a bot is shown when it answers, not how many are kept: a chat is kept until the person clears it (migration 0102).
     expect(CHAT_KEEP).toBe(200);
-    expect(bots).toContain("up to the last 200 turns with each bot");
+    expect(bots).toContain("kept for as long as you have the bot");
+    expect(bots).toContain("A bot is shown the last 200 turns when it answers");
+    expect(bots).not.toContain("up to the last 200 turns with each bot");
     expect(ACTIVITY_DAYS).toBe(90);
     expect(bots).toContain("Entries older than 90 days are deleted whenever a new one is added.");
     expect(cleanEvent({ kind: "ask", bot: "plan", title: "x".repeat(500), paise: 1, amountPaise: 0, payee: "" }).title).toHaveLength(200);

@@ -48,6 +48,27 @@ success and cost per success, repeats only for unstable results; **5** the parts
   `CODE_MODEL_TIERS`, what is still unknown and the cheapest run that would answer it.
 - A winner at P(best) ≥ 0.9, looked at after every round, is a lead and not a proof (about one tie in ten is called anyway); raise `--confidence` for a decision that must hold.
 
+### The trend: nightly, free, and whether it is getting better (`trend.ts`)
+
+`REALITY.md` and `latest.html` are a **snapshot**: where the product stands at one commit, rewritten every run. The thing nobody could see was
+**movement** — whether an area that reads "weak" today read "working" a fortnight ago, and whether a success costs more rupees than it did. That is
+the only form in which "we are the best" is a claim rather than a hope, and it is how the ladders stay right while new models land every month.
+
+`--trend` appends ONE LINE a run to `e2e/results/trend.jsonl` (committed, append-only, like the results store) and puts a **"How it has moved"**
+section in the summary. It reads a finished run and **pays for nothing**.
+
+```sh
+npm run reality -- --prove --trend        # the nightly: FREE, and it still catches what used to work and now does not
+npm run reality -- --plan quick --budget-inr 60 --summary --trend
+```
+
+A trend is only honest if the lines are comparable, so it compares **like with like**: only an earlier run of the **same mode**, only an area that run
+actually **measured**, and never a run of the same code (that is the same point, not movement). An area nobody measured before reads **"new"**, never
+an improvement, and an earlier "unknown" is not something to have beaten. For money the arrow runs the other way: **cheaper is better**.
+
+The free nightly is the point. Stage 0 is the offline suite, every cassette replayed against the current code, and the free bake-offs — so a nightly
+`--prove --trend` costs nothing and still answers the question that matters most: did a change break what used to work.
+
 **Every command line here is strict** (`e2e/cli.ts`): `--help` prints help and runs nothing, an unknown flag is an error (exit 2), and a run that calls a real model needs an
 explicit `--budget-inr N`: there is no default cap. (`bakeoff --help` once started a real bake-off.)
 

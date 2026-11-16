@@ -1,12 +1,138 @@
 # Being built right now (read before you start)
 
-Updated 15 Nov 2026, 17:39 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 16 Nov 2026, 14:40 UTC. One session is building the items below. Do not edit the files they hold until the item is
+
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 **How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
 look. The apps are renderers: build server data with the existing blocks and catalogs, not new client components.
 
 ## Landed today (on main, every switch off by default)
+
+### 16 Nov, late: four sessions' branches merged into main
+
+One session walked every branch in the four repos and merged what was ready. **Every migration below was renumbered
+on the way in**, because three branches were cut before their numbers were taken and `migrate-pending.sh` runs only
+what is numbered above `LIVE_MIGRATION` — a colliding number does not fail, it is silently never run.
+
+- **Discover, places worth keeping** (`claude/discover-travel-bot`, pull request 3), migration **0099**. The engine,
+  the catalogue, the store and 2 test files are on main. **It is dark by construction**: `ports.discover` is declared
+  but nothing supplies it, so the tools never attach to a bot. Wiring it up is what is left.
+- **Xode's standing job, the reality trend, the design floor** (`claude/zen-bohr-7xgu6f`), migration **0095 -> 0100**.
+  `CODE_SCHEDULES` is off. That migration is the one worth knowing about: as a second 0095 it would never have run,
+  and `code_schedules` would simply have been missing from the database with nothing to say so.
+- **The cinema bot's 3D and the bot at the foot of Home** (`claude/keen-allen-podunv`), across backend, phone and
+  window. `CINEMA` and `HOME_UPDATES` are off. A scene is DATA: the model picks from shapes, lights and materials,
+  the checker clamps it, and we write the Blender script, so nothing a model writes is executed.
+- **The site's phone screen** (`claude/loving-goldberg-wvp95p`, TAILZU-WEB) and **the Blip structure sheet**
+  (`claude/jolly-brown-p8nhu2`, brand assets only).
+
+## WHAT IS OFF, AND WHICH KIND OF OFF IT IS (16 Nov)
+
+Fifty-three switches are off and twenty-six are on, which sounds alarming and mostly is not: most of the off ones are
+finished work waiting to be launched. But "off" hides three different things, and only two of them are fixed by a switch.
+
+**AT THE ROOT: `BOTS` IS OFF.** Every bot-shaped thing is behind it — the server reads `bots && cinemaOn()`, and the same
+for the rest — so the cinema, Lingo, the mail bot, the meeting bot and the Oracle are invisible no matter what their own
+switch says. Nothing below matters until this one is on.
+
+### 1. Waiting on a setting, not on code. Nothing to build.
+
+A few features have no switch at all: THE KEY IS THE SWITCH, so they are simply absent until it is set, with nothing
+anywhere saying why. The meeting bot is the live example — `meetOn()` is `Boolean(RECALL_API_KEY)` and the key has not
+been added, so the bot is not listed and never has been.
+
+| Feature | What it needs | How it is gated |
+| --- | --- | --- |
+| The meeting bot | `RECALL_API_KEY`, `RECALL_WEBHOOK_SECRET` | the key IS the switch — **not added yet** |
+| Calls (video and audio) | `SFU_APP_ID` **and** `SFU_APP_SECRET` | without both there are no calls anywhere |
+| The mail bot | `MAIL_WORKER_URL` **and** `MAIL_WORKER_SECRET` | the pair is the switch |
+| Phone calls out | `PLIVO_AUTH_ID`, `PLIVO_AUTH_TOKEN`, `PLIVO_FROM_NUMBER` | plus `CHANNEL_PHONE_CALLS` |
+| Media ingest | `MEDIA_WORKER_URL`, `MEDIA_WORKER_SECRET` | plus `MEDIA_INGEST` |
+| Artifacts | `ARTIFACT_VIEWER_URL`, `ARTIFACT_APP_ORIGIN` | plus `ARTIFACTS` |
+| Xode on GitHub | `GITHUB_APP_ID`, `_SLUG`, `_CLIENT_ID`, `_CLIENT_SECRET`, `_PRIVATE_KEY`, `_WEBHOOK_SECRET` | plus `CODE_GITHUB` |
+| Connectors | `CONNECTOR_TOKEN_KEY`, `CONNECTOR_OAUTH_CLIENTS` | plus `CONNECTORS` |
+| Places, in Discover and the Oracle | `GOOGLE_PLACES_API_KEY` | falls back to no suggestions |
+| Films, pictures and 3D creations | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | without them the bytes are in memory and a restart forgets them |
+
+Known set, because the deploy's own live checks prove it: the Oracle's worker and its model keys, the payments webhook,
+and `OPENROUTER_API_KEY`, which the config requires outright — the server does not start without it.
+
+### 2. Off AND INCOMPLETE. A switch alone will not do it.
+
+These are the ones worth knowing about, because turning them on gives you a feature that draws and does nothing.
+
+* **Lingo — a course cannot get any words.** Everything downstream is built and tested: the scheduler, marking on the
+  server, the seven exercise kinds, the sets, the grader's gestures, the 85-language picker, 165 tests. But words arrive
+  only through `POST /v1/lingo/words`, and **nothing calls it** — not the app, not a screen, and not the bot, which
+  `builtin.ts` says outright has no tools. Switch it on today and you can start a Spanish course with nothing in it. The
+  bot's own description is the answer ("teaches you a language by talking with you"): one tool on the bot, server side.
+  *(The sentence bank is NOT this problem. An empty bank is handled on purpose — the `blank` exercise is skipped and the
+  ladder closes over the gap. Seeding it adds the best exercise kind, a word used in a real sentence, but is optional.)*
+* **Discover — dark by construction.** The engine, the catalogue, the store and its tests are on main, but `ports.discover`
+  is declared and nothing supplies it, so the tools never attach to a bot. Wiring it up is what is left.
+* **The cloud browser — never run against a real site.** Every test uses a fake browser. `CLOUD_BROWSER_SITES` is also
+  inverted from every other list in the config: **empty means NONE**.
+* **The sign-in card is not drawn anywhere.** The server sends it; the desktop app has to draw it. Until then every
+  `FIELD` line ends in a correct plain handover, so nothing is broken — it is just never shown.
+* **The cinema's 3D** is connected as of today, but the deploy that carries Blender has to land before it can render.
+
+### 3. Off on purpose. Nothing is wrong.
+
+Eighteen `PERM_*` switches are phone permissions, held until the stores approve each declaration — background location is
+the one that blocks a `production` Android upload. `DEV_SKIP_AUTH` must stay off. The rest (`PLAN_SHARE`, `SPACES_ENABLED`,
+`HOME_UPDATES`, `WIDGET_DIGEST`, `NATIVE_LOOKS`, `KEYBOARD_SKINS`, `USAGE_*`, `FRONT_DOOR`, `CODE_SCHEDULES`, `BOT_SHOW`,
+`BOTS_SCENES`, `NOTIFY_REPLY`, `DEMO_ENABLED`, `AUTH_GOOGLE_WEB` and the others) are finished features waiting to launch.
+
+**THE CINEMA IS IN, BOTH HALVES, AND THE 3D IS CONNECTED.** The film half merged (migrations 0101 and 0103, and bot
+sessions as 0102); its seven prompts are roles in `roles.ts` with fixtures and known-good answers, so the sweep holds the
+whole bot. The 3D half, which was wired to nothing, now has three doors under the cinema bot's own path
+(`GET`/`POST /v1/cinema/scenes`, `GET /v1/cinema/scenes/:id`), a creation row a person comes back to (migration 0104,
+`src/cinema/scene/service.ts` and `store.ts`), and Blender in the image behind `WITH_BLENDER=1`, which
+`docker-compose.yml` sets for a deploy and CI leaves off. **`CINEMA` is still off**: nothing is reachable until it is
+switched on, and this box has no graphics card, so a still is seconds to minutes and a moving scene wants their own
+computer or a rented card (`docs/cinema-3d.md`). What follows is how it got here.
+
+**THE CINEMA, TUNED AS FAR AS A MERGE CAN TAKE IT.** `src/cinema/` held the Blender half; the film bot wanted the same
+paths. The 3D is a PART of the cinema bot — its own doc says so — so it took the sub-name: **`src/cinema/scene/` and
+`docs/cinema-3d.md`**, and `src/cinema/` is free for the bot itself. One `CINEMA` switch for both halves; the 3D's keys
+only say HOW it renders. Green, pushed, and it unblocks the film bot's rebase.
+
+The film bot (`claude/kind-ptolemy-9f3jlg`, 25 commits) was then merged in full and backed out again. Everything
+mechanical worked: 13 conflicts resolved, migrations renumbered 0089/0090/0091 -> 0101/0102/0103, the quota port
+adapted to the `Quota` shape it grew since, **12,413 tests passing**. It stops on ONE thing, and it is the author's:
+
+> **Its seven prompts do not go through `roles.ts`.** Every cinema model call funnels through one door (`index.ts`
+> thinkAs) that writes `messages: [{ role: "system", content: o.system }, ...]` from inline constants — READ_SYSTEM,
+> DIRECTOR_SYSTEM, REVISE_SYSTEM, PROPOSE_SYSTEM and four more. `principles-sweep` fails three ways on it: a system
+> prompt written out, a model call that names no role, messages not built with `compose()`.
+>
+> The fix is to give each of the seven (`cinema.direct`, `cinema.revise`, `cinema.propose`, `cinema.picture.read`,
+> `cinema.picture.check`, `cinema.check.still`, `cinema.check.take`) a role in `roles.ts` with a budget, an eval tier,
+> a `prompt-sizes` entry and `evals/<role>.jsonl` with at least two fixtures, and have `thinkAs` compose from the role
+> instead of taking a `system` string. **The 3D half already does exactly this** (`cinema_scene`, `cinema_eye`), so the
+> pattern is in the same folder.
+>
+> A merge did not do it because moving those words into `compose()` changes what the models are told, and what they are
+> told is what the films look like. That is a tuning decision, not a conflict resolution.
+
+**Branches deliberately left alone**: `serene-lovelace-y9fcnj`, `keen-cori-wg8dpw`, `code-agent-core`,
+`repo-analysis-verdict-6lpyaw`, `repos-deploy-analysis-w3uaxp`, `dreamy-franklin-rFLIX`. Each is 79 to 241 commits
+behind a base from July to early November; merging one would undo months, not add to it.
+
+**MIGRATIONS 0097, 0098, 0099, 0100 ARE ON THE LIVE DATABASE.** They went in by themselves, which is the whole point
+of the arrangement: a deploy builds the new image before it touches the running server, and the image cannot be built
+unless the migrations end well (`tulmi/supabase/migrate-pending.sh`, the `migrate` stage of the Dockerfile). The push of
+`101ca707` built it at 14:00 on 16 November and the build said so — `migrations: running 0097 0098 0099 0100`, four
+PASSes, `migrations: done` — and then the new container came up and the deploy's twelve live checks passed. So nobody
+ran anything by hand, and nobody could have: the database address lives in `tulmi/.env` on the server and is given to
+the build as a secret, so a laptop or a CI box skips this step entirely.
+
+`LIVE_MIGRATION` is now `0100`, the last one known to be on the database. It had stayed at `0096`, which was not
+dangerous — all four are guarded (`if not exists` throughout, and 0100's one policy is dropped if it exists first), so
+re-running them changes nothing — but it meant every deploy did four pointless round trips and the build layer never
+settled. **To put a migration live: write it, push it to main.** There is no hand step; the only hand step is moving
+LIVE_MIGRATION afterwards, and the deploy log is where you read what happened.
 
 - Native looks: the server draws the widgets, the Live Activity, the Android "Bots at work" notice and the keyboard's key
   faces (`docs/native-looks.md`). Every card shows its own bot.
@@ -57,6 +183,19 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
+- Reviews of the pieces below may push small follow-up fixes to the same files.
+- **The bot at the foot of Home, as what is happening** (server; `docs/home-updates.md`, behind `HOME_UPDATES`, off, staged by
+  `HOME_UPDATES_USERS`; his ear is open the whole time Home is up, `HOME_LISTEN=false` shuts it). Instead of a box to type in, his thought holds what needs
+  you, what your bots are working on and what just finished, each opening where it belongs. No microphone to press: his ear is open
+  while the page is in front, and the key that opens the field is the one thing that shuts it (the ✕ beside the field gives it back;
+  coming back by *speaking* is the wake word, which needs the apps). At rest he wears a mark, never a sentence, and nothing at all
+  when there is nothing. He no longer stands in a white strip either: he lives behind the tab bar, only his head over the line, and
+  jumps the ledge into full view now and then (`stand: "peek"` / `BotPeek`, the apps' `Peek` in botTiles' core; a tap anywhere in
+  the room that is left opens what is happening). Three repos: the backend, TAILZU-FRONTEND and TAILZU-DESKTOP.
+  Vocabulary 1, today's kit only. Built on `claude/keen-allen-podunv`, not on main yet. Holds
+  `tulmi/src/experience/bots/screens/shell/homeUpdates.ts` (new), and the foot of Home in `screens/shell/home.ts` and
+  `screens/shell.ts` (its load reads the activity feed only when the switch is on). It changes `homeThought.ts` not at all: with
+  the switch off Home builds exactly as before.
 - **Lingo, the language bot** (`docs/lingo.md`; switch `LINGO`, off). Re-added after a merge took it: the whole section was rewritten
   for 8.9.1 and git kept that side, so this entry went with it. Nothing of 8.9.1's is held here.
   ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the app, the store, a
@@ -96,8 +235,10 @@ look. The apps are renderers: build server data with the existing blocks and cat
   organises the note. The call screen says it is there and draws the document beside the call (a window) or under it (a phone),
   and the link everyone joined by carries the document once the call is over — all server data, nothing new in either app.
   Migrations **0095** (meetings.brief) and **0096** (rooms.note_id, rooms.brief). Switch `MEETING_BRIEF`, off.
-  Left: the bot speaking in a call out loud (the same adapter takes PCM back in), and a wake word in the transcript so it can be
-  asked by voice rather than in writing.
+  **It speaks, too**: a session and a track of its own at the SFU (the same adapter the other way, `location: "local"`), a seat in
+  the room that never beats and counts as nobody, the words read as 24 kHz PCM and let out in 20 ms frames — so every app hears
+  it as it hears a person. And it answers to its name: a line that starts with "X0" is a question, out loud and in writing.
+
   Holds: `tulmi/src/brief/**`, `tulmi/src/rooms/**`, `tulmi/src/meet/**`, `tulmi/src/experience/bots/screens/bots/{meetScreens,callRoom}.ts`,
   the `MEETING_BRIEF*` lines of `config.ts`, migrations **0095** and **0096**, `docs/brief.md`.
 
@@ -187,15 +328,75 @@ look. The apps are renderers: build server data with the existing blocks and cat
 ## Numbers in use
 
 - Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days, 0091 rooms, 0092 lingo left,
-  0093 trust signals, 0094 phone things, 0095 the meeting's brief, 0096 a call's note and brief. Next free: **0097**. Take the next free number and
-  check `git log origin/main -- tulmi/supabase/migrations` first: two sessions have collided twice today.
+  0093 trust signals, 0094 phone things, 0095 the meeting's brief, 0096 plan share, 0097 a call's note and brief,
+  0098 a browser that belongs to the person, 0099 discover, 0100 Xode's standing job. **These are live.**
+  Then, merged but NOT yet on the live database: 0101 the cinema's films, 0102 bot sessions, 0103 the cinema's places,
+  0104 the cinema's 3D creations. They go in by themselves on the next deploy, and LIVE_MIGRATION moves to 0104 after.
+  Next free: **0105**. Take the next free number and check both
+  `git log origin/main -- tulmi/supabase/migrations` and the open branches first:
+  sessions have collided three times now, and the third one nearly shipped.
+
+  **The third collision, and what it teaches.** A call's note and brief was written as a second `0096` while
+  `LIVE_MIGRATION` was already `0096`. `migrate-pending.sh` keeps a file only when its number is GREATER than that,
+  so it was not pending, would never have run, and the deploy would have said there was nothing to do — the tables
+  missing and the code that wants them failing at runtime, with nothing anywhere saying why. Renamed to
+  `0097_room_brief.sql`, which the runner now picks up; it is two `add column if not exists`, so running it is safe
+  whatever already reached the database. **A duplicate number does not fail loudly, it fails silently** — which is
+  why the list above is worth keeping straight.
 - Phone runtime: `tailzu-2026-11-x0-blip`. Do not change it.
 
 ## Notes from other sessions
 
+- **16 Nov, the cloud browser, read-only half (`docs/sites.md`, `CLOUD_BROWSER` — off), on main.** A browser per
+  person, signed in once, read when there is a reason: "where is my order" for a site with no API. Built:
+  `src/sites/` (gate, store, service), `engine.visit()` in `src/web/browser/engine.ts`, the `site_read` role,
+  migration **0098**, `tests/sites.test.ts`. The routes, the screens, the clock and signing in are all built now
+  (see 16 Nov above); the whole feature is still behind `CLOUD_BROWSER`, off, which is why it is safe on main.
+  **Not built: a run against a real site.** Every test uses a fake browser.
+  Two things worth knowing before touching it. `CLOUD_BROWSER_SITES` is **empty means NONE**, inverted from every
+  other list in the config on purpose. And the browser keeps nothing between visits: a fresh context filled from
+  the saved session each time, so there is no live login anywhere and a crash costs a visit, not a sign-in.
+
+- **16 Nov, the cloud browser can now be SIGNED IN, and the whole panel is server side (`docs/sites.md`).** On main,
+  behind `CLOUD_BROWSER`, still off. The panel is a **page this server writes** (`src/sites/panelHost.ts`) shown in the
+  `LiveView` node the apps already have — NOT a component of their own, which it nearly was. The reason is worth keeping:
+  a component ships in a store build, and a store build is weeks. As a page, the frame clock, the tap arithmetic and the
+  keyboard all ship when this server deploys, **and a phone that has never heard of sites can draw one today, with no app
+  update at all.** Screen `bots.site.signin`; its own load is what opens the browser, so a build with no LiveView is sent
+  no panel and opens none either.
+  The page is given a **ticket**: one panel, nothing else, dead when the panel is, written into the HTML and nowhere else.
+  A LiveView cannot see the app's token (SecureStore, behind the Keystore) and must not be handed one. The four ticket
+  routes live under `/sites/panel/t/:ticket`, answer `Access-Control-Allow-Origin: *` and take no cookie — safe precisely
+  because the ticket is the whole of the authority, and needed because Android gives an HTML-with-base-URL page an origin
+  that is sometimes opaque. The screen is `keep: false`, so the ticket never reaches AsyncStorage.
+  Nothing typed is kept: the box is emptied *before* each call goes out, so a password is in the page for one keystroke.
+  Driven in real Chromium against a fake API: a tap at the frame's centre arrives within one pixel of the page's centre,
+  a drag scrolls, Backspace on an empty box sends the key, the quiet clock holds at 700 ms and the asks stop when it ends.
+
+- **15 Nov, the sign-in card (`docs/sign-in.md`), backend only, on main.** The planner can now describe a sign-in page's
+  real boxes instead of only saying "sign in, then press Continue": `FIELD <id> <kind> | <label>` and `ALSO <id> | <label>`
+  lines before a `HANDOVER`, which arrive on the `handover` event as `card`. Nothing is written per site — the boxes are
+  read off `<screen>`, so a shop nobody has coded for works like one that was. The seven rules ride only on a screen that
+  looks like a sign-in (`looksLikeSignIn`), the way `JOB_NOTE` does, so the stable block pays two verb lines and nothing else.
+  Never a card for a payment or a CAPTCHA, and no boxes means no card, which shows them the page — so a client that ignores
+  `card` behaves exactly as it does today. **The drawing of it is not built**: that is the desktop app, and the cloud browser
+  when it exists. Until then every `FIELD` line still ends in a correct plain handover.
+
+- **The planner's stable block is nearly full: 4889 of its 4904 budget** (`tests/principles.test.ts`, "stays inside its
+  budget"). Fifteen characters. The budget is "measured + 10%" and the measured figure in that table, 4458, is long out of
+  date — the block has drifted ~430 characters since someone last wrote it down. The next line anyone adds to
+  `ROLES.ask_planner` will fail that test. Before raising the number, check the new text could not ride in a note at the
+  head of the step instead (`JOB_NOTE`, `CONTEXT_NOTE`, `SIGN_IN_NOTE`), which is what the sign-in rules do and what the
+  budget is there to make you ask. If it truly belongs in the block, re-measure and set the entry to measured + 10%,
+  with the real measured figure in the comment.
+
+
+- A wake word ("hey X0" with the microphone otherwise shut) and a press-and-hold on the walking bot are the two things the foot of
+  Home cannot do from the server. The hold wants only the `gesture` block (SPEC 2.5) once `SDUI_V2` is on and the builds that carry
+  it are out — no new app code. The wake word is native work in both apps (local listening, a permission, battery, review); nobody
+  is building it.
 - **14 Nov, from the window-permissions session:** the `perm-words.test.ts` failure over `NSHealthUpdateUsageDescription` is
   fixed by 8.9.1: the test now expects the string and checks it says only that nothing is written.
-
 - **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
   `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client
   missing a block is sent "Open X0 again" instead of the screen, never a lowered one. A chat must never do that for decoration,

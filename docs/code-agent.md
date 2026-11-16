@@ -14,6 +14,7 @@ tulmi/src/code/agent/
   runner.ts        the runner port, and the environment router behind it
   report.ts        the commit message, the pull request body, the final report
   surface.ts       what the change took away: the exported names and routes of the files it touched, before against after
+  review.ts        one job's change, read by a model of another family before the pull request is marked ready (role code_review)
   scope.ts         the files a change touched that its task never pointed at: said to the model once, then reported
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
@@ -33,9 +34,9 @@ prepare ──┬─ a question, research, a library to find ──────�
           ├─ an empty repo ─► new_project ──► (the first milestone, as below) ─► plan
           │                   intake ► spec ► PLAN.md committed ► starter step
           │
-          └─ otherwise ─► baseline ─► locate ─► plan ─► work ─► verify ─► [design] ─► commit ─► pr ─► report ─► done
-                                        │         │       ▲        │            │
-                                  needs_you  needs_you    └─ fix ──┘            └─ major differences: back to work (2 rounds at most)
+          └─ otherwise ─► baseline ─► locate ─► plan ─► work ─► verify ─► [design | screens] ─► commit ─► pr ─► report ─► done
+                                        │         │       ▲        │             │
+                                  needs_you  needs_you    └─ fix ──┘             └─ major differences: back to work (2 rounds at most)
                                (which file?)  (the OK)   (3 rounds at most)
 ```
 
@@ -45,14 +46,17 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `new_project` | Empty repo only. **Intake**: at most five questions the person's words do not answer, one at a time. **Spec** and **PLAN.md** (`newproject/`). PLAN.md (and the starter's template files, if the stack has any) is **committed** through the workspace as the first commit. The stack's **official starter** is emitted as one runner step (`create-next-app` and the like) whose changes are kept and committed by the server. Then the first milestone is rewritten as the task and the job goes on to `plan` as an ordinary task on a project that now has files. | a question (`needs_you`); no computer for the starter: asks "Try again" or "Skip the setup" |
 | `baseline` | The project's own checks (install, typecheck, lint, test, build), run once on the untouched branch in **one** runner step, each with its own exit code and the names of what fails (`checks.ts`). Recorded on the brain with the commit they were run at, and reused for a week while the default branch has not moved. **Unknown** if they cannot be run (no checks found, no computer free, the branch already has commits, unreadable output): the job goes on, says so, and the pull request stays a draft. | |
 | `locate` | `work/locate.ts`. Sure enough: no model. Unsure: a question with labelled options, asked **once**. | a question (`needs_you`) |
-| `plan` | `work/plan.ts`. Then the policy is asked in advance what the commit this plan leads to would do (`decide`). A standing "never" ends the job with the reason. A **high-risk** plan, or one the policy would ask about, waits for the person's OK through the approval book. | the OK (`needs_you`) |
+| `plan` | `work/plan.ts`. Then the policy is asked in advance what the commit this plan leads to would do (`decide`). A standing "never" ends the job with the reason. **THE TASK IS THE PERMISSION:** a plan does not wait merely for being risky — the person asked for the work, and what the job then does on its own branch is free (`policy.ts`). It waits when the **policy** asks about part of it (a path outside the branch, a workflow file, something that looks like a secret) or when the person has asked to see every plan first (`planFirst`). | the OK (`needs_you`) |
 | `split` | **Only for a big goal** (a plan over 12 files or 3 features, a goal over several projects, or the person asked; never a small task): the job becomes a **lead**. The `team_split` role splits the work into parts with disjoint file ownership; code validates them (an overlap is refused and asked again, three rounds at most). A split that cannot be made right leaves the job to do the work itself. `docs/code-team.md` | the budget cannot pay a team (`needs_you`, `budget`) |
 | `team` | The lead's loop over its helpers: it builds part 0 (the shared contracts) first, then starts helpers (child jobs, three at once by default), has each part reviewed by a model of another family (two fix rounds at most), merges the parts in dependency order, and then runs `verify` on the whole branch. One pull request at the end. `docs/code-team.md` | a part's money, a helper's question (shown as a `blocked` part) |
 | `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. After a round that changed code, the tests covering the changed files are run while the edit is still in front of the model, when that is nearly free (section 4a), and what it touched beyond the task is noted once (section 4c). | a question from the model; the budget |
 | `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4b, `surface.ts`). | |
 | `design` | **Only for a job built from an approved design** (`AgentState.spec`, `docs/artifacts.md` sections 6 and 11), and only if `CODE_DESIGN_CHECK` is on. After the checks pass and before the commit: start the project's dev server on the runner (the preview, `docs/cloudflare-jobs.md` section 11), open the route the design is for, shoot it and the approved design at mobile and desktop, and compare (a cheap pixel gate first, the vision tier only if they differ, metered in the job's budget). **Major** differences send the job back to `work` with the differences and the fix hints in front of the model, **twice at most**, and the checks run again before the next look. After the last round one more look is taken and what still differs is **reported**. It **never blocks the commit**: no live runner, not a web app, no `dev` script, a dev server that will not start, no browser or shot viewer, a budget too small (about 240 paise), a failed shot, a model with no usable answer: the round is skipped with one sentence for the report and the job goes on. Its stages are saved one by one, so a restart or a wait resumes it without doing anything twice | |
+| `screens` (and back) | A page measured wrong sends the job back to `work` once or twice to fix it, then measures again (section 4g). | |
+| `screens` | **Only for a job that changed what people see** and was *not* built from a design, and only if `CODE_SCREENS` is on. Runs the project's dev server on the runner with the staged edits laid, opens the page the change shows on, and keeps **real screenshots** of it at the project's sizes for the report (`screens.ts`; `docs/cloudflare-jobs.md` section 12). No model is asked and nothing is compared: these are the pictures, not a judgement. While the app is up, **the floor** is checked on the page the browser drew (section 4e). Like the design round it **never blocks the commit**: no runner, no `dev` script, no browser, a failed shot, and the round ends with one sentence for the report ("No real screens: ..."). | |
+| `work` (what it is shown) | For a job on files people see, the task message also carries **what the project already looks like** (section 4d-ii) and **the floor** (section 4e). Both are stable, so a cache keeps them free after the first turn, and both are absent for work nobody sees. | |
 | `commit` | The **server** commits all the staged edits at once through `workspace().commit`, so the policy, the secret scan, the Blip author and the co-author trailer always apply. If the policy asks, the job waits for the person's OK; if it says never, the job stops with the reason. | the OK (`needs_you`) |
-| `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke**, and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
+| `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke, and another model found nothing bad enough to hold it** (section 4d), and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
 | `report` | What changed, the PR link, the checks, the findings, **"already broken before Tailzu" as its own list**, the cost in rupees and what to do next. The job is finished through the router, which pushes `job_done`. | |
 
 A job that changes nothing (a question, "nothing needed changing") skips `verify`, `design`, `commit` and `pr`: the model's summary is the report. A job with no design to match skips `design`; its phase list is otherwise the same.
@@ -241,6 +245,166 @@ guard, because a part really does own its paths, where here nobody knows better 
 Tests: `tests/code-agent-scope.test.ts` (what counts as pointed at, the three exemptions and the edit that is not excused by its folder, a brain that
 cannot answer) and the "a file the task never pointed at" group in `tests/code-agent-loop.test.ts`.
 
+## 4d. The change, read by another model
+
+The project's checks prove that what is tested still works. They do not read the change. A team's part has been read by another model since the team
+flow was built (`team/review.ts`), and a chat answer drawn from code is read before it goes (`chat/look.ts`, role `code_check`). **A plain job's diff
+was the one thing nothing ever looked at**: green checks, then a pull request marked ready.
+
+So once the checks have passed, **while the edits are still staged** (the commit clears the changeset, so that is the last moment the diff exists), the
+diff is read ONCE against the task by a model **of another family** — the review tier is a pool, the router is told the writer's model, and the model
+that actually answered is checked again, exactly as a part's review is. Two models of one family share blind spots.
+
+**What it may conclude.** Findings, and nothing else: it cannot edit, commit or ask. A **blocker** or a **major** leaves the pull request a **draft**
+with the reason (`VerifyState`-like `AgentState.review`, read by `prPhase`'s `green`); the rest is written in the pull request and the report. It
+**never sends the job back to work**, so a review cannot cost more than the one call it is: the person reads it and asks for the fix if they want it.
+It cannot stop the commit either — what the checks passed is what gets committed, as it always was.
+
+**The evidence bar applies to the reviewer too** (`work/findings.ts cleanFinding`, section 3): a blocker or a major that cannot show **how it happens**
+is lowered to a minor, so nothing stops a pull request on a model's word alone; one that shows it keeps its severity and carries the `how` into the
+pull request. After Cloudflare's security-audit skill (MIT; the idea, not its text).
+
+**When it does not run**, each said in the report and **never recorded as a pass**: no model of another family (or only one of the writer's own family
+answered), too little budget left, nothing staged to read, a team's job or a merge (they have their own review), or `CODE_JOB_REVIEW` off.
+
+Tests: `tests/code-agent-review.test.ts` (the family rule, every skip, the evidence bar lowering a blocker, the cap and order, the fenced message) and
+the "another model reading the change" group in `tests/code-agent-loop.test.ts` (a blocker holding the pull request a draft, a clean read marking it
+ready, a skip never holding it, and the switch off).
+
+## 4d-ii. What the project already looks like
+
+`artifacts/kit.ts` `designKit`, read by `phases.ts lookOf` once at the start of work, and carried as a **stable** part of the task message (`context.ts`).
+
+The kit has always known how to read a project's real look, **with no model**, from at most a dozen files: the Tailwind config and CSS custom properties, a shadcn, MUI, Chakra or styled theme, Flutter's `ThemeData`, Android's `colors.xml` and Compose's `Color.kt`, iOS colour assets, the fonts, the icon library, and **a catalog of the project's own components with their props** from the brain's symbols. It is cached against the brain's head, so it costs a few file reads once per commit and nothing after, and it emits at most 2,000 characters.
+
+Until now only the build-an-approved-design path used it. So an ordinary frontend job was *told* to use the project's own components and tokens (section 4e) and never *shown* what they were — it had to find them by reading files, every job, and often didn't. Now a job on files people see gets them in front of it.
+
+**Only for work people see**, by the same test as the floor's brief (`floor.ts seenByPeople` over the plan's files, the located targets and the index's hints), so an ordinary backend job does not read the kit at all and carries not a word of it. **Never a blocker**: no `kit` dep configured, a store that throws, a project with nothing to read — `work.look` is `""`, the context says nothing, and the job does the work anyway. It needs `AgentDeps.kit` (the artifact store's `getKit`/`putKit`); the VPS passes it in `server.ts`, the Worker in `jobs/src/world.ts`.
+
+## 4e. The floor: what a page needs whatever its design says
+
+`src/code/agent/floor.ts`, run in the `screens` round (section 1) while the app is still up.
+
+The design round asks *does this match the design they approved*. The pictures show *what it looks like*. Neither asks **is it usable at all** — and nobody writes that into a request. Nobody says "and put a viewport tag in, and give the fields labels". Those are the things everyone wants and nobody specifies, so they are **checked rather than hoped for**, and that is the whole idea: a floor is not a taste, it is the part of a page a person would have asked for if they had thought of it.
+
+**On the rendered page, not on the code.** A project may be React, Next, Vue, Svelte or a template language, and each writes an image a different way. The browser has already turned all of them into one HTML — the HTML the person's phone will get — and that is what is read, through the same browser that took the pictures (`ScreensDeps.read`; Browser Rendering's content endpoint on the Worker, `getRenderer()` on a server). **It costs nothing**: no model, no second run, no new dependency, no extra page load beyond one read of a page that is already open.
+
+| Rule | What is wrong, and why it is the floor |
+| --- | --- |
+| `viewport` | No viewport meta tag, or one that does not say `width=device-width`: the single biggest cause of a page that is unusable on a phone — it is drawn at desktop width and scaled down, so every word comes out too small to read |
+| `img.alt` | An image with **no `alt` at all**: a screen reader says only "image". `alt=""` is **not** a fault — that is how decoration is marked, and saying so is the author having decided. Nor is `role="presentation"`, `role="none"`, `aria-hidden="true"` or an `aria-label` |
+| `field.label` | A field with no label of any kind: no `<label for>`, no wrapping `<label>`, no `aria-label`, no `aria-labelledby`, no `title`. A form nobody can fill in without seeing it. A hidden input and the button-shaped inputs are not asked for one |
+| `control.name` | A button with no text and no name: an icon-only button a screen reader announces as "button". The alt of an icon inside it counts as a name |
+| `lang` | No `lang` on `<html>`: what voice reads the page, and how its quotes and hyphenation are drawn |
+| `heading.skip` | A heading level skipped (`h1` then `h3`): the page's outline is wrong for anyone moving through it by heading |
+
+**The same floor, said before the work.** Reading the built page is the honest way round but the late way: what it finds costs a person a line in the report. So when the work looks like being about a page people look at, the model is told the same floor while it is still writing (`floorBrief`, a stable part of the task message, so a cache keeps it free after the first turn). It names the six rules, and the gaps a request leaves open that are to be **filled rather than asked about** — what a screen does while it loads, when it has nothing to show, when it fails, and how it works from a keyboard — and it tells the model to find how the project already does those and follow it, with the project's own components and tokens. **It names no colour, no spacing and no component**: the project's own kit is the look, and a model inventing one is the thing being avoided.
+
+What counts as "about a page" is read from the plan's files, where a search says the change goes, and, for a free-form job, where the index points — all three fixed **before** the work starts, so the block cannot appear halfway through and cost the job its cached prefix. A job neither the plan nor the index puts on a page gets no brief, and the built page is read afterwards all the same.
+
+**It never blocks and never fails a job.** No renderer on this server, a page that will not answer, HTML it cannot make sense of: `screens.floor` stays absent and the report says **nothing at all** about it. A page with nothing wrong records an empty list, which is also nothing to say — a check that cries wolf gets ignored, so the quiet case must be silent. The findings ride with the pictures in the report, counted in full and shown a few at a time, and one line goes in the work log, so the pull request carries them too.
+
+## 4f. The deeper look: measuring the page a browser drew
+
+`agent/probe.ts` collects, `agent/coherence.ts` decides, and the screens round runs both once the pictures are taken and while the app is still up.
+
+The floor (4e) reads HTML, which is free and works everywhere but can only see what is written down. The things that decide whether a page is usable are not written down anywhere — what colour the text **came out**, whether anything shows when you tab to it, whether the layout survives a phone, whether the motion stops when the person asked for less of it. Those exist only after layout and the cascade, so this needs a browser that will run one expression in a page.
+
+**The split is deliberate.** The injected script walks, reads, counts and returns; it decides nothing. Every judgement happens in TypeScript with tests around it, because a page script is the worst place to put logic — nothing in it can be unit tested and every mistake stays invisible until a real page hits it.
+
+**Two loads of the same page**, because the two questions need it drawn differently: once at phone width (320px, where layouts actually break) for everything, and once with `prefers-reduced-motion: reduce` emulated **before** the page loads, for what is still moving afterwards. Images and fonts are not blocked — a page measured without its fonts has the wrong sizes and the wrong boxes, which would make every number a lie.
+
+**What it finds** (`defects`) — objective, absolute, and each carrying the axis that repairs it without changing the design:
+
+| Rule | What it means | Repair axis |
+| --- | --- | --- |
+| `text.invisible` | text the same colour as what is behind it — never a decision, usually a token with no dark-mode value | lightness |
+| `text.contrast` | below 4.5:1, or 3:1 for large text, **as drawn** through the resolved background stack | lightness |
+| `text.small` | text under 12px, weighed by **how much text it is**, not how many elements | size |
+| `layout.overflow` | the page scrolls sideways at 320px, and which element sticks out | width |
+| `focus.none` | a control that shows nothing at all on keyboard focus (only where the browser itself says `:focus-visible`, so a mouse-only `:focus` is not mistaken for a ring) | ring |
+| `motion.reduce` | an animation still running after reduced motion was asked for | motion |
+
+**And whether it is one design** (`coherence`). A page with 11 text sizes, 23 near-identical greys and 9 radii is not designed, and that is a measurement. But **there is no published healthy number for any of these** — the percentiles that exist describe what the web does, not what is good. So each measure states its own `direction`, and only one of them claims `lower`: colours closer than **CIEDE2000 2.0**, the just-noticeable difference, because two colours a person cannot tell apart are drift and not choices. Everything else says `unknown`, out loud. A tool that invents thresholds gets muted, and a muted tool helps nobody.
+
+It also names **strays** — a value used once or twice sitting within 3px of one used ten times or more ("13px is used once, 1px from 12px, which is used 847 times") — and the **alignment lines** the page's edges sit on, clustered at ±2px from real boxes. That last one is the classical layout measure computed from the DOM: the published implementations approximate those rectangles from pixels with computer vision, badly enough that most of the measures were never implemented. A browser knows every rectangle exactly, and knows which element each belongs to, so the report can name the element that broke the grid.
+
+Colour maths is ours: sRGB → CIELAB → CIEDE2000, and WCAG 2 contrast. **WCAG 2 is the enforced floor on purpose.** The newer perceptual algorithm is published but is not open source — all rights reserved, patents pending, and a licence reaching commercial use — so it is not something to ship or to claim.
+
+**Where it runs.** A real Chrome through `web/browser` (`getMeasurer()`). Cloudflare's content endpoint returns HTML and runs nothing of ours, so on that path the round keeps its pictures and the free floor and the deeper look is simply absent — not reported, not apologised for. **Known gap:** the VPS does not wire the screens round at all today (no job-shot store or screenshotter there), so the round, and with it this measurement, runs on the Worker; making the VPS serve it is its own piece of work.
+
+## 4g. The repair round: what is objectively wrong gets fixed, not filed
+
+`coherence.ts repairBrief`, run from the screens round.
+
+Everything above measures. This does not, and that is the whole difference between a linter and an agent. A linter hands a person a list; an agent is standing in the project with the app running. Every defect in 4f is wrong **by any standard** — nobody has to be asked whether text nobody can read is a problem — and every one carries the axis that fixes it without touching what the person chose.
+
+So the job goes back to `work` with the measurements in front of it, the checks run again, the page is drawn again and measured again, and the report shows **the before and the after** instead of the list.
+
+**The axis is the whole safety of it.** "Repair the contrast" could mean anything, including repainting the brand. These cannot:
+
+- **lightness** — change only the lightness of the colour, keep hue and saturation exactly
+- **size** — raise to the nearest step the project already uses; do not add a step to make it pass
+- **ring** — a visible `:focus-visible` ring in a colour from the project's own palette
+- **motion** — inside `prefers-reduced-motion: reduce`, drop the movement and keep colour and opacity; never a blanket `0.01s`
+- **width** — let the element shrink; do not hide the overflow and do not scale the page down
+- **snap** — move a stray value onto the step it is nearly on
+
+**Two rounds at most**, and only when something objective was found: a page that measures clean never costs a job a single turn, and the common case pays nothing. A round needs about 400 paise left, or the findings go in the report instead. The round is a fresh work round in exactly the sense the design round means it, and when the fix does not take the report says so plainly — "Still there: focus.none" — rather than quietly dropping it.
+
+**What is not here yet.** The rest of a floor — the contrast of text as it was actually drawn, a visible focus ring, overflow at phone width, `prefers-reduced-motion` honoured — needs the page's **computed styles**, which means evaluating script in the page. `web/browser/cdp.ts` can do that where a real Chrome is running, but not on Cloudflare's content endpoint, so it would have to skip with a reason on that path. Xode's **own** SDUI screens are checked more deeply, against the app's design rules, by `experience/sdui2/design.ts`.
+
+## 4g-ii. When the person has no design idea at all
+
+`agent/referent.ts`, derived once by `phases.ts directionOf` when the kit came back empty and the work is on files people see.
+
+A project with a frontend has a look and the kit reads it (4d-ii). This is the other case: nothing to read, and a person who could not tell you what they want it to look like, because that is not their job. Both usual answers are wrong.
+
+**Asking for adjectives is wrong.** "Modern, clean, trustworthy, premium" names a *region*, and a model asked for a region produces its centre — the average of everything, which is exactly the generic page people complain about. A specific thing names a *point*.
+
+**A menu of looks is wrong too**, and this is the less obvious one. Offer twelve named styles and within a month you have twelve new defaults: the menu does not remove the default, it relocates it. The same goes for a ranked list of the model's own ideas — ranking hands the choice back to the thing that produced the problem, and it takes the safe one every time.
+
+So: **derive, then deal.**
+
+1. From what the product *is*, list concrete things its audience already knows by heart — objects, places, printed matter, instruments. Not moods: `concrete()` throws out anything that is adjectives all the way down.
+2. Name the rut (the page this category always ships) and keep it and its obvious opposite **out** of the list.
+3. Check the list actually spread: at least **three different material worlds**, or it stopped at the first obvious thing and is asked again, **once**.
+4. **Deal** a few at random rather than ranking them. This is the anti-convergence mechanism, not a detail, and it is why this is not a menu. The deal is seeded from the job id, so a restart deals the same hand and a job cannot quietly change direction halfway through.
+5. The chosen thing's restrictions come **free**. A model knows what a 1970s university lecture handout is, and knows what one is not: no glow, no gradient, no hero. The brief therefore names the thing and lists **no don'ts at all** — a long list of them is a sign the direction was too vague to carry them.
+
+**Hands free by default.** It decides and gets on with it, costing one call on the cheap tier, once in a project's life. It asks only when it cannot tell what the product even is, because a wrong guess there is the one mistake that is dear to undo. And the person steers with a single word — **plain, safer, bolder** — rather than describing a design, because steering one axis is something anyone can do and describing a design is not. *Familiar and well made is a real destination, not a failure of nerve.*
+
+Where the request pins something down, **the request wins, always.** The direction only fills the axes the request left open.
+
+## 4h. Are we building the same app over and over?
+
+`agent/sameness.ts`, recorded on every job that measured a page, and measured across runs by the harness.
+
+Every catalogue of AI design tells warns about the same thing and none of them solves it: fix the first set of defaults and the *fixes* converge too. Avoid the purple gradient and everyone lands on cream-and-terracotta instead; one catalogue admits its own first demo did exactly that. Nobody solves it because **convergence is invisible from inside one page.** Every app we build can be individually good and the set of them still be one app wearing different names, and no check on a single page can see it.
+
+It is visible across runs, and that is a thing only a product that builds many apps can look at. So a finished page gets a short fingerprint of what it **came out as** — not what anyone intended: the hue family of its strongest colour (two blues are one decision, so hues are named, not kept as degrees), light or dark, how round in tiers, how many text sizes and radii, and the **silhouette** — the shape of the page with the content taken out, blocks by row band and width in tenths, run-length collapsed. A hero over three equal cards has a silhouette, and it is the same silhouette whatever the cards say.
+
+Then "have we made this before" is a lookup. `spread` says how concentrated the recent set is on each axis; `seenBefore` answers only where the **last three all agree**.
+
+**It never says a repeat is wrong.** A person who asks for the same thing twice should get it twice, and a house style is a legitimate thing to have. It reports how concentrated the set is, which is a fact, and says so: *"That is a measurement, not a fault: it is only worth acting on where nobody asked for it."*
+
+## 4i. Measuring the design layer itself
+
+`e2e/reality/design.ts`, free and offline, on the trend line beside the verdicts and the cost per success.
+
+Every published design brief, rule list and slop detector in this field was shipped on taste — not as a criticism, there was no instrument. That is the thing worth having, because checks get copied in a week and knowing *which* checks work does not.
+
+So: a corpus of pages with faults planted on purpose, opened in a real browser, measured by the real probe and read by the real `coherence.ts`. Two numbers, and they are the only two that matter for a tool that reports:
+
+- **caught** — of the faults deliberately planted, how many were found
+- **crying wolf** — how much was said about the pages with **nothing** wrong
+
+The second decides whether any of it survives contact with a person, so `designVerdict` **falls the moment it cries wolf whatever else it caught**, and a clean page scoring zero is a harder requirement than a broken page scoring high. Strays are reported but never counted as faults, so they can never flatter the score. No browser means `unknown`, never a pass.
+
+It does not score beauty and never will: there is no ground truth for beauty, and anyone who claims one is selling a number. It scores whether the measurements are true, which is a question with a right answer. Current state, run against real Chromium: **9 of 9 planted faults caught, 0 said about the sound pages.**
+
+`trend.ts` carries both numbers, so a change to a rule shows up as movement rather than an argument — and the arrows run opposite ways, because catching more is better and crying wolf more is worse.
+
 ## 5. Money
 
 * A job made without a budget gets **`CODE_JOB_DEFAULT_BUDGET_PAISE`** (3,000 paise, ₹30). A `budgetPaise` of **0 sent on purpose still means no model calls**.
@@ -318,7 +482,7 @@ The tests run the whole loop offline, over a fake GitHub, a scripted model and a
 
 ## 11. Tests
 
-`tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. The live session's tests are `code-live-search` (the search and its safety), `-tools` (the model's `grep`, `glob`, `read_file`, `list_dir` over a fake room, and without one), `-agent` (the loop's hooks: the room, closing the session before the person is asked and before the job ends, progress events, the person's words), `-routes`, `-minutes`, `-runner` (`run.mjs`'s session mode against a fake room), `-workflow` and `-tickets`; and in `jobs/test/` the room, the session, presence, the viewer and a whole agent job over a real room. The design round's are `code-agent-design.test.ts` (route finding, the dev command, every skip, the rounds, the budget, resuming after a restart or a wait, the report), with `artifacts-{pixels,shots,shots-route,compare}.test.ts` and `web-browser-shot.test.ts` for what it calls. Lead and helpers has its own: `code-team-{split,flow,rounds,money,repos,routes,advance}.test.ts` over `team-rig.ts` (`docs/code-team.md` section 13), and `jobs/test/team-wake.test.ts` for the Workflow. Free-form, plan-first, rewind and the settings' routes are `code-agent-freeform.test.ts`; the merge phase's is in `code-pr-care-conflict.test.ts`. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`). `tests/code-agent-mask.test.ts` holds the placeholders (each tool, secrets never quoted, arguments and text cut) and `tests/code-agent-context-strategies.test.ts` runs a 30-turn and a 55-turn job under `summary`, `mask` and `hybrid` and prints the numbers in section 4.
+`tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. The live session's tests are `code-live-search` (the search and its safety), `-tools` (the model's `grep`, `glob`, `read_file`, `list_dir` over a fake room, and without one), `-agent` (the loop's hooks: the room, closing the session before the person is asked and before the job ends, progress events, the person's words), `-routes`, `-minutes`, `-runner` (`run.mjs`'s session mode against a fake room), `-workflow` and `-tickets`; and in `jobs/test/` the room, the session, presence, the viewer and a whole agent job over a real room. The project's look is `code-agent-look.test.ts` (shown for UI work, read once not once a round, nothing at all for work nobody sees, and silence when the store is absent or throws). The derived direction is `code-agent-referent.test.ts` (a thing and not a mood, three material worlds or ask again, the hand dealt rather than ranked and the same after a restart, and unclear rather than a guess). Convergence is `code-agent-sameness.test.ts`, and the instrument that measures the design layer is `reality-design.test.ts` (crying wolf is disqualifying, a stray never flatters the score, no browser is never a pass) with its movement in `reality-trend.test.ts`. The deeper look's are `code-agent-coherence.test.ts` (the colour maths against CIELAB and WCAG figures known outside this code, every defect with its repair axis, and the measures declining to claim a direction they do not have) with `code-agent-screens.test.ts` for the round. The floor's are `code-agent-floor.test.ts` (each rule on a page that breaks it, silence on a page with nothing wrong, every form of label and name, and that rubbish or a cut-off page is never a throw) with `code-agent-screens.test.ts` for the round that runs it. The design round's are `code-agent-design.test.ts` (route finding, the dev command, every skip, the rounds, the budget, resuming after a restart or a wait, the report), with `artifacts-{pixels,shots,shots-route,compare}.test.ts` and `web-browser-shot.test.ts` for what it calls. Lead and helpers has its own: `code-team-{split,flow,rounds,money,repos,routes,advance}.test.ts` over `team-rig.ts` (`docs/code-team.md` section 13), and `jobs/test/team-wake.test.ts` for the Workflow. Free-form, plan-first, rewind and the settings' routes are `code-agent-freeform.test.ts`; the merge phase's is in `code-pr-care-conflict.test.ts`. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`). `tests/code-agent-mask.test.ts` holds the placeholders (each tool, secrets never quoted, arguments and text cut) and `tests/code-agent-context-strategies.test.ts` runs a 30-turn and a 55-turn job under `summary`, `mask` and `hybrid` and prints the numbers in section 4.
 
 ## 12. Running the loop on Cloudflare (`CODE_JOBS_MODE=cloudflare`)
 

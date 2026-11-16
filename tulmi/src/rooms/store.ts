@@ -35,6 +35,13 @@ export interface Seat {
   since: number;
   /** Their last word from the call (the live poll). A seat that goes quiet is dropped. */
   seen: number;
+  /**
+   * THE BOT'S OWN SEAT (rooms/scribe.ts, docs/brief.md). It sits in the call like anyone else so that everyone's app pulls
+   * its voice as it pulls a person's microphone, with nothing new to learn. It differs in three ways, all of them here:
+   * it never beats (so it is never dropped for going quiet), it does not count towards the call's size, and a call with
+   * nobody in it but the bot is an empty call.
+   */
+  bot?: true;
 }
 
 export interface Room {

@@ -21,8 +21,11 @@ import { commandList, missingRepos, missingTools } from "./installs.js";
 import { totalsOf, type Ctx } from "./plan.js";
 import type { RunState } from "./stages.js";
 import type { ComparisonReport, StageEstimate } from "./types.js";
+import { lineOf, trendMarkdown, type TrendLine } from "./trend.js";
 
 const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+/** What this run spent, over its stages. */
+const spentOf = (st: RunState): number => st.stages.reduce((n, x) => n + x.spentInr, 0);
 const inr = (x: number): string => `₹${x >= 100 ? x.toFixed(0) : x.toFixed(2)}`;
 const pct = (x: number, d = 0): string => `${(x * 100).toFixed(d)}%`;
 const secs = (ms: number | null): string => (ms === null ? "-" : `${(ms / 1000).toFixed(0)}s`);
@@ -31,6 +34,10 @@ export interface PlanEstimate { plan: string; tasks: number; stages: StageEstima
 
 export interface ReportInput {
   main: RunState;
+  /** Every earlier run's line (trend.ts), for the "How it has moved" section. Absent: the section is left out. */
+  trend?: readonly TrendLine[];
+  /** This run's own line, when the caller has already made it. */
+  trendLine?: TrendLine;
   /** The no-key proof (--prove): stage 0 is real, the rest is replayed, simulated or scripted. */
   prove?: boolean;
   /** The simulated runs that prove the stopping rule (a clear winner, a tie), shown apart. */
@@ -211,6 +218,11 @@ export function buildMarkdown(inp: ReportInput): string {
   for (const l of st.stages.find((s) => s.stage === 0)?.lines ?? []) L.push(`- ${l}`);
   L.push("", "## Verdict per area", "", "| area | verdict | results | basis |", "|---|---|---|---|");
   for (const v of a.verdicts) L.push(`| ${v.area} | ${STATUS_ICON[v.verdict]} ${v.verdict} | ${v.show ?? (v.n ? `${v.pass}/${v.n}${v.thin ? " (thin)" : ""}` : "-")} | ${v.basis} |`);
+  // How it has moved: this run against the last comparable one (trend.ts). Nothing when there is no earlier run to compare with.
+  if (inp.trend?.length) {
+    const words = trendMarkdown(inp.trend, inp.trendLine ?? lineOf(st, a, { mode: inp.prove ? "prove" : "real", spendInr: spentOf(st), code: fp.product }));
+    if (words.length) L.push("", ...words);
+  }
   L.push("", "## The five things to fix next", "");
   a.fixes.forEach((f, i) => { L.push(`${i + 1}. **${f.stage}**: ${f.cause} (${f.count} case(s)). Look at: ${f.where}.`); for (const e of f.examples) L.push(`   - \`${e.id}\` [${e.source}] ${e.detail.replace(/\n/g, " ").slice(0, 160)}`); });
   if (!a.fixes.length) L.push("No failures in the evidence.");

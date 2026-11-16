@@ -44,6 +44,7 @@ import { askAnswer } from "./shell/askAnswer.js";
 import { type Route, askCompose } from "./shell/askCompose.js";
 import { type HomeMore, homeHead, homeNotices, hello, tiles, homePull, homePhone, moreBots } from "./shell/home.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought } from "./shell/homeThought.js";
+import { HOME_UPDATES_STATE, homeUpdatesBot, homeUpdatesOn } from "./shell/homeUpdates.js";
 import { offline } from "./shell/offline.js";
 import { field, toast, kbd, couldNot, avatarOf, nameOf } from "./shell/parts.js";
 import { KIND_WORDS, searchField, hitWords, hitIcon, openHit, searchDesk } from "./shell/searchDesk.js";
@@ -64,8 +65,9 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const { head, pinned } = homeHead(ctx);
   const n = homeNotices(ctx, arrival, more);
   const thought = canHomeThought(ctx);
+  const updates = thought && homeUpdatesOn(ctx.user?.id);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(thought ? HOME_THOUGHT_STATE : {}) }, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}) }, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
       head,
       ...n.leaving,
@@ -77,8 +79,9 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       tiles(ctx, 4, 150, 18, more.notes, more.groups, more.planLine),
       ...routinesRow(ctx, more.routines),
     ],
-    // Ask any bot: his thought at the foot of the window where the build draws it, else the ask bar.
-    ...(thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })] }),
+    // The foot of the window: what is happening in his thought (HOME_UPDATES), else the ask in his thought, else the ask bar.
+    ...(updates ? { dock: [homeUpdatesBot(ctx, more.feed ?? [])], talkTo: homeTalkTo(ctx) }
+      : thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })] }),
   });
 }
 
@@ -324,7 +327,7 @@ export const shellScreens: BotsScreen[] = [
     // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [arrival, leaving, push, notes, persona, routines, about, groups, ai, plan] = await Promise.all([
+      const [arrival, leaving, push, notes, persona, routines, about, groups, ai, plan, feed] = await Promise.all([
         deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
@@ -343,16 +346,21 @@ export const shellScreens: BotsScreen[] = [
         // Plan Ease's one thing for its tile, when its simpler page is on (botsBots/planEase.ts line).
         // Only for a build that draws the new Plan page (PersonBot): an older one keeps today's page, and Home says nothing of the new.
         planOn("page") && canPersonBot(ctx) ? deps.api<{ next?: string }>("GET", `/v1/botsapp/bots/plan/line?tz=${ctx.tzOffsetMinutes}`).catch(() => undefined) : Promise.resolve(undefined),
+        // What just finished, for the bot at the foot of Home when he is the updates (shell/homeUpdates.ts). Read only then: with
+        // the switch off, Home asks for exactly what it always did.
+        canHomeThought(ctx) && homeUpdatesOn(ctx.user?.id)
+          ? deps.api<ActivityData>("GET", `/v1/shell/activity?tz=${ctx.tzOffsetMinutes}`).catch(() => undefined)
+          : Promise.resolve(undefined),
       ]);
       return {
         arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines, about,
-        groups: groups?.spaces, ai, ...(plan?.next ? { planLine: plan.next } : {}),
+        groups: groups?.spaces, ai, ...(plan?.next ? { planLine: plan.next } : {}), ...(feed?.rows ? { feed: feed.rows } : {}),
       };
     },
     build: (ctx, data) => {
       const arrival = !!data?.arrival, more: HomeMore = {
         leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines, about: data?.about, groups: data?.groups,
-        ai: data?.ai, planLine: data?.planLine,
+        ai: data?.ai, planLine: data?.planLine, feed: data?.feed,
       };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);

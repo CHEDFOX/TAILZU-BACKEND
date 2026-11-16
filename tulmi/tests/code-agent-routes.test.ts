@@ -177,7 +177,7 @@ describe("approving and denying", () => {
   async function waitingForPlan(r: Rig) {
     r.json.on("work.plan", UTIL_PLAN);
     r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
-    const { job, branch } = await r.start(RISKY);
+    const { job, branch } = await r.start(RISKY, { planFirst: true });
     await r.orch.idle();
     expect(await r.jobNow(job.id)).toMatchObject({ state: "waiting_for_you", waitingOn: "approval" });
     return { job, branch };
@@ -254,7 +254,7 @@ describe("the budget, stopping, and the log", () => {
     const r = await agentRig();
     r.json.on("work.plan", UTIL_PLAN);
     const s = await server(r);
-    const { job } = await r.start(RISKY);
+    const { job } = await r.start(RISKY, { planFirst: true });
     await r.orch.idle();
     const url = `/v1/code/jobs/${job.id}/stop`;
     expect((await s.call("bob", "POST", url, {})).statusCode).toBe(404);

@@ -65,6 +65,9 @@ export interface AskJson<T> {
   role: RoleId;
   /** The dynamic context of the call: the request, the excerpts, the last answer's problems. Always after the role. */
   user: string;
+  /** Pictures the call is about, as data urls, sent after the words (a render to judge, a page to read). Only a model that
+   *  takes them will see them, so a call that uses this belongs on a tier whose models do. */
+  pictures?: readonly string[];
   schema: z.ZodType<T>;
   maxTokens: number;
   step?: number;
@@ -95,7 +98,12 @@ export async function askJson<T>(ctx: ModelCtx, o: AskJson<T>): Promise<Asked<T>
   try {
     const r = await call<T>({
       tier: o.tier, ...(o.model ? { model: o.model } : {}), ...(o.writerModel ? { writerModel: o.writerModel } : {}),
-      messages: compose(o.role, [{ role: "user" as const, content: o.user }]),
+      messages: compose(o.role, [{
+        role: "user" as const,
+        content: o.pictures?.length
+          ? [{ type: "text" as const, text: o.user }, ...o.pictures.map((url) => ({ type: "image_url" as const, image_url: { url } }))]
+          : o.user,
+      }]),
       json: o.schema, maxTokens: o.maxTokens, purpose: o.purpose, budget: ctx.budget, ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}),
       userId: ctx.userId, ...(ctx.jobId ? { jobId: ctx.jobId } : {}), ...(o.step !== undefined ? { step: o.step } : {}),
       ...(ctx.signal ? { signal: ctx.signal } : {}),

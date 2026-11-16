@@ -40,6 +40,8 @@ export const SCREENS = {
   budget: "bots.budget",             // Budget / DBudget: now the Usage page too (older links)
   billing: "bots.billing",           // Billing / DBilling
   planShare: "bots.plan.share",      // Share your plan with people you share a space with: tick as many as you like (screens/you/planShareCard.ts; no board)
+  sites: "bots.sites",               // Things being watched on sites they are signed in to (screens/sites.ts; CLOUD_BROWSER, off)
+  sitePanel: "bots.site.signin",     // Their own browser, drawn: the one place a site is signed in (screens/sites.ts; CLOUD_BROWSER, off)
   plans: "bots.plans",               // Plans / DPlans
   link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
   devices: "bots.devices",           // Terminal sign-ins: Xode in a terminal, each with Remove, and where to type a terminal's code (screens/you/devicesPage.ts; no board)
@@ -88,6 +90,10 @@ export const SCREENS = {
   mailCall: "bots.mail.call",        // one call (src/rooms): its link, Join, who waits with Let in, who is in, the lobby, End (screens/bots/mailCalls.ts; params: b, r)
   // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
   meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
+  // screens/bots/cinemaScreens.ts: the cinema bot (its page is bots.bot with slug "cinema", screens/bots/cinemaPage.ts)
+  cinemaFilm: "bots.cinema.film",    // one film: what it waits for, the script or the storyboard grid, the finished film (params: f)
+  cinemaShot: "bots.cinema.shot",    // one shot: its still, its card in full, the takes and what the checker said, change this shot (params: f, n)
+  session: "bots.session",           // one conversation with a bot and everything made in it, pickable up any time (params: s)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging

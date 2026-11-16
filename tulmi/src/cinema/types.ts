@@ -1,0 +1,400 @@
+/**
+ * THE CINEMA BOT'S SHAPES (docs/cinema.md): a film from the idea to the finished cut. Every part of src/cinema, routes/bots/cinema.ts and the
+ * screens agree through these.
+ *
+ * A film goes through these steps, and the person is asked twice before money that matters is spent:
+ *
+ *   writing    the director writes the bible (who, where, the look) and the shot list from the idea
+ *   script     the person reads it, changes anything in plain words, and approves it        <- asked: the script
+ *   boarding   reference sheets for each person and place, then one still per shot (cheap)
+ *   board      the storyboard and the price of the film                                      <- asked: the price
+ *   rendering  each shot animated from its approved still by the model that suits it, checked by eye (a vision model), retaken when it fails
+ *   cutting    the takes cut together with the voice-over, the music and the subtitles
+ *   done       one film, ready to share; any shot can still be changed on its own
+ *
+ * A film can also be `failed` (something we could not get past) or `stopped` (the person stopped it). Money is in paise, as everywhere.
+ */
+
+export const CINEMA_SLUG = "cinema";
+/** The film page's screen id (experience/bots/ids.ts SCREENS.cinemaFilm), params { f }. */
+export const CINEMA_FILM_SCREEN = "bots.cinema.film";
+
+/**
+ * THE SHAPE A FILM IS. Every shape a person may ask for, not only the ones the video models happen to offer: a film is FILMED at the
+ * nearest shape its model can make (route.ts filmedAs) and CUT to the one that was asked for, cropping towards the subject exactly as
+ * another cut of the same film does (cut.ts fitFilter, compile.ts subjectBias). So 4:5 for a feed costs no more than 9:16 does.
+ */
+export type Aspect = "16:9" | "9:16" | "1:1" | "4:5" | "5:4" | "4:3" | "3:4" | "21:9";
+export const ASPECTS: readonly Aspect[] = ["16:9", "9:16", "1:1", "4:5", "5:4", "4:3", "3:4", "21:9"];
+
+/** Width over height, for the frame and for choosing the nearest shape a model can film. */
+export const RATIO: Readonly<Record<Aspect, number>> = {
+  "16:9": 16 / 9, "9:16": 9 / 16, "1:1": 1, "4:5": 4 / 5, "5:4": 5 / 4, "4:3": 4 / 3, "3:4": 3 / 4, "21:9": 21 / 9,
+};
+
+/**
+ * The shapes every video model makes. A film is filmed in one of these - the nearest to what was asked for - and cut to the shape the
+ * person asked for. Deciding this once, for the whole film, is what keeps the stills, the takes and the frames a shot continues from all
+ * in one shape; the cut is the only place the film changes shape.
+ */
+export const FILMABLE: readonly Aspect[] = ["16:9", "9:16", "1:1"];
+
+/**
+ * The nearest of some shapes to the one asked for. Nearest by ratio, measured in how far the frame has to be cropped rather than by the
+ * numbers themselves, so 1:1 and 16:9 are as far from each other as 1:1 and 9:16 are. A tall ask is never answered with a wide shape.
+ *
+ * Some asks fall exactly between two (3:4 is as far from 9:16 as it is from a square), and a tie decided by the last bit of a float is a
+ * tie decided by nothing: the one that leans the same way as the ask wins, so a tall film stays tall.
+ */
+export function nearestShape(pool: readonly Aspect[], want: Aspect): Aspect | null {
+  if (!pool.length) return null;
+  if (pool.includes(want)) return want;
+  const r = RATIO[want];
+  const tall = r < 1;
+  const same = pool.filter((a) => (RATIO[a] < 1) === tall || RATIO[a] === 1 || r === 1);
+  const able = same.length ? same : pool;
+  const far = (a: Aspect) => Math.abs(Math.log(RATIO[a] / r));
+  return able.reduce((best, a) => {
+    const d = far(a) - far(best);
+    if (d < -1e-9) return a;
+    if (d > 1e-9) return best;
+    return RATIO[a] !== 1 && (RATIO[a] < 1) === tall ? a : best;
+  });
+}
+
+/** The shape a film is filmed in: the nearest one every model can make. */
+export const filmShape = (want: Aspect): Aspect => nearestShape(FILMABLE, want) ?? "16:9";
+
+
+/** How good, and how dear: the models a film may use (models.ts). */
+export type Tier = "draft" | "standard" | "premium";
+export const TIERS: readonly Tier[] = ["draft", "standard", "premium"];
+
+export type FilmStatus = "writing" | "script" | "boarding" | "board" | "rendering" | "cutting" | "done" | "failed" | "stopped";
+
+/** Why a film that should be moving is waiting: for more money, or for the person to look at a shot we could not get right. */
+export type Hold = "budget" | "shot" | null;
+
+export type Style = "live" | "animated";
+
+export interface Look {
+  /** Colours, a few words: "teal and amber, deep shadows". */
+  palette: string;
+  /** The light of the film: "soft window light, warm practicals". */
+  light: string;
+  /** The camera's feel: "anamorphic, shallow depth of field". */
+  lens: string;
+  /** The film stock or the animation's look: "35mm film grain", "hand-painted 2D". */
+  stock: string;
+  /** The colour grade: "warm highlights, teal shadows, gentle contrast, lifted blacks". */
+  grade: string;
+  /** The texture of the image: "fine grain, soft halation on highlights, slight lens bloom". */
+  texture: string;
+}
+
+export interface Character {
+  /** Its handle in the shot list: lower case, a-z 0-9 and hyphens. */
+  key: string;
+  name: string;
+  /** Face, age, skin, eyes, hair, marks, build, posture: what makes them the same person in every shot. */
+  look: string;
+  wardrobe: string;
+  /** How they sound when they speak: pitch, pace, accent, manner ("low, warm, unhurried Mumbai Hindi"). */
+  voice: string;
+  /** Media key of the reference sheet (a front view and a three-quarter view), once made. */
+  ref: string | null;
+}
+
+export interface Place {
+  key: string;
+  name: string;
+  look: string;
+  ref: string | null;
+}
+
+export interface Bible {
+  title: string;
+  logline: string;
+  genre: string;
+  tone: string;
+  style: Style;
+  /** The language the voice-over, the lines and the subtitles are in: a BCP-47 tag ("hi", "en", "hi-Latn" for Hinglish). */
+  language: string;
+  look: Look;
+  characters: Character[];
+  places: Place[];
+  /** The music, in words, or null for none: "slow tabla and strings, hopeful". */
+  music: string | null;
+  /** Media key of the look frame: one key-art picture of the film's colour and light, given to every still as its style reference. */
+  lookRef: string | null;
+}
+
+export type ShotSize = "extreme-wide" | "wide" | "full" | "medium" | "medium-close" | "close" | "extreme-close" | "insert";
+export const SHOT_SIZES: readonly ShotSize[] = ["extreme-wide", "wide", "full", "medium", "medium-close", "close", "extreme-close", "insert"];
+
+export type Angle = "eye" | "low" | "high" | "overhead" | "dutch" | "pov";
+export const ANGLES: readonly Angle[] = ["eye", "low", "high", "overhead", "dutch", "pov"];
+
+export type Move = "static" | "pan" | "tilt" | "dolly-in" | "dolly-out" | "truck" | "tracking" | "crane" | "orbit" | "handheld" | "zoom" | "drone";
+export const MOVES: readonly Move[] = ["static", "pan", "tilt", "dolly-in", "dolly-out", "truck", "tracking", "crane", "orbit", "handheld", "zoom", "drone"];
+
+/**
+ * How a shot joins the one before it.
+ *   cut       a plain cut
+ *   continue  the same moment carries on: this shot starts on the last frame of the one before and lands on its own still
+ *   dissolve  a soft dissolve (time passes)
+ */
+export type Link = "cut" | "continue" | "dissolve";
+export const LINKS: readonly Link[] = ["cut", "continue", "dissolve"];
+
+/** A line spoken on screen, by a character in the shot. */
+export interface Line { who: string; text: string }
+
+/** One shot as the director wrote it. What the person changes, and what every prompt is written from. */
+export interface ShotCard {
+  /** 1, 2, 3 ... in film order. */
+  n: number;
+  /** What this shot does for the story, in a line. */
+  beat: string;
+  /** The result the shot is for: what the viewer should feel or understand by its end. */
+  intent: string;
+  size: ShotSize;
+  angle: Angle;
+  move: Move;
+  /** Focal length in millimetres (full frame). */
+  lens: number;
+  /** The characters in frame, by key. */
+  cast: string[];
+  /** The place, by key. */
+  place: string;
+  /** What happens in the shot, in order. */
+  action: string;
+  /** The acting, as two to four visible cues: what faces, hands and bodies do ("his jaw tightens; he looks down; his thumb rubs the rim"). */
+  performance: string;
+  /** The camera in detail: the move's speed and direction, where it starts and ends, what the focus does. */
+  camera: string;
+  /**
+   * A SECOND SIZE FOR THE BEATS THAT CARRY THE FILM. A real unit shoots a wide and a close of the moment that matters and lets the edit
+   * choose; the director marks two or three such beats and says what the other size is. Filmed alongside the first take, checked the same
+   * way, and the better of the two is the one that is cut in - the other stays as an alternate the person can switch to.
+   */
+  cover?: ShotSize | null;
+  /** The opening frame, as a still: who and what is where. */
+  frame: string;
+  /** The frame's layers and balance: foreground, subject, background, where the eye goes, the space left. */
+  composition: string;
+  /** What moves in the air and the place: rain, steam, dust, wind, haze, light flicker. */
+  atmosphere: string;
+  /** How the shot ends: its last moment, the place the model animates towards. */
+  end: string;
+  /** The light: the key's direction and quality, its colour temperature, the practicals, the fill and the rim. */
+  light: string;
+  seconds: number;
+  lines: Line[];
+  /** Voice-over heard over this shot, or null. */
+  vo: string | null;
+  /** Sound in the shot: the ambience, then the effects tied to what happens. */
+  sound: string;
+  link: Link;
+  /** How much moves: 0 almost nothing, 3 fast action. */
+  motion: 0 | 1 | 2 | 3;
+  /** Water, fire, cloth, hair in wind, things falling: physics a model can get wrong. */
+  physics: boolean;
+  /** Many people in frame. */
+  crowd: boolean;
+  /** Words that must be readable in frame (a sign, a label), or null. */
+  text: string | null;
+  /** A model the person chose for this shot, or null for ours. */
+  pin: string | null;
+}
+
+export interface Script { bible: Bible; shots: ShotCard[] }
+
+export type ShotStatus = "planned" | "boarding" | "boarded" | "queued" | "rendering" | "checking" | "ok" | "failed";
+
+export type IssueKind =
+  | "identity" | "wardrobe" | "action" | "camera" | "anatomy" | "artifact" | "morph" | "text" | "continuity" | "physics" | "framing" | "lipsync" | "safety";
+export const ISSUE_KINDS: readonly IssueKind[] = [
+  "identity", "wardrobe", "action", "camera", "anatomy", "artifact", "morph", "text", "continuity", "physics", "framing", "lipsync", "safety",
+];
+
+export interface Issue { kind: IssueKind; major: boolean; note: string }
+
+/** What the eye (qc.ts) made of a still or a take. Scores are 0 to 10. */
+export interface Verdict {
+  scores: { identity: number; action: number; camera: number; quality: number; continuity: number };
+  issues: Issue[];
+  /** One line to add to the prompt that would fix it, or null. */
+  fix: string | null;
+  pass: boolean;
+}
+
+export type TakeStatus = "running" | "done" | "failed";
+
+/** One attempt at animating a shot. */
+export interface Take {
+  id: string;
+  n: number;
+  model: string;
+  /** The take this one was made by mending (route.ts editable), or absent when it was filmed from the still. */
+  from?: string | null;
+  /** The shots this one take covers, when it was filmed as one run and split at the beats; absent for an ordinary take. */
+  run?: number[];
+  /** Where in the clip each shot of a run begins, in seconds, in the same order as `run`. */
+  cuts?: number[];
+  /** The card's take print it was made for (compile.ts takePrint): a take of an older card is history, never used. */
+  of: string;
+  /** The provider's job id while it runs. */
+  job: string | null;
+  prompt: string;
+  seconds: number;
+  status: TakeStatus;
+  paise: number;
+  /** The size this one was filmed at: the card's, or its `cover` when this is the second angle on the beat. */
+  size?: ShotSize;
+  /** Media key of the clip, once fetched. */
+  video: string | null;
+  /** What its picture measures (ffmpeg signalstats), kept so the grade is worked out once and every later cut is free. */
+  levels?: { y: number; u: number; v: number } | null;
+  /** Media key of its last frame (the next shot's first, when it continues). */
+  lastFrame: string | null;
+  verdict: Verdict | null;
+  error: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  /** When it was last asked about (the poll), so the tick does not ask every second. */
+  polledAt: number | null;
+}
+
+/** One shot's progress. */
+export interface ShotState {
+  n: number;
+  status: ShotStatus;
+  /** Media key of the approved still (the better of two, by the eye, when the shot has people in it). */
+  still: string | null;
+  stillVerdict: Verdict | null;
+  /** The card's fingerprint when its still was made (compile.ts stillPrint): a change to what is seen makes a new still. */
+  stillOf: string | null;
+  /** The take that made the cut. */
+  take: string | null;
+  /** The take print the chosen take was made for (compile.ts takePrint): a change to what moves makes a new take. */
+  takeOf: string | null;
+  /** The take print the shot gave up on (qc.ts "wait"): it waits for the person until the card changes or they try again. */
+  failedOf: string | null;
+  /** Models blamed for the card as it is now, so a retake goes elsewhere. Cleared when the card changes. */
+  blamed: string[];
+  /** A fix carried into the next take's prompt (qc.ts). Cleared when the card changes. */
+  fix: string | null;
+  /** A take to mend rather than film again (qc.ts "edit"), and what to tell the edit model. Cleared once the mend is started. */
+  mend?: { take: string; fix: string } | null;
+  /** Why it failed, for the person. */
+  error: string | null;
+  /** Media key of the voice-over, recorded before the price so the shot's seconds fit it. */
+  voice: string | null;
+  /** What the voice-over was recorded from (its words, language and voice): a change records it again. */
+  voiceOf: string | null;
+  /** How long the voice-over runs, in seconds. */
+  voiceSeconds: number;
+  /** Media key of the shot's spoken line, recorded by us so a mouth can be driven by it (route.ts wantsLipSync). */
+  said?: string | null;
+  /** What that recording was made from (compile.ts linePrint). */
+  saidOf?: string | null;
+  /** How long the spoken line runs, in seconds. */
+  saidSeconds?: number;
+  /** Media key of this shot's spot effect - the sound of what is seen in it - and what it was made from. */
+  spot?: string | null;
+  spotOf?: string | null;
+  /** When the recogniser reported them, each word of the voice-over and when it was said: the subtitles are timed from these (cut.ts). */
+  voiceWords?: { word: string; start: number; end: number }[];
+}
+
+export interface Cut {
+  /** Media key of the finished film (mp4). */
+  video: string | null;
+  /** Media key of the subtitles (srt). */
+  srt: string | null;
+  seconds: number;
+  /** The fingerprint of what was cut, so a changed shot makes a new cut. */
+  of: string | null;
+  /** Media key of the music, kept so a film cut again does not pay for it twice. */
+  music?: string | null;
+  /** What the music was made from (its words and the film's length): a change makes it again. */
+  musicOf?: string | null;
+  /** Media key of the room the film is in, kept so a film cut again does not pay for it twice. */
+  tone?: string | null;
+  toneOf?: string | null;
+  /** Media key of the animatic: the storyboard cut to time with the voice-over over it, so the film can be watched before it is filmed. */
+  animatic?: string | null;
+  /** How long the animatic runs, and what it was made from, so a changed storyboard makes another one. */
+  animaticSeconds?: number;
+  animaticOf?: string | null;
+  /** Media key of the same film enlarged, once asked for. */
+  big?: string | null;
+  /** The cut the enlargement was made from, so a changed film is enlarged again. */
+  bigOf?: string | null;
+  /** The enlargement's job while it runs, so a server that restarts waits for the same one instead of paying for another. */
+  bigJob?: string | null;
+}
+
+/**
+ * The same film cut to another shape, from the takes already filmed: a 9:16 for Reels from a 16:9 film, or the other way about. It costs
+ * nothing but ffmpeg, because every take and every still is already ours. `burn` is the cut with its words in the picture, for the places
+ * that play without sound.
+ */
+export interface Edition {
+  aspect: Aspect;
+  /** Whether the words are drawn into the picture, for the feeds that play without sound. */
+  captions: boolean;
+  video: string | null;
+  seconds: number;
+  /** The fingerprint of the cut it was made from, so it is made again by itself when the film changes. */
+  of: string | null;
+}
+
+export interface Film {
+  id: string;
+  ownerId: string;
+  status: FilmStatus;
+  hold: Hold;
+  /** What the person asked for, in their words. */
+  idea: string;
+  /** The session it was made in (botsBots/sessions.ts), so the talk and the film are one thing. */
+  session?: string | null;
+  aspect: Aspect;
+  tier: Tier;
+  /** How long they want it, in seconds. */
+  length: number;
+  /** The voice the voice-over is read in (experience/ttsVoices.ts). */
+  voice: string;
+  /** What they agreed to spend, in paise (0 until the price is approved). */
+  budgetPaise: number;
+  spentPaise: number;
+  script: Script | null;
+  shots: ShotState[];
+  takes: Take[];
+  cut: Cut;
+  /** The same film in other shapes, made from the same takes on request (never a cost: the takes are already paid for). */
+  editions?: Edition[];
+  /** The person asked for the film enlarged. Unlike another shape, this is a real job at a model, so it is only started if it fits. */
+  wantBig?: boolean;
+  /** Warnings for the person: a shot kept as the best of its tries, a line too long for its shot. */
+  notes: string[];
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A film as a list row (never a cost: the person's plan covers their films). */
+export interface FilmRow {
+  id: string;
+  title: string;
+  status: FilmStatus;
+  hold: Hold;
+  aspect: Aspect;
+  shots: number;
+  done: number;
+  seconds: number;
+  /** A signed link to a still to show for it. */
+  poster: string | null;
+  updatedAt: number;
+}

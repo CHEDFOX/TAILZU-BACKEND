@@ -39,6 +39,11 @@ export interface EarsDeps {
   listen(audio: Buffer, format: AudioFormat, o: { language?: string }): Promise<{ text: string; durationSeconds?: number }>;
   /** What was heard, into the room's note, under the name of whoever said it. */
   heard(noteId: string, userId: string, seg: NoteSegment, seconds: number): Promise<void>;
+  /**
+   * The same line, to whoever is listening for its own name in the call (rooms/scribe.ts overheard). Left out: nothing
+   * listens, and the words only go to the note.
+   */
+  line?(roomId: string, line: { who: string; text: string; at: number }): void;
   /** A token nobody can guess, for one listener. */
   token(): string;
   now(): number;
@@ -176,7 +181,11 @@ export class Ears {
       if (hasSound(pcm) && seconds >= 1) {
         const out = await this.d.listen(wavOf(pcm, RATE), "wav", {});
         const text = out.text.trim();
-        if (text) await this.d.heard(l.noteId, l.userId, { at: Math.round(at), text, speaker: l.name }, out.durationSeconds || seconds);
+        if (text) {
+          await this.d.heard(l.noteId, l.userId, { at: Math.round(at), text, speaker: l.name }, out.durationSeconds || seconds);
+          // And to the bot's own ear for its name: "X0, what did we decide?" is a question, not just a line of the note.
+          try { this.d.line?.(l.roomId, { who: l.name, text, at: Math.round(at) }); } catch { /* an answer is never the note's problem */ }
+        }
       }
     } catch (err) {
       console.warn(`[rooms] a stretch of a call could not be written down: ${(err as Error)?.message ?? err}`);

@@ -1095,6 +1095,28 @@ one is useful without the next (a PDF with text, a CSV, a zip, a picture and a r
 8. **Back out:** `MEDIA_INGEST=false` and a restart. The app goes back to "coming soon". Nothing is swept while it is off, so files already kept stay
    (rows and bytes) until it is turned on again or you empty the bucket and run `delete from media_items;`.
 
+### The cinema bot's 3D (`CINEMA`)
+
+A scene is built as data, written out as a Blender script and rendered wherever there is a Blender to run it (docs/cinema.md).
+**Off, and wired to nothing yet**: no route reaches it and no bot calls it, so setting this up now only means the machine is
+ready when it is connected.
+
+Blender has no window in `--background`: no screen, no X, no desktop session. On the VPS it is a binary like any other.
+
+```bash
+apt-get install -y blender fonts-dejavu-core   # the fonts are for `text` objects, which are boxes without them
+blender --version                              # what the backend asks before it sends anything here
+# In tulmi/.env:  CINEMA=true  CINEMA_BLENDER=blender  CINEMA_WORK=/var/lib/tulmi/cinema  CINEMA_CAP_PAISE=400
+```
+
+What to expect of a box with no graphics card: Eevee cannot run (the script notices and falls to Cycles by itself), a
+480x360 preview takes seconds, and a 1600x1200 frame at 128 samples takes minutes on a few cores. Animation on CPU is
+rarely worth it: four seconds at 24fps is 96 of those frames. Renders run **one at a time** so they do not take the app
+down with them, and each gets a folder of its own under `CINEMA_WORK` that is removed when it ends.
+
+Give it room: a scene with subdivision wants a gigabyte or two, and `CINEMA_WORK` holds a .blend and its frames until the
+render ends. For anything heavier than previews, point the same setup at a machine with a card.
+
 ### Bots: people's own bots and their API (`BOTS`)
 
 Everything is a bot (the Code bot, Keybot, the Plan bot, the Travel bot), and a person can make their own, each with its own tools, knowledge, memory and an
@@ -1299,3 +1321,42 @@ into the call; there is no container to run. It needs `BOTS` on (above). Without
    meeting's transcript, never the person's other data; a push never carries a word from the call.
 8. **Back out:** remove `RECALL_API_KEY` from `tulmi/.env` and `./deploy/ship.sh` (the meeting bot leaves X0 Bot). Bots already in a call stay
    there until it ends; remove the endpoint in Recall's dashboard if you like. The rows and the notes stay.
+
+### Cinema: films and pictures (`CINEMA`)
+
+A built-in bot that makes films shot by shot and pictures. A director writes the script and the shot list from the person's idea; they approve
+it; a storyboard is drawn (a look frame, reference sheets so faces and places stay the same, one still per shot, the voice-over); they approve
+the price; each shot is animated from its still by the video model that suits it (Veo, Kling, Seedance, Wan, Hailuo, Runway and others), checked
+by a vision model and retaken when it fails; the takes are cut together with the voice-over, music and subtitles. Every model is reached through
+`OPENROUTER_API_KEY`: nothing else to sign up for. It needs `BOTS` on (above). Without `CINEMA=true` the bot is not among the bots and
+`/v1/cinema/*` answers `404 cinema_off`. Full story, the money and the privacy: `docs/cinema.md`.
+
+1. **R2.** Films, takes and stills are files, kept in R2 (the `R2_*` keys above). Without R2 the server keeps them in memory and a restart
+   forgets them (it warns at start).
+2. **Put the switch in `tulmi/.env` on the server.**
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && nano tulmi/.env'
+   ```
+
+   ```
+   CINEMA=true
+   CINEMA_MEDIA_SECRET=<a long random string>
+   ```
+
+   Optional: `CINEMA_FILM_MAX_PAISE` (the most one film may be agreed at, ₹1,500 by default) and `CINEMA_DAILY_PAISE` (what one person may agree
+   to in a day, ₹3,000). OpenRouter's account must have credit: the films are paid for there, at each model's price.
+3. **Migration and deploy.** 0089 runs on deploy with the others (by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0089"`). It makes `cinema_films`, `cinema_pictures` and
+   `cinema_cast`, the server's alone and deleted with the account.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'
+   ```
+4. **Check.** In X0 Bot, "Cinema" is among the bots. Write "a 15 second vertical ad for a chai stall in the rain" and tap Write the script; in about
+   a minute the script is there. Make the storyboard, then Film it. A push says when the storyboard is ready and when the film is. `docker
+   compose logs backend` shows a failed step by its kind, never a prompt.
+5. **Add to the privacy policy.** What a person types for a film or a picture, and the photos they send for an edit, go to OpenRouter and the
+   model's maker to make it; video generation is not covered by zero data retention. A push never carries a word of the film but its title.
+6. **Back out:** remove `CINEMA=true` and `./deploy/ship.sh` (the bot leaves X0 Bot, films in progress stop where they are). The rows and the
+   files stay.

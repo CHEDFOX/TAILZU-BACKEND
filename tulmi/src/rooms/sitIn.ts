@@ -23,9 +23,15 @@ import { recordUsage } from "../usage/metering.js";
 import { livePublish } from "../live/writes.js";
 import { Ears } from "./ears.js";
 import { Scribe, SCRIBE_NAME } from "./scribe.js";
+import { readAloud, Speaker } from "./speaker.js";
 import type { RoomStore } from "./store.js";
 import { roomTopic } from "../live/topics.js";
 import { sfu as makeSfu, sfuKeys, type Sfu } from "./sfu.js";
+
+/** Where the SFU dials to take the bot's own voice from us. */
+export function voiceEndpoint(token: string): string {
+  return earsEndpoint(token).replace("/v1/rooms/ears/", "/v1/rooms/voice/");
+}
 
 /** Where the SFU dials to send us one person's sound. Public, wss, and carrying that listener's own token. */
 export function earsEndpoint(token: string): string {
@@ -43,10 +49,10 @@ export function sitsIn(): boolean {
   return /^wss:\/\//.test(earsEndpoint("x"));
 }
 
-let shared: { scribe: Scribe; ears: Ears } | null | undefined;
+let shared: { scribe: Scribe; ears: Ears; speaker: Speaker } | null | undefined;
 
 /** The server's own, made once. Null when it does not sit in calls here. */
-export function sitIn(store: RoomStore, client?: Sfu | null): { scribe: Scribe; ears: Ears } | null {
+export function sitIn(store: RoomStore, client?: Sfu | null): { scribe: Scribe; ears: Ears; speaker: Speaker } | null {
   if (shared !== undefined) return shared;
   const sfu = client ?? (sfuKeys() ? makeSfu() : null);
   if (!sfu || !sitsIn()) { shared = null; return null; }
@@ -62,12 +68,23 @@ export function sitIn(store: RoomStore, client?: Sfu | null): { scribe: Scribe; 
       return { text: out.text ?? "", ...(out.durationSeconds ? { durationSeconds: out.durationSeconds } : {}) };
     },
     heard: (noteId, userId, seg, seconds) => heard(noteId, userId, seg, seconds),
+    // Every line also reaches the bot, which answers the ones that call it by name.
+    line: (roomId, line) => { void shared?.scribe.overheard(roomId, line); },
   });
+
+  // Its voice: a seat of its own at the SFU, the words read aloud and let out a frame at a time (rooms/speaker.ts).
+  const speaker = new Speaker({ sfu, store, endpoint: voiceEndpoint, read: (text) => readAloud(text), now: Date.now });
 
   const scribe = new Scribe({
     ears,
     store,
     brief: briefWriter(),
+    voice: {
+      join: (roomId) => speaker.join(roomId),
+      say: (roomId, text) => speaker.say(roomId, text),
+      hush: (roomId) => speaker.hush(roomId),
+      leave: (roomId) => speaker.leave(roomId),
+    },
     async startNote(userId, title) {
       const note = await createNote({ id: userId });
       await updateNote({ id: userId }, note.id, (n) => ({ ...n, title: title.slice(0, 120) }));
@@ -99,12 +116,15 @@ export function sitIn(store: RoomStore, client?: Sfu | null): { scribe: Scribe; 
     now: Date.now,
   });
 
-  shared = { scribe, ears };
+  shared = { scribe, ears, speaker };
   return shared;
 }
 
 /** The ears, once something has built them (the room service does, when it is first asked for). */
 export function earsNow(): Ears | null { return shared?.ears ?? null; }
+
+/** The voice, the same way: the socket route hands the SFU's connection to it. */
+export function speakerNow(): Speaker | null { return shared?.speaker ?? null; }
 
 /** For the tests: the next call to sitIn() builds it again. */
 export function forgetSitIn(): void { shared = undefined; }

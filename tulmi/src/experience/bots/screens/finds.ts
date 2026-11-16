@@ -13,7 +13,7 @@
  * Each card says where its numbers come from, as the services ask.
  */
 import type { ActionRef, Node } from "../../../../../shared/types/sdui.js";
-import type { Card, Flight, FlightsCard, MoneyCard, Stay, StaysCard, WeatherCard } from "../../../everyday/index.js";
+import type { Card, Flight, FlightsCard, MoneyCard, PlacePick, PlacesCard, Stay, StaysCard, WeatherCard } from "../../../everyday/index.js";
 import { box, C, col, divider, grow, icon, labelled, meta, open, PALETTE_HEX, picture, RADIUS, row, SCREENS, sectionLabel, text, type BotsCtx } from "../kit.js";
 
 export const FINDS_PATH = "/v1/everyday/finds";
@@ -46,7 +46,7 @@ export function skyWords(symbol: string): string {
 }
 
 /** A card's frame: an icon, a title, a line of where it is from, and what it holds. */
-function frame(ctx: BotsCtx, glyph: "plane" | "bed" | "swap" | "sun", head: string, sub: string, body: Node[], from: string): Node {
+function frame(ctx: BotsCtx, glyph: "plane" | "bed" | "swap" | "sun" | "pin", head: string, sub: string, body: Node[], from: string): Node {
   const desk = ctx.client === "desktop";
   return col([
     row([
@@ -122,9 +122,47 @@ export function weatherCard(ctx: BotsCtx, c: WeatherCard): Node {
   ], "Forecast from MET Norway.");
 }
 
+/**
+ * ONE PLACE, AS A ROW: its photograph, the act, where it is and when it is at its best. No price, ever — this
+ * card is our own words (src/discover), and the one next to it with a live price is a different kind of claim.
+ */
+function placeRow(p: PlacePick): Node {
+  const under = [p.where, p.season].filter(Boolean).join(" · ");
+  const label = `${p.title}, ${p.where}${p.season ? `, best ${p.season}` : ""}`;
+  return labelled(row([
+    ...(p.photo ? [picture(p.photo.url, 56, 56, { radius: 12, background: C.surface, fit: "cover", label: p.photo.alt })]
+      : [box([icon("pin", { size: 16, color: C.idle })], { width: 56, height: 56, borderRadius: 12, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 })]),
+    col([
+      row([
+        text(p.title, { size: 14, weight: 600, lineHeight: 18, lines: 1, style: { flexGrow: 1, flexShrink: 1, minWidth: 0 } }),
+        ...(p.ours ? [] : [meta("built for you", { size: 10, lines: 1 })]),
+      ], { gap: 6 }),
+      ...(under ? [meta(under, { size: 11.5, lines: 1 })] : []),
+      text(p.hook, { size: 12, lineHeight: 16, color: C.grey70, lines: 2 }),
+      ...(p.wildcard ? [meta("Not your usual", { size: 10.5, lines: 1 })] : []),
+    ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+  ], { gap: 11, alignItems: "flex-start", paddingVertical: 2 }), label);
+}
+
+export function placesCard(ctx: BotsCtx, c: PlacesCard): Node {
+  const shown = c.results.slice(0, ctx.client === "desktop" ? 5 : 4);
+  const rows = shown.flatMap((p, i) => [...(i ? [divider()] : []), placeRow(p)]);
+  const sub = c.total > shown.length ? `${c.total} places · the best ${shown.length}` : `${shown.length} place${shown.length === 1 ? "" : "s"}`;
+  const built = shown.some((p) => !p.ours);
+  return frame(ctx, "pin", c.query || "Places worth going", sub, [col(rows, { gap: 0 })],
+    built
+      ? "Ours, and one built for you from pages read today. Not prices — flights and stays are searched live."
+      : "Our own words, never a price. Flights and stays are searched live when you pick one.");
+}
+
 /** Every card an answer found, in the order they were found. */
 export function findsCards(ctx: BotsCtx, cards: Card[] | undefined): Node[] {
-  return (cards ?? []).map((c) => (c.kind === "flights" ? flightsCard(ctx, c) : c.kind === "stays" ? staysCard(ctx, c) : c.kind === "money" ? moneyCard(ctx, c) : weatherCard(ctx, c)));
+  return (cards ?? []).map((c) => (
+    c.kind === "flights" ? flightsCard(ctx, c)
+      : c.kind === "stays" ? staysCard(ctx, c)
+        : c.kind === "money" ? moneyCard(ctx, c)
+          : c.kind === "places" ? placesCard(ctx, c)
+            : weatherCard(ctx, c)));
 }
 
 // ===================================================================== where they are found

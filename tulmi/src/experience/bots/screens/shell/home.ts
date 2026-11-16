@@ -14,6 +14,8 @@ import {
   needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
+import { HOME_UPDATES_STATE, homeUpdatesBot, homeUpdatesOn } from "./homeUpdates.js";
+import type { FeedRow } from "../../../../shell/feed.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
 import type { LiveBot } from "../../live.js";
 import { type DeletionState, leavingCard } from "../accountGrace.js";
@@ -30,6 +32,7 @@ import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine as idleLineOf, firstName } from "./parts.js";
 import { oracleTileLook } from "../bots/oraclePage.js";
 import { mailTileLook } from "../bots/mailPage.js";
+import { cinemaTileLook } from "../bots/cinemaPage.js";
 
 // ===================================================================== home
 
@@ -88,9 +91,9 @@ function groupTile(s: Space, height: number, padding: number): Node {
  * GROUPS_ON_HOME of them), then Make a bot.
  */
 /** Built-ins with a look of their own, on Home's grid beside the first three wherever they are set up (docs/oracle.md, docs/mail.md). */
-const FEATURED: readonly string[] = ["oracle", "mail"];
+const FEATURED: readonly string[] = ["oracle", "mail", "cinema"];
 
-/** The bots Home's grid draws: the first three, then the Oracle and the mail bot. */
+/** The bots Home's grid draws: the first three, then the Oracle, the mail bot and the cinema bot. */
 export function homeShown(ctx: BotsCtx): LiveBot[] {
   const first = ctx.live.bots.slice(0, 3);
   return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
@@ -114,8 +117,9 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const living = botTiles([
       ...shown.map((b) => ({
         ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}),
-        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts).
-        ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : {}),
+        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts);
+        // the cinema bot, the director clapping his board (cinemaPage.ts).
+        ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : b.slug === "cinema" && b.builtin ? cinemaTileLook(ctx) : {}),
       })),
       ...(canSpaces2(ctx) ? (groups.length ? [spaceCardSpec(groups)] : []) : groupsShown.map(groupTileSpec)),
       makeTileSpec(open(SCREENS.make)),
@@ -151,7 +155,9 @@ const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ..
  * What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due
  * (pushAsk.ts), and the About you card (firstRun/aboutCard.ts).
  */
-export interface HomeMore { planLine?: string | undefined; ai?: AiConsent | undefined; leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
+export interface HomeMore { planLine?: string | undefined; ai?: AiConsent | undefined; leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined;
+  /** What just finished, for the bot at the foot of Home when he is the updates (homeUpdates.ts); read only then. */
+  feed?: readonly FeedRow[] | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the AI
@@ -225,9 +231,10 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...moreBots(ctx),
     ...routinesRow(ctx, more.routines),
   ];
-  // Ask any bot: his thought where the build draws it (a tiny bot walking the foot of Home), else the ask bar.
+  // The foot of Home: what is happening in his thought (HOME_UPDATES), else the ask in his thought, else the ask bar.
   const thought = canHomeThought(ctx);
-  const footer = [thought ? homeThought(ctx) : askBar("phone", { ctx })];
+  const updates = thought && homeUpdatesOn(ctx.user?.id);
+  const footer = [updates ? homeUpdatesBot(ctx, more.feed ?? []) : thought ? homeThought(ctx) : askBar("phone", { ctx })];
   // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on
   // a newer Home): only the bot waving with his line, for a few seconds. Then he turns and walks off the side, and the card
   // for whatever is missing (the microphone, the keyboard) comes in over him as he goes; with nothing missing it closes by
@@ -238,7 +245,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const gone: Condition = { truthy: "helloGone" };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(thought ? HOME_THOUGHT_STATE : {}) },
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}) },
     ...(thought ? { talkTo: homeTalkTo(ctx) } : {}),
     pinned: intro ? pinned.map((x) => when(gone, x)) : pinned,
     ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
@@ -258,6 +265,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       // A build without it: the card over Home, and the bot saying hello.
       : [...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []), ...home],
     footer: footer.map((x, i) => arrive(x, home.length + i)),
+    // He lives behind the tab bar, so his strip sits straight on it with no white room of its own.
   });
 }
 

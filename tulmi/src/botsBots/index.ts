@@ -20,6 +20,7 @@
 import type { Bots } from "../bots/index.js";
 import type { Connectors } from "../connectors/index.js";
 import { BotChat } from "./chat.js";
+import { Sessions, setSessions } from "./sessions.js";
 import { BotMaker } from "./maker.js";
 import { PlanDays, type PlanReader } from "./plan.js";
 import { BotShop } from "./shop.js";
@@ -48,6 +49,8 @@ export { PlanEase, planEase } from "./planEase.js";
 
 export interface BotsAreaParts {
   chat: BotChat | null;
+  /** The sessions a bot's page is made of: one conversation each, and everything made in it (sessions.ts). */
+  sessions: Sessions;
   maker: BotMaker | null;
   shop: BotShop | null;
   usage: KeyUsage;
@@ -80,8 +83,11 @@ export function botsAreaParts(o: {
   const ease = new PlanEase({ travel, now });
   ease.attach();
   setPlanEase(ease);
+  const seen = new Sessions(now);
+  setSessions(seen);
   return {
-    chat: o.bots ? new BotChat(o.bots, now) : null,
+    chat: o.bots ? new BotChat(o.bots, now, undefined, seen) : null,
+    sessions: seen,
     maker: o.bots ? new BotMaker(o.bots, now) : null,
     shop: o.bots ? new BotShop(o.bots, appName, now) : null,
     usage: new KeyUsage(now),

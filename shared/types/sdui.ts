@@ -1370,6 +1370,12 @@ export const VOICE_LIVE_CAPABILITY = "VoiceLive";
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
+// THERE IS NO BotPeek OR BotMark. Both were built — a bot clipped by the bar with only his head over the line, and a mark
+// of sprung ink dots — and both wanted new drawing machinery in every app: two classes in the motion engine, and a stage
+// whose floor sits below its own bottom edge. That is renderer geometry and renderer physics; no server data expresses it,
+// and it would have ridden a store build to reach anybody. They were taken out. What the server CAN change any day is the
+// looks catalog (shared/bots/looks.json): every app fetches it and the server's version wins, so a new MOMENT — a jump, a
+// burst, dots orbiting his crown — is data, not an app release. Reach for a moment before reaching for a capability.
 /** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
  *  callEndpoint.stay; a dotted border with a radius drawn dotted on every platform; a failed call's { code, message } kept at
  *  state `lastError` (the window too, as the phone already does), so a toast can say the server's reason. */
@@ -1459,6 +1465,11 @@ export interface BotStageProps {
   /** false: he never plays with props (the person's own bot). */
   toys?: boolean;
   roam?: BotRoam;
+  /** What he does with himself WHILE HE IS SPEAKING (the `speak` action's own voice): one of these moments every couple of
+   *  seconds, so words never come out of a bot standing perfectly still. Names from the catalog, as `roam.moments` are, and a
+   *  build that cannot play one simply never sees it named. Ignored by a build that does not know the field, which stands as
+   *  it stands today. */
+  talkMoments?: string[];
   /** While it holds he walks out at `outSide` (none: the edge nearer him then, as the prototype does); when it stops he walks back
    *  in from the edge he left by. */
   outWhen?: Condition;
@@ -1609,6 +1620,54 @@ export interface PersonBotProps {
 }
 // MentionFieldProps.people items may carry `bot: { seed, avatar, color }`: a build that declares PersonBot draws that bot in the
 // person's row of the "@" list (size 28), in place of anything else.
+
+// ---------------------------------------------------------------------------
+// 3k. The sign-in panel: their own browser, drawn in a page the server wrote (docs/sites.md, "The panel")
+// ---------------------------------------------------------------------------
+//
+// THERE IS NO SitePanel NODE, and that is the design rather than a shortcut. The panel is a PAGE the server writes
+// (src/sites/panelHost.ts), shown in the LiveView node the apps already have. So the frame clock, the tap
+// arithmetic and the keyboard all ship when the server deploys: how signing in works can change without a phone
+// being updated, and a phone that has never heard of sites can draw one today.
+//
+// The page is given a ticket of its own — one panel, nothing else, dead when the panel is — because a LiveView
+// cannot see the app's token and must not be handed one. The types below are what the page and the routes agree
+// on; nothing in the apps reads them.
+
+/** The one touch a call carries (routes/bots/botsSites.ts takes exactly these and nothing else). */
+export type SitePanelTouch =
+  /** In the PAGE's own pixels, never the drawn frame's: the page scales a finger back through `width`/`height`. */
+  | { tap: { x: number; y: number } }
+  /** What was typed. The page sends it a character at a time and keeps none of it. */
+  | { type: string }
+  | { key: "Enter" | "Backspace" | "Tab" }
+  /** How far down the page to go, in its pixels; negative is up. */
+  | { scroll: number };
+
+/** Why the panel is over, and the words that go with it (the server's END_WORDS). */
+export type SitePanelEnd = "said_done" | "cancelled" | "went_quiet" | "ran_long" | "lost";
+
+/** One answer from any of the panel's four calls. */
+export interface SitePanelView {
+  id: string;
+  site: string;
+  /** The newest frame, base64 JPEG with no data: prefix. Absent when there is no newer one than the page has. */
+  frame?: string;
+  width: number;
+  height: number;
+  ended?: SitePanelEnd;
+  message?: string;
+  /** Only on the answer to `done`: whether the page really is signed in now. */
+  signedIn?: boolean;
+}
+
+/** What the page posts UP to the app when it is over, through LiveView's message path. */
+export interface SitePanelMessage {
+  t: "panel";
+  ended: SitePanelEnd;
+  signedIn: boolean;
+  message: string;
+}
 
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [

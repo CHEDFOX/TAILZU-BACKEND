@@ -16,6 +16,7 @@
  * loop asks of it; the real one is `brainOf(code.brain)`.
  */
 import type { JobShotStore } from "./jobShots.js";
+import type { ProbeRender } from "./probe.js";
 import type { EffortMode } from "./effort.js";
 import type { FetchLike } from "../../connectors/egressTypes.js";
 import type { GatewayDeps } from "../brain/gateway.js";
@@ -33,6 +34,7 @@ import type { CallFn } from "../work/model.js";
 import type { WorklogStore } from "../work/index.js";
 import type { findResources } from "../resources/finder.js";
 import type { CompareHook } from "../../artifacts/build.js";
+import type { ArtifactStore } from "../../artifacts/store.js";
 import type { LiveDeps } from "../live/ports.js";
 import type { ContextStrategy } from "./mask.js";
 import type { AgentRunner } from "./runner.js";
@@ -77,6 +79,19 @@ export interface ScreensDeps {
   shoot: (url: string, viewport: DesignViewport) => Promise<Uint8Array>;
   store: JobShotStore;
   link?: (o: { userId: string; jobId: string; shotId: string }) => string | null;
+  /**
+   * The page's HTML once its scripts have run, for the floor (agent/floor.ts): the things a page needs whatever its design says, which nobody asks
+   * for and everybody wants. `web/browser` getRenderer() is this on a server, and Cloudflare's rendering on the Worker. Absent, or a page it cannot
+   * read, and the floor is simply not checked: the pictures are what the round is for, and the floor must never cost a job anything.
+   */
+  read?: (url: string) => Promise<string>;
+  /**
+   * Measures the page as the browser DREW it (agent/probe.ts): the computed styles, the boxes, the contrast of the text that came out, whether
+   * anything shows on focus, whether the motion stops when asked. None of it exists in the HTML, so this needs a browser that will run one
+   * expression in the page — a real Chrome (web/browser/engine.ts). Absent, or a page it cannot measure, and the round keeps its pictures and
+   * the free floor and says once that the deeper look was not taken.
+   */
+  measure?: ProbeRender;
 }
 
 /**
@@ -120,12 +135,21 @@ export interface AgentDeps {
   /** The design round (agent/design.ts) for a job built from an approved design. Absent: the round is skipped, and the report says so. */
   design?: DesignDeps;
   screens?: ScreensDeps;
+  /**
+   * Where the project's kit is kept (artifacts/kit.ts designKit): what the project already LOOKS like — its tokens, fonts, icon library and its own
+   * components — read with no model from at most a dozen files and cached against the brain's head, so it is free after the first read of a commit.
+   * A job on files people see is shown it (context.ts), so it builds to the project's look instead of discovering it or inventing one.
+   * Absent: the look is simply not shown, and nothing else changes.
+   */
+  kit?: Pick<ArtifactStore, "getKit" | "putKit">;
   /** Lead and helpers (code/team): how a lead starts a helper's job and a helper wakes its lead. Absent: a lead cannot start helpers (it does the work itself). */
   team?: TeamPorts;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts): instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
   contextStrategy?: ContextStrategy;
   /** Ask once for a focused test of the change before the checks run (phases.ts testWanted): instead of CODE_PROVE_FIX, for a harness that compares them. */
   proveFix?: boolean;
+  /** Have another model read a plain job's diff before the pull request is ready (review.ts). Absent: CODE_JOB_REVIEW. */
+  jobReview?: boolean;
   /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (default free-form), for a harness that compares the two. */
   jobMode?: JobMode;
   /** How hard a free-form turn thinks (agent/effort.ts): instead of CODE_EFFORT, for a harness that compares the two. */
