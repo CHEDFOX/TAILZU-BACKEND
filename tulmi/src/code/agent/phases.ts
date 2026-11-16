@@ -810,7 +810,7 @@ async function modelTurn(r: Run): Promise<void> {
   const thinker = route.model ?? tierSet?.models[0];
   const room = Math.max(tierSet?.maxTokens ?? WORK_TOKENS, thinker && tierSet ? WORK_TOKENS + reasoningAllowance(reasoningParam(thinker, tierSet.reasoning)) : WORK_TOKENS);
   // Adaptive effort (agent/effort.ts): a free-form turn that carries out a decision thinks at "low"; one that decides keeps the tier's level.
-  const feedback = feedbackMark(w.feedback ?? w.spotFeedback ?? w.testFeedback ?? w.designFeedback ?? w.reviewFeedback ?? "");
+  const feedback = feedbackMark(w.feedback ?? w.spotFeedback ?? w.testFeedback ?? w.designFeedback ?? w.pageFeedback ?? w.reviewFeedback ?? "");
   let reasoning: Reasoning | undefined;
   if (s.mode === "freeform" && (d.effort ?? getConfig().CODE_EFFORT) === "adaptive" && tierSet) {
     const e = turnEffort({ exchanges: w.exchanges, freshFeedback: !!feedback && feedback !== w.feedbackSeen, answered: w.answeredAt === w.turns, said: (w.said?.length ?? 0) > saidBefore });

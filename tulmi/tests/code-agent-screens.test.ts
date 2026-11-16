@@ -59,19 +59,28 @@ function fakePreview(script: PreviewState[] = [{ state: "ready", url: "https://t
 const LOW_PAGE = '<!doctype html><html lang="en"><head><title>Pricing</title></head><body><h1>Pricing</h1><img src="/pro.png"></body></html>';
 const SOUND_PAGE = '<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width"></head><body><h1>Pricing</h1></body></html>';
 
-/** A measurer that answers with a page that was drawn: used where a real Chrome would be. */
-function fakeMeasure(over: Partial<import("../src/code/agent/probe.js").ProbeResult> = {}) {
+type Probe = import("../src/code/agent/probe.js").ProbeResult;
+
+/**
+ * A measurer that answers with a page that was drawn, used where a real Chrome would be. `then` is what the SECOND measurement sees, so a test can
+ * say "the page was broken, the job fixed it, and the next look found it fixed" — which is the whole repair loop.
+ */
+function fakeMeasure(over: Partial<Probe> = {}, then?: Partial<Probe>) {
   const asked: Array<{ url: string; reduced: boolean }> = [];
+  let pass = 0;
   const render = async (url: string, o: { reducedMotion?: boolean; script?: string }) => {
     asked.push({ url, reduced: o.reducedMotion === true });
+    // One measurement is two loads; `then` takes over from the second measurement onward.
+    const now = then && asked.length > 2 ? then : over;
     const base = {
       ...noProbe(), walked: 40, viewport: { w: 320, h: 720 }, doc: { scrollWidth: 320, clientWidth: 320 },
-      text: [{ px: 16, weight: 400, chars: 300, fg: "17,24,39", bg: "255,255,255", at: "p" }], ...over,
+      text: [{ px: 16, weight: 400, chars: 300, fg: "17,24,39", bg: "255,255,255", at: "p" }], ...now,
     };
+    if (!o.reducedMotion) pass += 1;
     // The motion pass is the only one that reports animations, as the real one does.
-    return { value: o.reducedMotion ? { ...base, text: [], animations: over.animations ?? [] } : { ...base, animations: [] } };
+    return { value: o.reducedMotion ? { ...base, text: [], animations: now.animations ?? [] } : { ...base, animations: [] } };
   };
-  return { render, asked };
+  return { render, asked, get passes() { return pass; } };
 }
 
 async function setup(o: { preview?: ReturnType<typeof fakePreview> | null; shootFails?: boolean; page?: string; readFails?: boolean; measure?: ReturnType<typeof fakeMeasure> } = {}) {
@@ -220,19 +229,21 @@ describe("the floor, on the page that was shot", () => {
 });
 
 describe("the deeper look, on the page a browser drew", () => {
-  it("measures the page twice — once as drawn, once with reduced motion — and the report carries what it found", async () => {
-    const m = fakeMeasure({ animations: [{ at: "div.pulse", ms: null, forever: true, name: "spin" }], focus: [{ at: "button.buy", changed: "", visible: true }] });
+  it("measures the page twice — once as drawn, once with reduced motion — and reports what only a drawn page can show", async () => {
+    // Two colours a person cannot tell apart: worth reporting, but not a fault to be repaired, so the job measures once and goes on.
+    const m = fakeMeasure({ styles: { ...noProbe().styles, color: { "17,24,39": 90, "18,25,40": 2 }, fontSize: { "16px": 40, "13px": 1, "12px": 30 } } });
     const s = await setup({ measure: m });
     s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
     await s.r.orch.idle();
     const st = await s.r.stateNow(s.jobId);
-    // Two loads of the same page, the second one lying about reduced motion.
+    // One measurement is two loads of the same page, the second one telling it the person asked for less motion.
     expect(m.asked.map((a) => a.reduced)).toEqual([false, true]);
     expect(new Set(m.asked.map((a) => a.url))).toEqual(new Set(["https://tok.preview.example/pricing"]));
     expect(st.screens!.probe!.walked).toBe(40);
-    expect(st.report!.text).toMatch(/still running with prefers-reduced-motion/);
-    expect(st.report!.text).toMatch(/nothing at all when it takes keyboard focus/);
-    // And it held nothing up.
+    expect(st.screens!.round, "nothing objective was wrong, so no round was spent").toBeUndefined();
+    expect(st.report!.text).toMatch(/indistinguishable from another one already there/);
+    expect(st.report!.text).toMatch(/13px is used once, 1px from 12px/);
+    expect(st.report!.text).toMatch(/nobody knows what the right number is/);
     expect((await s.r.jobNow(s.jobId)).state).toBe("done");
     expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
   });
@@ -262,6 +273,61 @@ describe("the deeper look, on the page a browser drew", () => {
     expect(st.screens!.probe).toBeUndefined();
     expect((await s.r.jobNow(s.jobId)).state).toBe("done");
     expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+});
+
+describe("the repair round: what is objectively wrong gets fixed, not filed", () => {
+  it("sends the job back with the measurements and the axis that fixes each one, then measures again and reports the before and after", async () => {
+    // Broken first: text nobody can read. Clean on the second look, because the job fixed it.
+    const m = fakeMeasure({ text: [{ px: 16, weight: 400, chars: 300, fg: "200,200,200", bg: "255,255,255", at: "p.hint" }] }, {});
+    const s = await setup({ measure: m });
+    s.r.model.push(
+      call("edit_file", CARD_EDIT), done("Showed the price."),
+      // The repair round: the job is back in work, and it is told what is wrong and how to fix it.
+      call("edit_file", { path: "src/components/PricingCard.tsx", old: ">Pro, ₹499 a month<", new: ">Pro, ₹499 a month<" }), done("Darkened the hint text."),
+    );
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+
+    // It went back to work and was told the axis, not just the fault.
+    const told = s.r.model.seen.map((t) => t.user).join("\n");
+    expect(told).toContain("<tool_data tool=\"page_measured\">");
+    expect(told).toMatch(/repair round 1 of 2/);
+    expect(told).toMatch(/only the LIGHTNESS of the colour/);
+    expect(told).toMatch(/not matters of taste/);
+
+    // It measured again, and the report shows the before and the after rather than the list.
+    expect(st.screens!.round).toBe(1);
+    expect(m.passes).toBeGreaterThanOrEqual(2);
+    expect(st.report!.text).toMatch(/measured, fixed and measured again: 1 thing\(s\) were wrong by any standard, 0 still are/);
+    expect(st.report!.text).toContain("Fixed: text.contrast");
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+  });
+
+  it("says honestly when the fix did not take, and stops after two rounds", async () => {
+    // Broken, and still broken however many times it looks.
+    const m = fakeMeasure({ focus: [{ at: "button.buy", changed: "", visible: true }] });
+    const s = await setup({ measure: m });
+    s.r.model.push(call("edit_file", CARD_EDIT), ...Array.from({ length: 8 }, () => done("Had a go at the focus ring.")));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.round).toBe(2);
+    expect(st.report!.text).toMatch(/Still there: focus\.none/);
+    expect((await s.r.jobNow(s.jobId)).state).toBe("done");
+    // Two rounds, and no more: a job cannot be held open by a page it cannot fix.
+    expect(s.r.fake.commitCount(s.r.repo)).toBe(2);
+  });
+
+  it("a page that measures clean costs the job nothing at all", async () => {
+    const m = fakeMeasure();
+    const s = await setup({ measure: m });
+    s.r.model.push(call("edit_file", CARD_EDIT), done("Showed the price."));
+    await s.r.orch.idle();
+    const st = await s.r.stateNow(s.jobId);
+    expect(st.screens!.round).toBeUndefined();
+    expect(m.passes).toBe(1);
+    expect(s.r.model.seen.map((t) => t.user).join("\n")).not.toContain("page_measured");
+    expect(st.report!.text).not.toMatch(/measured, fixed and measured again/);
   });
 });
 

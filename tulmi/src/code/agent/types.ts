@@ -367,6 +367,10 @@ export interface ScreensState {
    * will run an expression in a page, or the page would not be measured — which is not a fault of the change and is not reported.
    */
   probe?: ProbeResult;
+  /** How many times the job has gone back to fix what the measurement found (coherence.ts REPAIR_ROUNDS_MAX). */
+  round?: number;
+  /** What the FIRST measurement found, kept so the report can show the before and after rather than only the after. */
+  first?: FloorFinding[];
 }
 
 /** The most of an approved design's source the checkpoint keeps, and the most of it the model is shown in one turn. */
@@ -520,6 +524,8 @@ export interface AgentState {
      * model. Read once at the start of work and only for a job on files people see. "" when there is nothing to read, or no store to read it with.
      */
     look?: string;
+    /** What the running page measured wrong, handed back for a repair round (coherence.ts repairBrief). Cleared once the round has been taken. */
+    pageFeedback?: string;
     /**
      * The model's latest turn that was words and no tool call (it is nudged once): often the answer itself, which the done{summary} that follows shortens. A job
      * that changes nothing answers with both (phases.ts answerOf).

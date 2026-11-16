@@ -351,3 +351,61 @@ export function coherenceLines(p: ProbeResult): string[] {
   }
   return out;
 }
+
+// ------------------------------------------------------------------ the repair
+
+/** How many times a job will go back and fix what the page measured. Two, as the design round has it. */
+export const REPAIR_ROUNDS_MAX = 2;
+
+/** What each repair axis means, said once, in the words the model is given. */
+const AXIS: Readonly<Record<Defect["fix"], string>> = {
+  lightness: "Change only the LIGHTNESS of the colour — keep its hue and its saturation exactly. That is what fixes contrast without changing the palette the project chose.",
+  size: "Raise the size to the nearest step the project already uses. Do not add a new step to the scale to make this pass.",
+  ring: "Give it a visible focus ring with :focus-visible, in a colour from the project's own palette. Do not remove the outline and leave nothing.",
+  motion: "Inside a prefers-reduced-motion: reduce block, drop the MOVEMENT and keep the colour and opacity. Reduced motion means gentler, not nothing, and never a blanket 0.01s on everything.",
+  width: "Let the element shrink: a max-width, a wrap, or a smaller minimum. Do not hide the overflow and do not scale the page down.",
+  snap: "Move the stray value onto the step it is nearly on. Do not add a new step.",
+};
+
+/**
+ * THE REPAIR, AS THE MODEL IS TOLD IT.
+ *
+ * This is the difference between a linter and an agent. Everything above measures; a linter would stop there and hand the person a list. But every
+ * one of these defects is objective — nobody has to be asked whether 2.5:1 text is too faint — and every one has an axis that fixes it WITHOUT
+ * touching what the person chose. So the job fixes them and measures again, and the person is shown the before and after rather than the list.
+ *
+ * The axis is the whole safety of it. "Repair the contrast" could mean anything, including repainting the brand; "move the lightness and nothing
+ * else" cannot change the identity of the palette. The same for the rest: snap to a step that already exists rather than inventing one, keep the
+ * fade and drop the travel, let the element shrink rather than hiding what spills.
+ *
+ * Empty when there is nothing objective to fix — a page with nothing but counts does not get a round.
+ */
+export function repairBrief(found: readonly Defect[], round: number): string {
+  if (!found.length) return "";
+  const axes = [...new Set(found.map((d) => d.fix))];
+  return [
+    `The app was RUN and the page was measured as a browser drew it, and these are wrong by any standard (repair round ${round} of ${REPAIR_ROUNDS_MAX}).`,
+    "They are not matters of taste and they do not need anyone's opinion. Fix them, and fix ONLY them: everything else about how the page looks was chosen, and is not yours to change.",
+    "",
+    ...found.map((d) => `- ${d.text}${d.where.length ? ` [${d.where.join("; ")}]` : ""}`),
+    "",
+    "How to fix each kind without changing the design:",
+    ...axes.map((a) => `- ${a}: ${AXIS[a]}`),
+  ].join("\n");
+}
+
+/** The defects worth a round: the objective ones. Strays are reported but never repaired — a near-miss is a judgement about the scale, not a fault. */
+export const worthRepairing = (p: ProbeResult): Defect[] => defects(p);
+
+/** What changed between the first measurement and the last: the proof a repair round worked, or honestly that it did not. */
+export function repairDelta(before: readonly Defect[], after: readonly Defect[]): string[] {
+  if (!before.length) return [];
+  const gone = before.filter((b) => !after.some((a) => a.rule === b.rule));
+  const left = after.filter((a) => before.some((b) => b.rule === a.rule));
+  const fresh = after.filter((a) => !before.some((b) => b.rule === a.rule));
+  const out = [`The page was measured, fixed and measured again: ${before.length} thing(s) were wrong by any standard, ${after.length} still ${after.length === 1 ? "is" : "are"}.`];
+  if (gone.length) out.push(`Fixed: ${gone.map((d) => d.rule).join(", ")}.`);
+  if (left.length) out.push(`Still there: ${left.map((d) => `${d.rule} (${d.count})`).join(", ")}.`);
+  if (fresh.length) out.push(`New since the fix: ${fresh.map((d) => d.rule).join(", ")}.`);
+  return out;
+}

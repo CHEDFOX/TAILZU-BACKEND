@@ -27,7 +27,7 @@ import { Refused } from "./changeset.js";
 import { isWebProject, previewCommand, targetRoute, viewportsFor } from "./design.js";
 import { checkFloor, floorLines, seenByPeople } from "./floor.js";
 import { runProbe } from "./probe.js";
-import { coherenceLines } from "./coherence.js";
+import { REPAIR_ROUNDS_MAX, coherenceLines, repairBrief, repairDelta, worthRepairing } from "./coherence.js";
 import { LostClaim, Yield, type Run } from "./run.js";
 import { RunPending } from "./runner.js";
 import { DESIGN_START_MS, type ScreenShot, type ScreensState } from "./types.js";
@@ -43,13 +43,19 @@ export function screensDue(r: Run): boolean {
   // A helper never (its lead's job shows the whole); a job from a design has its own look.
   if (s.team && s.team.stage !== "final") return false;
   if (s.part && !s.part.repo) return false;
-  if (s.spec || s.screens?.stage === "done" || !getConfig().CODE_SCREENS) return false;
+  if (s.spec || !getConfig().CODE_SCREENS) return false;
+  // "done" normally means the round is over — unless a repair round sent the job back to work, which reopens it to measure the fix.
+  if (s.screens?.stage === "done") return false;
   return seenFiles(r.tools.changes.paths()).length > 0;
 }
+
+/** What a repair round needs left in the budget before it is worth starting, in paise. */
+export const REPAIR_PAISE_MIN = 400;
 
 /** The round is over: say why if there are no real screens, close the preview, go on to commit. Never throws for the preview. */
 async function finish(r: Run, why?: string): Promise<void> {
   const sc = r.state.screens!;
+  r.state.work.pageFeedback = undefined;
   if (why && !sc.skipped && !sc.shots.length) {
     sc.skipped = oneLine(why, 300);
     await r.log.note(`Screens: ${sc.skipped}`);
@@ -63,7 +69,11 @@ async function finish(r: Run, why?: string): Promise<void> {
 /** The report's words for the screens: where they were taken, or why there are none. Links are added by whoever shows them. */
 export function screensLines(sc: ScreensState | undefined, link?: (shotId: string) => string | null): string[] {
   if (!sc) return [];
-  const floor = [...floorLines(sc.floor ?? []), ...(sc.probe ? coherenceLines(sc.probe) : [])];
+  const floor = [
+    ...floorLines(sc.floor ?? []),
+    ...(sc.probe ? coherenceLines(sc.probe) : []),
+    ...(sc.first && sc.probe ? ["", ...repairDelta(sc.first as never, worthRepairing(sc.probe))] : []),
+  ];
   // No pictures: say why, and still say what the floor found, because a page that would not photograph may still have been read.
   if (!sc.shots.length) {
     const why = sc.skipped ? [`No real screens: ${sc.skipped} Ask for a drawn one if a picture helps; it will say it is drawn.`] : [];
@@ -181,6 +191,7 @@ export async function screensPhase(r: Run): Promise<void> {
     const page = new URL(sc.route ?? "/", st.url).href;
     await theFloor(r, page);
     await theMeasure(r, page);
+    if (await theRepair(r)) return;
     return finish(r, failed || undefined);
   }
 }
@@ -229,4 +240,58 @@ async function theMeasure(r: Run, url: string): Promise<void> {
     return;
   }
   await r.save();
+}
+
+/**
+ * THE REPAIR ROUND: WHAT IS OBJECTIVELY WRONG GETS FIXED, NOT FILED.
+ *
+ * Everything else in this round reports. This does not, and that is the point: a linter hands a person a list, and an agent is standing in the
+ * project with the app running. Every defect the measurement finds is wrong by any standard — nobody has to be asked whether text nobody can read
+ * is a problem — and every one carries the axis that fixes it without touching what the person chose (coherence.ts repairBrief).
+ *
+ * So the job goes back to work with the measurements in front of it, the checks run again, the page is drawn again and measured again, and the
+ * report shows the before and the after instead of the list. Two rounds at most, and only when something objective was actually found: a page that
+ * measures clean never costs a job a single turn.
+ *
+ * Returns true when the job was sent back, in which case this round is over for now and will run again after the checks.
+ */
+async function theRepair(r: Run): Promise<boolean> {
+  const s = r.state;
+  const sc = s.screens!;
+  if (!sc.probe) return false;
+  const found = worthRepairing(sc.probe);
+  // The first measurement is kept whatever happens, so the report can show what it was even when nothing could be fixed.
+  if (sc.first === undefined) sc.first = found as never;
+  const round = (sc.round ?? 0) + 1;
+  if (!found.length || round > REPAIR_ROUNDS_MAX) return false;
+
+  // A round costs model turns, so a job that cannot pay for one keeps its measurements and reports them instead.
+  const money = await r.money();
+  if (money.remaining < REPAIR_PAISE_MIN) {
+    await r.log.note(`The page measured ${found.length} thing(s) wrong by any standard, but there is not enough budget left to fix them, so they are in the report.`);
+    return false;
+  }
+
+  sc.round = round;
+  const w = s.work;
+  w.pageFeedback = repairBrief(found, round);
+  await r.log.note(`Fixing what the page measured wrong (round ${round} of ${REPAIR_ROUNDS_MAX}): ${found.map((d) => d.rule).join(", ")}.`);
+  // A fresh work round, as the design round starts one: nothing of the last one's state carries over.
+  w.feedback = undefined;
+  w.finished = false;
+  w.runs = 0;
+  w.nudged = false;
+  w.badTurns = 0;
+  w.roundStartPaise = money.spent;
+  w.roundStartedAt = r.now();
+  // The page will have changed, so the pictures and the measurements are taken again rather than kept.
+  sc.stage = "session";
+  sc.shots = [];
+  delete sc.probe;
+  delete sc.floor;
+  delete sc.skipped;
+  s.phase = "work";
+  try { await r.deps.live?.preview?.stop(r.jobId, "repair"); } catch { /* the room closes it when it has had no request for a while */ }
+  await r.save();
+  return true;
 }
