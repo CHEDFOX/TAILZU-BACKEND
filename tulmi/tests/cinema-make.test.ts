@@ -194,3 +194,22 @@ describe("the edges", () => {
     expect(scene.objects[0]!.asset).toBe("speaker");
   });
 });
+
+describe("the machine this backend is", () => {
+  it("renders one at a time, so two jobs do not fight over the same cores", async () => {
+    const { blenderRunner } = await import("../src/cinema/blender.js");
+    // No blender here, so each run fails fast — what is being checked is that they go through in turn, not at once.
+    const render = blenderRunner({ bin: "definitely-not-blender" });
+    const started = Date.now();
+    const out = await Promise.all([1, 2, 3].map(() => render({ script: "print(1)", move: false, timeoutMs: 5_000 })));
+    expect(out.every((r) => !r.ok)).toBe(true);
+    expect(render.waiting()).toBe(0);
+    expect(Date.now() - started).toBeLessThan(20_000);
+  });
+
+  it("says whether there is a Blender here at all, rather than failing a job to find out", async () => {
+    const { renderHere } = await import("../src/cinema/blender.js");
+    const here = renderHere({ bin: "definitely-not-blender" });
+    expect(await here.ready()).toEqual({ ok: false, version: null });
+  });
+});

@@ -344,9 +344,24 @@ export function scriptFor(scene: Scene, o: ScriptOpts = {}): string {
     lines.push(`except Exception as e:`);
     lines.push(`    print("cinema: cpu only (", e, ")")`);
   } else {
-    lines.push(`S.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in [i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items] else "BLENDER_EEVEE"`);
-    lines.push(`try: S.eevee.taa_render_samples = ${samples}`);
-    lines.push(`except Exception: pass`);
+    // Eevee draws with a graphics card. On a machine that has none — a server, a container — there is nothing for it to draw
+    // with, so the render falls to Cycles, which is slower and runs anywhere. Decided here, at run time, because only the
+    // machine knows what it has.
+    lines.push(`try:`);
+    lines.push(`    import gpu`);
+    lines.push(`    _backend = str(gpu.platform.backend_type_get())`);
+    lines.push(`except Exception:`);
+    lines.push(`    _backend = "NONE"`);
+    lines.push(`if "NONE" in _backend or "UNKNOWN" in _backend:`);
+    lines.push(`    print("cinema: no graphics card here, so cycles instead of eevee")`);
+    lines.push(`    S.render.engine = "CYCLES"`);
+    lines.push(`    S.cycles.samples = ${Math.min(samples, 64)}`);
+    lines.push(`    S.cycles.use_denoising = True`);
+    lines.push(`    S.cycles.seed = ${scene.seed ?? 1}`);
+    lines.push(`else:`);
+    lines.push(`    S.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in [i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items] else "BLENDER_EEVEE"`);
+    lines.push(`    try: S.eevee.taa_render_samples = ${samples}`);
+    lines.push(`    except Exception: pass`);
   }
   lines.push(`S.render.resolution_x = ${width}`);
   lines.push(`S.render.resolution_y = ${height}`);

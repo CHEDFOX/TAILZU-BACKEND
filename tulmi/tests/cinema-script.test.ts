@@ -121,3 +121,19 @@ describe("a preview, and the real thing", () => {
     expect(scriptFor(SCENE)).toContain("save_as_mainfile");
   });
 });
+
+describe("a machine with no graphics card", () => {
+  it("falls from Eevee to Cycles at run time, because only the machine knows what it has", async () => {
+    const { checkScene: check } = await import("../src/cinema/check.js");
+    const { scriptFor: write } = await import("../src/cinema/script.js");
+    const s = write(check({ look: { engine: "eevee", samples: 64 }, objects: [{ shape: "cube", size: 1 }] }).scene);
+    expect(s).toContain("backend_type_get");
+    expect(s).toContain('S.render.engine = "CYCLES"');
+    expect(s).toContain("BLENDER_EEVEE_NEXT");
+    // and it is still Python
+    const dir = mkdtempSync(path.join(tmpdir(), "cinema-py-"));
+    const file = path.join(dir, "eevee.py");
+    writeFileSync(file, s, "utf8");
+    expect(() => execFileSync("python3", ["-m", "py_compile", file], { stdio: "pipe" })).not.toThrow();
+  });
+});

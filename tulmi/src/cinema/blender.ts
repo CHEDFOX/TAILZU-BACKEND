@@ -17,6 +17,29 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Render, RenderJob, RenderOut, Shot } from "./ports.js";
 
+/**
+ * ONE AT A TIME, unless told otherwise. Two renders on the same machine do not go twice as fast: they share the same cores
+ * and the same memory, and the pair takes longer than the two would have taken in turn — and on a box that is also serving
+ * the app, they take the app down with them. So a render waits its turn.
+ */
+class Lanes {
+  private free: number;
+  private queue: Array<() => void> = [];
+  constructor(n: number) { this.free = Math.max(1, n); }
+  async take(): Promise<() => void> {
+    if (this.free > 0) { this.free--; } else await new Promise<void>((go) => this.queue.push(go));
+    let given = false;
+    return () => {
+      if (given) return;
+      given = true;
+      const next = this.queue.shift();
+      if (next) next(); else this.free++;
+    };
+  }
+  /** How many are waiting, for a caller that would rather say "in a minute" than queue. */
+  get waiting(): number { return this.queue.length; }
+}
+
 export interface BlenderOpts {
   /** The binary. The default is whatever `blender` is on the path. */
   bin?: string;
@@ -24,6 +47,8 @@ export interface BlenderOpts {
   workDir?: string;
   /** Keep the folder after it runs (for working out why something looks wrong). */
   keepWork?: boolean;
+  /** How many renders may run at once on this machine. One, unless the box is big and does nothing else. */
+  lanes?: number;
 }
 
 /** The end of the log, which is where the reason is. */
@@ -46,10 +71,12 @@ async function gather(out: string): Promise<Shot[]> {
   return shots;
 }
 
-export function blenderRunner(o: BlenderOpts = {}): Render {
+export function blenderRunner(o: BlenderOpts = {}): Render & { waiting: () => number } {
   const bin = o.bin && o.bin.trim() ? o.bin.trim() : "blender";
-  return async (job: RenderJob): Promise<RenderOut> => {
+  const lanes = new Lanes(o.lanes ?? 1);
+  const run = async (job: RenderJob): Promise<RenderOut> => {
     const began = Date.now();
+    const done = await lanes.take();
     const base = o.workDir ?? tmpdir();
     await mkdir(base, { recursive: true });
     const work = await mkdtemp(path.join(base, "cinema-"));
@@ -90,8 +117,33 @@ export function blenderRunner(o: BlenderOpts = {}): Render {
     } catch (err) {
       return { ok: false, error: String((err as Error)?.message ?? err), ms: Date.now() - began, log: tail(log) };
     } finally {
+      done();
       if (!o.keepWork) await rm(work, { recursive: true, force: true }).catch(() => {});
     }
+  };
+  return Object.assign(run, { waiting: () => lanes.waiting });
+}
+
+/**
+ * THE RENDERER THIS MACHINE IS, as the switches describe it (config.ts CINEMA_BLENDER, CINEMA_WORK) — the backend on its
+ * own, with no app anywhere. `ready()` says whether there is a Blender here at all and which one, so a machine that has
+ * none can say so instead of failing a job.
+ */
+export function renderHere(o: { bin?: string; workDir?: string; lanes?: number } = {}): {
+  render: Render;
+  ready: () => Promise<{ ok: boolean; version: string | null }>;
+  waiting: () => number;
+} {
+  const bin = o.bin?.trim() || "blender";
+  const runner = blenderRunner({
+    bin,
+    ...(o.workDir?.trim() ? { workDir: o.workDir.trim() } : {}),
+    ...(o.lanes ? { lanes: o.lanes } : {}),
+  });
+  return {
+    render: runner,
+    ready: async () => { const version = await blenderVersion(bin); return { ok: !!version, version }; },
+    waiting: runner.waiting,
   };
 }
 
