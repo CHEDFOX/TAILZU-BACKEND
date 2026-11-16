@@ -65,6 +65,18 @@ export function getRenderer(): Renderer | null {
  * server on WEB_BROWSER=cloudflare has no cloud browser, and says so rather than quietly reading pages as a stranger —
  * which would answer "please sign in" for every watch and look like a bug.
  */
+/**
+ * THE HOLDER: a page kept open while a person looks at it (src/sites/panel.ts). Local Chrome only, for the same
+ * reason the visitor is — a rendering service hands back HTML and cannot be tapped on.
+ */
+export function getHolder(): BrowserEngine["hold"] | null {
+  const cfg = getConfig();
+  if (cfg.WEB_BROWSER !== "local") return null;
+  if (!getRenderer()) return null;
+  const e = engine;
+  return e ? (o: Parameters<BrowserEngine["hold"]>[0]) => e.hold(o) : null;
+}
+
 export function getVisitor(): ((o: VisitOptions) => Promise<VisitedPage>) | null {
   const cfg = getConfig();
   if (cfg.WEB_BROWSER !== "local") return null;

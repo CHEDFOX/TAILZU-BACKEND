@@ -8,6 +8,14 @@
  *   POST   /v1/botsapp/bots/sites/check/:id            -> { view }    look now, if the floor allows (the pull-to-refresh)
  *   DELETE /v1/botsapp/bots/sites/:site                -> { view }    forget the slip: sign out of that site here
  *
+ * THE PANEL, where a sign-in actually happens (src/sites/panel.ts):
+ *
+ *   POST   /v1/botsapp/bots/sites/panel { url }        -> PanelView   open their browser at a site's sign-in
+ *   GET    /v1/botsapp/bots/sites/panel/:id            -> PanelView   the newest frame, and whether it is over
+ *   POST   /v1/botsapp/bots/sites/panel/:id/touch      -> PanelView   { tap:{x,y} } | { type } | { key } | { scroll }
+ *   POST   /v1/botsapp/bots/sites/panel/:id/done       -> PanelView   "I'm signed in": checked, kept, closed
+ *   DELETE /v1/botsapp/bots/sites/panel/:id            -> PanelView   they gave up
+ *
  * THERE IS NO ROUTE THAT SIGNS ANYBODY IN. A session is only ever made by the person signing in themselves, in the panel, and
  * that path is not built yet — so nothing here can be talked into holding a login it was handed over the wire. A route that
  * took a cookie jar as JSON would be the whole security of this feature, written away in one parameter.
@@ -20,6 +28,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SitesView } from "../../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { allowedSites, cloudBrowserOn, mayUseCloudBrowser, watchLimits } from "../../sites/gate.js";
+import type { Panels } from "../../sites/panel.js";
 import { SiteError, type Sites } from "../../sites/service.js";
 import { heldFreeUse } from "../../trust/actions.js";
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -30,7 +39,7 @@ const NOT_NOW = { code: "not_now", message: "That can't be done right now. Try a
 const LABEL_MAX = 80;
 const URL_MAX = 2000;
 
-export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { sites: Sites; now?: () => number }): void {
+export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { sites: Sites; panels?: Panels; now?: () => number }): void {
   const RL = { config: deps.rateLimit };
   const now = o.now ?? Date.now;
 
@@ -94,6 +103,37 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
     await o.sites.signOut(user.id, param(req, "site").toLowerCase());
     return { view: await view(user.id) };
   }));
+
+  // ------------------------------------------------------------ the panel
+
+  // Absent when this server has no browser of its own: the sites screens still draw, and the sign-in simply is not
+  // offered, which is honest. A route that existed and always failed would read as a bug.
+  const panels = o.panels;
+  const needPanels = (): Panels => {
+    if (!panels) throw new SiteError("no_browser", "Signing in isn't available on this server.", 503);
+    return panels;
+  };
+
+  app.post(`${AREA}/sites/panel`, RL, run(async (user, req) => needPanels().open(user.id, str(body(req).url, URL_MAX))));
+
+  app.get(`${AREA}/sites/panel/:id`, RL, run(async (user, req) => needPanels().poll(param(req, "id"), user.id)));
+
+  app.post(`${AREA}/sites/panel/:id/touch`, RL, run(async (user, req) => {
+    const b = body(req);
+    const tap = (b.tap ?? null) as { x?: unknown; y?: unknown } | null;
+    const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : -1);
+    // One touch a call, and only a shape we recognise: a panel takes a tap, some text, a named key or a scroll, and
+    // nothing else is passed through to a real browser.
+    if (tap && n(tap.x) >= 0 && n(tap.y) >= 0) return needPanels().touch(param(req, "id"), user.id, { tap: { x: n(tap.x), y: n(tap.y) } });
+    if (typeof b.type === "string" && b.type) return needPanels().touch(param(req, "id"), user.id, { type: b.type.slice(0, 200) });
+    if (b.key === "Enter" || b.key === "Backspace" || b.key === "Tab") return needPanels().touch(param(req, "id"), user.id, { key: b.key });
+    if (typeof b.scroll === "number" && Number.isFinite(b.scroll)) return needPanels().touch(param(req, "id"), user.id, { scroll: Math.max(-2000, Math.min(2000, Math.round(b.scroll))) });
+    throw new SiteError("bad_touch", "That isn't something I can do on the page.", 400);
+  }));
+
+  app.post(`${AREA}/sites/panel/:id/done`, RL, run(async (user, req) => needPanels().done(param(req, "id"), user.id)));
+
+  app.delete(`${AREA}/sites/panel/:id`, RL, run(async (user, req) => needPanels().cancel(param(req, "id"), user.id)));
 
   void now;
 }

@@ -58,10 +58,11 @@ import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerPlanShareRoutes } from "./routes/bots/botsPlanShare.js";
 import { registerSitesRoutes } from "./routes/bots/botsSites.js";
 import { startSitesClock } from "./sites/clock.js";
+import { Panels } from "./sites/panel.js";
 import { cloudBrowserOn } from "./sites/gate.js";
 import { SITE_READ_PAISE } from "./sites/read.js";
 import { Sites } from "./sites/service.js";
-import { getVisitor } from "./web/browser/index.js";
+import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -557,9 +558,13 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
   const visit = cloudBrowserOn() ? getVisitor() : null;
   if (visit) {
     const sites = new Sites({ visit, read: { maxPaise: SITE_READ_PAISE } });
-    registerSitesRoutes(app, botsAreaDeps, { sites });
+    // The panel needs a page HELD open while a person looks at it, which only the local engine can do; `hold` is
+    // absent otherwise and the sign-in routes answer 503 rather than pretending.
+    const hold = getHolder();
+    const panels = hold ? new Panels({ hold }) : undefined;
+    registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
     const stopSites = startSitesClock({ sites, log: app.log });
-    app.addHook("onClose", async () => { stopSites(); });
+    app.addHook("onClose", async () => { stopSites(); await panels?.closeAll(); });
   } else if (cloudBrowserOn()) {
     app.log.warn("CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be \"local\" with Chrome): sites stay off.");
   }

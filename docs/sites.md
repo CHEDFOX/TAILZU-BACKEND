@@ -92,6 +92,35 @@ because a page can carry words meant for the reader rather than the person — i
 since text faded to nothing is still text in `innerText`. The model is told to report what the page shows, and
 is given nothing it could act on even if it were talked into wanting to.
 
+## The panel
+
+The one place a person touches their cloud browser, and it exists for a reason that cannot be designed around:
+**the cookie lands where the handshake finishes.** Sign in on your phone's own browser and the shop sets its cookie
+*there*; this server is still signed out, and no browser hands another site's cookies to an app. So the sign-in has
+to happen in the browser that will keep it — which means seeing that browser, once, for half a minute.
+
+It is not a browser. No address to type, pinned to the hosts it opened for, closed the moment the sign-in is done.
+
+**Nothing runs on a clock.** Chrome's screencast fires only when the page changes, so a still page costs nothing.
+On top of that `FrameGate`: 4 frames a second while a page merely fidgets (a spinner firing 62 times a second is
+held to 4), 12 for the second after a touch because that is when a person is watching, and when frames outrun the
+cap the newest is kept and the rest dropped — an old frame is not worth sending late.
+
+**It ends on a signal**, never a countdown: the page stopped looking like a sign-in page, or they said they were in,
+or they left. The idle cut (90s) and the ceiling (5 min) are backstops for somebody who walked away. A quick
+sign-in is over in seconds; a slow one gets as long as it needs.
+
+**"I'm signed in" is checked, not believed.** If the page is still a sign-in page the panel stays open — closing
+there would save a signed-out session over a good one, which is the exact mistake the watcher made once.
+
+**And the social handshake is made safe by what is thrown away.** Google is needed for the handshake; the shop's
+cookie is not. So on the way out every cookie and store of `accounts.google.com`, `appleid.apple.com` and
+`www.facebook.com` is deleted, *before* the state is read. This server never holds a live Google session — not for
+a minute, not in a backup, not in a breach. Somebody who reads your database orders dinner; nobody reads anyone's
+email.
+
+One panel per person: a second would hold a second of the browser's three places for the same sign-in.
+
 ## What is built, and what is not
 
 **Built:** the switch and its gates (`gate.ts`), the store (`store.ts`, migration **0098**), `engine.visit()`,
@@ -102,6 +131,7 @@ the page reader, the `site_read` role, the service and its manners (`service.ts`
 * **The routes and the screens.** Nothing in the app can reach this. It needs `GET/POST /v1/sites`, the Activity
   cards from the mock, and a way to add a site.
 * **The clock.** `dueNow()` answers which things are due; nothing calls it on a schedule yet.
-* **Signing in.** `signIn()` takes a session, but nothing produces one: that is the panel — a live view of the
-  browser for the thirty seconds of a sign-in, which is its own build (`Page.startScreencast` plus input events).
+* **The phone's half of the panel.** The server side is done (`sites/panel.ts`, `sites/frames.ts`, `engine.hold()`,
+  the routes); what is missing is the component that draws the frames and sends the taps. It lives in `app/**`, so
+  shipping it publishes an OTA — a decision for the owner, not for a build.
 * **Acting.** The other half, and a much bigger one.
