@@ -153,7 +153,11 @@ export function buildSceneService(): SceneService {
     ...(cfg.CINEMA_BLENDER ? { bin: cfg.CINEMA_BLENDER } : {}),
     ...(cfg.CINEMA_WORK ? { workDir: cfg.CINEMA_WORK } : {}),
   });
+  // R2 IS WHERE A CREATION LIVES (media/blob.ts: R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET). Without it the
+  // bytes are in memory and a restart forgets them, which matters more here than it does for a film: the row survives the restart
+  // and would go on naming a script and a preview that are gone. So it is said out loud at start-up rather than found later.
   const r2 = blobStoreFromConfig();
+  if (!r2) console.warn("[cinema/scene] R2 is not set up: creations are kept in memory, and a restart forgets their files while the rows remain");
   const svc = new SceneService({
     store: sceneStore(),
     blobs: r2 ?? new MemoryBlobStore(),
