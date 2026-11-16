@@ -97,6 +97,8 @@ export interface MediaPorts {
       vo: { audio: Buffer; text: string; seconds: number; words?: { word: string; start: number; end: number }[] } | null;
       /** Where the subject sits across the frame (-1 to 1), for a cut that crops to another shape. */
       bias?: number;
+      /** What the take's picture measures, so the cut can match the shots to each other (cut.ts gradeOf). */
+      levels?: { y: number; u: number; v: number } | null;
     }[];
     music: Buffer | null; aspect: Aspect; height: 720 | 1080;
     /** "crop" fills the frame and loses the edges, for another shape of the same film; the film itself pads. */
@@ -109,6 +111,8 @@ export interface MediaPorts {
   sheet?: (frames: readonly Buffer[]) => Promise<Buffer | null>;
   /** A storyboard frame held for a length of time, with a slow drift across it (ffmpeg.ts stillClip). Absent: no animatic. */
   hold?: (bytes: Buffer, o: { seconds: number; width: number; height: number; drift?: -1 | 0 | 1 }) => Promise<Buffer>;
+  /** What a take's picture measures, for the grade that makes one film of shots from several models. Absent: the takes are left as they came. */
+  levels?: (bytes: Buffer) => Promise<{ y: number; u: number; v: number } | null>;
   /** One take cut apart at the beats, for several shots filmed in one go (ffmpeg.ts slice). Absent: each shot is filmed on its own. */
   slice?: (bytes: Buffer, starts: readonly number[]) => Promise<{ video: Buffer; last: Buffer; seconds: number }[]>;
 }
@@ -1129,10 +1133,17 @@ export class CinemaService {
       const audio = st.voice ? await this.d.blobs.get(st.voice) : null;
       const who = (k: string) => script.bible.characters.find((c) => c.key === k)?.name ?? k;
       const bias = subjectBias(card, script.bible);
+      // Measured once and kept on the take: every later cut of the same takes - another shape, captions burned in - grades for free.
+      let levels = take?.levels ?? null;
+      if (!levels && take && this.d.media.levels) {
+        levels = await this.d.media.levels(video).catch(() => null);
+        if (levels) await this.update(f.ownerId, f.id, (x) => { const t = x.takes.find((y) => y.id === take.id); if (t) t.levels = levels; });
+      }
       shots.push({
         video, link: card.link, lines: card.lines.map((l) => `${who(l.who)}: ${l.text}`),
         vo: card.vo && audio ? { audio, text: card.vo, seconds: st.voiceSeconds, ...(st.voiceWords?.length ? { words: st.voiceWords } : {}) } : null,
         ...(bias ? { bias } : {}),
+        ...(levels ? { levels } : {}),
       });
     }
     return shots;

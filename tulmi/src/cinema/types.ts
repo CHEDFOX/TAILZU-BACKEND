@@ -246,6 +246,8 @@ export interface Take {
   paise: number;
   /** Media key of the clip, once fetched. */
   video: string | null;
+  /** What its picture measures (ffmpeg signalstats), kept so the grade is worked out once and every later cut is free. */
+  levels?: { y: number; u: number; v: number } | null;
   /** Media key of its last frame (the next shot's first, when it continues). */
   lastFrame: string | null;
   verdict: Verdict | null;

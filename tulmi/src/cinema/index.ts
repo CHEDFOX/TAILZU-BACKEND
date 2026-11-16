@@ -20,7 +20,7 @@ import { aiAllowedFor } from "../privacy/aiGate.js";
 import { pushEngine } from "../push/index.js";
 import { chargeUsd, ttsUsd } from "../usage/cost.js";
 import { enforceQuota } from "../usage/metering.js";
-import { contactSheet, cut, frames, seconds, slice, stillClip } from "./ffmpeg.js";
+import { contactSheet, cut, frames, levels, seconds, slice, stillClip } from "./ffmpeg.js";
 import { fetchVideo, liveModels, makeImage, makeMusic, startVideo, videoStatus } from "./openrouter.js";
 import type { Think } from "./plan.js";
 import { CinemaService, setCinemaService, type CinemaNotify } from "./service.js";
@@ -71,6 +71,7 @@ export function buildCinemaService(): CinemaService {
       cut,
       sheet: contactSheet,
       hold: stillClip,
+      levels,
       slice,
     },
     charge: (userId, usd) => chargeUsd(userId, usd, CINEMA_SLUG),

@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { assOf, cutArgs, frameOf, PEAK_CEILING, readLoudness, readPeak, srtOf, type CutPlan, type CutShot } from "./cut.js";
+import { assOf, cutArgs, frameOf, PEAK_CEILING, readLoudness, readPeak, srtOf, type CutPlan, type CutShot, type Levels } from "./cut.js";
 
 const FORMATS_OK = new Set(["mov", "mp4", "m4a", "3gp", "3g2", "mj2", "matroska", "webm", "mp3", "wav", "ogg", "aac", "flac", "image2", "png_pipe", "jpeg_pipe", "webp_pipe"]);
 const COMMON = ["-nostdin", "-hide_banner", "-loglevel", "error", "-protocol_whitelist", "file"];
@@ -103,6 +103,36 @@ export async function contactSheet(shots: readonly Buffer[]): Promise<Buffer | n
     if (r.code !== 0) return null;
     return readFile(out).catch(() => null);
   });
+}
+
+/**
+ * WHAT A TAKE'S PICTURE MEASURES: average luma and the two chroma axes, from a handful of frames spread through the clip. It is what the
+ * grade matches shots to each other by (cut.ts gradeOf). Two frames a second is plenty - we want the clip's mood, not its every frame -
+ * and a clip that cannot be read comes back null, which leaves that shot ungraded rather than guessed at.
+ */
+export async function levels(bytes: Buffer): Promise<Levels | null> {
+  return inFolder(async (dir) => {
+    const src = join(dir, "take.mp4");
+    await writeFile(src, bytes);
+    const r = await run("ffmpeg", [...COMMON.filter((x) => x !== "error"), "-loglevel", "info", "-i", src,
+      "-vf", "fps=2,signalstats,metadata=print:file=-", "-f", "null", "-"], 90_000).catch(() => null);
+    if (!r || r.code !== 0) return null;
+    return readLevels(r.stdout.toString("utf8") + r.stderr);
+  });
+}
+
+/** The averages out of ffmpeg's `metadata=print`: the mean of every frame it printed. */
+export function readLevels(text: string): Levels | null {
+  const mean = (key: string): number | null => {
+    const v: number[] = [];
+    for (const m of text.matchAll(new RegExp(`lavfi\\.signalstats\\.${key}AVG=([0-9.]+)`, "g"))) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n)) v.push(n);
+    }
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
+  const y = mean("Y"), u = mean("U"), v = mean("V");
+  return y === null || u === null || v === null ? null : { y, u, v };
 }
 
 /**
@@ -226,7 +256,7 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
         await writeFile(file, s.vo.audio);
         vo = { file, text: s.vo.text, seconds: s.vo.seconds, ...(s.vo.words?.length ? { words: s.vo.words } : {}) };
       }
-      shots.push({ video, seconds: Math.max(0.5, info.seconds), hasAudio: info.hasAudio, link: s.link, vo, lines: s.lines, ...(s.bias ? { bias: s.bias } : {}) });
+      shots.push({ video, seconds: Math.max(0.5, info.seconds), hasAudio: info.hasAudio, link: s.link, vo, lines: s.lines, ...(s.bias ? { bias: s.bias } : {}), ...(s.levels ? { levels: s.levels } : {}) });
     }
     let music: string | null = null;
     if (input.music) {

@@ -277,6 +277,22 @@ Every take and every still is already ours, so the same film can be cut again fo
 The film's music is kept with the cut (`Cut.music`, `musicOf`), so cutting the same film again - after a change, or into another shape - never
 pays for it twice.
 
+### One film, not seven clips
+
+Shots come back from whichever model routed best for each of them, and those models do not agree about exposure, contrast, or how warm the
+world is. That disagreement is the loudest tell that a film was made by a machine - louder than hands, louder than physics - because no
+camera changes its mind between cuts.
+
+So **every take is measured and pulled towards the middle of its own film** (`ffmpeg.ts levels`, `cut.ts gradeOf`). The middle is the
+**median** of what the shots measure, not the mean, so one wildly wrong shot cannot drag the film after it. The pull is a share of the
+distance (0.65) and is capped (26 of 255 in brightness, 14 in colour, 18% in saturation), and a shot already within 3 of the middle is left
+exactly as it came: **a shot that is meant to be dark stays dark**. A film that is near grey all through has no colour to be matched to, so
+its saturation is left alone rather than everything being pushed the same way for no reason.
+
+It is measured once and kept on the take, so every later cut of the same takes - another shape, the words burned in - grades for nothing.
+`gradeOf` is pure, so what a film will look like can be read off the numbers without running ffmpeg, and `cutArgs(plan, { grade: false })`
+leaves every shot exactly as it came.
+
 ## 7. Pictures
 
 `pictures.ts`: a cheap model reads the ask (what kind of picture, the words that must be spelled right, the frame, a full description with no

@@ -12,8 +12,8 @@ import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assOf, capsOf, cuesOf, cutArgs, fitFilter, frameOf, musicLevel, PEAK_CEILING, readLoudness, readPeak, readSeconds, srtOf, timeline, trim, type CutShot } from "../src/cinema/cut.js";
-import { blackSpans, contactSheet, cut, frames, probe, seconds, slice } from "../src/cinema/ffmpeg.js";
+import { assOf, capsOf, cuesOf, cutArgs, fitFilter, frameOf, gradeOf, musicLevel, PEAK_CEILING, readLoudness, readPeak, readSeconds, srtOf, timeline, trim, type CutShot } from "../src/cinema/cut.js";
+import { blackSpans, contactSheet, cut, frames, probe, readLevels, seconds, slice } from "../src/cinema/ffmpeg.js";
 
 const shot = (over: Partial<CutShot> = {}): CutShot => ({ video: "a.mp4", seconds: 4, hasAudio: true, link: "cut", vo: null, lines: [], ...over });
 
@@ -171,6 +171,54 @@ function tone(secs: number, freq: number): Buffer {
   const r = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `sine=frequency=${freq}:duration=${secs}`, "-c:a", "libmp3lame", "-f", "mp3", "pipe:1"], { maxBuffer: 10 * 1024 * 1024 });
   return r.stdout;
 }
+
+describe("one film, not seven clips", () => {
+  const L = (y: number, u = 128, v = 128) => ({ levels: { y, u, v } });
+
+  it("pulls a shot that is out of step towards the middle of the film, and leaves the ones already there alone", () => {
+    const g = gradeOf([L(110), L(112), L(170), L(108)]);
+    // The three that agree are left as they came; the bright one is brought down, but not all the way.
+    expect(g[0]).toBeNull();
+    expect(g[1]).toBeNull();
+    expect(g[3]).toBeNull();
+    expect(g[2]).toContain("eq=brightness=-");
+    const by = Number(/brightness=(-?[0-9.]+)/.exec(g[2]!)![1]) * 255;
+    expect(by).toBeLessThan(0);
+    expect(Math.abs(by)).toBeLessThan(170 - 110);
+  });
+
+  it("never moves a shot further than it is allowed to, so a dark shot stays dark", () => {
+    const g = gradeOf([L(30), L(200), L(205), L(210)]);
+    const by = Number(/brightness=(-?[0-9.]+)/.exec(g[0]!)![1]) * 255;
+    expect(by).toBeGreaterThan(0);
+    expect(by).toBeLessThanOrEqual(26.5);
+  });
+
+  it("matches colour as well as brightness, and says nothing when there is nothing to match", () => {
+    const warm = gradeOf([L(120, 110, 150), L(120, 128, 128), L(120, 130, 126)]);
+    expect(warm[0]).toContain("colorbalance=");
+    // One shot on its own has no film to be matched to.
+    expect(gradeOf([L(120)])).toEqual([null]);
+    expect(gradeOf([{}, {}])).toEqual([null, null]);
+  });
+
+  it("puts the grade into the filter for that shot, and leaves it out when asked", () => {
+    const shots = [shot({ ...L(110) }), shot({ ...L(180) })];
+    const plan = { shots, music: null, aspect: "16:9" as const, height: 1080 as const, out: "o.mp4", srt: null };
+    const on = cutArgs(plan).join(" ");
+    expect(on).toContain("eq=brightness=");
+    expect(cutArgs(plan, { grade: false }).join(" ")).not.toContain("eq=brightness=");
+  });
+
+  it("reads what ffmpeg measured, and says nothing when it measured nothing", () => {
+    const text = [
+      "lavfi.signalstats.YAVG=100.0", "lavfi.signalstats.UAVG=120.0", "lavfi.signalstats.VAVG=140.0",
+      "lavfi.signalstats.YAVG=110.0", "lavfi.signalstats.UAVG=122.0", "lavfi.signalstats.VAVG=138.0",
+    ].join("\n");
+    expect(readLevels(text)).toEqual({ y: 105, u: 121, v: 139 });
+    expect(readLevels("nothing here")).toBeNull();
+  });
+});
 
 describe("where the film goes blank", () => {
   it("reads the spans ffmpeg found, and leaves out the fades at either end", () => {

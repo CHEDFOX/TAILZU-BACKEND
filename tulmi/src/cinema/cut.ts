@@ -53,6 +53,60 @@ export function readSeconds(text: string): number {
   return Math.max(READ_MIN, Math.round(need * 100) / 100);
 }
 
+/** What a take's picture measures: average luma and the two chroma axes, 0-255 as ffmpeg's signalstats reports them. */
+export interface Levels { y: number; u: number; v: number }
+
+/**
+ * ONE FILM, NOT SEVEN CLIPS. Shots come back from whichever model routed best for them, and those models do not agree about exposure,
+ * contrast or how warm the world is. That disagreement is the loudest tell that a film was made by a machine - louder than hands, louder
+ * than physics - because no camera changes its mind between cuts.
+ *
+ * So every shot is measured and pulled towards the film's middle. Not all the way: a shot that is meant to be dark must stay dark, so the
+ * pull is a share of the distance (PULL) and is capped (MAX_*), and a shot already within SKIP of the middle is left alone. The middle is
+ * the median rather than the mean, so one wildly wrong shot cannot drag the whole film after it.
+ */
+const PULL = 0.65, SKIP = 3, MAX_Y = 26, MAX_C = 14, MAX_SAT = 0.18, GREY = 4;
+
+const median = (v: readonly number[]): number => {
+  const a = [...v].sort((x, y) => x - y);
+  const h = a.length >> 1;
+  return a.length % 2 ? a[h]! : ((a[h - 1]! + a[h]!) / 2);
+};
+
+/**
+ * The grade for each shot: an ffmpeg filter that moves it towards the film's middle, or null when it is already there. Pure, so what the
+ * film will look like can be read off the numbers without running anything.
+ */
+export function gradeOf(shots: readonly { levels?: Levels | null }[]): (string | null)[] {
+  const seen = shots.map((s) => s.levels).filter((l): l is Levels => !!l && l.y > 0);
+  if (seen.length < 2) return shots.map(() => null);
+  const midY = median(seen.map((l) => l.y));
+  const midU = median(seen.map((l) => l.u));
+  const midV = median(seen.map((l) => l.v));
+  // How far from grey the film sits, so a shot's colour is matched as a share of the film's own colour rather than pulled to neutral.
+  const spread = median(seen.map((l) => Math.hypot(l.u - 128, l.v - 128))) || 1;
+  return shots.map((s) => {
+    const l = s.levels;
+    if (!l || l.y <= 0) return null;
+    const dy = Math.max(-MAX_Y, Math.min(MAX_Y, (midY - l.y) * PULL));
+    const du = Math.max(-MAX_C, Math.min(MAX_C, (midU - l.u) * PULL));
+    const dv = Math.max(-MAX_C, Math.min(MAX_C, (midV - l.v) * PULL));
+    // Saturation: how far this shot sits from grey against how far the film does. A film that is near grey all through has no
+    // colour to match to - every shot of it would be pushed the same way for no reason - so saturation is left alone below GREY.
+    const mine = Math.hypot(l.u - 128, l.v - 128);
+    const sat = spread < GREY ? 1 : Math.max(1 - MAX_SAT, Math.min(1 + MAX_SAT, 1 + ((spread - mine) / spread) * PULL));
+    const parts: string[] = [];
+    if (Math.abs(dy) >= SKIP || Math.abs(sat - 1) >= 0.02) {
+      parts.push(`eq=brightness=${(dy / 255).toFixed(4)}:saturation=${sat.toFixed(3)}`);
+    }
+    if (Math.abs(du) >= SKIP || Math.abs(dv) >= SKIP) {
+      // u is blue-yellow and v is red-cyan: colorbalance moves midtones the same way, in -1..1.
+      parts.push(`colorbalance=bm=${(du / 255).toFixed(4)}:rm=${(dv / 255).toFixed(4)}`);
+    }
+    return parts.length ? parts.join(",") : null;
+  });
+}
+
 export interface CutShot {
   /** The take's file. */
   video: string;
@@ -64,6 +118,8 @@ export interface CutShot {
   lines: string[];
   /** Where the subject sits across the frame: -1 at the left, 0 in the middle, 1 at the right. Only used when the picture is cropped. */
   bias?: number;
+  /** What the take's picture measures, for the grade that makes seven clips one film. Absent: this shot is left as it came. */
+  levels?: Levels | null;
 }
 
 /** What listening to the mix heard (ffmpeg's loudnorm, first pass). */
@@ -313,6 +369,8 @@ export interface CutOpts {
   limit?: number;
   /** Build the arguments for listening to the mix only: no picture, no file written. */
   measureOnly?: boolean;
+  /** false: leave every shot exactly as it came (the measuring pass, and anything that wants the takes untouched). */
+  grade?: boolean;
 }
 
 /**
@@ -342,9 +400,11 @@ export function cutArgs(p: CutPlan, o: CutOpts = {}): string[] {
     args.push("-i", p.srt);
   }
 
+  const grade = o.grade === false ? p.shots.map(() => null) : gradeOf(p.shots);
   p.shots.forEach((s, i) => {
     const d = s.seconds.toFixed(3);
-    f.push(`[${i}:v]${fitFilter(w, h, p.fit ?? "pad", s.bias ?? 0)},setsar=1,fps=24,format=yuv420p,trim=0:${d},setpts=PTS-STARTPTS,settb=AVTB[v${i}]`);
+    const g = grade[i] ? `${grade[i]},` : "";
+    f.push(`[${i}:v]${fitFilter(w, h, p.fit ?? "pad", s.bias ?? 0)},${g}setsar=1,fps=24,format=yuv420p,trim=0:${d},setpts=PTS-STARTPTS,settb=AVTB[v${i}]`);
     f.push(s.hasAudio
       ? `[${i}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=0:${d},asetpts=PTS-STARTPTS,apad=whole_dur=${d}[a${i}]`
       : `anullsrc=r=48000:cl=stereo,atrim=0:${d},aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
