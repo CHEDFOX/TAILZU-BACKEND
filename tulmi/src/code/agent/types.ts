@@ -27,6 +27,7 @@
  */
 import type { FloorFinding } from "./floor.js";
 import type { ProbeResult } from "./probe.js";
+import type { Fingerprint } from "./sameness.js";
 import type { JobReview } from "./review.js";
 import type { Approval } from "../approvals.js";
 import type { ContextStrategy } from "./mask.js";
@@ -371,6 +372,11 @@ export interface ScreensState {
   round?: number;
   /** What the FIRST measurement found, kept so the report can show the before and after rather than only the after. */
   first?: FloorFinding[];
+  /**
+   * What this page came out as, in a form that can be compared with other projects (agent/sameness.ts): the hue family, light or dark, how round,
+   * and the shape of the layout with the content taken out. Kept so that "are we building the same app over and over" is a lookup and not a worry.
+   */
+  fingerprint?: Fingerprint;
 }
 
 /** The most of an approved design's source the checkpoint keeps, and the most of it the model is shown in one turn. */

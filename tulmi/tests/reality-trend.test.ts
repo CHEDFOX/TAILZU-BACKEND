@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { TREND_FILE, append, costMove, movement, read, trendMarkdown, type TrendLine } from "../e2e/reality/trend.js";
+import { TREND_FILE, append, costMove, designMove, movement, read, trendMarkdown, type TrendLine } from "../e2e/reality/trend.js";
 
 const dir = () => fs.mkdtempSync(path.join(os.tmpdir(), "trend-"));
 
@@ -110,6 +110,33 @@ describe("what a success costs", () => {
     const was = line({ code: "aaaa", ours: null });
     expect(costMove([was], line({ code: "bbbb" }))).toBeNull();
     expect(costMove([line({ code: "aaaa" })], line({ code: "bbbb", ours: null }))).toBeNull();
+  });
+});
+
+describe("how the design layer moved", () => {
+  const was = line({ code: "aaaa", design: { caught: 0.6, planted: 10, crying: 2, verdict: "weak" } });
+
+  it("reads catching more as better and crying wolf more as worse — the arrows run opposite ways", () => {
+    const better = line({ at: "2026-11-05T00:00:00.000Z", code: "bbbb", design: { caught: 0.9, planted: 10, crying: 0, verdict: "working" } });
+    const m = designMove([was], better)!;
+    expect(m.caught).toBe("better");
+    expect(m.crying).toBe("better");
+    expect(m.words).toContain("60% ↑ 90%");
+    const worse = line({ at: "2026-11-05T00:00:00.000Z", code: "bbbb", design: { caught: 0.6, planted: 10, crying: 5, verdict: "broken" } });
+    expect(designMove([was], worse)!.crying).toBe("worse");
+    expect(designMove([was], worse)!.caught).toBe("same");
+  });
+
+  it("is nothing when either run did not measure the layer", () => {
+    expect(designMove([line({ code: "aaaa" })], line({ code: "bbbb", design: { caught: 1, planted: 4, crying: 0, verdict: "working" } }))).toBeNull();
+    expect(designMove([was], line({ code: "bbbb" }))).toBeNull();
+  });
+
+  it("rides in the summary, and brings one on its own when nothing else moved", () => {
+    const now = line({ at: "2026-11-05T00:00:00.000Z", code: "bbbb", ours: null, design: { caught: 0.9, planted: 10, crying: 0, verdict: "working" } });
+    const md = trendMarkdown([was], now).join("\n");
+    expect(md).toContain("## How it has moved");
+    expect(md).toContain("The design layer:");
   });
 });
 

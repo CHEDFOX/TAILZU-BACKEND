@@ -53,6 +53,12 @@ export interface TrendLine {
   areas: TrendArea[];
   ours: { tasks: number; passed: number; inrPerPass: number | null } | null;
   spendInr: number;
+  /**
+   * THE DESIGN LAYER, MEASURED (design.ts). Faults planted in a corpus of pages, opened in a real browser and read by the real checks: the share
+   * caught, and how much was said about the pages with nothing wrong. The second is the one that decides whether the layer survives a person, so
+   * it is on the line beside the first. Absent when no browser was available to draw the pages.
+   */
+  design?: { caught: number; planted: number; crying: number; verdict: string } | null;
 }
 
 const round = (n: number, p = 2): number => Math.round(n * 10 ** p) / 10 ** p;
@@ -137,6 +143,23 @@ export function movement(lines: readonly TrendLine[], now: TrendLine): AreaMove[
   });
 }
 
+/** How the design layer moved: caught more, or cried wolf more. Null when either run did not measure it. */
+export function designMove(lines: readonly TrendLine[], now: TrendLine): { caught: Direction; crying: Direction; words: string } | null {
+  const earlier = [...lines].reverse().find((l) => l.mode === now.mode && l.at !== now.at && l.code !== now.code && l.design);
+  const a = now.design;
+  const b = earlier?.design;
+  if (!a || !b) return null;
+  const way = (nowN: number, wasN: number, lowerBetter: boolean): Direction =>
+    nowN === wasN ? "same" : (nowN < wasN) === lowerBetter ? "better" : "worse";
+  const caught = way(a.caught, b.caught, false);
+  const crying = way(a.crying, b.crying, true);
+  const arrow = (d: Direction): string => (d === "better" ? "↑" : d === "worse" ? "↓" : "→");
+  return {
+    caught, crying,
+    words: `The design layer: ${Math.round(b.caught * 100)}% ${arrow(caught)} ${Math.round(a.caught * 100)}% of planted faults caught, and ${b.crying} ${crying === "better" ? "↑" : crying === "worse" ? "↓" : "→"} ${a.crying} said about a sound page.`,
+  };
+}
+
 /** What a success cost, this run against the last comparable one. Null when either run measured none. */
 export function costMove(lines: readonly TrendLine[], now: TrendLine): { now: number; before: number; direction: Direction } | null {
   const earlier = [...lines].reverse().find((l) => l.mode === now.mode && l.at !== now.at && l.ours?.inrPerPass != null);
@@ -152,7 +175,7 @@ export function trendMarkdown(lines: readonly TrendLine[], now: TrendLine): stri
   const moves = movement(lines, now);
   const changed = moves.filter((m) => m.direction === "better" || m.direction === "worse");
   const cost = costMove(lines, now);
-  if (!changed.length && !cost) return [];
+  if (!changed.length && !cost && !designMove(lines, now)) return [];
   const out = ["## How it has moved", ""];
   if (changed.length) {
     out.push("Against the last comparable run (the same mode, the same areas measured):", "", ...changed.map((m) => `- ${m.words}`), "");
@@ -163,6 +186,8 @@ export function trendMarkdown(lines: readonly TrendLine[], now: TrendLine): stri
     const word = cost.direction === "better" ? "down from" : cost.direction === "worse" ? "up from" : "the same as";
     out.push(`A success costs ₹${cost.now.toFixed(2)}, ${word} ₹${cost.before.toFixed(2)}.`, "");
   }
+  const design = designMove(lines, now);
+  if (design) out.push(design.words, "");
   const free = lines.filter((l) => l.mode === "prove").length;
   if (free) out.push(`${lines.length} run(s) recorded, ${free} of them free.`, "");
   return out;

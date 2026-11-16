@@ -27,6 +27,7 @@ import { Refused } from "./changeset.js";
 import { isWebProject, previewCommand, targetRoute, viewportsFor } from "./design.js";
 import { checkFloor, floorLines, seenByPeople } from "./floor.js";
 import { runProbe } from "./probe.js";
+import { fingerprint } from "./sameness.js";
 import { REPAIR_ROUNDS_MAX, coherenceLines, repairBrief, repairDelta, worthRepairing } from "./coherence.js";
 import { LostClaim, Yield, type Run } from "./run.js";
 import { RunPending } from "./runner.js";
@@ -60,6 +61,8 @@ async function finish(r: Run, why?: string): Promise<void> {
     sc.skipped = oneLine(why, 300);
     await r.log.note(`Screens: ${sc.skipped}`);
   }
+  // What this page came out as, for the question only a product that builds many apps can ask: have we made this one before (sameness.ts).
+  if (sc.probe && !sc.fingerprint) sc.fingerprint = fingerprint(sc.probe);
   sc.stage = "done";
   try { await r.deps.live?.preview?.stop(r.jobId, "screens"); } catch { /* the room closes it when it has had no request for a while */ }
   r.state.phase = "commit";
