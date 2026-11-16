@@ -58,7 +58,7 @@ const { registerContextRoutes } = await import("../src/routes/ask/context.js");
 const { registerAskDecideRoutes } = await import("../src/routes/ask/askDecide.js");
 const { registerAgentRoutes } = await import("../src/routes/ask/agent.js");
 const { RunLedger } = await import("../src/runs/ledger.js");
-const { getConfig } = await import("../src/config.js");
+const { getConfig, resetConfigForTests } = await import("../src/config.js");
 type AskDecision = import("../src/askDecide/index.js").AskDecision;
 type DecideInput = import("../src/askDecide/index.js").DecideInput;
 type Routine = import("../src/routines/index.js").Routine;
@@ -151,6 +151,43 @@ describe("the builder", () => {
     expect(tight.parts.people.length).toBeLessThanOrEqual(3);
     // The newest ask survives every cut.
     expect(tight.text).toContain("काम नंबर 11");
+    expect(getConfig().CONTEXT_MAX_CHARS).toBe(2000);
+  });
+
+  /**
+   * The section limits are applied BEFORE the cap is measured and the cap only ever cuts, so while they were fixed a bigger
+   * CONTEXT_MAX_CHARS bought nothing: a bigger empty room. They lift with the CONFIGURED budget now (build.ts forBudget), to
+   * four times at the config's own ceiling of 8,000, and a caller's own `max` still only cuts.
+   */
+  it("gathers more when the configured budget is raised, and exactly as much as before at its default", async () => {
+    const w = world();
+    for (let i = 0; i < 12; i++) {
+      await ask(w, { words: `tell Person ${i} the plan`, field: null }, { do: "send", to: `Person ${i}`, via: "WhatsApp" });
+      w.tick(MIN);
+    }
+    const src = { store: w.store, on: w.deps.on, open: async () => ({ open: [], results: [] }), profile: async () => ({ language: "auto" }) };
+
+    // At the default the numbers are what they always were: eight people at most.
+    expect(getConfig().CONTEXT_MAX_CHARS).toBe(2000);
+    const small = await contextFor(ME, { now: w.now, max: 100_000 }, src);
+    expect(small.parts.people).toHaveLength(8);
+
+    // Raised: four times as many are gathered. The person has 12, so 12 come through.
+    process.env.CONTEXT_MAX_CHARS = "8000"; resetConfigForTests();
+    try {
+      expect(getConfig().CONTEXT_MAX_CHARS).toBe(8000);
+      const big = await contextFor(ME, { now: w.now, max: 100_000 }, src);
+      expect(big.parts.people.length).toBeGreaterThan(small.parts.people.length);
+      expect(big.parts.people).toHaveLength(12);
+      expect(big.text.length).toBeGreaterThan(small.text.length);
+
+      // A caller's own max still only CUTS: the sections do not shrink back, the text is trimmed to it.
+      const cut = await contextFor(ME, { now: w.now, max: 700 }, src);
+      expect(cut.text.length).toBeLessThanOrEqual(700);
+      expect(cut.trimmed.length).toBeGreaterThan(0);
+    } finally {
+      delete process.env.CONTEXT_MAX_CHARS; resetConfigForTests();
+    }
     expect(getConfig().CONTEXT_MAX_CHARS).toBe(2000);
   });
 

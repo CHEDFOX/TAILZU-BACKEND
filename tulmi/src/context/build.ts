@@ -82,6 +82,36 @@ export interface ContextSources {
 }
 
 export const CONTEXT_WAIT_MS = 500;
+
+/**
+ * THE SECTION LIMITS FOLLOW THE BUDGET, OR THE BUDGET DOES NOTHING.
+ *
+ * The four numbers below are applied BEFORE the cap is measured, and the cap only ever CUTS. So while they were fixed,
+ * raising `CONTEXT_MAX_CHARS` from its 2,000 bought nothing at all: the sections never produced more than about that many
+ * characters, and a bigger budget was a bigger empty room. (Said plainly because it was advised the other way round once.)
+ *
+ * They are written for a 2,000-character budget and lift in proportion to it, to four times at the config's own ceiling of
+ * 8,000. At 2,000 every number is exactly what it was, so the default behaviour is untouched; the trim order below still
+ * decides what goes first when a person really does have more to say than the budget holds.
+ *
+ * THE LIFT READS THE CONFIGURED BUDGET, NEVER A CALLER'S OWN `max`. The configured budget says how much is GATHERED; a
+ * caller's `max` only ever CUTS (a tighter caller, and every test that measures the trim order). Tying the sections to the
+ * caller's number instead made a smaller `max` produce a SHORTER text and then nothing to trim, so "just over the cap" was
+ * no longer over it — the trim order stopped being monotonic, which is how a test caught this.
+ *
+ * What does NOT scale: how many asks are KEPT (`keep.ts TURNS_KEPT`, 6). That is storage, one row per person, so more of
+ * those is a decision about what is written down and not about what a model is shown.
+ */
+const BUDGET_BASELINE = 2_000;
+const BUDGET_LIFT_MAX = 4;
+/** The configured budget, which decides how much is gathered. The baseline when the settings cannot be read. */
+function configuredBudget(): number {
+  try { return getConfig().CONTEXT_MAX_CHARS; } catch { return BUDGET_BASELINE; }
+}
+/** `n` at the baseline, up to `n * 4` as the configured budget grows. Never below `n`. */
+export const forBudget = (n: number, budget = configuredBudget()): number =>
+  Math.max(n, Math.round(n * Math.min(BUDGET_LIFT_MAX, Math.max(1, budget / BUDGET_BASELINE))));
+
 const YOU_SHOWN = 8;
 const PEOPLE_SHOWN = 8;
 /** People kept when the cap cuts them. */
@@ -218,14 +248,14 @@ export async function contextFor(userId: string, o: ContextOptions = {}, s: Cont
   const results = [
     ...turnsAll.filter((t) => t.result).map((t) => ({ at: t.at, text: `${ago(t.at, now)}, "${clean(t.said, 60)}": ${clean(t.result!, 140)}` })),
     ...work.results,
-  ].sort((a, b) => b.at - a.at).slice(0, RESULTS_SHOWN).map((r) => r.text);
+  ].sort((a, b) => b.at - a.at).slice(0, forBudget(RESULTS_SHOWN)).map((r) => r.text);
 
   const parts: ContextParts = {
-    you: you.slice(0, YOU_SHOWN),
-    people: rankPeople(kept?.people ?? [], now).slice(0, PEOPLE_SHOWN),
+    you: you.slice(0, forBudget(YOU_SHOWN)),
+    people: rankPeople(kept?.people ?? [], now).slice(0, forBudget(PEOPLE_SHOWN)),
     summary: kept?.summary ?? "",
     turns: [...turnsAll],
-    open: work.open.slice(0, OPEN_SHOWN),
+    open: work.open.slice(0, forBudget(OPEN_SHOWN)),
     results,
   };
 
