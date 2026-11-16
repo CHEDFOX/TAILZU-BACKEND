@@ -31,6 +31,7 @@ export function walk(n: Node, out: Node[] = []): Node[] {
 const KIT_TYPES: ReadonlySet<string> = new Set([
   "Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "Scroll", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark",
   "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "PersonBot",
+  "SitePanel",
 ]);
 
 /**

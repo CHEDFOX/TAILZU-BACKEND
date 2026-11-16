@@ -1610,6 +1610,89 @@ export interface PersonBotProps {
 // MentionFieldProps.people items may carry `bot: { seed, avatar, color }`: a build that declares PersonBot draws that bot in the
 // person's row of the "@" list (size 28), in place of anything else.
 
+// ---------------------------------------------------------------------------
+// 3k. The sign-in panel: their own browser, drawn on the phone (docs/sites.md, "The panel")
+// ---------------------------------------------------------------------------
+//
+//   SitePanel  the one place a person signs a site in. The browser is ours and runs in the cloud (src/sites/panel.ts);
+//              the phone is a screen and a finger. The server sends the page as JPEG frames and the app sends back one
+//              touch at a time — a tap in the PAGE's own pixels, a piece of text, Enter, Backspace or Tab, or a scroll.
+//              There is no web view here and no page of theirs runs on the phone: what arrives is a picture.
+//
+//              WHAT IS TYPED IS NEVER KEPT ON THE PHONE, and that is the point of the design rather than a nicety. The
+//              app's box is a keyboard, not a field: each character goes out as it is typed and the box is emptied, so
+//              a password exists on the phone for one keystroke and is never in a React state, a draft or a crash log.
+//              The characters appear where the real page draws them — masked, because the site masks its own password
+//              box — in the next frame. Nothing in the app has to know which box is a secret, because the app never
+//              holds the secret.
+//
+//              The app asks `base`/`id` for a frame on a clock of its own and after every touch; the server's own gate
+//              decides whether there is a new frame to give (it runs faster for a moment after a touch and slows down
+//              when nothing moves), so asking more often than `everyMs` buys nothing. `ended` on any answer means the
+//              panel is over — said done, gave up, went quiet, or ran its limit — and `message` is what to say.
+//              "I'm signed in" is checked, not believed: the server looks at the page and keeps the panel open if it
+//              still looks signed out.
+//
+//              A build without this component is sent no panel at all. There is no fallback worth drawing: a sign-in
+//              nobody can finish is worse than a plain line saying this phone cannot do it yet.
+
+/** Declared in capabilities.components by a build that draws SitePanel. */
+export const SITE_PANEL_COMPONENT = "SitePanel";
+
+/** What one touch sends to `base`/`id`/touch. One of them a call, and nothing else reaches the browser. */
+export type SitePanelTouch =
+  /** In the PAGE's own pixels, not the drawn frame's: the app scales a finger back through `width`/`height`. */
+  | { tap: { x: number; y: number } }
+  /** What was typed. The app sends it a character at a time and keeps none of it. */
+  | { type: string }
+  | { key: "Enter" | "Backspace" | "Tab" }
+  /** How far down the page to go, in its pixels; negative is up. */
+  | { scroll: number };
+
+/** Why the panel is over, and the words that go with it (the server's END_WORDS). */
+export type SitePanelEnd = "said_done" | "cancelled" | "went_quiet" | "ran_long" | "lost";
+
+/** One answer from any of the panel's four calls. */
+export interface SitePanelView {
+  id: string;
+  site: string;
+  /** The newest frame, base64 JPEG with no data: prefix. Absent when there is no newer one than the app has. */
+  frame?: string;
+  width: number;
+  height: number;
+  ended?: SitePanelEnd;
+  message?: string;
+  /** Only on the answer to `done`: whether the page really is signed in now. */
+  signedIn?: boolean;
+}
+
+export interface SitePanelProps {
+  /** The panel, from POST /v1/botsapp/bots/sites/panel. */
+  id: string;
+  /** Where its calls go. GET `base`/`id` · POST `base`/`id`/touch · POST `base`/`id`/done · DELETE `base`/`id`. */
+  base: string;
+  /** The page's own size in CSS pixels. A tap is scaled from the drawn frame back through these. */
+  width: number;
+  height: number;
+  /** The host, shown above the frame so they can always see where they are about to type. */
+  site: string;
+  /** The first frame (base64 JPEG), so the panel has something to draw before its first ask answers. */
+  frame?: string;
+  /** How often to ask for a frame while nothing is happening (ms). Default 700. */
+  everyMs?: number;
+  /** How often for a moment after a touch, while the page is still moving (ms). Default 180. */
+  busyMs?: number;
+  /** How long that faster clock lasts after the last touch (ms). Default 1200. */
+  busyForMs?: number;
+  /** The words. The app has its own, in its own language, if these are not sent. */
+  doneText?: string;
+  cancelText?: string;
+  typeHint?: string;
+  loadingText?: string;
+  /** For a screen reader, over the frame. */
+  title?: string;
+}
+
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",

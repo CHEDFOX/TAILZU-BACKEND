@@ -41,6 +41,7 @@ export const SCREENS = {
   billing: "bots.billing",           // Billing / DBilling
   planShare: "bots.plan.share",      // Share your plan with people you share a space with: tick as many as you like (screens/you/planShareCard.ts; no board)
   sites: "bots.sites",               // Things being watched on sites they are signed in to (screens/sites.ts; CLOUD_BROWSER, off)
+  sitePanel: "bots.site.signin",     // Their own browser, drawn: the one place a site is signed in (screens/sites.ts; CLOUD_BROWSER, off)
   plans: "bots.plans",               // Plans / DPlans
   link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
   devices: "bots.devices",           // Terminal sign-ins: Xode in a terminal, each with Remove, and where to type a terminal's code (screens/you/devicesPage.ts; no board)

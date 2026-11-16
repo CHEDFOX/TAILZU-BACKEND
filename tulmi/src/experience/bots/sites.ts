@@ -70,6 +70,42 @@ export const watchPath = (id: string): string => `${SITES_API}/watch/${encodeURI
 export const checkPath = (id: string): string => `${SITES_API}/check/${encodeURIComponent(id)}`;
 export const signOutPath = (site: string): string => `${SITES_API}/${encodeURIComponent(site)}`;
 
+// ===================================================================== the panel (shared/types/sdui.ts 3k, docs/sites.md)
+
+/** Where a panel's four calls go. The app is given `base` and builds the rest itself, so one prop carries all four. */
+export const PANEL_BASE = `${SITES_API}/panel`;
+/** Open one: POST { url }. The only call that makes a panel, and the only one that takes a url. */
+export const openPanelPath = (): string => PANEL_BASE;
+
+/** What POST /panel answers, kept to what the node needs. An answer we cannot read is no panel at all. */
+export interface PanelOpened { id: string; site: string; width: number; height: number; frame?: string }
+
+/** Read the server's own answer. Anything missing or the wrong shape means undefined: the screen then says so. */
+export function cleanPanel(raw: unknown): PanelOpened | undefined {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id : "";
+  const site = typeof r.site === "string" ? r.site : "";
+  const w = typeof r.width === "number" && r.width > 0 ? Math.round(r.width) : 0;
+  const h = typeof r.height === "number" && r.height > 0 ? Math.round(r.height) : 0;
+  if (!id || !site || !w || !h) return undefined;
+  return { id, site, width: w, height: h, ...(typeof r.frame === "string" && r.frame ? { frame: r.frame } : {}) };
+}
+
+/** Open a panel at a site's sign-in. The browser is made HERE, by this call, so a screen that cannot run it draws nothing. */
+export async function loadPanel(deps: Pick<BotsDeps, "api">, userId: string | null | undefined, url: string): Promise<PanelOpened | undefined> {
+  if (!sitesOn(userId) || !url) return undefined;
+  return deps.api<unknown>("POST", openPanelPath(), { url }).then(cleanPanel).catch(() => undefined);
+}
+
+/** Over the frame, every time. They are typing into a real page on a real site, and the host is the only thing that proves which. */
+export const PANEL_SAFE_LINE = "You're typing on the real site. We keep the slip that keeps you signed in, never your password.";
+
+/** When the phone cannot draw a panel: there is no half version of a sign-in worth showing. */
+export const PANEL_NO_DRAW = "Signing in needs a newer version of the app.";
+
+/** When the server would not open one (not switched on, a site that is not allowed, the browser busy). */
+export const PANEL_NO_OPEN = "Couldn't open the sign-in just now.";
+
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.slice(0, max) : "");
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 

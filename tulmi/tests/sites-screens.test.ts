@@ -24,7 +24,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { resetConfigForTests } = await import("../src/config.js");
-const { readLine, cleanSites, sitesOn } = await import("../src/experience/bots/sites.js");
+const { readLine, cleanSites, sitesOn, SIGN_IN_AGAIN } = await import("../src/experience/bots/sites.js");
 const { registerSitesRoutes } = await import("../src/routes/bots/botsSites.js");
 const { Sites } = await import("../src/sites/service.js");
 const { SiteStore } = await import("../src/sites/store.js");
@@ -202,5 +202,116 @@ describe("the clock", () => {
     resetConfigForTests();
     for (let i = 0; i < 8; i++) await sites.watch(U, `https://swiggy.com/o/${i}`, `Thing ${i}`);
     expect(await sitesPass({ sites, most: 3 })).toBe(3);
+  });
+});
+
+// ===================================================================== the panel (screens/sites.ts, sdui 3k)
+
+const PANEL_CAN = [...PHONE, "SitePanel"];
+const OPENED = { id: "p1", site: "swiggy.com", width: 390, height: 780, frame: "AAAA" };
+
+/** The panel screen, with the capability on or off, and with a record of every call its load made. */
+async function panel(can: string[], api: Record<string, unknown>, url = "https://swiggy.com/") {
+  const calls: string[] = [];
+  const spy = new Proxy(api, { get: (t, k: string) => { calls.push(k); return (t as Record<string, unknown>)[k]; }, has: (t, k) => k in t });
+  const s = await buildBotsScreen({
+    screenId: "bots.site.signin", client: "phone", params: { url }, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+    can: new Set(can), desk: { pages: false, notes: false },
+  }, fakeDeps({ api: spy }));
+  const nodes = walk(s.root!);
+  return {
+    s, calls, nodes,
+    texts: nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content ?? "")),
+    panels: nodes.filter((n) => n.type === "SitePanel"),
+  };
+}
+
+describe("bots.site.signin", () => {
+  it("draws the panel with the browser's own size and the panel's id, lint clean", async () => {
+    const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
+    expect(lintTree(d.s.root!)).toEqual([]);
+    expect(d.panels).toHaveLength(1);
+    const p = d.panels[0]!.props as Record<string, unknown>;
+    // The id and the page's OWN size: a tap is scaled back through these, so a wrong one puts the finger elsewhere.
+    expect(p.id).toBe("p1");
+    expect(p.width).toBe(390);
+    expect(p.height).toBe(780);
+    expect(p.base).toBe("/v1/botsapp/bots/sites/panel");
+    // The first frame rides along, so the panel is never a blank box waiting for its first ask.
+    expect(p.frame).toBe("AAAA");
+  });
+
+  it("says where they are typing, every time", async () => {
+    const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
+    expect(d.texts.some((t) => t.includes("the real site") && t.includes("never your password"))).toBe(true);
+  });
+
+  it("A BUILD THAT CANNOT DRAW IT OPENS NO BROWSER AT ALL", async () => {
+    // The browser is made by this screen's load. Opening one for a phone that could not then show it would hold a
+    // real page in the cloud for nobody, and the person would be looking at an empty screen while it ran.
+    const d = await panel(PHONE, { "POST /v1/botsapp/bots/sites/panel": OPENED });
+    expect(d.calls).toEqual([]);
+    expect(d.panels).toHaveLength(0);
+    expect(d.texts).toContain("Not on this phone");
+    expect(lintTree(d.s.root!)).toEqual([]);
+  });
+
+  it("a server that would not open one says so, rather than drawing an empty panel", async () => {
+    const d = await panel(PANEL_CAN, {});
+    expect(d.panels).toHaveLength(0);
+    expect(d.texts).toContain("Couldn't start");
+    expect(lintTree(d.s.root!)).toEqual([]);
+  });
+
+  it("an answer missing its size is no panel, because a tap could not be placed in it", async () => {
+    for (const bad of [{ ...OPENED, width: 0 }, { ...OPENED, height: undefined }, { ...OPENED, id: "" }, { site: "x.com" }]) {
+      const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": bad });
+      expect(d.panels).toHaveLength(0);
+      expect(d.texts).toContain("Couldn't start");
+    }
+  });
+
+  it("no url, no browser", async () => {
+    const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED }, "");
+    expect(d.calls).toEqual([]);
+    expect(d.panels).toHaveLength(0);
+  });
+});
+
+describe("bots.sites: the way in to a sign-in", () => {
+  const NEEDS = { ...VIEW, logins: [{ site: "swiggy.com", who: "Rahul", usedAt: 1_000_000, needsSignIn: true }] };
+
+  async function drawWith(can: string[], api: Record<string, unknown>) {
+    const s = await buildBotsScreen({
+      screenId: "bots.sites", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+      can: new Set(can), desk: { pages: false, notes: false },
+    }, fakeDeps({ api }));
+    const nodes = walk(s.root!);
+    return { s, labels: nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content ?? "")) };
+  }
+
+  it("a slip that stopped working offers the sign-in, not Forget", async () => {
+    const d = await drawWith(PANEL_CAN, { "GET /v1/botsapp/bots/sites": NEEDS });
+    expect(lintTree(d.s.root!)).toEqual([]);
+    expect(d.labels).toContain("Sign in");
+    expect(d.labels).toContain(SIGN_IN_AGAIN);
+  });
+
+  it("a build with no panel keeps Forget, because Sign in would open a screen it cannot draw", async () => {
+    const d = await drawWith(PHONE, { "GET /v1/botsapp/bots/sites": NEEDS });
+    expect(lintTree(d.s.root!)).toEqual([]);
+    expect(d.labels).not.toContain("Sign in");
+    expect(d.labels).toContain("Forget");
+  });
+
+  it("an allowed site they have never signed in to is offered, once, and only with the panel", async () => {
+    const fresh = { ...VIEW, canAdd: ["swiggy.com", "zomato.com"], logins: [{ site: "swiggy.com", who: "Rahul" }] };
+    const on = await drawWith(PANEL_CAN, { "GET /v1/botsapp/bots/sites": fresh });
+    expect(on.labels).toContain("Add a site");
+    expect(on.labels).toContain("zomato.com");
+    // Already signed in, so it is not offered again.
+    expect(on.labels.filter((t) => t === "Not signed in")).toHaveLength(1);
+    const off = await drawWith(PHONE, { "GET /v1/botsapp/bots/sites": fresh });
+    expect(off.labels).not.toContain("Add a site");
   });
 });

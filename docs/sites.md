@@ -113,6 +113,32 @@ sign-in is over in seconds; a slow one gets as long as it needs.
 **"I'm signed in" is checked, not believed.** If the page is still a sign-in page the panel stays open — closing
 there would save a signed-out session over a good one, which is the exact mistake the watcher made once.
 
+### On the phone
+
+The app draws it with `SitePanel` (shared/types/sdui.ts 3k; TAILZU-FRONTEND `app/src/sdui/components/SitePanel.tsx`
+and its arithmetic in `sitePanelCore.ts`). There is no WebView and no page of theirs runs on the phone: what arrives
+is a JPEG, and what goes back is one touch at a time.
+
+**Nothing typed is kept on the phone.** The box at the bottom is a keyboard, not a field: each character is sent as
+it is typed and the box is emptied, so a password is on the device for one keystroke and never in a state that
+survives a render, a draft or a crash log. The characters appear where the real page draws them — as dots, because
+the site masks its own password box. That is also why the app never has to know which box on the page is a secret:
+it never holds the secret. The box turns off autocorrect, autofill, capitals and spellcheck, because a suggestion
+would put something into a field the app cannot see the name of.
+
+**A tap is sent in the page's pixels, not the drawn frame's.** The frame is whatever size fits the phone. Sending
+the drawn numbers would land every tap short and up-left, which on a sign-in page means the wrong field or the
+wrong button; `pagePoint` scales it back, and a tap on the letterboxing beside the frame is not sent at all. One
+gesture handler does both jobs: a finger that barely moved is a tap, one that was dragged is a scroll.
+
+**Opening the screen opens the browser.** `POST /panel` is the screen's own load, so a build that cannot draw the
+panel is never sent one and never opens one either — a real Chrome page held in the cloud for a phone that would
+show a blank box is worse than a line saying the app is too old. Leaving closes it, ahead of the idle clock.
+
+**The app asks; the server decides.** The frame clock on the phone is faster for a moment after a touch (180 ms)
+and slower when nothing is moving (700 ms), which only mirrors `FrameGate`: asking more often buys nothing, because
+the server has no newer frame to give.
+
 **And the social handshake is made safe by what is thrown away.** Google is needed for the handshake; the shop's
 cookie is not. So on the way out every cookie and store of `accounts.google.com`, `appleid.apple.com` and
 `www.facebook.com` is deleted, *before* the state is read. This server never holds a live Google session — not for
