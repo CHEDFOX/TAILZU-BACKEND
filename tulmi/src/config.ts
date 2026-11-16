@@ -865,6 +865,20 @@ const EnvSchema = z.object({
    * its own mark the whole time that page is up, it costs battery, and everything said near it is heard. Opening the keyboard shuts his
    * ear either way.
    */
+  /**
+   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema.md): a scene as data, checked, written out as a Blender script, rendered
+   * where there is a Blender to run it, and looked at by a model that fixes what it sees. Off by default and WIRED TO
+   * NOTHING yet: the loop is complete on its own, and the bot's own stages, progress and cards come after.
+   *
+   * CINEMA_BLENDER: the binary on this machine ("blender" on the path by default); none, and this machine renders nothing.
+   * CINEMA_WORK: where a render's folder goes (the system's temporary place by default; a disk with room is better).
+   * CINEMA_CAP_PAISE: the most the models may spend on one creation, over all its rounds.
+   */
+  CINEMA: bool(false),
+  CINEMA_USERS: orDefault(""),
+  CINEMA_BLENDER: orDefault("blender"),
+  CINEMA_WORK: orDefault(""),
+  CINEMA_CAP_PAISE: z.coerce.number().int().min(10).max(20_000).default(400),
   HOME_UPDATES: bool(false),
   HOME_UPDATES_USERS: orDefault(""),
   HOME_LISTEN: bool(true),
