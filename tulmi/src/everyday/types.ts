@@ -84,4 +84,38 @@ export interface WeatherCard {
   source: { name: "MET Norway"; url: "https://www.met.no/en" };
 }
 
-export type Card = FlightsCard | StaysCard | MoneyCard | WeatherCard;
+/** One place on a places card. Already in words: the screen does no arithmetic and no season maths. */
+export interface PlacePick {
+  slug: string;
+  /** The act: "The bamboo grove before anyone wakes". */
+  title: string;
+  /** "Kansai, Japan". */
+  where: string;
+  /** The one line under it. */
+  hook: string;
+  /** "March to April", or null when it is good all year. */
+  season: string | null;
+  budget: string;
+  tags: string[];
+  /** The first photograph, with its credit. Absent when there is none; the row still draws. */
+  photo?: { url: string; alt: string; credit: string | null };
+  /** We wrote it. False means the bot built it for this person, and the card says so. */
+  ours: boolean;
+  /** Put in against what was asked for, on purpose. */
+  wildcard: boolean;
+}
+
+/**
+ * PLACES WORTH GOING (src/discover): our own catalogue, not a live search — which is why this card never carries a
+ * price, and says whose words it is.
+ */
+export interface PlacesCard {
+  kind: "places";
+  /** What was asked for, in words: "warm, quiet, best in March". */
+  query: string;
+  results: PlacePick[];
+  /** How many matched before the limit, for "14 places". */
+  total: number;
+}
+
+export type Card = FlightsCard | StaysCard | MoneyCard | WeatherCard | PlacesCard;

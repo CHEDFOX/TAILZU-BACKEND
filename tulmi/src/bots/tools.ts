@@ -188,7 +188,7 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
     const d = ports.discover;
     for (const def of DISCOVER_TOOLS) {
       defs.push({ ...def });
-      handlers.set(def.name, async (a) => runDiscover(d, userId, def.name, a));
+      handlers.set(def.name, async (a) => runDiscover(d, userId, def.name, a, (card) => { if (env.record.cards.length < 6) env.record.cards.push(card); }));
     }
   }
 

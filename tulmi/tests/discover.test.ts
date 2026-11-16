@@ -22,6 +22,7 @@ const { CURATED, curatedBySlug } = await import("../src/discover/catalog.js");
 const { judge, failures } = await import("../src/discover/bar.js");
 const { parseBuilt } = await import("../src/discover/build.js");
 const { pick } = await import("../src/discover/query.js");
+const { DISCOVER_TOOLS, discoverFor, runDiscover, placesCardOf, askWords } = await import("../src/discover/tools.js");
 const { daysLeftInSeason, seasonFrom, seasonWords, tagsOf } = await import("../src/discover/taxonomy.js");
 
 type Card = import("../src/discover/types.js").Card;
@@ -267,5 +268,73 @@ describe("two tiers, one bar", () => {
     await d.searched("erg-chebbi-silence", "user_1");
     expect(await d.toWrite()).toEqual([]);
     expect(curatedBySlug("erg-chebbi-silence")).toBeTruthy();
+  });
+});
+
+describe("the tools, as a bot calls them", () => {
+  const travel = { id: "travel", skills: {} };
+  const writer = { id: "keybot", skills: {} };
+
+  it("gives the tools to the Travel bot and to anything that searches the web, and to nothing else", () => {
+    expect(discoverFor(travel)).toBe(true);
+    expect(discoverFor({ id: "plan", skills: { web: true } })).toBe(true);
+    expect(discoverFor(writer)).toBe(false);
+  });
+
+  it("offers only tags we know, so the model cannot invent one", () => {
+    const def = DISCOVER_TOOLS.find((t) => t.name === "places_discover")!;
+    const props = def.parameters as { properties: { tags: { items: { enum: string[] } } } };
+    expect(props.properties.tags.items.enum).toContain("solitude");
+    expect(props.properties.tags.items.enum).not.toContain("spiritual");
+  });
+
+  it("answers with lines the model can choose from, and a card the apps draw", async () => {
+    const d = new Discover({ store: memory() });
+    const cards: unknown[] = [];
+    const out = await runDiscover(d, "user_1", "places_discover", { tags: ["warm"], month: 1 }, (c) => cards.push(c));
+    expect(out.ok).toBe(true);
+    expect(out.content).toContain("Erg Chebbi");
+    expect(out.content).toMatch(/never a price/);
+    expect(cards).toHaveLength(1);
+    const card = cards[0] as { kind: string; query: string; results: Array<{ title: string; ours: boolean }> };
+    expect(card.kind).toBe("places");
+    expect(card.query).toBe("warm · January");
+    expect(card.results[0]?.ours).toBe(true);
+  });
+
+  it("says plainly that we have nothing, instead of inventing a place", async () => {
+    const d = new Discover({ store: memory() });
+    const out = await runDiscover(d, "user_1", "places_discover", { country: "jp", month: 1 });
+    expect(out.ok).toBe(true);
+    expect(out.content).toMatch(/Nothing of ours/);
+    expect(out.content).toMatch(/do not invent/);
+  });
+
+  it("refuses a tool name it does not have", async () => {
+    const d = new Discover({ store: memory() });
+    const out = await runDiscover(d, "user_1", "places_book_it", {});
+    expect(out.ok).toBe(false);
+    expect(out.content).toContain("no tool called");
+  });
+
+  it("opens one place by its slug, and says whose words it is", async () => {
+    const d = new Discover({ store: memory() });
+    const out = await runDiscover(d, "user_1", "place_open", { slug: "erg-chebbi-silence" });
+    expect(out.ok).toBe(true);
+    expect(out.content).toContain("The silence of Erg Chebbi");
+    expect(out.content).toMatch(/Ours: our own words/);
+  });
+
+  it("puts the words of the ask on the card", () => {
+    expect(askWords(["warm", "solitude"], 3)).toBe("warm, solitude · March");
+    expect(askWords([], undefined, "in")).toBe("IN");
+  });
+
+  it("carries the first photograph and its credit onto the row", () => {
+    const card = placesCardOf("warm", [{
+      card: { ...CURATED[0]!, photos: [{ url: "https://u/a.jpg", alt: "dunes", credit: "Wikimedia Commons · CC0 · X" }] },
+      score: 1, matched: [], wildcard: false,
+    }], 1);
+    expect(card.results[0]?.photo).toEqual({ url: "https://u/a.jpg", alt: "dunes", credit: "Wikimedia Commons · CC0 · X" });
   });
 });

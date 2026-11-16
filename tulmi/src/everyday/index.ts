@@ -26,7 +26,7 @@ import { searchStays, type StayAsk, TRIVAGO_URL } from "./stays.js";
 import type { Card } from "./types.js";
 import { weatherFor, type WeatherPorts } from "./weather.js";
 
-export type { Card, FlightsCard, StaysCard, MoneyCard, WeatherCard, Flight, Stay, FlightLeg, WeatherDay } from "./types.js";
+export type { Card, FlightsCard, StaysCard, MoneyCard, WeatherCard, PlacesCard, PlacePick, Flight, Stay, FlightLeg, WeatherDay } from "./types.js";
 export { airportOf, kiwiDate } from "./flights.js";
 export { currencyOf } from "./money.js";
 

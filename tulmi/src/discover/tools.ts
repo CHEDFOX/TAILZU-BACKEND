@@ -13,6 +13,7 @@
  * OURS or BUILT is on each one, because a card we wrote and a card the bot built for this person are not the same
  * kind of claim, and the answer should not pretend otherwise.
  */
+import type { PlacesCard, PlacePick } from "../everyday/types.js";
 import type { Discover } from "./index.js";
 import { isBudget, seasonWords, TAGS, type Tag } from "./taxonomy.js";
 import type { Chosen } from "./types.js";
@@ -24,6 +25,37 @@ export interface DiscoverToolDef {
 }
 
 export interface DiscoverToolResult { content: string; ok: boolean }
+
+/** What was asked for, in the words the card's header shows: "warm, quiet · March". */
+export function askWords(tags: readonly string[], month?: number, country?: string): string {
+  const when = month ? MONTHS[month - 1] : null;
+  return [tags.join(", "), when, country ? country.toUpperCase() : null].filter(Boolean).join(" · ");
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const;
+
+/** One chosen card, as a row the apps draw (experience/bots/screens/finds.ts). Already in words. */
+function pickOf(chosen: Chosen): PlacePick {
+  const { card } = chosen;
+  const photo = card.photos[0];
+  return {
+    slug: card.slug,
+    title: card.title,
+    where: card.where,
+    hook: card.hook,
+    season: seasonWords(card.season),
+    budget: card.budget,
+    tags: [...card.tags],
+    ...(photo ? { photo: { url: photo.url, alt: photo.alt, credit: photo.credit } } : {}),
+    ours: card.origin === "ours",
+    wildcard: chosen.wildcard,
+  };
+}
+
+/** The card beside the answer: what was asked, what was found, and how many there were. */
+export function placesCardOf(query: string, found: readonly Chosen[], total: number): PlacesCard {
+  return { kind: "places", query, results: found.map(pickOf), total };
+}
 
 /** Which bots get these: the Travel bot, and anything that already searches the web. */
 export const discoverFor = (bot: { id: string; skills: { web?: boolean; research?: boolean } }): boolean =>
@@ -82,7 +114,7 @@ function lineOf(chosen: Chosen, index: number): string {
   return `${bits.join(" · ")}\n   "${card.hook}"`;
 }
 
-export async function runDiscover(d: Discover, userId: string, name: string, args: Record<string, unknown>): Promise<DiscoverToolResult> {
+export async function runDiscover(d: Discover, userId: string, name: string, args: Record<string, unknown>, found?: (c: PlacesCard) => void): Promise<DiscoverToolResult> {
   if (name === "place_open") {
     const slug = typeof args.slug === "string" ? args.slug : "";
     const card = await d.open(slug, userId);
@@ -118,10 +150,13 @@ export async function runDiscover(d: Discover, userId: string, name: string, arg
     ...(limit !== undefined ? { limit } : {}),
   };
 
-  const found = await d.ask(ask);
+  const chosen = await d.ask(ask);
   const total = await d.count(ask);
 
-  if (found.length === 0) {
+  // The person sees these as cards; the model reads the lines below and chooses two or three to say.
+  if (found && chosen.length) found(placesCardOf(askWords(tags, month, country), chosen, total));
+
+  if (chosen.length === 0) {
     const written = d.countries();
     return {
       content: [
@@ -133,11 +168,11 @@ export async function runDiscover(d: Discover, userId: string, name: string, arg
     };
   }
 
-  const head = total > found.length ? `${total} places match; the best ${found.length}:` : `${found.length} places:`;
+  const head = total > chosen.length ? `${total} places match; the best ${chosen.length}:` : `${chosen.length} places:`;
   return {
     content: [
       head,
-      ...found.map(lineOf),
+      ...chosen.map(lineOf),
       "",
       "Offer two or three, not the list. Our own words, never a price: flights and stays are searched live.",
     ].join("\n"),
