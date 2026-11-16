@@ -19,7 +19,7 @@
 import type { ActionRef, ActionSpec, BlockName, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
 import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
-import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, SITE_PANEL_COMPONENT, type LiveViewProps, type SitePanelProps } from "../../../../shared/types/sdui.js";
+import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import {
   BOT_CROWD_COMPONENT, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
@@ -1507,31 +1507,6 @@ export function liveView(p: LiveViewProps, o: { sendPath?: string; onResult?: Ac
     props: { loadingText: "Loading…", errorText: "Couldn't show this page.", retryText: "Try again", fontFamily: FACE.regular, ...p },
     style: { backgroundColor: C.paper, overflow: "hidden", ...(p.height ? { height: p.height } : {}), ...o.style },
     ...(o.sendPath ? { bind: { send: o.sendPath } } : {}),
-    ...(o.onResult || o.onError ? { on: { ...(o.onResult ? { onResult: o.onResult } : {}), ...(o.onError ? { onError: o.onError } : {}) } } : {}),
-  };
-}
-
-/** A build that draws SitePanel: their own cloud browser, as frames, with a finger on it. */
-export const canSitePanel = (ctx: BotsCtx): boolean => ctx.can.has(SITE_PANEL_COMPONENT);
-
-/**
- * THE SIGN-IN PANEL (shared/types/sdui.ts 3k): the browser is ours and in the cloud; this is the window onto it.
- * Frames come down, one touch at a time goes up, and the app keeps nothing that is typed — a character is sent and
- * the box is emptied, so a password lives on the phone for one keystroke. Send it only to a build with `canSitePanel`:
- * a sign-in that cannot be finished is worse than a line saying the app is too old.
- *
- * `onResult` runs when the panel ends well (they are in), `onError` when it ends any other way, so the screen behind
- * it can go back and reload itself.
- */
-export function sitePanel(p: SitePanelProps, o: { onResult?: ActionRef; onError?: ActionRef; style?: Style } = {}): Node {
-  return {
-    type: "SitePanel",
-    props: {
-      everyMs: 700, busyMs: 180, busyForMs: 1200,
-      doneText: "I'm signed in", cancelText: "Not now", typeHint: "Type here", loadingText: "Opening…",
-      ...p,
-    },
-    style: { backgroundColor: C.paper, overflow: "hidden", flexGrow: 1, ...o.style },
     ...(o.onResult || o.onError ? { on: { ...(o.onResult ? { onResult: o.onResult } : {}), ...(o.onError ? { onError: o.onError } : {}) } } : {}),
   };
 }

@@ -248,3 +248,190 @@ describe("the panel", () => {
     vi.unstubAllEnvs(); resetConfigForTests();
   });
 });
+
+// ===================================================================== the ticket, and the page it is written into
+
+const { registerSitesRoutes: regRoutes } = await import("../src/routes/bots/botsSites.js");
+const { Sites: SitesSvc } = await import("../src/sites/service.js");
+const { panelPage, PANEL_PAGE_CLOCK } = await import("../src/sites/panelHost.js");
+const { createHash } = await import("node:crypto");
+const Fast = (await import("fastify")).default;
+
+const OTHER = "bbbbbbbb-0000-4000-8000-000000000002";
+const RL2 = { rateLimit: { max: 1000, timeWindow: 60_000 } };
+
+/**
+ * THE TICKET IS THE WHOLE OF THE PAGE'S AUTHORITY, so these are the tests that matter: what it reaches, what a
+ * wrong one gets, and that it stops working the moment the panel does.
+ */
+describe("the panel's ticket", () => {
+  const envOn = () => {
+    vi.stubEnv("CLOUD_BROWSER", "true");
+    vi.stubEnv("CLOUD_BROWSER_SITES", "swiggy.com");
+    vi.stubEnv("CONNECTOR_TOKEN_KEY", Buffer.alloc(32, 3).toString("base64"));
+    vi.stubEnv("DEV_SKIP_AUTH", "true");
+    resetConfigForTests();
+  };
+
+  async function server(signedIn = false) {
+    envOn();
+    const f = fakePage({ signedIn });
+    const store = new SiteStore(null);
+    const panels = new Panels({ hold: async () => f.page, store });
+    const app = Fast();
+    regRoutes(app, RL2 as never, {
+      sites: new SitesSvc({ visit: async () => ({ finalUrl: "https://swiggy.com/", title: "", text: "", elements: [], state: { cookies: [] } }), store }),
+      panels,
+    });
+    await app.ready();
+    const open = await app.inject({
+      method: "POST", url: "/v1/botsapp/bots/sites/panel",
+      headers: { authorization: `Bearer ${U}` }, payload: { url: "https://swiggy.com/login" },
+    });
+    return { app, f, panels, store, opened: open.json() as { id: string; ticket: string } };
+  }
+
+  it("is handed out once, on the one call that makes the panel", async () => {
+    const { app, opened } = await server();
+    expect(typeof opened.ticket).toBe("string");
+    expect(opened.ticket.length).toBeGreaterThan(30);
+    // Every other answer leaves it out, including the one that reports on the same panel.
+    const look = await app.inject({ method: "GET", url: `/v1/botsapp/bots/sites/panel/${opened.id}`, headers: { authorization: `Bearer ${U}` } });
+    expect(look.json()).not.toHaveProperty("ticket");
+    await app.close();
+  });
+
+  it("the page can drive its own panel with it, and no bearer at all", async () => {
+    const { app, f, opened } = await server();
+    const t = `/v1/botsapp/bots/sites/panel/t/${opened.ticket}`;
+    const tap = await app.inject({ method: "POST", url: `${t}/touch`, payload: { tap: { x: 10, y: 20 } } });
+    expect(tap.statusCode).toBe(200);
+    expect(f.did).toContain("tap 10,20");
+    const look = await app.inject({ method: "GET", url: t });
+    expect(look.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("A WRONG TICKET GETS THE SAME ANSWER AS A CLOSED ONE, and reaches nothing", async () => {
+    const { app, f, opened } = await server();
+    for (const bad of ["", "nope", opened.ticket.slice(0, -1), `${opened.ticket}x`, opened.id]) {
+      const r = await app.inject({ method: "POST", url: `/v1/botsapp/bots/sites/panel/t/${bad}/touch`, payload: { tap: { x: 1, y: 1 } } });
+      expect(r.statusCode).toBe(404);
+    }
+    expect(f.did).toEqual([]);
+    await app.close();
+  });
+
+  it("it dies with the panel", async () => {
+    const { app, opened } = await server();
+    const t = `/v1/botsapp/bots/sites/panel/t/${opened.ticket}`;
+    expect((await app.inject({ method: "DELETE", url: t })).statusCode).toBe(200);
+    // The panel is shut, so the secret that reached it is worth nothing at all.
+    expect((await app.inject({ method: "GET", url: t })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: `${t}/touch`, payload: { key: "Enter" } })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("it is one panel, not one person: it cannot reach another panel of theirs", async () => {
+    const { app, panels, opened } = await server();
+    // A second panel for the same person (ONE_EACH shuts the first, which is the point: the old ticket is dead).
+    const again = await app.inject({
+      method: "POST", url: "/v1/botsapp/bots/sites/panel",
+      headers: { authorization: `Bearer ${U}` }, payload: { url: "https://swiggy.com/login" },
+    });
+    const two = again.json() as { id: string; ticket: string };
+    expect(two.ticket).not.toBe(opened.ticket);
+    expect(panels.idForTicket(opened.ticket)).toBe(null);
+    expect(panels.idForTicket(two.ticket)).toBe(two.id);
+    await app.close();
+  });
+
+  it("it carries no touch the bearer route would not take either", async () => {
+    const { app, f, opened } = await server();
+    const t = `/v1/botsapp/bots/sites/panel/t/${opened.ticket}`;
+    for (const bad of [{}, { key: "Escape" }, { tap: { x: -1, y: 5 } }, { type: "" }, { scroll: "down" }]) {
+      expect((await app.inject({ method: "POST", url: `${t}/touch`, payload: bad })).statusCode).toBe(400);
+    }
+    expect(f.did).toEqual([]);
+    // And the two it does take are held to the same limits.
+    await app.inject({ method: "POST", url: `${t}/touch`, payload: { type: "x".repeat(500) } });
+    await app.inject({ method: "POST", url: `${t}/touch`, payload: { scroll: 99_999 } });
+    expect(f.did).toEqual([`type ${"x".repeat(200)}`, "scroll 2000"]);
+    await app.close();
+  });
+
+  it("it is still the owner's call: a held account is refused, ticket or not", async () => {
+    const { app, opened } = await server();
+    const t = `/v1/botsapp/bots/sites/panel/t/${opened.ticket}`;
+    vi.stubEnv("CLOUD_BROWSER_USERS", OTHER);   // the owner is no longer allowed
+    resetConfigForTests();
+    expect((await app.inject({ method: "GET", url: t })).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("the page the panel is drawn in", () => {
+  const made = () => panelPage({
+    id: "p1", ticket: "TICKET-VALUE", site: "swiggy.com", width: 412, height: 915, frame: "AAAA",
+    origin: "https://api.x0bot.com",
+  });
+
+  it("may talk to this API and nothing else, and run only its own script", async () => {
+    const { html } = made();
+    expect(html).toContain("connect-src https://api.x0bot.com");
+    expect(html).toContain("default-src &#39;none&#39;");
+    // Named by hash, so the policy is the hash of what actually runs: a changed script is a refused script.
+    const hash = /script-src &#39;sha256-([A-Za-z0-9+/=]+)&#39;/.exec(html)?.[1];
+    expect(hash).toBeTruthy();
+    const body = /<script>([\s\S]*)<\/script>/.exec(html)?.[1] ?? "";
+    expect(createHash("sha256").update(body, "utf8").digest("base64")).toBe(hash);
+    // No frame, no form, no base to be moved to, and pictures only as data.
+    expect(html).toContain("frame-src &#39;none&#39;");
+    expect(html).toContain("form-action &#39;none&#39;");
+    expect(html).toContain("base-uri &#39;none&#39;");
+    expect(html).toContain("img-src data:");
+  });
+
+  it("carries the browser's own size, because that is what a tap is scaled back through", () => {
+    const { html } = made();
+    expect(html).toContain("w: 412");
+    expect(html).toContain("h: 915");
+    expect(html).toContain("page.w - 1");
+    expect(html).toContain("page.h - 1");
+  });
+
+  it("THE BOX IS EMPTIED BEFORE THE CALL GOES OUT, never after", () => {
+    // A box that still holds a password while a request is in flight is a box that can be read off the screen, or
+    // out of a crash. The order of these two lines is the whole promise.
+    const body = /<script>([\s\S]*)<\/script>/.exec(made().html)?.[1] ?? "";
+    const cleared = body.indexOf("box.value = \"\";");
+    const sent = body.indexOf("touch({ type: t })");
+    expect(cleared).toBeGreaterThan(-1);
+    expect(sent).toBeGreaterThan(cleared);
+  });
+
+  it("the box helps with nothing: no autofill, no correction, no capitals", () => {
+    const { html } = made();
+    for (const off of ['autocomplete="off"', 'autocorrect="off"', 'autocapitalize="off"', 'spellcheck="false"']) {
+      expect(html).toContain(off);
+    }
+  });
+
+  it("says which site, escaped, so a host can never be markup", () => {
+    const { html } = panelPage({ id: "p", ticket: "t", site: '"><script>bad()</script>', width: 1, height: 1, origin: "https://api.x0bot.com" });
+    expect(html).not.toContain("<script>bad()");
+    expect(html).toContain("&lt;script&gt;bad()");
+  });
+
+  it("holds its clock to the server's own, because asking faster buys nothing", () => {
+    const { html } = made();
+    expect(html).toContain(`QUIET = ${PANEL_PAGE_CLOCK.QUIET_MS}`);
+    expect(html).toContain(`BUSY = ${PANEL_PAGE_CLOCK.BUSY_MS}`);
+  });
+
+  it("draws the first frame it was given, and nothing when there is none", () => {
+    expect(made().html).toContain('src="data:image/jpeg;base64,AAAA"');
+    const none = panelPage({ id: "p", ticket: "t", site: "a.com", width: 1, height: 1, origin: "https://api.x0bot.com" });
+    expect(none.html).toContain('<img id="f" alt="a.com">');
+  });
+});

@@ -205,12 +205,13 @@ describe("the clock", () => {
   });
 });
 
-// ===================================================================== the panel (screens/sites.ts, sdui 3k)
+// ===================================================================== the panel (screens/sites.ts, sites/panelHost.ts)
 
-const PANEL_CAN = [...PHONE, "SitePanel"];
-const OPENED = { id: "p1", site: "swiggy.com", width: 390, height: 780, frame: "AAAA" };
+/** LiveView is what draws the panel, so a build that has it can sign in and a build that has not cannot. */
+const PANEL_CAN = [...PHONE, "LiveView"];
+const OPENED = { id: "p1", ticket: "tkt-abcdefgh", site: "swiggy.com", width: 412, height: 915, frame: "AAAA" };
 
-/** The panel screen, with the capability on or off, and with a record of every call its load made. */
+/** The panel screen, with LiveView on or off, and a record of every call its load made. */
 async function panel(can: string[], api: Record<string, unknown>, url = "https://swiggy.com/") {
   const calls: string[] = [];
   const spy = new Proxy(api, { get: (t, k: string) => { calls.push(k); return (t as Record<string, unknown>)[k]; }, has: (t, k) => k in t });
@@ -219,54 +220,87 @@ async function panel(can: string[], api: Record<string, unknown>, url = "https:/
     can: new Set(can), desk: { pages: false, notes: false },
   }, fakeDeps({ api: spy }));
   const nodes = walk(s.root!);
+  const views = nodes.filter((n) => n.type === "LiveView");
   return {
-    s, calls, nodes,
+    s, calls, nodes, views,
     texts: nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content ?? "")),
-    panels: nodes.filter((n) => n.type === "SitePanel"),
+    html: String(views[0]?.props?.html ?? ""),
   };
 }
 
 describe("bots.site.signin", () => {
-  it("draws the panel with the browser's own size and the panel's id, lint clean", async () => {
+  it("draws the panel as a page in LiveView, lint clean", async () => {
     const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
     expect(lintTree(d.s.root!)).toEqual([]);
-    expect(d.panels).toHaveLength(1);
-    const p = d.panels[0]!.props as Record<string, unknown>;
-    // The id and the page's OWN size: a tap is scaled back through these, so a wrong one puts the finger elsewhere.
-    expect(p.id).toBe("p1");
-    expect(p.width).toBe(390);
-    expect(p.height).toBe(780);
-    expect(p.base).toBe("/v1/botsapp/bots/sites/panel");
-    // The first frame rides along, so the panel is never a blank box waiting for its first ask.
-    expect(p.frame).toBe("AAAA");
+    expect(d.views).toHaveLength(1);
+    // It runs as this API, because its calls are relative: any other origin and they leave for somewhere we do not serve.
+    expect(String(d.views[0]!.props?.origin ?? "")).toMatch(/^https:\/\/[^/]+$/);
+    expect(d.views[0]!.props?.waitForReady).toBe(true);
+  });
+
+  it("THE PAGE CARRIES THE BROWSER'S OWN SIZE, because that is what a tap is scaled back through", async () => {
+    const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
+    expect(d.html).toContain("w: 412");
+    expect(d.html).toContain("h: 915");
+    // And the first frame, so the panel is not a blank box while its first ask is out.
+    expect(d.html).toContain("data:image/jpeg;base64,AAAA");
+  });
+
+  it("the ticket is in the page and nowhere else", async () => {
+    const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
+    expect(d.html).toContain("tkt-abcdefgh");
+    // And ONLY inside that page. Every node's own props are checked with the page's html taken out: a secret that
+    // lives nowhere but the html cannot be read out of a screen's state, a cached tree, or a log of either.
+    for (const n of d.nodes) {
+      const { html, ...rest } = (n.props ?? {}) as Record<string, unknown>;
+      void html;
+      expect(JSON.stringify(rest)).not.toContain("tkt-abcdefgh");
+      expect(JSON.stringify(n.style ?? {})).not.toContain("tkt-abcdefgh");
+      expect(JSON.stringify(n.on ?? {})).not.toContain("tkt-abcdefgh");
+    }
+  });
+
+  it("THE PANEL SCREEN IS NEVER KEPT ON THE DEVICE", async () => {
+    // A screen with a cache time is written to AsyncStorage, and this one carries a live credential. The ticket
+    // dies in minutes, but a secret on disk is a secret on disk, and the backup is not ours to reason about.
+    const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
+    expect(d.s.cacheTtlSeconds).toBe(0);
+    // The list behind it is kept as it always was: this is about the one page with the secret in it.
+    const list = await buildBotsScreen({
+      screenId: "bots.sites", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+      can: new Set(PANEL_CAN), desk: { pages: false, notes: false },
+    }, fakeDeps({ api: { "GET /v1/botsapp/bots/sites": VIEW } }));
+    expect(list.cacheTtlSeconds).not.toBe(0);
   });
 
   it("says where they are typing, every time", async () => {
     const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED });
-    expect(d.texts.some((t) => t.includes("the real site") && t.includes("never your password"))).toBe(true);
+    expect(d.html).toContain("the real site");
+    expect(d.html).toContain("never your password");
   });
 
   it("A BUILD THAT CANNOT DRAW IT OPENS NO BROWSER AT ALL", async () => {
     // The browser is made by this screen's load. Opening one for a phone that could not then show it would hold a
-    // real page in the cloud for nobody, and the person would be looking at an empty screen while it ran.
+    // real Chrome page in the cloud for nobody, while the person looks at an empty screen.
     const d = await panel(PHONE, { "POST /v1/botsapp/bots/sites/panel": OPENED });
     expect(d.calls).toEqual([]);
-    expect(d.panels).toHaveLength(0);
+    expect(d.views).toHaveLength(0);
     expect(d.texts).toContain("Not on this phone");
     expect(lintTree(d.s.root!)).toEqual([]);
   });
 
   it("a server that would not open one says so, rather than drawing an empty panel", async () => {
     const d = await panel(PANEL_CAN, {});
-    expect(d.panels).toHaveLength(0);
+    expect(d.views).toHaveLength(0);
     expect(d.texts).toContain("Couldn't start");
     expect(lintTree(d.s.root!)).toEqual([]);
   });
 
-  it("an answer missing its size is no panel, because a tap could not be placed in it", async () => {
-    for (const bad of [{ ...OPENED, width: 0 }, { ...OPENED, height: undefined }, { ...OPENED, id: "" }, { site: "x.com" }]) {
+  it("an answer missing its ticket or its size is no panel", async () => {
+    // No ticket is no panel: a page that cannot reach its own browser is a picture of a sign-in that does nothing.
+    for (const bad of [{ ...OPENED, ticket: "" }, { ...OPENED, width: 0 }, { ...OPENED, height: undefined }, { ...OPENED, id: "" }, { site: "x.com" }]) {
       const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": bad });
-      expect(d.panels).toHaveLength(0);
+      expect(d.views).toHaveLength(0);
       expect(d.texts).toContain("Couldn't start");
     }
   });
@@ -274,7 +308,7 @@ describe("bots.site.signin", () => {
   it("no url, no browser", async () => {
     const d = await panel(PANEL_CAN, { "POST /v1/botsapp/bots/sites/panel": OPENED }, "");
     expect(d.calls).toEqual([]);
-    expect(d.panels).toHaveLength(0);
+    expect(d.views).toHaveLength(0);
   });
 });
 
@@ -297,7 +331,7 @@ describe("bots.sites: the way in to a sign-in", () => {
     expect(d.labels).toContain(SIGN_IN_AGAIN);
   });
 
-  it("a build with no panel keeps Forget, because Sign in would open a screen it cannot draw", async () => {
+  it("a build with no LiveView keeps Forget, because Sign in would open a screen it cannot draw", async () => {
     const d = await drawWith(PHONE, { "GET /v1/botsapp/bots/sites": NEEDS });
     expect(lintTree(d.s.root!)).toEqual([]);
     expect(d.labels).not.toContain("Sign in");

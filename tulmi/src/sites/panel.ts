@@ -20,7 +20,7 @@
  * the panel closes, every cookie of the social host is thrown away and only the shop's is kept. If your server is
  * read tomorrow, somebody orders dinner; nobody reads anybody's email.
  */
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { FrameGate, PanelLife, END_WORDS, type PanelEnd } from "./frames.js";
 import { hostOf, mayUseCloudBrowser, siteAllowed } from "./gate.js";
 import { looksSignedOut } from "./read.js";
@@ -32,6 +32,19 @@ import type { HeldPage, SiteState } from "../web/browser/types.js";
 const SOCIAL_HOSTS = ["accounts.google.com", "appleid.apple.com", "www.facebook.com"];
 /** One panel a person. A second would hold a second of the browser's three places for the same sign-in. */
 const ONE_EACH = true;
+
+/**
+ * THE TICKET. The panel is drawn by a page the server writes, shown in the app's LiveView — a WebView whose storage
+ * is its own and empty, and which cannot reach the app's token (that is in SecureStore, behind the Keystore). So the
+ * page is given a secret of its own instead, and it is deliberately the smallest one that can exist:
+ *
+ *   - it is this ONE panel. There is no other call it opens, no other panel it reaches, nothing it can read.
+ *   - it dies with the panel, which is five minutes at the outside and ninety seconds of quiet.
+ *   - it is never stored, never logged, and never leaves the page it was written into.
+ *
+ * Handing the app's own bearer token to a page that is about to load a shop's sign-in would be the opposite trade.
+ */
+const TICKET_BYTES = 32;
 
 export type Hold = (o: { url: string; state?: SiteState; viewport?: { width: number; height: number }; allow?: RegExp[] }) => Promise<HeldPage>;
 
@@ -50,6 +63,8 @@ export interface PanelView {
 interface Live {
   id: string;
   userId: string;
+  /** The page's own secret for this panel, and nothing else (see TICKET_BYTES). */
+  ticket: string;
   site: string;
   page: HeldPage;
   gate: FrameGate;
@@ -95,6 +110,7 @@ export class Panels {
     const at = this.now();
     const p: Live = {
       id: randomUUID(), userId, site, page,
+      ticket: randomBytes(TICKET_BYTES).toString("base64url"),
       gate: new FrameGate(), life: new PanelLife(at),
       frame: "", width: 412, height: 915, ended: null,
     };
@@ -112,6 +128,32 @@ export class Panels {
     const p = this.live.get(id);
     if (!p || p.userId !== userId) throw new SiteError("not_found", "That panel isn't open.", 404);
     return p;
+  }
+
+  /**
+   * The person whose panel this is, found by the page's own secret. Compared in constant time and only against
+   * tickets of the same length, so the time a wrong one takes says nothing about how much of it was right.
+   */
+  idForTicket(ticket: string): string | null {
+    if (typeof ticket !== "string" || !ticket) return null;
+    const given = Buffer.from(ticket, "utf8");
+    let found: string | null = null;
+    for (const p of this.live.values()) {
+      const want = Buffer.from(p.ticket, "utf8");
+      // Every open panel is checked, with no early exit, so the number of comparisons does not leak either.
+      if (want.length === given.length && timingSafeEqual(want, given)) found = p.id;
+    }
+    return found;
+  }
+
+  /** The user a panel belongs to: what a ticket call needs before it may do anything in that person's name. */
+  ownerOf(id: string): string | null {
+    return this.live.get(id)?.userId ?? null;
+  }
+
+  /** The page's secret, for writing into the page. Never sent to the app, never logged, never stored. */
+  ticketOf(id: string): string | null {
+    return this.live.get(id)?.ticket ?? null;
   }
 
   /** Their touch. Every one of these says "they are here", which is what keeps the panel alive and the frames quick. */

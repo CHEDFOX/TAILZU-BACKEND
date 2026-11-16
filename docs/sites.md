@@ -113,39 +113,45 @@ sign-in is over in seconds; a slow one gets as long as it needs.
 **"I'm signed in" is checked, not believed.** If the page is still a sign-in page the panel stays open — closing
 there would save a signed-out session over a good one, which is the exact mistake the watcher made once.
 
-### On the phone
+### On the phone, and why it is not an app component
 
-The app draws it with `SitePanel` (shared/types/sdui.ts 3k; TAILZU-FRONTEND `app/src/sdui/components/SitePanel.tsx`
-and its arithmetic in `sitePanelCore.ts`). There is no WebView and no page of theirs runs on the phone: what arrives
-is a JPEG, and what goes back is one touch at a time.
+**The panel is a PAGE this server writes** (`src/sites/panelHost.ts`), shown in the `LiveView` node the apps already
+have. It was going to be a component of their own; it is not, and the reason is worth keeping: a component ships in
+a store build, and a store build is weeks. As a page, the frame clock, the tap arithmetic and the keyboard all ship
+when this server deploys — so how signing in works can change the same afternoon, and **a phone that has never
+heard of sites can draw one today**, with no update at all.
 
-**Nothing typed is kept on the phone.** The box at the bottom is a keyboard, not a field: each character is sent as
-it is typed and the box is emptied, so a password is on the device for one keystroke and never in a state that
-survives a render, a draft or a crash log. The characters appear where the real page draws them — as dots, because
-the site masks its own password box. That is also why the app never has to know which box on the page is a secret:
-it never holds the secret. The box turns off autocorrect, autofill, capitals and spellcheck, because a suggestion
-would put something into a field the app cannot see the name of.
+What the page may do, and nothing else: talk to this API (`connect-src`), draw frames as `data:` images, and run its
+own one script, named by its hash. No other script, no font, no stylesheet, no frame, no form, no base to be moved
+to. LiveView runs it in a WebView whose storage is its own and empty, and a page the server wrote never navigates.
 
-**A tap is sent in the page's pixels, not the drawn frame's.** The frame is whatever size fits the phone. Sending
-the drawn numbers would land every tap short and up-left, which on a sign-in page means the wrong field or the
-wrong button; `pagePoint` scales it back, and a tap on the letterboxing beside the frame is not sent at all. One
-gesture handler does both jobs: a finger that barely moved is a tap, one that was dragged is a scroll.
+**It has a ticket, not a token.** A LiveView cannot see the app's bearer token — that is in SecureStore, behind the
+Keystore, in a process the page is not in — and it must not be handed one. So the panel mints a secret of its own,
+and it is deliberately the smallest one that can exist: it is THIS panel, there is no other call it opens and
+nothing it can read; it dies with the panel, which is five minutes at the outside; it is written into the HTML and
+nowhere else — no state path, no cache, no log. The four ticket routes answer `Access-Control-Allow-Origin: *` and
+take no cookie, which is safe precisely BECAUSE the ticket is the whole of the authority: there is no ambient
+credential for another origin to ride on. (It is needed because Android gives a page loaded from HTML-with-a-base-URL
+an origin that is sometimes opaque, and without it the panel would work on one phone and not the other.)
 
-**Opening the screen opens the browser.** `POST /panel` is the screen's own load, so a build that cannot draw the
-panel is never sent one and never opens one either — a real Chrome page held in the cloud for a phone that would
-show a blank box is worse than a line saying the app is too old. Leaving closes it, ahead of the idle clock.
+**Nothing typed is kept.** The box is a keyboard, not a field: each character is sent as it is typed and the box is
+emptied *before the call goes out*, so a password is in the page for one keystroke and never in anything that
+outlives the keypress. The characters appear where the real page draws them — as dots, because the site masks its
+own password box. Which is also why nothing here has to know which box on the page is a secret: it never holds the
+secret. Autocorrect, autofill, capitals and spellcheck are all off, because a suggestion would type something into
+a field nothing on this side can see the name of.
 
-**The app asks; the server decides.** The frame clock on the phone is faster for a moment after a touch (180 ms)
-and slower when nothing is moving (700 ms), which only mirrors `FrameGate`: asking more often buys nothing, because
-the server has no newer frame to give.
+**A tap is sent in the page's own pixels.** The frame is drawn at whatever size fits the phone; the browser is
+412 x 915. Send the drawn numbers and every tap lands short and up-left, which on a sign-in page is the wrong field
+or the wrong button. One handler does both jobs: a finger that moved under 10px is a tap, a dragged one is a scroll.
 
-**And the social handshake is made safe by what is thrown away.** Google is needed for the handshake; the shop's
-cookie is not. So on the way out every cookie and store of `accounts.google.com`, `appleid.apple.com` and
-`www.facebook.com` is deleted, *before* the state is read. This server never holds a live Google session — not for
-a minute, not in a backup, not in a breach. Somebody who reads your database orders dinner; nobody reads anyone's
-email.
+**The screen is never kept on the device.** A page with a cache time is written to AsyncStorage, and this one
+carries the ticket. `keep: false` makes its `cacheTtlSeconds` 0, so the ticket exists in memory while the screen is
+up and nowhere else. The list behind it is cached as it always was; this is about the one page with the secret in it.
 
-One panel per person: a second would hold a second of the browser's three places for the same sign-in.
+**Opening the screen opens the browser.** `POST /panel` is the screen's own load, so a build with no LiveView is
+never sent a panel and never opens one either — a real Chrome page held in the cloud for a phone that would show a
+blank box is worse than a line saying so. The page's "Not now" closes it, ahead of the idle clock.
 
 ## What is built, and what is not
 

@@ -16,6 +16,17 @@
  *   POST   /v1/botsapp/bots/sites/panel/:id/done       -> PanelView   "I'm signed in": checked, kept, closed
  *   DELETE /v1/botsapp/bots/sites/panel/:id            -> PanelView   they gave up
  *
+ * AND THE SAME FOUR, REACHED BY THE PAGE ITSELF (src/sites/panelHost.ts, under /panel/t/:ticket). The panel is drawn
+ * by a page the server writes, shown in the app's LiveView — a WebView that cannot see the app's token, because that
+ * is in SecureStore behind the Keystore, in a process the page is not in. So the page is given a secret of its own:
+ * one panel, nothing else, dead when the panel is. It is never stored, never logged, and never sent to the app.
+ *
+ * Those four answer with `Access-Control-Allow-Origin: *` and take no cookie. That is safe here precisely BECAUSE
+ * the ticket is the whole of the authority: there is no ambient credential for another origin to ride on, and a
+ * page that does not have the ticket gets nothing by asking from anywhere. Android's WebView gives a page loaded
+ * from HTML-with-a-base-URL an origin that is sometimes opaque, so without this the panel would work on one phone
+ * and not the other.
+ *
  * THERE IS NO ROUTE THAT SIGNS ANYBODY IN. A session is only ever made by the person signing in themselves, in the panel, and
  * that path is not built yet — so nothing here can be talked into holding a login it was handed over the wire. A route that
  * took a cookie jar as JSON would be the whole security of this feature, written away in one parameter.
@@ -39,6 +50,11 @@ const NOT_NOW = { code: "not_now", message: "That can't be done right now. Try a
 const LABEL_MAX = 80;
 const URL_MAX = 2000;
 
+/** The body as an object, whatever arrived. Module level, because both ways in read a touch out of it. */
+const body = (req: FastifyRequest): Record<string, unknown> =>
+  (req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>;
+const param = (req: FastifyRequest, k: string): string => String((req.params as Record<string, unknown>)[k] ?? "").trim();
+
 export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { sites: Sites; panels?: Panels; now?: () => number }): void {
   const RL = { config: deps.rateLimit };
   const now = o.now ?? Date.now;
@@ -60,9 +76,6 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
       }
     };
 
-  const body = (req: FastifyRequest): Record<string, unknown> =>
-    (req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {}) as Record<string, unknown>;
-  const param = (req: FastifyRequest, k: string): string => String((req.params as Record<string, unknown>)[k] ?? "").trim();
   const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
   /** Everything the screens draw, from one read. */
@@ -114,26 +127,73 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
     return panels;
   };
 
-  app.post(`${AREA}/sites/panel`, RL, run(async (user, req) => needPanels().open(user.id, str(body(req).url, URL_MAX))));
+  // The ONE answer that carries the ticket, to the person who just opened the panel. The screen writes it straight
+  // into the page's HTML and keeps it nowhere: no state path, no cache, no log. Every other answer leaves it out.
+  app.post(`${AREA}/sites/panel`, RL, run(async (user, req) => {
+    const panels = needPanels();
+    const view = await panels.open(user.id, str(body(req).url, URL_MAX));
+    const ticket = panels.ticketOf(view.id);
+    return ticket ? { ...view, ticket } : view;
+  }));
 
   app.get(`${AREA}/sites/panel/:id`, RL, run(async (user, req) => needPanels().poll(param(req, "id"), user.id)));
 
-  app.post(`${AREA}/sites/panel/:id/touch`, RL, run(async (user, req) => {
-    const b = body(req);
-    const tap = (b.tap ?? null) as { x?: unknown; y?: unknown } | null;
-    const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : -1);
-    // One touch a call, and only a shape we recognise: a panel takes a tap, some text, a named key or a scroll, and
-    // nothing else is passed through to a real browser.
-    if (tap && n(tap.x) >= 0 && n(tap.y) >= 0) return needPanels().touch(param(req, "id"), user.id, { tap: { x: n(tap.x), y: n(tap.y) } });
-    if (typeof b.type === "string" && b.type) return needPanels().touch(param(req, "id"), user.id, { type: b.type.slice(0, 200) });
-    if (b.key === "Enter" || b.key === "Backspace" || b.key === "Tab") return needPanels().touch(param(req, "id"), user.id, { key: b.key });
-    if (typeof b.scroll === "number" && Number.isFinite(b.scroll)) return needPanels().touch(param(req, "id"), user.id, { scroll: Math.max(-2000, Math.min(2000, Math.round(b.scroll))) });
-    throw new SiteError("bad_touch", "That isn't something I can do on the page.", 400);
-  }));
+  app.post(`${AREA}/sites/panel/:id/touch`, RL, run(async (user, req) => needPanels().touch(param(req, "id"), user.id, oneTouch(req))));
 
   app.post(`${AREA}/sites/panel/:id/done`, RL, run(async (user, req) => needPanels().done(param(req, "id"), user.id)));
 
   app.delete(`${AREA}/sites/panel/:id`, RL, run(async (user, req) => needPanels().cancel(param(req, "id"), user.id)));
 
+  // ------------------------------------------------------- the panel, as its own page asks
+
+  /**
+   * A call from the panel's own page. The ticket names the panel and the panel names the person, so everything the
+   * bearer routes check is checked here too — the switch, the allowlist, a held account — just reached differently.
+   * Nothing is taken from the caller but the ticket and the touch.
+   */
+  const byTicket = (fn: (panels: Panels, id: string, userId: string, req: FastifyRequest) => Promise<unknown>) =>
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      // Asked from a page whose origin can be opaque; see the note at the top of this file for why that is safe.
+      reply.header("access-control-allow-origin", "*");
+      reply.header("cache-control", "no-store");
+      if (!cloudBrowserOn()) return reply.code(404).send(OFF);
+      const panels = o.panels;
+      if (!panels) return reply.code(404).send(OFF);
+      const id = panels.idForTicket(param(req, "ticket"));
+      const userId = id ? panels.ownerOf(id) : null;
+      // One answer for a ticket that is wrong, spent, or for a panel that has closed: there is nothing to tell apart.
+      if (!id || !userId) return reply.code(404).send({ code: "not_found", message: "That panel isn't open." });
+      if (!mayUseCloudBrowser(userId)) return reply.code(404).send(OFF);
+      if (heldFreeUse(userId)) return reply.code(403).send(NOT_NOW);
+      try {
+        return reply.send(await fn(panels, id, userId, req));
+      } catch (err) {
+        if (err instanceof SiteError) return reply.code(err.status).send({ code: err.code, message: err.message });
+        req.log.error({ err: (err as Error)?.name }, "sites: panel page request failed");
+        return reply.code(500).send({ code: "failed", message: "Couldn't do that just now." });
+      }
+    };
+
+  const TICKET = `${AREA}/sites/panel/t/:ticket`;
+  app.get(TICKET, RL, byTicket(async (panels, id, userId) => panels.poll(id, userId)));
+  app.post(`${TICKET}/touch`, RL, byTicket(async (panels, id, userId, req) => panels.touch(id, userId, oneTouch(req))));
+  app.post(`${TICKET}/done`, RL, byTicket(async (panels, id, userId) => panels.done(id, userId)));
+  app.delete(TICKET, RL, byTicket(async (panels, id, userId) => panels.cancel(id, userId)));
+
   void now;
+}
+
+/**
+ * One touch a call, and only a shape we recognise: a panel takes a tap, some text, a named key or a scroll, and
+ * nothing else is passed through to a real browser. Shared by both ways in, so neither can drift into taking more.
+ */
+function oneTouch(req: FastifyRequest): { tap?: { x: number; y: number }; type?: string; key?: "Enter" | "Backspace" | "Tab"; scroll?: number } {
+  const b = body(req);
+  const tap = (b.tap ?? null) as { x?: unknown; y?: unknown } | null;
+  const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : -1);
+  if (tap && n(tap.x) >= 0 && n(tap.y) >= 0) return { tap: { x: n(tap.x), y: n(tap.y) } };
+  if (typeof b.type === "string" && b.type) return { type: b.type.slice(0, 200) };
+  if (b.key === "Enter" || b.key === "Backspace" || b.key === "Tab") return { key: b.key };
+  if (typeof b.scroll === "number" && Number.isFinite(b.scroll)) return { scroll: Math.max(-2000, Math.min(2000, Math.round(b.scroll))) };
+  throw new SiteError("bad_touch", "That isn't something I can do on the page.", 400);
 }

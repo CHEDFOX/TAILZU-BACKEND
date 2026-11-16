@@ -1611,39 +1611,23 @@ export interface PersonBotProps {
 // person's row of the "@" list (size 28), in place of anything else.
 
 // ---------------------------------------------------------------------------
-// 3k. The sign-in panel: their own browser, drawn on the phone (docs/sites.md, "The panel")
+// 3k. The sign-in panel: their own browser, drawn in a page the server wrote (docs/sites.md, "The panel")
 // ---------------------------------------------------------------------------
 //
-//   SitePanel  the one place a person signs a site in. The browser is ours and runs in the cloud (src/sites/panel.ts);
-//              the phone is a screen and a finger. The server sends the page as JPEG frames and the app sends back one
-//              touch at a time — a tap in the PAGE's own pixels, a piece of text, Enter, Backspace or Tab, or a scroll.
-//              There is no web view here and no page of theirs runs on the phone: what arrives is a picture.
+// THERE IS NO SitePanel NODE, and that is the design rather than a shortcut. The panel is a PAGE the server writes
+// (src/sites/panelHost.ts), shown in the LiveView node the apps already have. So the frame clock, the tap
+// arithmetic and the keyboard all ship when the server deploys: how signing in works can change without a phone
+// being updated, and a phone that has never heard of sites can draw one today.
 //
-//              WHAT IS TYPED IS NEVER KEPT ON THE PHONE, and that is the point of the design rather than a nicety. The
-//              app's box is a keyboard, not a field: each character goes out as it is typed and the box is emptied, so
-//              a password exists on the phone for one keystroke and is never in a React state, a draft or a crash log.
-//              The characters appear where the real page draws them — masked, because the site masks its own password
-//              box — in the next frame. Nothing in the app has to know which box is a secret, because the app never
-//              holds the secret.
-//
-//              The app asks `base`/`id` for a frame on a clock of its own and after every touch; the server's own gate
-//              decides whether there is a new frame to give (it runs faster for a moment after a touch and slows down
-//              when nothing moves), so asking more often than `everyMs` buys nothing. `ended` on any answer means the
-//              panel is over — said done, gave up, went quiet, or ran its limit — and `message` is what to say.
-//              "I'm signed in" is checked, not believed: the server looks at the page and keeps the panel open if it
-//              still looks signed out.
-//
-//              A build without this component is sent no panel at all. There is no fallback worth drawing: a sign-in
-//              nobody can finish is worse than a plain line saying this phone cannot do it yet.
+// The page is given a ticket of its own — one panel, nothing else, dead when the panel is — because a LiveView
+// cannot see the app's token and must not be handed one. The types below are what the page and the routes agree
+// on; nothing in the apps reads them.
 
-/** Declared in capabilities.components by a build that draws SitePanel. */
-export const SITE_PANEL_COMPONENT = "SitePanel";
-
-/** What one touch sends to `base`/`id`/touch. One of them a call, and nothing else reaches the browser. */
+/** The one touch a call carries (routes/bots/botsSites.ts takes exactly these and nothing else). */
 export type SitePanelTouch =
-  /** In the PAGE's own pixels, not the drawn frame's: the app scales a finger back through `width`/`height`. */
+  /** In the PAGE's own pixels, never the drawn frame's: the page scales a finger back through `width`/`height`. */
   | { tap: { x: number; y: number } }
-  /** What was typed. The app sends it a character at a time and keeps none of it. */
+  /** What was typed. The page sends it a character at a time and keeps none of it. */
   | { type: string }
   | { key: "Enter" | "Backspace" | "Tab" }
   /** How far down the page to go, in its pixels; negative is up. */
@@ -1656,7 +1640,7 @@ export type SitePanelEnd = "said_done" | "cancelled" | "went_quiet" | "ran_long"
 export interface SitePanelView {
   id: string;
   site: string;
-  /** The newest frame, base64 JPEG with no data: prefix. Absent when there is no newer one than the app has. */
+  /** The newest frame, base64 JPEG with no data: prefix. Absent when there is no newer one than the page has. */
   frame?: string;
   width: number;
   height: number;
@@ -1666,31 +1650,12 @@ export interface SitePanelView {
   signedIn?: boolean;
 }
 
-export interface SitePanelProps {
-  /** The panel, from POST /v1/botsapp/bots/sites/panel. */
-  id: string;
-  /** Where its calls go. GET `base`/`id` · POST `base`/`id`/touch · POST `base`/`id`/done · DELETE `base`/`id`. */
-  base: string;
-  /** The page's own size in CSS pixels. A tap is scaled from the drawn frame back through these. */
-  width: number;
-  height: number;
-  /** The host, shown above the frame so they can always see where they are about to type. */
-  site: string;
-  /** The first frame (base64 JPEG), so the panel has something to draw before its first ask answers. */
-  frame?: string;
-  /** How often to ask for a frame while nothing is happening (ms). Default 700. */
-  everyMs?: number;
-  /** How often for a moment after a touch, while the page is still moving (ms). Default 180. */
-  busyMs?: number;
-  /** How long that faster clock lasts after the last touch (ms). Default 1200. */
-  busyForMs?: number;
-  /** The words. The app has its own, in its own language, if these are not sent. */
-  doneText?: string;
-  cancelText?: string;
-  typeHint?: string;
-  loadingText?: string;
-  /** For a screen reader, over the frame. */
-  title?: string;
+/** What the page posts UP to the app when it is over, through LiveView's message path. */
+export interface SitePanelMessage {
+  t: "panel";
+  ended: SitePanelEnd;
+  signedIn: boolean;
+  message: string;
 }
 
 /** Named layouts for `template` + `blocks` screens. */

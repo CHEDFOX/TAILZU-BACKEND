@@ -14,15 +14,16 @@
  */
 import type { ActionRef, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, C, back, box, button, call, canSitePanel, card, col, divider, emptyState, listCard, listRow, meta,
-  page, row, SCREENS, sectionLabel, seq, sitePanel, text,
+  type BotsCtx, C, back, box, button, call, canLive, card, col, divider, emptyState, listCard, listRow, liveView, meta,
+  page, row, SCREENS, sectionLabel, seq, text,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import {
-  NONE_ALLOWED, NOTHING_WATCHED, PANEL_BASE, PANEL_NO_DRAW, PANEL_NO_OPEN, PANEL_SAFE_LINE, SIGN_IN_AGAIN, STOPS_LINE,
-  checkPath, loadPanel, loadSites, readLine, signOutPath, watchPath,
+  NONE_ALLOWED, NOTHING_WATCHED, PANEL_NO_DRAW, PANEL_NO_OPEN, SIGN_IN_AGAIN, STOPS_LINE,
+  checkPath, loadPanel, loadSites, panelOrigin, readLine, signOutPath, watchPath,
   type PanelOpened, type SiteCard, type SiteWatchView, type SitesView,
 } from "../sites.js";
+import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
 import { refresh, toast } from "./bots/parts.js";
 
@@ -85,7 +86,7 @@ function loginRow(ctx: BotsCtx, site: string, who: string | undefined, needsSign
     label: site,
     sub: needsSignIn ? SIGN_IN_AGAIN : who || "Signed in",
     chevron: false,
-    right: needsSignIn && canSitePanel(ctx) ? signInButton(site) : forget,
+    right: needsSignIn && canLive(ctx) ? signInButton(site) : forget,
   });
 }
 
@@ -128,7 +129,7 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
   // The sites the server allows but this person has not signed in to. Only offered to a build that can draw a panel:
   // a "Sign in" that opens a screen the app cannot render is a dead end with a name on it.
   const toAdd = d.canAdd.filter((site) => !d.logins.some((l) => l.site === site));
-  if (toAdd.length && canSitePanel(ctx)) {
+  if (toAdd.length && canLive(ctx)) {
     body.push(sectionLabel("Add a site"));
     body.push(listCard(toAdd.map((site) => listRow({ label: site, sub: "Not signed in", chevron: false, right: signInButton(site) }))));
   }
@@ -139,29 +140,42 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
 // ===================================================================== the panel: their own browser, drawn
 
 /**
- * THE ONE PLACE A SITE IS SIGNED IN (shared/types/sdui.ts 3k, src/sites/panel.ts). The browser is made by this
- * screen's own load — POST /panel is what opens it — so arriving here costs a real browser page and leaving must end
- * it. The node does that: it gives up on its own when it is dismissed, and the server closes a panel nobody touches.
+ * THE ONE PLACE A SITE IS SIGNED IN (docs/sites.md "The panel", src/sites/panel.ts, src/sites/panelHost.ts).
  *
- * There is no fallback. A build that cannot draw the panel is told so in a line, because half a sign-in signs nobody
- * in, and a form of ours that collected the password would be the whole point of this feature thrown away.
+ * The panel is a PAGE the server writes, shown in the LiveView node the apps already have — not a component of
+ * their own. So the frame clock, the tap arithmetic and the keyboard ship when this server deploys, and a phone
+ * that has never heard of sites can draw one today. The page is given a ticket that is this one panel and nothing
+ * else, because a LiveView cannot see the app's token and must not be handed one.
+ *
+ * The browser is made by this screen's own load — POST /panel is what opens it — so arriving here costs a real
+ * browser page and leaving must end it. The page's "Not now" does that, and the server closes one that goes quiet.
+ *
+ * A build with no LiveView is told so in a line. Half a sign-in signs nobody in, and a form of ours that collected
+ * the password would throw away the whole reason this happens in the browser that keeps the cookie.
  */
 function panelPage(ctx: BotsCtx, d: PanelOpened | undefined): ScreenResponse {
-  if (!canSitePanel(ctx)) return page(ctx, { title: "Sign in", body: [emptyState({ title: "Not on this phone", body: PANEL_NO_DRAW })], back: back() });
-  if (!d) return page(ctx, { title: "Sign in", body: [emptyState({ title: "Couldn't start", body: PANEL_NO_OPEN })], back: back() });
+  if (!canLive(ctx)) return page(ctx, { title: "Sign in", body: [emptyState({ title: "Not on this phone", body: PANEL_NO_DRAW })], back: back() });
+  if (!d || !d.ticket) return page(ctx, { title: "Sign in", body: [emptyState({ title: "Couldn't start", body: PANEL_NO_OPEN })], back: back() });
+  const made = panelHtml({
+    id: d.id, ticket: d.ticket, site: d.site, width: d.width, height: d.height,
+    ...(d.frame ? { frame: d.frame } : {}),
+    origin: panelOrigin(),
+  });
+  // Whatever the page says it is over with, the screen does the same thing: go back, and read the list again. The
+  // words the person sees came from the server already, through the page.
   const leave: ActionRef = seq({ kind: "navigateBack" }, refresh);
   return page(ctx, {
     title: d.site,
+    // NEVER KEPT. A page with a cache time is written to AsyncStorage, and this one carries the panel's ticket: a
+    // live credential has no business on disk, however short its life. `keep: false` makes cacheTtlSeconds 0, so
+    // the ticket exists in memory, for as long as the screen is on screen, and nowhere else.
+    keep: false,
     body: [
-      meta(PANEL_SAFE_LINE, { size: 12, color: C.idle, lines: 3 }),
-      sitePanel({
-        id: d.id, base: PANEL_BASE, site: d.site, width: d.width, height: d.height,
-        ...(d.frame ? { frame: d.frame } : {}),
+      liveView({
+        html: made.html, origin: made.origin, waitForReady: true,
         title: `Signing in to ${d.site}`,
-      }, {
-        onResult: seq(toast(`Signed in to ${d.site}`), leave),
-        onError: leave,
-      }),
+        loadingText: "Opening…", errorText: PANEL_NO_OPEN, retryText: "Try again",
+      }, { onResult: leave, onError: leave, style: { flexGrow: 1, minHeight: 420 } }),
     ],
     back: back(),
   });
@@ -175,8 +189,9 @@ export const sitesScreens: BotsScreen[] = [
   }),
   screen<PanelOpened | undefined>({
     id: SCREENS.sitePanel,
-    // The load OPENS the browser. Only for a build that can draw it: otherwise the page below says so and no page is held.
-    load: (ctx, deps) => (canSitePanel(ctx) ? loadPanel(deps, ctx.user?.id, String(ctx.params.url ?? "")) : Promise.resolve(undefined)),
+    // The load OPENS the browser. Only for a build that can draw it: otherwise the page below says so, and no real
+    // Chrome page is held in the cloud for a phone that would show a blank box.
+    load: (ctx, deps) => (canLive(ctx) ? loadPanel(deps, ctx.user?.id, String(ctx.params.url ?? "")) : Promise.resolve(undefined)),
     build: (ctx, d) => panelPage(ctx, d),
   }),
 ];
