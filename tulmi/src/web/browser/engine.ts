@@ -35,10 +35,111 @@ import { isBlockedAddress } from "../../connectors/egress.js";
 import { CdpClient, CdpError, type CdpSession } from "./cdp.js";
 import { launch, type LaunchedChrome } from "./chrome.js";
 import { startGuard, type Guard, type GuardOptions } from "./guard.js";
-import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer, type ShotOptions } from "./types.js";
+import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer, type ShotOptions, type SiteState, type VisitElement, type VisitOptions, type VisitedPage } from "./types.js";
 
 export { BrowserError };
-export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer, ShotOptions };
+export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer, ShotOptions, SiteState, VisitElement, VisitOptions, VisitedPage };
+
+/**
+ * THE THREE SCRIPTS THAT RUN INSIDE THE PAGE (visit()). Plain strings, stringified into Runtime.evaluate, so they
+ * are ES5-ish on purpose and may not close over anything out here.
+ */
+
+/** Put a saved localStorage/sessionStorage back, once its origin is open. Quota and privacy errors are shrugged off. */
+const PUT_STORAGE = `function (rows) {
+  var origin = location.origin;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r[0] !== origin) continue;
+    try { localStorage.setItem(r[1], r[2]); } catch (e) {}
+  }
+  return true;
+}`;
+
+/** Take this origin's localStorage back out, capped so one fat key cannot fill a row. */
+const TAKE_STORAGE = `function () {
+  var out = [], origin = location.origin, n = 0;
+  try {
+    for (var i = 0; i < localStorage.length && n < 200; i++) {
+      var k = localStorage.key(i); if (k === null) continue;
+      var v = localStorage.getItem(k); if (v === null || v.length > 8000) continue;
+      out.push([origin, k, v]); n++;
+    }
+  } catch (e) {}
+  return out;
+}`;
+
+/**
+ * WHAT IS ON THE PAGE, as a person would see it: the words, and the things that can be acted on, in reading order.
+ * Judged on COMPUTED style so a node hidden by a stylesheet is gone, which an HTML scrape cannot tell.
+ *
+ * The ids are e1..eN in document order, the same shape the planner reads everywhere else, so a page and a Mac
+ * window arrive at the model looking the same.
+ */
+const READ_PAGE = `function () {
+  var MAX_EL = 250, MAX_TEXT = 20000, MAX_LABEL = 120;
+  var seen = 0, els = [];
+  function visible(el) {
+    try {
+      // A PARENT'S opacity and visibility do not appear in the child's computed style, so checking the element
+      // alone let a whole faded-out subtree through. checkVisibility walks the ancestors; the rect is the backstop
+      // for anything laid out to nothing, and for a browser too old to have it.
+      if (typeof el.checkVisibility === "function"
+        && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, contentVisibilityAuto: true })) return false;
+      var s = getComputedStyle(el);
+      if (s.display === "none" || s.visibility === "hidden" || Number(s.opacity) === 0) return false;
+      var r = el.getBoundingClientRect();
+      return (r.width > 1 && r.height > 1) || el.tagName === "OPTION";
+    } catch (e) { return false; }
+  }
+  function clean(t) { return (t || "").replace(/\\s+/g, " ").trim().slice(0, MAX_LABEL); }
+  function labelOf(el) {
+    var a = el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.getAttribute("title") || el.getAttribute("alt");
+    if (a) return clean(a);
+    if (el.id) { try { var l = document.querySelector('label[for="' + CSS.escape(el.id) + '"]'); if (l) return clean(l.innerText); } catch (e) {} }
+    var own = el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA" ? "" : clean(el.innerText);
+    return own;
+  }
+  function roleOf(el) {
+    var t = el.tagName, ty = (el.getAttribute("type") || "").toLowerCase();
+    if (t === "A") return "link";
+    if (t === "BUTTON" || (t === "INPUT" && (ty === "submit" || ty === "button"))) return "button";
+    if (t === "SELECT") return "combo";
+    if (t === "TEXTAREA") return "area";
+    if (t === "INPUT") {
+      if (ty === "checkbox") return "check";
+      if (ty === "radio") return "radio";
+      if (ty === "hidden") return "";
+      // Its own role, because "field" would let a password be drawn as an ordinary box in a card.
+      if (ty === "password") return "secret";
+      return "field";
+    }
+    var r = (el.getAttribute("role") || "").toLowerCase();
+    if (r === "button" || r === "link" || r === "tab" || r === "checkbox" || r === "radio" || r === "menuitem") return r;
+    return "";
+  }
+  var walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT, null);
+  var el = walker.currentNode;
+  while (el && seen < MAX_EL) {
+    if (el.nodeType === 1 && visible(el)) {
+      var role = roleOf(el);
+      if (role) {
+        var item = { id: "e" + (seen + 1), role: role };
+        var lab = labelOf(el); if (lab) item.label = lab;
+        // A password's value is never read, here or anywhere.
+        var ty2 = (el.getAttribute("type") || "").toLowerCase();
+        var noValue = ty2 === "password" || ty2 === "checkbox" || ty2 === "radio";
+        if (!noValue && typeof el.value === "string" && el.value) item.value = clean(el.value);
+        if (el.checked === true) item.checked = true;
+        els.push(item); seen++;
+      }
+    }
+    el = walker.nextNode();
+  }
+  var text = "";
+  try { text = ((document.body && document.body.innerText) || "").replace(/[ \\t]+/g, " ").replace(/\\n{3,}/g, "\\n\\n").trim().slice(0, MAX_TEXT); } catch (e) {}
+  return { title: (document.title || "").slice(0, 200), url: location.href, text: text, elements: els };
+}`;
 
 export interface EngineOptions {
   chromePath: string;
@@ -260,6 +361,145 @@ export class BrowserEngine {
     } finally {
       for (const stopListening of stops) stopListening();
       if (contextId && !cdp.closed) await cdp.send("Target.disposeBrowserContext", { browserContextId: contextId }, undefined, 5_000).catch(() => {});
+    }
+  }
+
+  // ------------------------------------------------------------ a page visited AS SOMEBODY (src/sites, docs/sites.md)
+
+  /**
+   * OPEN A PAGE AS SOMEONE WHO IS SIGNED IN, READ IT, AND HAND THE SESSION BACK.
+   *
+   * The browser keeps nothing between visits. A fresh context is made, filled from `state`, navigated, read, and
+   * thrown away — exactly as render() does — and the session that comes back out is saved by the caller. So there
+   * is no live browser holding anybody's login, nothing to expire on a timer, and a crash costs a visit rather
+   * than a sign-in.
+   *
+   * Carrying the state back out is not optional: a site refreshes its own cookies as it is used, so writing back
+   * only what you sent in makes the slip go stale and signs them out within days.
+   *
+   * Reads only. There is no clicking or typing here, which is why it is the safe half: the worst a bad page can do
+   * is be misread, and a misread card is wrong rather than expensive.
+   */
+  async visit(o: VisitOptions): Promise<VisitedPage> {
+    let u: URL;
+    try { u = new URL(o.url); } catch { throw new BrowserError("bad_url"); }
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new BrowserError("bad_url");
+    const bare = u.hostname.replace(/^\[|\]$/g, "");
+    const port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
+    if (net.isIP(bare) && isBlockedAddress(bare) && !this.o.guard?.allow?.(bare.toLowerCase(), port)) throw new BrowserError("blocked");
+    await this.take();
+    try {
+      try {
+        return await this.visitOnce(u, o);
+      } catch (err) {
+        if (err instanceof BrowserError && err.code === "crashed") return await this.visitOnce(u, o);
+        throw err;
+      }
+    } finally {
+      this.release();
+    }
+  }
+
+  private async visitOnce(u: URL, o: VisitOptions): Promise<VisitedPage> {
+    const timeoutMs = o.timeoutMs ?? 30_000;
+    const deadline = Date.now() + timeoutMs;
+    const left = () => Math.max(1_000, deadline - Date.now());
+    const run = await this.ensure();
+    const { cdp } = run;
+    let contextId: string | undefined;
+    const stops: Array<() => void> = [];
+    try {
+      contextId = (await cdp.send<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: true })).browserContextId;
+      await cdp.send("Browser.setDownloadBehavior", { behavior: "deny", browserContextId: contextId });
+      const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
+      const page: CdpSession = await cdp.attach(targetId);
+
+      const inflight = new Set<string>();
+      let lastActivity = Date.now();
+      let loaded = false;
+      let mainFrame = "";
+      stops.push(page.on("Network.requestWillBeSent", (p) => { if (!OPEN_ENDED.has(p.type)) inflight.add(p.requestId); lastActivity = Date.now(); }));
+      for (const done of ["Network.loadingFinished", "Network.loadingFailed"]) stops.push(page.on(done, (p) => { inflight.delete(p.requestId); lastActivity = Date.now(); }));
+      stops.push(page.on("Page.lifecycleEvent", (p) => { if (p.name === "load" && p.frameId === mainFrame) loaded = true; }));
+      stops.push(page.on("Page.javascriptDialogOpening", () => { page.send("Page.handleJavaScriptDialog", { accept: false }).catch(() => {}); }));
+      if (o.allow) {
+        const allow = o.allow;
+        stops.push(page.on("Fetch.requestPaused", (p) => {
+          const url = String(p.request?.url ?? "");
+          if (allow.some((re) => re.test(url))) page.send("Fetch.continueRequest", { requestId: p.requestId }).catch(() => {});
+          else page.send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" }).catch(() => {});
+        }));
+      }
+
+      const view = o.viewport ?? { width: 412, height: 915, mobile: true };
+      await page.send("Page.enable");
+      await page.send("Network.enable");
+      await page.send("Runtime.enable");
+      await page.send("Page.setLifecycleEventsEnabled", { enabled: true });
+      await page.send("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height, deviceScaleFactor: 1, mobile: view.mobile === true });
+      if (this.o.userAgent) await page.send("Network.setUserAgentOverride", { userAgent: this.o.userAgent });
+      if (o.allow) await page.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
+
+      // Who to be, part one: the cookies, before anything is asked for.
+      const cookies = Array.isArray(o.state?.cookies) ? o.state!.cookies : [];
+      if (cookies.length) await page.send("Network.setCookies", { cookies }).catch(() => {});
+
+      const tree = await page.send<{ frameTree: { frame: { id: string } } }>("Page.getFrameTree");
+      mainFrame = tree.frameTree.frame.id;
+
+      // Who to be, part two: localStorage, which cookies alone no longer carry. It can only be written once an
+      // origin is open, so the origin is opened first and the real page second.
+      const storage = o.state?.storage ?? [];
+      if (storage.length) {
+        await page.send<{ errorText?: string }>("Page.navigate", { url: u.origin + "/" }, left()).catch(() => {});
+        await this.settle(() => loaded, () => inflight.size, () => lastActivity, Math.min(deadline, Date.now() + 15_000));
+        await page.send("Runtime.evaluate", {
+          expression: `(${PUT_STORAGE})(${JSON.stringify(storage.filter((r) => Array.isArray(r) && r.length === 3))})`,
+          returnByValue: true,
+        }, left()).catch(() => {});
+        loaded = false;
+      }
+
+      const nav = await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, left());
+      if (nav.errorText) throw new BrowserError("navigation_failed", nav.errorText.replace(/^net::/, ""));
+      await this.settle(() => loaded, () => inflight.size, () => lastActivity, deadline);
+
+      const read = await page.send<{ result?: { value?: { title: string; url: string; text: string; elements: VisitElement[] } } }>(
+        "Runtime.evaluate", { expression: `(${READ_PAGE})()`, returnByValue: true }, left() + 10_000);
+      const got = read.result?.value;
+      if (!got) throw new BrowserError("navigation_failed", "the page could not be read");
+
+      // The session as it stands now, which is not the one that went in.
+      const after = await page.send<{ cookies?: unknown[] }>("Network.getAllCookies", {}, left() + 5_000).catch(() => ({ cookies: [] }));
+      const keep = await page.send<{ result?: { value?: Array<[string, string, string]> } }>(
+        "Runtime.evaluate", { expression: `(${TAKE_STORAGE})()`, returnByValue: true }, left() + 5_000).catch(() => ({ result: { value: [] } }));
+
+      const state: SiteState = {
+        cookies: Array.isArray(after.cookies) ? after.cookies : [],
+        ...(keep.result?.value?.length ? { storage: keep.result.value } : {}),
+      };
+      return { finalUrl: got.url || u.href, title: got.title ?? "", text: got.text ?? "", elements: got.elements ?? [], state };
+    } catch (err) {
+      if (err instanceof BrowserError) throw err;
+      if (err instanceof CdpError) {
+        if (err.code === "closed") throw new BrowserError("crashed", "Chrome closed under the page");
+        if (err.code === "timeout") throw new BrowserError("timeout", err.method);
+        throw new BrowserError("navigation_failed", err.method);
+      }
+      throw err;
+    } finally {
+      for (const stopListening of stops) stopListening();
+      if (contextId && !cdp.closed) await cdp.send("Target.disposeBrowserContext", { browserContextId: contextId }, undefined, 5_000).catch(() => {});
+    }
+  }
+
+  /** Loaded, and nothing in flight for QUIET_MS, inside the deadline. A page that shows but never settles is read as it stands. */
+  private async settle(loaded: () => boolean, inflight: () => number, lastActivity: () => number, deadline: number): Promise<void> {
+    for (;;) {
+      const now = Date.now();
+      if (now >= deadline) { if (!loaded()) throw new BrowserError("timeout"); return; }
+      if (loaded() && inflight() === 0 && now - lastActivity() >= QUIET_MS) return;
+      await sleep(Math.min(POLL_MS, deadline - now));
     }
   }
 

@@ -881,6 +881,64 @@ export interface AgentStepRequest {
 
 export type AgentHandoverWhy = "login" | "code" | "captcha" | "payment" | "other";
 
+/* ------------------------------------------------------------------ a site watched for someone (src/sites, docs/sites.md) */
+
+/** One stage of a thing's progress, as the SITE names it ("Food ready", "Shipped"). Never our own words for it. */
+export interface SiteStage {
+  name: string;
+  /** What the page said about when, exactly as written ("9:14 pm", "Tue"). Absent when it did not say. */
+  when?: string;
+  /** This stage has happened. */
+  done: boolean;
+}
+
+/**
+ * WHAT A PAGE SAID ABOUT ONE THING, READ AND NOTHING ELSE (docs/sites.md).
+ *
+ * Built by a model from the page the person is signed in to, so every field is DATA THE SITE WROTE: never a promise
+ * of ours, never instructions, and never shown without saying where it came from and when. A card with no `title`
+ * and no `stages` is not a card: the read failed and the old one stands.
+ */
+export interface SiteCard {
+  /** What the thing is, in the site's words: "Behrouz Biryani", "Sony WH-1000XM6". ≤ 80. */
+  title: string;
+  /** Where it has got to, one line: "Out for delivery · arriving 9:42". ≤ 120. */
+  line: string;
+  /** The stages the page shows, in order, 0-8. Empty when the page has no such thing. */
+  stages: SiteStage[];
+  /** One more fact worth the room: "Rahul is 1.2 km away". ≤ 160. */
+  detail?: string;
+  /** The page says this is finished, so it stops being watched. */
+  done?: boolean;
+  /** Something is owed, and how much, as the page wrote it: "₹1,340 due in 2 days". ≤ 80. Never a button on its own:
+   *  paying is the person's, through the hand-off, as everywhere else. */
+  owed?: string;
+}
+
+/** A thing being watched, as a screen draws it. */
+export interface SiteWatchView {
+  id: string;
+  /** The host it is read from, shown to the person: "swiggy.com". */
+  site: string;
+  label: string;
+  state: "open" | "done" | "stopped" | "lost";
+  card?: SiteCard;
+  /** When it was last read, so a stale card never looks live. Epoch ms. */
+  readAt?: number;
+}
+
+/** A site the person is signed in to, as a screen draws it. */
+export interface SiteLoginView {
+  site: string;
+  /** What the site calls them, when the page said so. */
+  who?: string;
+  /** Epoch ms of the last time it was used. */
+  usedAt?: number;
+  /** The site has started turning us away: they are asked to sign in again. */
+  needsSignIn?: boolean;
+}
+
+
 /**
  * WHAT ONE BOX OF A SIGN-IN CARD ASKS FOR. `secret` is a password: the app hides it as it is typed, and it is
  * never written to the history, the ledger or a log — it goes to the page and nowhere else. `code` is the

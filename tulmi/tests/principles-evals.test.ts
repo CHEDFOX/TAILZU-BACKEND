@@ -57,6 +57,7 @@ const { readMood } = await import("../src/talk/speak.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { ShowReply } = await import("../src/show/design.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
+const { CardReply } = await import("../src/sites/read.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -319,6 +320,12 @@ describe("a known-good answer for each role", () => {
       reads: (t) => ShowReply.parse(JSON.parse(t)),
     },
     widget_digest: { text: '{"line":"Xode finished the cart fix; Plan Ease needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
+    site_read: {
+      text: '{"title":"Behrouz Biryani","line":"Out for delivery, arriving by 9:42 pm",'
+        + '"stages":[{"name":"Order placed","when":"8:51 pm","done":true},{"name":"Food ready","when":"9:14 pm","done":true},{"name":"Out for delivery","done":false}],'
+        + '"detail":"Rahul is 1.2 km away"}',
+      reads: (t) => CardReply.parse(JSON.parse(t)),
+    },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {
       text: "SAY Captions is this switch on the right.\nPOINT e40 | Captions\nDONE",

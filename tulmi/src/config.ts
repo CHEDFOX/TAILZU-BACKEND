@@ -1174,6 +1174,27 @@ const EnvSchema = z.object({
   PLAN_SHARE: bool(false),
   PLAN_SHARE_USERS: orDefault(""),
   /**
+   * A BROWSER THAT BELONGS TO THE PERSON (src/sites, docs/sites.md): signed in once, kept signed in, and read to
+   * answer "where is my order" for a site that has no API and never will.
+   *
+   *   CLOUD_BROWSER        off by default. With it off there is no new screen, no new row, and nothing is kept
+   *   CLOUD_BROWSER_USERS  a comma-separated list of account ids; set, only those accounts may use it
+   *   CLOUD_BROWSER_SITES  the sites it may be used on at all, comma-separated hosts. EMPTY MEANS NONE: a browser
+   *                        that holds somebody's signed-in session is not something to point at the whole web on a
+   *                        default, so a site is named here before anyone can add it
+   *   CLOUD_BROWSER_WATCHES  how many things one person may have being watched at once (6)
+   *   CLOUD_BROWSER_EVERY_MIN  the least minutes between two looks at the same thing (20). A site that sees one look
+   *                        while a delivery is live reads as a person; the same site seeing a heartbeat all day
+   *                        reads as a robot, so this is a floor and the job may always wait longer
+   *
+   * It needs CONNECTOR_TOKEN_KEY: the session is kept the way a connector's token is, or it is not kept at all.
+   */
+  CLOUD_BROWSER: bool(false),
+  CLOUD_BROWSER_USERS: orDefault(""),
+  CLOUD_BROWSER_SITES: orDefault(""),
+  CLOUD_BROWSER_WATCHES: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(1).max(50).default(6)),
+  CLOUD_BROWSER_EVERY_MIN: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(5).max(1440).default(20)),
+  /**
    * LEAD AND HELPERS (src/code/team, docs/code-team.md). A goal that is big (a plan over 12 files or 3 features, or one over several projects, or one the
    * person asked a team for) is split into parts with clear file ownership; helpers build the parts in parallel on their own branches, a model of
    * another family reviews each, and the lead merges them and opens one pull request. CODE_TEAM=false switches it off for the server (a job is then always one

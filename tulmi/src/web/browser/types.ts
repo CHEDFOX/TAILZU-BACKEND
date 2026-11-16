@@ -56,3 +56,52 @@ export interface ShotOptions {
 
 /** What shots.ts takes to make a picture of a page without Cloudflare: PNG bytes. */
 export type Screenshotter = (o: ShotOptions) => Promise<Uint8Array>;
+
+/* ------------------------------------------------------------------ a page visited AS SOMEBODY (src/sites, docs/sites.md) */
+
+/**
+ * The cookies and storage that make a browser "already signed in" at one site. Carried IN so the page opens as
+ * them, and carried back OUT because a site refreshes its own session as you use it — write the new one back or
+ * the slip goes stale and they are signed out in a week.
+ *
+ * The browser itself keeps nothing between visits: a fresh context every time, filled from this and emptied into
+ * it. So there is no live session to leak, nothing to shut down on a timer, and a crash loses a visit, not a login.
+ */
+export interface SiteState {
+  cookies: unknown[];
+  /** localStorage and sessionStorage, as [origin, key, value]. Half of a modern session lives here, not in cookies. */
+  storage?: Array<[string, string, string]>;
+}
+
+/** One control or line of words on the page, as the planner reads them (shared AgentElement's shape, by hand here
+ *  so this file stays free of the app). */
+export interface VisitElement {
+  id: string;
+  /** button link field secret area check radio combo tab menuitem. `secret` is a password box and never carries a value. */
+  role: string;
+  label?: string;
+  /** Never a password's, and never a tickbox's "on": `checked` says that. */
+  value?: string;
+  checked?: boolean;
+}
+
+export interface VisitOptions {
+  url: string;
+  /** Who to be. Absent: a stranger. */
+  state?: SiteState;
+  viewport?: { width: number; height: number; mobile?: boolean };
+  /** A request whose address matches none of these is refused. */
+  allow?: RegExp[];
+  timeoutMs?: number;
+}
+
+export interface VisitedPage {
+  finalUrl: string;
+  title: string;
+  /** The words a person could see, invisible nodes removed, ≤ 20000. */
+  text: string;
+  /** What is on it, in reading order, ≤ 250. */
+  elements: VisitElement[];
+  /** The session as it stands AFTER the visit: save this, not the one you sent. */
+  state: SiteState;
+}
