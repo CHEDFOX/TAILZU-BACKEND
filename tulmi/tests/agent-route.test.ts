@@ -515,6 +515,36 @@ describe("the model, read a line at a time", () => {
   });
 });
 
+describe("the model ladder's breakers", () => {
+  /**
+   * The planner counts under the same keys as the brain's gateway (`guard/breaker.ts modelBreakerKeys`), so a model that is
+   * failing is skipped WITHOUT a call rather than costing every step its whole timeout. Eight calls at half failing is the
+   * floor, so eight steps against a model that throws is what it takes to shut it; every test starts with them all closed
+   * (tests/setup.ts).
+   */
+  it("stops asking a model that keeps failing, and stops calling its whole provider", async () => {
+    llm.plans.set("openai/gpt-6-luna", "throw");
+    llm.plan = ["SAY Here.\nDONE"];
+    for (let i = 0; i < 8; i += 1) {
+      const res = await post(step({ utterance: "what does this button do?" }));
+      expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    }
+    const before = streamCalls().length;
+    // The ninth step: openai's two are cooling off, so only Anthropic's is asked, and the step still answers.
+    const res = await post(step({ utterance: "what does this button do?" }));
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    const asked = streamCalls().slice(before).map((c) => c.body.model);
+    expect(asked).toEqual(["anthropic/claude-haiku-5.5"]);
+  });
+
+  it("asks every model while they are working: a ladder nobody has failed is untouched by this", async () => {
+    llm.plan = ["SAY Here.\nDONE"];
+    for (let i = 0; i < 9; i += 1) await post(step({ utterance: "what does this button do?" }));
+    // The first model answers every time, so the ladder never moves and nothing is ever skipped.
+    expect(streamCalls().map((c) => c.body.model)).toEqual(Array(9).fill("openai/gpt-6-luna"));
+  });
+});
+
 describe("the model ladder", () => {
   it("a first model that fails before writing hands the step to the next", async () => {
     llm.plans.set("openai/gpt-6-luna", "throw");

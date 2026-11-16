@@ -207,5 +207,20 @@ export class Breakers {
 
 /** The process's breakers: the ones the brain's gateway consults and the admin's health route reports. */
 const shared = new Breakers();
+/**
+ * THE KEYS ONE MODEL'S CALLS ARE COUNTED UNDER: the model itself, and its provider — the vendor prefix of the OpenRouter slug,
+ * lowercased ("anthropic/claude-haiku-5.5" is "anthropic"). So a provider having a bad minute shuts every model of its own,
+ * and one bad model shuts only itself.
+ *
+ * It lives here, in the leaf, because BOTH doors to a model must count under the same keys or they learn nothing from each
+ * other: the brain's gateway (Xode, the bots) and the planner's own ladder (Ask). `code/brain/tiers.ts familyOf` is the same
+ * rule and stays where it is — it cannot be imported here, because tiers.ts imports the planner and the planner imports this.
+ */
+export const modelBreakerKeys = (model: string): string[] => {
+  const slug = model.trim().toLowerCase();
+  const i = slug.indexOf("/");
+  return [`model:${model}`, `provider:${i > 0 ? slug.slice(0, i) : slug}`];
+};
+
 export const sharedBreakers = (): Breakers => shared;
 export function resetBreakersForTests(): void { shared.reset(); }

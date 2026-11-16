@@ -48,6 +48,29 @@ built, so it draws from the id alone and is told to invent no numbers and no nam
 construction; once `SDUI_V2` is on it could draw to the blocks a client declares (`hasBlock`). The fixtures are
 written but no eval has been run against a real model.
 
+### 16 Nov: ASK'S LADDER SHARES THE BRAIN'S CIRCUIT BREAKERS (no switch; `docs/code-brain.md`)
+
+There are three doors to a model here — `code/brain/gateway.ts` (Xode and the bots), `pipeline/writing/model.ts` (the
+writer) and `agent/llm.ts` (Ask, the screen bot). Only the first had circuit breakers, so Ask tried a dead model and paid
+the whole of `AGENT_TIMEOUT_MS` on **every step**. It now asks the same breakers first, under the **same keys**
+(`guard/breaker.ts modelBreakerKeys`), so a model whose breaker is open is skipped with no call, and the two doors learn
+from each other: a model the bots have just found dead costs an Ask step nothing, and the other way round.
+
+The key convention moved into `guard/breaker.ts`, the leaf, and the gateway delegates to it, so there is ONE definition.
+It could not be imported from `tiers.ts` (`familyOf`), because tiers.ts imports the planner and the planner imports the
+breakers. An answer is a success; an empty answer, a timeout and a failure are the model's; a caller that stopped says
+nothing and gives its probe back — the gateway's own rules. No `CallRecord` is written for a skip, because no call was
+made (the ledger's outcome column is unchanged), so a skip is one line of the log, as it is in the gateway.
+Two cases in `tests/agent-route.test.ts`: eight failing steps shut the model AND its whole provider, and a ladder nobody
+has failed is untouched.
+
+**A doc that was wrong is fixed too.** `docs/code-brain.md`'s known limits said "calls are not streamed", and the gateway
+has streamed all along (`onText`, `drain()`, `firstTextMs`, `onReset`, and a stopped stream charged for what it used).
+The real gap is narrower and now written down: the gateway voids what was shown and climbs, which is right for a job
+nobody watches and wrong for a caller whose lines are ACTED on as they arrive — `onReset` can un-say words, it cannot
+un-press a button. That one per-call policy is what a full move of `agent/llm.ts` onto the gateway needs first, and it is
+the next step of this work, not a thing that was skipped.
+
 **On raising the context** (asked for in the same breath as this): `CONTEXT_MAX_CHARS` defaults to 2,000 and the
 config already validates up to **8,000**, so four times the person's context block is an env var away with no
 code and no deploy — deliberately NOT changed here, because it raises the input cost of every decide call and

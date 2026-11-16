@@ -72,7 +72,7 @@ import type { z } from "zod";
 import { temperatureFor, type CallRecord } from "../../agent/llm.js";
 import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxTokensWithReasoning, reasoningIsOff } from "../../agent/reasoning.js";
 import { getConfig } from "../../config.js";
-import { sharedBreakers, type Breakers, type Ticket } from "../../guard/breaker.js";
+import { modelBreakerKeys, sharedBreakers, type Breakers, type Ticket } from "../../guard/breaker.js";
 import { retryJitter } from "../../guard/timing.js";
 import { openrouter } from "../../pipeline/openrouter.js";
 import { principleText } from "../../principles/library.js";
@@ -338,7 +338,9 @@ export function droppedConnection(err: unknown): boolean {
 }
 
 /** The breakers a model is behind: its own slug, and its provider (the slug's vendor). */
-const breakerKeys = (model: string): string[] => [`model:${model}`, `provider:${familyOf(model)}`];
+/** The keys this call is counted under. One definition, in the leaf, so the planner's own ladder counts under the same ones
+ *  and the two doors to a model learn from each other (`guard/breaker.ts modelBreakerKeys`). */
+const breakerKeys = modelBreakerKeys;
 
 /** The person as OpenRouter sees them: a hash, so their id never leaves. */
 export function hashedUser(id: string): string {
