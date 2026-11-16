@@ -58,6 +58,19 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
+- Reviews of the pieces below may push small follow-up fixes to the same files.
+- **The bot at the foot of Home, as what is happening** (server; `docs/home-updates.md`, behind `HOME_UPDATES`, off, staged by
+  `HOME_UPDATES_USERS`; his ear is open the whole time Home is up, `HOME_LISTEN=false` shuts it). Instead of a box to type in, his thought holds what needs
+  you, what your bots are working on and what just finished, each opening where it belongs. No microphone to press: his ear is open
+  while the page is in front, and the key that opens the field is the one thing that shuts it (the ✕ beside the field gives it back;
+  coming back by *speaking* is the wake word, which needs the apps). At rest he wears a mark, never a sentence, and nothing at all
+  when there is nothing. He no longer stands in a white strip either: he lives behind the tab bar, only his head over the line, and
+  jumps the ledge into full view now and then (`stand: "peek"` / `BotPeek`, the apps' `Peek` in botTiles' core; a tap anywhere in
+  the room that is left opens what is happening). Three repos: the backend, TAILZU-FRONTEND and TAILZU-DESKTOP.
+  Vocabulary 1, today's kit only. Built on `claude/keen-allen-podunv`, not on main yet. Holds
+  `tulmi/src/experience/bots/screens/shell/homeUpdates.ts` (new), and the foot of Home in `screens/shell/home.ts` and
+  `screens/shell.ts` (its load reads the activity feed only when the switch is on). It changes `homeThought.ts` not at all: with
+  the switch off Home builds exactly as before.
 - **Lingo, the language bot** (`docs/lingo.md`; switch `LINGO`, off). Re-added after a merge took it: the whole section was rewritten
   for 8.9.1 and git kept that side, so this entry went with it. Nothing of 8.9.1's is held here.
   ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the app, the store, a
@@ -248,9 +261,13 @@ look. The apps are renderers: build server data with the existing blocks and cat
   budget is there to make you ask. If it truly belongs in the block, re-measure and set the entry to measured + 10%,
   with the real measured figure in the comment.
 
+
+- A wake word ("hey X0" with the microphone otherwise shut) and a press-and-hold on the walking bot are the two things the foot of
+  Home cannot do from the server. The hold wants only the `gesture` block (SPEC 2.5) once `SDUI_V2` is on and the builds that carry
+  it are out — no new app code. The wake word is native work in both apps (local listening, a permission, battery, review); nobody
+  is building it.
 - **14 Nov, from the window-permissions session:** the `perm-words.test.ts` failure over `NSHealthUpdateUsageDescription` is
   fixed by 8.9.1: the test now expects the string and checks it says only that nothing is written.
-
 - **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
   `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client
   missing a block is sent "Open X0 again" instead of the screen, never a lowered one. A chat must never do that for decoration,

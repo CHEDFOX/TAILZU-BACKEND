@@ -1095,6 +1095,28 @@ one is useful without the next (a PDF with text, a CSV, a zip, a picture and a r
 8. **Back out:** `MEDIA_INGEST=false` and a restart. The app goes back to "coming soon". Nothing is swept while it is off, so files already kept stay
    (rows and bytes) until it is turned on again or you empty the bucket and run `delete from media_items;`.
 
+### The cinema bot's 3D (`CINEMA`)
+
+A scene is built as data, written out as a Blender script and rendered wherever there is a Blender to run it (docs/cinema.md).
+**Off, and wired to nothing yet**: no route reaches it and no bot calls it, so setting this up now only means the machine is
+ready when it is connected.
+
+Blender has no window in `--background`: no screen, no X, no desktop session. On the VPS it is a binary like any other.
+
+```bash
+apt-get install -y blender fonts-dejavu-core   # the fonts are for `text` objects, which are boxes without them
+blender --version                              # what the backend asks before it sends anything here
+# In tulmi/.env:  CINEMA=true  CINEMA_BLENDER=blender  CINEMA_WORK=/var/lib/tulmi/cinema  CINEMA_CAP_PAISE=400
+```
+
+What to expect of a box with no graphics card: Eevee cannot run (the script notices and falls to Cycles by itself), a
+480x360 preview takes seconds, and a 1600x1200 frame at 128 samples takes minutes on a few cores. Animation on CPU is
+rarely worth it: four seconds at 24fps is 96 of those frames. Renders run **one at a time** so they do not take the app
+down with them, and each gets a folder of its own under `CINEMA_WORK` that is removed when it ends.
+
+Give it room: a scene with subdivision wants a gigabyte or two, and `CINEMA_WORK` holds a .blend and its frames until the
+render ends. For anything heavier than previews, point the same setup at a machine with a card.
+
 ### Bots: people's own bots and their API (`BOTS`)
 
 Everything is a bot (the Code bot, Keybot, the Plan bot, the Travel bot), and a person can make their own, each with its own tools, knowledge, memory and an

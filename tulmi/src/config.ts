@@ -868,6 +868,34 @@ const EnvSchema = z.object({
   BOT_SHOW: bool(false),
   BOT_SHOW_USERS: orDefault(""),
   /**
+   * THE BOT AT THE FOOT OF HOME, AS WHAT IS HAPPENING (experience/bots/screens/shell/homeThought.ts, docs/home-updates.md): instead of a
+   * box to type in, his thought holds the updates — what needs the person, what their bots are working on, what just finished — each
+   * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is
+   * exactly as it is today; HOME_UPDATES_USERS stages it by account, as the other switches do.
+   *
+   * HOME_LISTEN: his ear is open the whole time Home is in front, with nothing to press — which is what the updates bot is, so it is on
+   * wherever HOME_UPDATES is. Setting it false is the way to shut an open microphone without turning him off: it means the phone shows
+   * its own mark the whole time that page is up, it costs battery, and everything said near it is heard. Opening the keyboard shuts his
+   * ear either way.
+   */
+  /**
+   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema.md): a scene as data, checked, written out as a Blender script, rendered
+   * where there is a Blender to run it, and looked at by a model that fixes what it sees. Off by default and WIRED TO
+   * NOTHING yet: the loop is complete on its own, and the bot's own stages, progress and cards come after.
+   *
+   * CINEMA_BLENDER: the binary on this machine ("blender" on the path by default); none, and this machine renders nothing.
+   * CINEMA_WORK: where a render's folder goes (the system's temporary place by default; a disk with room is better).
+   * CINEMA_CAP_PAISE: the most the models may spend on one creation, over all its rounds.
+   */
+  CINEMA: bool(false),
+  CINEMA_USERS: orDefault(""),
+  CINEMA_BLENDER: orDefault("blender"),
+  CINEMA_WORK: orDefault(""),
+  CINEMA_CAP_PAISE: z.coerce.number().int().min(10).max(20_000).default(400),
+  HOME_UPDATES: bool(false),
+  HOME_UPDATES_USERS: orDefault(""),
+  HOME_LISTEN: bool(true),
+  /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
    * cannot draw it, keeps the app it has. The phone's builds declare BotsOnly and get it whatever this says; it is the desktop this decides.

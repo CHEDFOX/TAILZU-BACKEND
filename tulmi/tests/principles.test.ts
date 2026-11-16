@@ -52,6 +52,8 @@ const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { ShowReply } = await import("../src/show/design.js");
+const { SceneReply } = await import("../src/cinema/make.js");
+const { EyeReply } = await import("../src/cinema/eye.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
@@ -310,6 +312,8 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
   bot_show: 2924, // 2658 measured
+  cinema_scene: 2743, // 2494 measured
+  cinema_eye: 1354, // 1231 measured
   widget_digest: 853, // 776 measured
   site_read: 1531, // 1392 measured
   ask_planner: 4904, // 4458 measured
@@ -399,6 +403,8 @@ describe("the contracts say what the parsers read", () => {
     ["ask_decide", AskDecideReply],
     ["bot_memory", BotMemoryReply],
     ["bot_show", ShowReply],
+    ["cinema_scene", SceneReply],
+    ["cinema_eye", EyeReply],
     ["widget_digest", DigestReply],
     ["site_read", CardReply],
   ];

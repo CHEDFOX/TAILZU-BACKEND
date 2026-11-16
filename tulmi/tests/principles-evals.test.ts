@@ -59,6 +59,9 @@ const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { readMood } = await import("../src/talk/speak.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { ShowReply } = await import("../src/show/design.js");
+const { SceneReply } = await import("../src/cinema/make.js");
+const { EyeReply } = await import("../src/cinema/eye.js");
+const { checkScene } = await import("../src/cinema/check.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
 const { parseLine } = await import("../src/agent/lines.js");
@@ -70,7 +73,7 @@ type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
 
 /** The roles that read a picture: their fixtures name one, and they are told it is evidence rather than that it is data. */
-const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look"];
+const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye"];
 
 describe("the fixture files", () => {
   it("are one per role, and nothing else is in evals/ that looks like one", () => {
@@ -332,6 +335,11 @@ describe("a known-good answer for each role", () => {
       text: '{"blocks":[{"type":"choice","question":"Which one should I plan?","options":[{"label":"Lonavala","note":"1.5 hours"},{"label":"Mahabaleshwar","note":"3 hours"},{"label":"Alibaug","note":"3 hours"}]}],"lists":"drawn"}',
       reads: (t) => ShowReply.parse(JSON.parse(t)),
     },
+    cinema_scene: {
+      text: '{"look":{"engine":"cycles","samples":128,"width":1600,"height":1200,"sky":"studio"},"camera":{"at":[2.2,-2.6,1.2],"to":[0,0,0.55],"lens":85,"blur":{"fStop":3.2}},"lights":[{"kind":"key","at":[2.5,-2,3],"power":420,"size":3},{"kind":"fill","at":[-3,-1.5,1.6],"power":90,"size":4},{"kind":"rim","at":[-1.2,2.6,2.2],"power":220,"size":1.5}],"materials":{"shell":{"colour":"#17171a","metallic":0.1,"roughness":0.55},"concrete":{"colour":"#b9b5ae","metallic":0,"roughness":0.85},"brass":{"colour":"#b58b3a","metallic":1,"roughness":0.3}},"objects":[{"id":"floor","shape":"plane","at":[0,0,0],"size":14,"material":"concrete"},{"id":"plinth","shape":"cube","at":[0,0,0.09],"size":[0.6,0.5,0.09],"material":"concrete","mods":[{"kind":"bevel","width":0.006,"segments":2}]},{"id":"speaker","shape":"cube","at":[0,0,0.52],"size":[0.19,0.15,0.34],"material":"shell","mods":[{"kind":"bevel","width":0.012,"segments":3},{"kind":"smooth"}],"parts":[{"id":"driver","shape":"cylinder","at":[0,-0.15,0.58],"turn":[90,0,0],"size":[0.09,0.09,0.012],"material":"brass"}]}],"seed":7}',
+      reads: (t) => checkScene(SceneReply.parse(JSON.parse(t))).scene,
+    },
+    cinema_eye: { text: '{"ok":true,"issues":[],"fix":""}', reads: (t) => EyeReply.parse(JSON.parse(t)) },
     widget_digest: { text: '{"line":"Xode finished the cart fix; Plan Ease needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
     site_read: {
       text: '{"title":"Behrouz Biryani","line":"Out for delivery, arriving by 9:42 pm",'

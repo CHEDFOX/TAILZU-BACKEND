@@ -89,6 +89,8 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   bot_memory: 1058,
   // What a bot's answer draws (src/show/design.ts): it replaces nothing, so its first size is its "before" (a NEW_ROLE).
   bot_show: 2420,
+  cinema_scene: 2494,
+  cinema_eye: 1231,
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".
   widget_digest: 776,
   site_read: 1392,
@@ -107,7 +109,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the
