@@ -54,6 +54,17 @@ export interface LingoItem {
 }
 
 /** One person, one language they are learning. Somebody may be learning several at once. */
+/**
+ * WHY SOMEBODY IS LEARNING A LANGUAGE, as the one question Lingo asks before it teaches anything (bots.lingo.why).
+ * Seven codes that between them hold most of the reasons anybody learns one, and not one of them is a country, a
+ * region or a kind of person: the same seven whichever language was picked, and "" for somebody who skipped.
+ * "family" is here because people learning the language of their own grandparents are a large share of all learners
+ * and are written out of most courses.
+ */
+export const WHY_CODES = ["someone", "trip", "living", "work", "family", "study", "curious"] as const;
+export type Why = (typeof WHY_CODES)[number] | "";
+export const isWhy = (v: unknown): v is Why => v === "" || (WHY_CODES as readonly string[]).includes(String(v));
+
 export interface Learner {
   /** The language being learned, BCP-47. */
   target: string;
@@ -71,6 +82,10 @@ export interface Learner {
   lastDay: string | null;
   usedMs: number;
   updatedMs: number;
+  /** What the language is for, one of WHY_CODES; "" when they skipped the question or the course predates it. */
+  why?: Why;
+  /** The same thing in their own words, which is worth more than the code: who they will speak it with, and when. */
+  whyNote?: string;
 }
 
 /**

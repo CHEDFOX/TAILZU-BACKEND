@@ -375,9 +375,29 @@ be rid of a language is rid of it whether or not the note got written.
 Why keep it at all: **why people stop is the most useful thing a learning app can be told, and the one thing it is
 never told**, because stopping is silent.
 
+## 14b. What the language is for
+
+The only question Lingo asks before it teaches anything, asked **once**, as the language is added, on
+`bots.lingo.why`. Seven answers — someone I love, a trip, living there, work, my family speaks it, studying it, just
+because — and not one of them is a country, a region or a kind of person: the same seven whichever language was
+picked. "My family speaks it" is there because people learning the language of their own grandparents are a large
+share of all learners and most courses write them out.
+
+**The box under the chips is worth more than the chips.** "My partner's mother is in Seville and I meet her in March"
+tells Lingo what a hundred taps could not. Both are optional, **Skip** is one tap and starts the course anyway, and
+backing out adds no language at all.
+
+Kept on the course as `why` (one of the codes in `types.ts` `WHY_CODES`) and `why_note` (their own words), migration
+**0105**. Both reach Lingo's chat through `digest.ts`, which is the point of asking: the one line in that block that
+says why any of this is happening, so the conversation is about the thing they came for. A later write that says
+nothing about it never wipes what they said.
+
+**Why it is a screen and not the bot's first question:** it is vocabulary 1, so it needs no app release, and it is one
+tap instead of a typed sentence. The bot can go deeper afterwards, and it has their own words to go on.
+
 ## 15. The screens
 
-`experience/bots/screens/bots/lingoPage.ts`, four of them, **vocabulary 1** — every node is one each installed build
+`experience/bots/screens/bots/lingoPage.ts`, five of them, **vocabulary 1** — every node is one each installed build
 already draws, so none of this needs a release. A lesson must never be the screen that answers "Open X0 again",
 which is what the gate sends a client missing a block.
 
@@ -386,6 +406,7 @@ which is what the gate sends a client missing a block.
 | `bots.lingo` | the territory: Lingo alive along the top, then a card per language with its own meter, counts, Continue and a bin; Add a language beside them |
 | `bots.lingo.set` | a set, one exercise at a time, with the verdict under it |
 | `bots.lingo.add` | the picker: search at the top, the suggested few, then all of them |
+| `bots.lingo.why` | what the language is for, asked once as it is added; Skip is one tap |
 | `bots.lingo.leave` | stop learning one: a box for why, and **Just clean up** |
 
 Lingo's tile in the bots list opens the first of these: `ids.ts` `botRoute` now has `lingo` among the built-ins with

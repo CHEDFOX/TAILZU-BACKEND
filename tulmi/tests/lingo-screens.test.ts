@@ -17,7 +17,7 @@ import { lintTree } from "../src/experience/bots/lint.js";
 import { SCREENS } from "../src/experience/bots/ids.js";
 import { botRoute } from "../src/experience/bots/ids.js";
 import {
-  LINGO_SCREENS, leaving, picker, setScreen, territory, whyWords,
+  LINGO_SCREENS, leaving, picker, setScreen, territory, whyScreen, whyWords,
   type CourseView, type PickerData, type SetData,
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
@@ -67,6 +67,7 @@ describe("every tree the kit would draw", () => {
       expect(clean(territory(livelyCtx(client), { courses: [course()] })), `${client} alive`).toEqual([]);
       expect(clean(picker(c, { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [{ tag: "ta", name: "தமிழ்", en: "Tamil" }] })), client).toEqual([]);
       expect(clean(leaving(c, "es", "Español")), client).toEqual([]);
+      expect(clean(whyScreen(c, "es", "Español")), `${client} why`).toEqual([]);
       for (const k of ["choose", "blank", "write", "listen", "chips", "say", "talk"] as ExerciseKind[]) {
         const data: SetData = {
           exercises: [ex(k, { options: ["coffee", "dog", "book"], chips: ["un", "café"], sentence: "Quiero un ——— con leche" })],
@@ -85,8 +86,8 @@ describe("every tree the kit would draw", () => {
     }
   });
 
-  it("is four screens, and Lingo's tile in the bots list opens the first of them", () => {
-    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoLeave]);
+  it("is five screens, and Lingo's tile in the bots list opens the first of them", () => {
+    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoLeave]);
     expect(botRoute("lingo")).toMatchObject({ kind: "navigate", screenId: SCREENS.lingo });
     // A bot with no page of its own still goes to the shared one.
     expect(botRoute("gym-bot")).toMatchObject({ kind: "navigate", screenId: SCREENS.bot, params: { slug: "gym-bot" } });
@@ -167,7 +168,60 @@ describe("the territory", () => {
   });
 });
 
+describe("what the language is for", () => {
+  it("asks once, as the language is added, and never makes them answer", () => {
+    const n = whyScreen(ctx(), "es", "Español");
+    const s = json(n);
+    expect(s).toContain("What's Español for?");
+    // Seven reasons, none of them a country or a region, and the same seven for every language.
+    for (const w of ["Someone I love", "A trip", "Living there", "Work", "My family speaks it", "Studying it", "Just because"]) {
+      expect(s, w).toContain(w);
+    }
+    // Their own words matter more than the code, so there is a real box for them, not a picture of one.
+    const fields: Array<{ bind?: { value?: string } }> = [];
+    const walk = (x: unknown): void => {
+      if (Array.isArray(x)) return x.forEach(walk);
+      if (x && typeof x === "object") {
+        if ((x as { type?: string }).type === "TextField") fields.push(x as { bind?: { value?: string } });
+        Object.values(x as Record<string, unknown>).forEach(walk);
+      }
+    };
+    walk(n);
+    expect(fields.length).toBe(1);
+    expect(fields[0]?.bind?.value).toBe("note");
+    // Skip is one tap and still starts the course.
+    expect(s).toContain("Skip");
+    expect(s).toContain("/v1/lingo/course");
+  });
+
+  it("is where picking a language goes, instead of straight into a set with nothing in it", () => {
+    const s = json(picker(ctx(), { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [] }));
+    expect(s).toContain(SCREENS.lingoWhy);
+    expect(s).not.toContain(SCREENS.lingoSet);
+  });
+});
+
 describe("the picker", () => {
+  it("has a search box that can actually be typed in, not a picture of one", () => {
+    const n = picker(ctx(), { from: "en", fromName: "English", suggested: [], languages: [{ tag: "ta", name: "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", en: "Tamil" }] });
+    const fields: Array<Record<string, unknown>> = [];
+    const walk = (x: unknown): void => {
+      if (Array.isArray(x)) return x.forEach(walk);
+      if (x && typeof x === "object") {
+        const node = x as { type?: string };
+        if (node.type === "TextField") fields.push(x as Record<string, unknown>);
+        Object.values(x as Record<string, unknown>).forEach(walk);
+      }
+    };
+    walk(n);
+    expect(fields.length, "one field to type the search into").toBe(1);
+    expect((fields[0] as { bind?: { value?: string } }).bind?.value).toBe("q");
+    // A binding drawn as words is the bug this is here for: it ships the string "$state.q" in the box.
+    expect(json(n)).not.toContain('"content":"$state.q"');
+    // Enter asks the server again, because the list of languages is the server's and never ships in the app.
+    expect(json(n)).toContain(SCREENS.lingoAdd);
+  });
+
   it("names a language in itself as well as in English", () => {
     const data: PickerData = {
       from: "en", fromName: "English",

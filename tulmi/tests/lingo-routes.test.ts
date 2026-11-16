@@ -78,8 +78,40 @@ describe("a course is a pair of tags, and no language is built in", () => {
   it("refuses nonsense, and refuses learning a language from itself", async () => {
     const app = await server();
     expect((await call(app, "PUT", "/v1/lingo/course", { target: "", from: "en" })).statusCode).toBe(400);
+    expect((await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "not a tag!" })).statusCode).toBe(400);
     expect((await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "es" })).statusCode).toBe(400);
     expect((await call(app, "PUT", "/v1/lingo/course", { target: "not a tag!", from: "en" })).statusCode).toBe(400);
+  });
+
+  it("starts a language without being told which one they already speak", async () => {
+    // The screen that adds the FIRST language is the one place nobody knows yet what they speak, so the route has to
+    // work it out. This used to be a 400 and every first language was refused.
+    let tick = 0;
+    const app = await server(new MemoryLingoStore(), () => T0 + tick++);
+    const r = await call(app, "PUT", "/v1/lingo/course", { target: "es" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().course).toMatchObject({ target: "es", from: "en" });
+    // Whatever their other courses are taught in, not English again by accident.
+    await call(app, "PUT", "/v1/lingo/course", { target: "pt", from: "fr" });
+    const third = await call(app, "PUT", "/v1/lingo/course", { target: "ja" });
+    expect(third.json().course.from).toBe("fr");
+  });
+
+  it("keeps what the language is for, and treats skipping as a complete answer", async () => {
+    const app = await server(new MemoryLingoStore());
+    const skipped = await call(app, "PUT", "/v1/lingo/course", { target: "es", why: "", whyNote: "" });
+    expect(skipped.statusCode).toBe(200);
+    expect(skipped.json().course.why ?? "").toBe("");
+
+    const said = await call(app, "PUT", "/v1/lingo/course", { target: "ja", why: "family", whyNote: "My grandmother speaks it and I never learned." });
+    expect(said.json().course).toMatchObject({ why: "family", whyNote: "My grandmother speaks it and I never learned." });
+    // A later write that says nothing about it does not wipe what they told us.
+    const again = await call(app, "PUT", "/v1/lingo/course", { target: "ja", goalMin: 20 });
+    expect(again.json().course).toMatchObject({ why: "family", goalMin: 20 });
+    // A code that is not one of ours is not stored.
+    const junk = await call(app, "PUT", "/v1/lingo/course", { target: "de", why: "because-i-said-so" });
+    expect(junk.statusCode).toBe(200);
+    expect(junk.json().course.why ?? "").toBe("");
   });
 
   it("keeps the streak and the words when the course is changed", async () => {
