@@ -2227,6 +2227,26 @@ export function getConfig(): AppConfig {
     console.warn("[config] CUSTOM_CONNECTORS=true does nothing while CONNECTORS is off: nobody can add an app by link.");
   }
 
+  /**
+   * THE REVIEW PAIR HAS TO BE TYPEABLE, and nothing used to check that.
+   *
+   * The code screen is the same one every person types an emailed code into: it takes a number pad, strips every
+   * character that is not a digit, and stops at auth.codeLength (6). So a REVIEW_CODE that is longer than six, or
+   * has a letter in it, cannot be entered at all — the reviewer types it, the app keeps nothing, and the screen sits
+   * there looking broken.
+   *
+   * That is exactly how an App Review rejection reads: "the app reverted to Enter the code page after entering demo
+   * code." It cost a submission once. The shape is checked here so it is caught in a deploy log instead.
+   */
+  const reviewPairSet = !!(env.REVIEW_EMAIL ?? "").trim() && !!(env.REVIEW_CODE ?? "").trim();
+  if (reviewPairSet && !/^\d{6}$/.test((env.REVIEW_CODE ?? "").trim())) {
+    console.warn("[config] REVIEW_CODE must be EXACTLY SIX DIGITS: the sign-in screen is a number pad that keeps six digits"
+      + " and nothing else, so App Review cannot type anything longer or with a letter in it, and sign-in silently fails.");
+  }
+  if (!reviewPairSet && ((env.REVIEW_EMAIL ?? "").trim() || (env.REVIEW_CODE ?? "").trim())) {
+    console.warn("[config] REVIEW_EMAIL and REVIEW_CODE must BOTH be set or neither: one alone does nothing and review cannot sign in.");
+  }
+
   // A SearXNG address that is not an https address was dropped by the schema; say so, since it is a setting someone typed.
   if ((process.env.WEB_SEARXNG_URL ?? "").trim() && !env.WEB_SEARXNG_URL) {
     console.warn("[config] WEB_SEARXNG_URL is not an https address (https://search.example.com): it is ignored, and web search goes to DuckDuckGo's page, then Brave if there is a key.");
