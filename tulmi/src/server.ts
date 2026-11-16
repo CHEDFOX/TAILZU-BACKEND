@@ -791,6 +791,32 @@ if (process.env.NODE_ENV !== "test") {
     } else {
       console.log(`[push] smart notifications off (${cfg.PUSH_ENGINE ? "no Supabase" : "PUSH_ENGINE=false"})`);
     }
+
+    /**
+     * THE REVIEW SIGN-IN, OUT LOUD ON EVERY BOOT.
+     *
+     * App Review rejected build 85 under 2.1(a) — "the app reverted to Enter the code page after entering demo
+     * code" — because the pair had lapsed. Nothing was broken and nothing said anything: unset is the normal state,
+     * so silence meant both "nobody is reviewing" and "the reviewer cannot get in", and those read the same.
+     *
+     * Three different faults look identical to a reviewer (no pair, a stale account, a code the number pad cannot
+     * take), so the only honest thing is to say which state this server is actually in. Never the code itself: the
+     * email is public to every client, the code is the whole secret, and a log is not the place for it.
+     */
+    {
+      const email = (cfg.REVIEW_EMAIL ?? "").trim();
+      const code = (cfg.REVIEW_CODE ?? "").trim();
+      if (!email && !code) {
+        console.log("[review] sign-in OFF — no demo account. Normal, EXCEPT while an app build is in review.");
+      } else if (!email || !code) {
+        console.log(`[review] sign-in BROKEN — only ${email ? "REVIEW_EMAIL" : "REVIEW_CODE"} is set; both are needed, so nobody can sign in.`);
+      } else if (!/^\d{6}$/.test(code)) {
+        console.log(`[review] sign-in BROKEN — the code is ${code.length} characters${/\D/.test(code) ? " and not all digits" : ""};`
+          + " the sign-in screen is a number pad that keeps six digits, so App Review cannot type it.");
+      } else {
+        console.log(`[review] sign-in ON for ${email} — six-digit code set. Clear both once the build is approved.`);
+      }
+    }
     // Announce the EFFECTIVE speech config on every boot.
     //
     // "no [stt] error lines" is ambiguous on its own: it means the Sarvam leg
