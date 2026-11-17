@@ -14,6 +14,10 @@ import { noNetwork } from "./no-network.js";
 const { builder, sourcesFrom } = await import("../src/discover/builder.js");
 const { commonsPhotos, parseCommons, photoFrom } = await import("../src/discover/photos.js");
 const { CURATED } = await import("../src/discover/catalog.js");
+const { Discover } = await import("../src/discover/index.js");
+const { store } = await import("../src/discover/store.js");
+const { MemoryTable } = await import("../src/botsBots/rows.js");
+const { runDiscover } = await import("../src/discover/tools.js");
 
 noNetwork();
 
@@ -227,5 +231,72 @@ describe("photographs from Commons", () => {
     expect(asked.url).toContain("gsrnamespace=6");
     expect(asked.url).toContain("iiurlwidth=1600");
     expect(asked.ua).toMatch(/^Tailzu\/1\.0/);
+  });
+});
+
+describe("the search path, as a person uses it", () => {
+  const memory = () => store({ cards: new MemoryTable(), asks: new MemoryTable() });
+  const withBuilder = (over: Partial<Parameters<typeof builder>[0]> = {}) =>
+    new Discover({
+      store: memory(),
+      makeBuilder: () => builder({ resolve: async () => HAMPI, research: async () => READ, call: modelSaying(SLOTS), ...over }),
+    });
+
+  it("builds, keeps it in their feed, and counts the search", async () => {
+    const d = withBuilder();
+    const out = await d.build("hampi", "user_1");
+    expect(out.ok).toBe(true);
+    expect((await d.open("hampi", "user_1"))?.title).toBe(SLOTS.title);
+    expect((await d.built("user_1"))).toHaveLength(1);
+    expect(await d.open("hampi", "user_2")).toBeNull();
+  });
+
+  it("does not pay to build the same place twice for the same person", async () => {
+    let calls = 0;
+    const d = new Discover({
+      store: memory(),
+      makeBuilder: () => builder({
+        resolve: async () => { calls += 1; return HAMPI; },
+        research: async () => READ,
+        call: modelSaying(SLOTS),
+      }),
+    });
+    await d.build("hampi", "user_1");
+    await d.build("hampi", "user_1");
+    expect(calls).toBe(1);
+  });
+
+  it("returns a written place as it is, without building anything", async () => {
+    const d = withBuilder();
+    const out = await d.build("erg-chebbi-silence", "user_1");
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.card.origin).toBe("ours");
+  });
+
+  it("says building is off rather than pretending, when there is no model", async () => {
+    const d = new Discover({ store: memory() });
+    expect(d.canBuild).toBe(false);
+    const out = await d.build("hampi", "user_1");
+    expect(out.ok).toBe(false);
+  });
+
+  it("through the tool: the bot is told what was made, and where it was read from", async () => {
+    const d = withBuilder();
+    const cards: unknown[] = [];
+    const out = await runDiscover(d, "user_1", "place_build", { place: "hampi" }, (c) => cards.push(c));
+    expect(out.ok).toBe(true);
+    expect(out.content).toContain("Made a card for Hampi, Karnataka");
+    expect(out.content).toContain("whc.unesco.org");
+    expect(out.content).toMatch(/not our own words/);
+    expect(cards).toHaveLength(1);
+  });
+
+  it("through the tool: a refusal comes back as words to say, not an error", async () => {
+    const d = withBuilder({ resolve: async () => null });
+    const out = await runDiscover(d, "user_1", "place_build", { place: "asdfgh" });
+    expect(out.ok).toBe(true);
+    expect(out.content).toMatch(/could not find anywhere/);
+    expect(out.content).toMatch(/do not invent/);
   });
 });
