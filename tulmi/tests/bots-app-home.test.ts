@@ -84,7 +84,7 @@ describe("bots.home", () => {
     expect(words.some((w) => /this week|saved/.test(w))).toBe(false);
     for (const w of ["Good evening, Aanya", HOME_LINE, "Needs you · Xode",
       "Round the cart total per item, or once at the end?", "Per item", "At the end", "You decide",
-      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Activity", "You"]) {
+      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Talk", "Activity"]) {
       expect(words, w).toContain(w);
     }
     // The board's three tiles; every other bot is a chip under them ("More bots"), so none is out of reach on the phone.
@@ -96,7 +96,8 @@ describe("bots.home", () => {
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.keybot" });
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.plan" });
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.make" });
-    expect(acts).toContainEqual({ kind: "switchTab", tabId: "you" });
+    // The person button in the header pushes the page now: You is no longer a tab to switch to.
+    expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.you" });
     // The ask bar: return or the send button asks any bot through the shell's door (written down for Activity), and the answer opens
     // with who answered and what it handed on, as Ask's own send does.
     const field = walk(s.root!).find((n) => n.type === "TextField")!;

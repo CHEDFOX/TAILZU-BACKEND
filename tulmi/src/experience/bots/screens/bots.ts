@@ -72,8 +72,9 @@ const homeFor = (ctx: BotsCtx): boolean => planV2(ctx) && homeOn();
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
-async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean; cinema?: boolean } = {}): Promise<OraclePageData & MailPageData & MeetPageData & CinemaPageData> {
-  const slug = slugParam(ctx);
+async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean; cinema?: boolean; slug?: string } = {}): Promise<OraclePageData & MailPageData & MeetPageData & CinemaPageData> {
+  // `o.slug` is for a page that is a TAB: a tab root is fetched with no params, so there is nowhere to read one from.
+  const slug = o.slug ?? slugParam(ctx);
   if (!slug) return {};
   const [bot, memory, linked, chat, sky, about, mail, meet, cinema] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
@@ -166,7 +167,11 @@ function botPhone(ctx: BotsCtx, d: BotPageData) {
   });
 }
 
-function chatPage(ctx: BotsCtx, d: BotPageData) {
+/**
+ * The usual chat with a bot. `root` is for the one whose page IS this and which is a TAB (Talk): a tab root has
+ * nothing to go back to, so it takes the head with the bot and its line instead of the phone's back row.
+ */
+function chatPage(ctx: BotsCtx, d: BotPageData, o: { root?: boolean } = {}) {
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
   if (bot.slug === "code") {
@@ -186,11 +191,12 @@ function chatPage(ctx: BotsCtx, d: BotPageData) {
     ...(buddy.length ? [grow(), ...buddy] : []),
   ], { gap: 6 });
   return page(ctx, {
-    back: isDesk(ctx), title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
+    ...(o.root ? { tab: "talk" as const } : { back: isDesk(ctx) }),
+    title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
     // Pull-a-bot at both ends: what is new is a turn, and new turns land at the bottom.
     pullBot: { top: true, bottom: true, newAt: "bottom", ...(d.turns ? { items: d.turns.map((t) => t.id) } : {}) },
     body: [
-      ...(isDesk(ctx) ? [head] : [phoneTop]),
+      ...(isDesk(ctx) || o.root ? [head] : [phoneTop]),
       ...(turns.length
         ? chatTurns(ctx, bot, turns, { big: !isDesk(ctx), days: isDesk(ctx) || turns.length > 6 })
         : [emptyState({ pose: "listen", title: `Ask ${bot.name} anything`, body: bot.purpose })]),
@@ -726,6 +732,13 @@ export const botsScreens: BotsScreen[] = [
     id: SCREENS.bot,
     load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : ["mail", "meet", "cinema"].includes(slugParam(ctx)) ? 1 : 6, { mail: true, meet: true, cinema: true }),
     build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isCinema(d) ? cinemaPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
+  }),
+  // THE BOT YOU JUST TALK TO, as a tab. Its slug is fixed here because a tab root is fetched with no params, and its
+  // page is the plain chat — there is no other page for it to have.
+  screen<OraclePageData>({
+    id: SCREENS.talk,
+    load: (ctx, deps) => loadBot(ctx, deps, 30, { slug: "talk" }),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : chatPage(ctx, d, { root: true })),
   }),
   screen<OraclePageData>({
     id: SCREENS.chat,

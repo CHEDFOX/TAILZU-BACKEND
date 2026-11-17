@@ -1208,7 +1208,7 @@ export function seq(...actions: Array<ActionRef | undefined>): ActionRef {
 // ===================================================================== frames
 
 const TABS: Array<{ id: TabId; title: string }> = [
-  { id: "bots", title: "Bots" }, { id: "activity", title: "Activity" }, { id: "you", title: "You" },
+  { id: "bots", title: "Bots" }, { id: "talk", title: "Talk" }, { id: "activity", title: "Activity" },
 ];
 
 /** The phone's tab bar: three living icons with their words, live state from ctx.live. Last child of a top-level page. */

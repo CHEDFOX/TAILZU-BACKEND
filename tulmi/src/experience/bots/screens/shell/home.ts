@@ -10,7 +10,7 @@ import { homeDayLine } from "../../../settingsWords.js";
 import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
-  makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
+  makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, C, headBar, type PageOpts, hasOutbox,
   needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
@@ -201,7 +201,10 @@ export function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
   const mark = alive ? liveMark(markSize, ctx.live.bots.filter((b) => b.working).map((b) => b.color)) : tailzuMark(markSize);
   const quiet = (glyph: "search" | "person", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 38 : 36, light: true, label });
   const head = col([
-    row([mark, grow(), quiet("search", open(SCREENS.search), "Search everything"), ...(desk ? [] : [quiet("person", toTab("you"), "Profile and settings")])], { gap: 6, alignItems: "flex-start" }),
+    // The person button is on BOTH now. It used to be phone-only, because the window reached You by its sidebar tab;
+    // with the tab gone that was the only way in on desktop, so the button is no longer phone-only. It pushes the
+    // page rather than switching tab, for the same reason.
+    row([mark, grow(), quiet("search", open(SCREENS.search), "Search everything"), quiet("person", open(SCREENS.you), "Profile and settings")], { gap: 6, alignItems: "flex-start" }),
     col([text(greet, { size: desk ? 16 : 15, color: C.meta, lineHeight: desk ? 21 : 20 }), bold], { gap: desk ? 12 : 10, ...(desk ? { maxWidth: 680 } : {}) }),
   ], { gap: desk ? 30 : 34, paddingTop: desk ? 4 : 10, paddingBottom: desk ? 10 : 14 });
   const bar = headBar([row([tailzuMark(desk ? 24 : 26), text("Your bots", { size: desk ? 16 : 17, weight: 600, lineHeight: 22 })], {

@@ -16,7 +16,7 @@ import { memoryPage, type GroupMemoryView } from "./spaces/memoryPage.js";
 import type { Node, ActionRef, ActionSpec, Condition } from "../../../../../shared/types/sdui.js";
 import {
   row, text, C, call, seq, col, meta, icon, open, SCREENS, box, statusMark, grow, sectionLabel, button, type BotsCtx, notice, card,
-  primaryButton, page, title, emptyState, toTab, back, picture, canSpaces2, listRow, quietButton, chips, when, segmented,
+  primaryButton, page, title, emptyState, back, picture, canSpaces2, listRow, quietButton, chips, when, segmented,
   labelled, divider, messageText, type PersonLookSpec,
 } from "../kit.js";
 import { lookOf } from "../../../botsBots/personLook.js";
@@ -199,7 +199,7 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
     title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), ...spaceDetailState(ctx), newOpen: false, codeOpen: false }, live: spaceLive(sel, list),
     body: [
       row([
-        col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Your people, in one place.", { size: 14 })], { gap: 4, flexGrow: 1 }),
+        col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, open(SCREENS.you)), title("Spaces", { size: 26 }), meta("Your people, in one place.", { size: 14 })], { gap: 4, flexGrow: 1 }),
         box(startSpace(true), { width: 320, alignItems: "flex-end" }),
       ], { gap: 12, alignItems: "flex-end" }),
       ...joinCard(ctx, d),

@@ -29,10 +29,11 @@ describe("the bootstrap", () => {
     expect(Object.keys(off.fonts ?? {})).not.toContain("Tailzu Geist");
     expect(off.initialScreenId).not.toMatch(/^bots\./);
   });
-  it("on: the three living tabs, Home first, Geist, and the tabs warmed", () => {
+  it("on: the three living tabs — Home, Talk, Activity — Home first, Geist, and the tabs warmed", () => {
     const on = buildBootstrap({ onboarded: true, landedBefore: true, botsApp: true });
     expect(on.navigation.kind === "tabs" && on.navigation.tabs.map((t) => [t.id, t.title, t.screenId])).toEqual([
-      ["bots", "Bots", "bots.home"], ["activity", "Activity", "bots.activity"], ["you", "You", "bots.you"],
+      // You is not a tab: it is the person button in Home's header, and the page is pushed from there.
+      ["bots", "Bots", "bots.home"], ["talk", "Talk", "bots.talk"], ["activity", "Activity", "bots.activity"],
     ]);
     expect(on.initialScreenId).toBe("bots.home");
     expect(on.flags?.["bots.app"]).toBe(true);
@@ -108,7 +109,7 @@ describe("the screen route", () => {
   it("a build that draws the kit is booted into the Bots app", async () => {
     const r = await post("/v1/app/bootstrap", { capabilities: caps(["BotsKit"]) });
     expect(r.statusCode).toBe(200);
-    expect(r.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "activity", "you"]);
+    expect(r.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "talk", "activity"]);
     const old = await post("/v1/app/bootstrap", { capabilities: caps([]) });
     expect(old.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["stats", "personality"]);
   });
@@ -138,7 +139,7 @@ describe("the screen route", () => {
     const flow = await post("/v1/app/screen", { screenId: "flow_arm", capabilities: only });
     expect(flow.json().screenId).toBe("flow_arm");
     const boot = await post("/v1/app/bootstrap", { capabilities: only });
-    expect(boot.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "activity", "you"]);
+    expect(boot.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "talk", "activity"]);
   });
 });
 
