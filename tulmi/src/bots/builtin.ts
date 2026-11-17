@@ -271,13 +271,37 @@ export function oracleOn(): boolean {
   }
 }
 
-const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [CINEMA] : [])];
+/**
+ * A SWITCH PER BOT (config BOTS_OFF): the slugs not to list. The LAST word, after each bot's own availability —
+ * a bot has to be set up before this can hide it, and hiding one does not free its name (isBuiltinSlug below is
+ * deliberately not filtered, so nobody can take "travel" while the Travel bot is off).
+ *
+ * Read here, in the ONE place every listing goes through, so a built-in added later is covered by it without
+ * anybody having to remember. Config can throw where there is none; an unreadable switch hides nothing.
+ */
+function hidden(): ReadonlySet<string> {
+  try {
+    return new Set(getConfig().BOTS_OFF.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+const defs = (): readonly BotDef[] => {
+  const off = hidden();
+  return [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [CINEMA] : [])]
+    .filter((d) => !off.has(d.slug));
+};
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
   return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
 }
 
+/**
+ * NOT filtered by BOTS_OFF, on purpose: this is what reserves the NAME, and a bot that is switched off must keep its
+ * name or somebody takes it and collides with it the day it is switched back on.
+ */
 export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || slug === LINGO.slug || slug === CINEMA.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
