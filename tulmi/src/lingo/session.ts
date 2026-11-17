@@ -22,7 +22,7 @@ import { fold } from "./grade.js";
 import { createHash } from "node:crypto";
 import type { Sentence } from "./sentences.js";
 import { underCap, type SetShape } from "./set.js";
-import type { ExerciseKind, Learner, LingoItem, Mark, Verdict } from "./types.js";
+import { SPOKEN_KINDS, type ExerciseKind, type Learner, type LingoItem, type Mark, type Verdict } from "./types.js";
 
 /**
  * What a sentence with a hole in it shows where the word was taken out. One marker everywhere, so the screens never
@@ -91,18 +91,28 @@ export function shapeFor(item: LingoItem, now: number): ExerciseKind {
   if (m.state === "new") return "choose";
   if (m.state === "relearning") return "choose";
   const held = recall(m, now);
+  // Out loud is the thing being taught, and a whole utterance is SAID, not spelled: a phrase speaks, a word says.
+  const aloud: ExerciseKind = item.kind === "phrase" ? "speak" : "say";
   // Held well enough to produce, but not yet said enough times to count: it is time to say it.
-  if (m.state === "review" && item.spoken < SPOKEN_TO_LEARN) return "say";
-  if (m.state === "review" && held < 0.6) return "say";
+  if (m.state === "review" && item.spoken < SPOKEN_TO_LEARN) return aloud;
+  if (m.state === "review" && held < 0.6) return aloud;
   if (m.reps <= 1) return "listen";
   // A word put back into a real sentence. It comes before writing the word on its own, because a word is not
   // learned as a translation pair: it is learned where it is used. It needs a sentence, so a caller that has no
-  // bank to look in simply never gets this kind, and the ladder closes over the gap.
-  if (m.reps === 2) return "blank";
+  // bank to look in simply never gets this kind, and the ladder closes over the gap. A whole utterance has no
+  // single word to take out, so what it gets at this rung is the same question one level up: of these, what would
+  // you actually say here.
+  if (m.reps === 2) return item.kind === "phrase" ? "reply" : "blank";
   if (m.reps === 3) return "chips";
   if (item.kind === "phrase") return "chips";
+  // THE TOP OF THE LADDER, and the only rung that is the real thing: held, and said out loud enough times to count,
+  // so the thing left is to use it in something of their own. Every rung below exists to get an item to here.
+  if (held >= TALK_AT && item.spoken >= SPOKEN_TO_LEARN) return "talk";
   return "write";
 }
+
+/** How well a word must be held before it is asked for in open conversation rather than on its own. */
+const TALK_AT = 0.85;
 
 /** A stable shuffle: the same item on the same day is offered the same way, so a reload is not a different question. */
 function shuffle<T>(xs: readonly T[], seed: string): T[] {
@@ -164,7 +174,7 @@ function distractors(item: LingoItem, pool: readonly LingoItem[], seed: string):
 export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: number, kind?: ExerciseKind, sentences?: SentenceLookup): Exercise {
   let k = kind ?? shapeFor(item, now);
   const seed = `${item.item}|${Math.floor(now / 86_400_000)}`;
-  const base: Exercise = { kind: k, item: item.item, ref: "", prompt: item.item, accepted: [item.item], options: [], correct: 0, chips: [], spoken: k === "say" || k === "talk", sentence: "" };
+  const base: Exercise = { kind: k, item: item.item, ref: "", prompt: item.item, accepted: [item.item], options: [], correct: 0, chips: [], spoken: SPOKEN_KINDS.includes(k), sentence: "" };
 
   if (k === "blank") {
     // A real sentence that uses the word, with the word taken out. The shortest one is used: a beginner should not
@@ -193,6 +203,12 @@ export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: nu
     const options = shuffle([item.gloss, ...distractors(item, pool, seed)], `${seed}|opts`);
     return { ...base, prompt: item.item, accepted: [item.gloss], options, correct: Math.max(0, options.indexOf(item.gloss)) };
   }
+  if (k === "reply") {
+    // What would you actually SAY here, out of a few. The wrong ones are other things this person has met, so the
+    // choice is between real options rather than between the answer and some filler.
+    const options = shuffle([item.item, ...others(item, pool, seed)], `${seed}|reply`);
+    return { ...base, prompt: item.gloss, options, correct: Math.max(0, options.indexOf(item.item)) };
+  }
   if (k === "chips") {
     const words = item.item.split(" ").filter(Boolean);
     return { ...base, prompt: item.gloss, chips: shuffle(words, `${seed}|chips`) };
@@ -201,7 +217,8 @@ export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: nu
     // The item is spoken aloud and they write what they heard, so the prompt is the item itself, for the voice.
     return { ...base, prompt: item.item };
   }
-  // write, say and talk all ask them to produce the item from its meaning.
+  // write, say, speak and talk all ask them to produce the item from its meaning, and nothing on the screen says
+  // what it is: that is the difference between producing a thing and reading it aloud.
   return { ...base, prompt: item.gloss };
 }
 
@@ -255,7 +272,7 @@ export function plan(items: readonly LingoItem[], learner: Learner, now: number,
 
 /** The item after an answer: the scheduler moved on, and a time said out loud counted if that is what it was. */
 export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number): LingoItem {
-  const outLoud = kind === "say" || kind === "talk";
+  const outLoud = SPOKEN_KINDS.includes(kind);
   return review(item, mark.verdict, outLoud, now);
 }
 

@@ -19,14 +19,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
-import { gradeChips, gradeChoice, gradeSpoken, gradeText } from "../../lingo/grade.js";
+import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../../lingo/grade.js";
 import { learned } from "../../lingo/schedule.js";
 import { answered, dayOf, pick, plan, progress, refOf, shapeFor, streakAfter, wire, type Exercise, type SentenceLookup } from "../../lingo/session.js";
 import { againAfter } from "../../lingo/order.js";
 import { gestureFor, mastery, performanceOf, readSet, shapeNext, SET_SIZE, type Answered, type SetShape } from "../../lingo/set.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
-import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type Verdict, type Why } from "../../lingo/types.js";
+import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type LingoItem, type Verdict, type Why } from "../../lingo/types.js";
 import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
 
 export interface LingoRouteDeps {
@@ -228,6 +228,39 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     return (item: string) => found.get(item) ?? [];
   };
 
+  /**
+   * THE SPINE: what a course is made of before anybody has said anything to it.
+   *
+   * A course holds the words this person reached for, and on the first day there are none — nothing to schedule,
+   * nothing to ask, and "Nothing due" on the very first screen somebody sees. So when it is running dry, the shared
+   * bank is drawn on for short sentences of this pair. Real sentences, with their meaning already on them, which is
+   * the only reason they can be seeded at all: a bare frequency list would give words with nothing to say they mean.
+   *
+   * They go in as `seed`, and `unseen` (schedule.ts) puts `seed` LAST, behind said, asked and heard. So anything
+   * they reached for themselves is always asked first and the spine is only ever the floor underneath. That is the
+   * whole of "what they need first, and the language in the end": their own words lead for as long as they keep
+   * coming, and the spine fills in behind them when they do not.
+   *
+   * How long those sentences are follows the level, so what the spine offers grows with the person.
+   */
+  const SPINE_LOW = 6;
+  const SPINE_ADD = 12;
+  const SPINE_WORDS: Record<Level, number> = { a1: 5, a2: 7, b1: 10, b2: 13, c1: 16, c2: 20 };
+
+  const topUp = async (userId: string, course: Learner, items: readonly LingoItem[], at: number): Promise<readonly LingoItem[]> => {
+    if (items.filter((i) => i.memory.state === "new").length >= SPINE_LOW) return items;
+    const rows = await bank().around(course.target, course.from, SPINE_WORDS[course.level] ?? 5, SPINE_ADD * 3).catch(() => []);
+    const have = new Set(items.map((i) => keyOf(i.item)));
+    const add: NewItem[] = rows
+      .filter((r) => r.text.trim() && r.gloss.trim() && !have.has(keyOf(r.text)))
+      .slice(0, SPINE_ADD)
+      .map((r) => ({ item: keyOf(r.text), gloss: r.gloss.trim().slice(0, GLOSS_MAX), kind: "phrase" as const, source: "seed" as const }));
+    // An empty bank is not an error: the course simply stays as it is and the person is asked what they do have.
+    if (!add.length) return items;
+    const added = await store().add(userId, course.target, add, at).catch(() => 0);
+    return added ? await store().items(userId, course.target).catch(() => items) : items;
+  };
+
   app.post("/v1/lingo/session", rl, async (req, reply) => {
     const user = await begin(req, reply);
     if (!user) return reply;
@@ -237,7 +270,8 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     if (!course) return bad(reply, "That course has not been started.");
 
     const at = now();
-    const items = await store().items(user.id, target).catch(() => []);
+    // Running dry: bring in the spine before anything is picked, so the first set of a new course is a real set.
+    const items = await topUp(user.id, course, await store().items(user.id, target).catch(() => []), at);
     // The shape of this set, as the last one's performance left it. The app hands back what /v1/lingo/set gave it
     // and never invents one; anything that cannot be read as a shape means the first set of a sitting.
     const shape = readShape(b["shape"]);
@@ -353,9 +387,10 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const mark =
       // A gap in a sentence is answered by choosing a word; when the bank had no sentence for it, exerciseFor fell
       // back to writing, and `ex.kind` says so, so it is marked the way it was actually asked.
-      kind === "choose" || ex.kind === "blank" ? gradeChoice(picked ?? -1, ex.correct, ex.options)
+      kind === "choose" || kind === "reply" || ex.kind === "blank" ? gradeChoice(picked ?? -1, ex.correct, ex.options)
       : kind === "chips" || ex.kind === "chips" ? gradeChips(chips, [ex.item.split(" ").filter(Boolean)])
-      : kind === "say" || kind === "talk" ? gradeSpoken(said, ex.accepted)
+      : kind === "talk" ? gradeUsed(said, ex.accepted)
+      : kind === "say" || kind === "speak" ? gradeSpoken(said, ex.accepted)
       : gradeText(said, ex.accepted);
 
     const next = answered(item, kind, mark, at);

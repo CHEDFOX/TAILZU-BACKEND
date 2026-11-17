@@ -18,7 +18,7 @@
  * Pure: marks and items in, a judgement out. No clock of its own, no store, no model.
  */
 import { learned, recall } from "./schedule.js";
-import type { ExerciseKind, LingoItem, Verdict } from "./types.js";
+import { SPOKEN_KINDS, type ExerciseKind, type LingoItem, type Verdict } from "./types.js";
 
 /** How long one set is. Short enough to finish in a queue, long enough to tell you something. */
 export const SET_SIZE = 12;
@@ -51,7 +51,7 @@ export function readSet(answers: readonly Answered[]): SetResult {
     if (a.verdict === "right") r.right++;
     else if (a.verdict === "close") r.close++;
     else r.wrong++;
-    if (a.verdict === "right" && (a.kind === "say" || a.kind === "talk")) r.spoken++;
+    if (a.verdict === "right" && SPOKEN_KINDS.includes(a.kind)) r.spoken++;
     if (a.learnedNow && !r.learned.includes(a.item)) r.learned.push(a.item);
     if (a.verdict === "wrong" && !r.slipped.includes(a.item)) r.slipped.push(a.item);
   }
@@ -138,8 +138,12 @@ export function shapeNext(p: Performance, last: SetResult, o: { size?: number } 
   return { size: Math.max(6, Math.round(size * 0.7)), newRoom: 0, rungCap: "listen", pushSpoken: false, revisit: last.slipped };
 }
 
-/** The rungs of the ladder, weakest first, so a cap can be compared against a kind. */
-const RUNGS: readonly ExerciseKind[] = ["choose", "listen", "blank", "chips", "write", "say", "talk"];
+/**
+ * The rungs of the ladder, weakest first, so a cap can be compared against a kind. Recognising comes before
+ * producing and producing on paper before producing out loud, so the order runs: pick a meaning, hear it, pick what
+ * you would say, put a word back, assemble it, write it, say it, say the whole thing, use it in conversation.
+ */
+const RUNGS: readonly ExerciseKind[] = ["choose", "listen", "reply", "blank", "chips", "write", "say", "speak", "talk"];
 
 /** The kind to ask, held under a cap. A cap never makes an exercise HARDER, only gentler. */
 export function underCap(kind: ExerciseKind, cap: ExerciseKind | null): ExerciseKind {

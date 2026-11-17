@@ -93,29 +93,31 @@ export interface Learner {
  * `talk` is the only one that is the real thing. Duolingo's mistake is that it stops at the tapping ones; here they
  * exist to get an item ready to be said.
  *
+ * It is a GRID, not a line. Three levels — a word, a whole utterance, a turn of conversation — and at every level
+ * both ways of being asked: PICK THE RIGHT ONE, and SAY THE RIGHT THING. Recognising is not the lesson and never
+ * was, but it is how the saying gets within reach, so the two run side by side all the way up instead of one
+ * replacing the other.
+ *
+ *                   pick the right one          say the right thing
+ *   word            choose                      say
+ *   utterance       reply  (blank, chips)       speak
+ *   conversation    —                           talk
+ *
  *   choose  pick the meaning out of a few
  *   blank   the word taken out of a real sentence, and put back
+ *   reply   what you would actually say here, out of a few
  *   write   type it, graded against every answer we accept
  *   listen  it is spoken, they type what they heard
  *   chips   put the given words in order
- *   say     say it out loud; speech-to-text marks it
+ *   say     say the word out loud; speech-to-text marks it
+ *   speak   say a whole utterance out loud, made from its meaning and not read off the screen
  *   talk    a turn of real conversation, with the item expected somewhere in it
  */
-export const EXERCISE_KINDS = ["choose", "blank", "write", "listen", "chips", "say", "talk"] as const;
+export const EXERCISE_KINDS = ["choose", "blank", "reply", "write", "listen", "chips", "say", "speak", "talk"] as const;
 export type ExerciseKind = (typeof EXERCISE_KINDS)[number];
 
 /** The kinds that need the person to speak. An item is not learned until it has been passed out loud. */
-export const SPOKEN_KINDS: readonly ExerciseKind[] = ["say", "talk"];
-
-/** How much of a session each kind may be, by the level: beginners read and tap, then it turns into talking. */
-export interface Mix {
-  choose: number;
-  write: number;
-  listen: number;
-  chips: number;
-  say: number;
-  talk: number;
-}
+export const SPOKEN_KINDS: readonly ExerciseKind[] = ["say", "speak", "talk"];
 
 /**
  * HOW AN ANSWER CAME OUT. `close` is the band that decides whether this feels fair: a missing accent or one slipped

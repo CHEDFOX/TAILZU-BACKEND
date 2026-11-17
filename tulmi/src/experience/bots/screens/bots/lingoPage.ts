@@ -285,6 +285,15 @@ function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
       listCard(ex.options.map((o, i) => listRow({ label: o, onPress: answer({ picked: i }) }))),
     ];
   }
+  if (ex.kind === "reply") {
+    // The same shape as choose, the other way round: the meaning is the question and the answers are things you
+    // could really say. Picking what you would say is how somebody reaches conversation before they can speak it.
+    return [
+      meta("What would you say?", { size: 13 }),
+      head(ex.prompt),
+      listCard(ex.options.map((o, i) => listRow({ label: o, onPress: answer({ picked: i }) }))),
+    ];
+  }
   if (ex.kind === "blank") {
     return [
       meta(ex.prompt, { size: 14 }),
@@ -308,9 +317,11 @@ function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
       primaryButton("Check", answer({ said: "$state.said" })),
     ];
   }
-  if (ex.kind === "say" || ex.kind === "talk") {
+  if (ex.kind === "say" || ex.kind === "speak" || ex.kind === "talk") {
     return [
-      meta("Say it out loud", { size: 13 }),
+      // `talk` is the only rung that is the real thing: nothing is read back, and what is marked is whether the word
+      // came out inside something of their own.
+      meta(ex.kind === "talk" ? "Say something that uses it" : ex.kind === "speak" ? "Say the whole thing out loud" : "Say it out loud", { size: 13 }),
       head(ex.prompt),
       // voiceLive writes what was heard into state; the server marks it, never the app.
       // The whole turn's words go into state; the SERVER marks them. `onHeard` only stops the session.
