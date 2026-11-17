@@ -75,6 +75,28 @@ describe("making a script safe to spend money on", () => {
     expect(script.shots[2]!.cover).toBeNull();
   });
 
+  it("drops a camera field that only says what shape the frame is, and keeps a real move", () => {
+    const r = raw();
+    const shots = r.shots as Record<string, unknown>[];
+    // What a real run came back with: the aspect ratio in the one field that describes the move.
+    Object.assign(shots[0]!, { camera: "9:16 vertical" });
+    Object.assign(shots[1]!, { camera: "Vertical (9:16 format)" });
+    Object.assign(shots[2]!, { camera: "slow dolly-in, focus racks from the kettle to his face" });
+    const { script } = normalize(r, { length: 15, language: "hi" });
+    expect(script.shots[0]!.camera).toBe("");
+    expect(script.shots[1]!.camera).toBe("");
+    expect(script.shots[2]!.camera).toBe("slow dolly-in, focus racks from the kettle to his face");
+  });
+
+  it("drops a narrator who is in no shot and has no face: narration is a voice, not a person", () => {
+    const r = raw();
+    (r.bible as Record<string, unknown[]>).characters.push({ key: "narrator", name: "Father (off-screen)", look: "", wardrobe: "", voice: "warm, mid-40s" });
+    const { script } = normalize(r, { length: 15, language: "hi" });
+    expect(script.bible.characters.map((c) => c.key)).not.toContain("narrator");
+    // Anyone actually in a shot stays, however little was written about them.
+    expect(script.bible.characters.map((c) => c.key)).toContain("ravi");
+  });
+
   it("asks the director for every detail the prompts need", async () => {
     const { DIRECTOR_SYSTEM } = await import("../src/cinema/plan.js");
     for (const field of ['"intent"', '"performance"', '"camera"', '"composition"', '"atmosphere"', '"grade"', '"texture"', '"voice"']) expect(DIRECTOR_SYSTEM).toContain(field);
