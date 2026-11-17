@@ -18,7 +18,7 @@
  * All three are optional at runtime. No geocoder set, no model, Commons off — a build comes back as words the bot
  * can say, and the written catalogue keeps working regardless.
  */
-import type { GatewayDeps } from "../code/brain/gateway.js";
+import { callModel, type GatewayDeps } from "../code/brain/gateway.js";
 import { makeWebTools } from "../code/webTools.js";
 import type { CallFn } from "../code/work/model.js";
 import { places } from "../places/index.js";
@@ -49,13 +49,15 @@ export interface DiscoverServerOptions {
  * built ones are in rows, so nothing here is per-request except the builder itself.
  */
 export function discoverService(o: DiscoverServerOptions = {}): Discover {
-  const call = o.call;
+  // The server's own caller unless a test hands one in. server.ts builds the ports without a model (the code bot
+  // does the same and falls back inside CodeChat), and a catalogue that cannot build is a catalogue that quietly
+  // never builds — so the default belongs here, not on the caller.
+  const call: CallFn = o.call ?? callModel;
   const pics = photosFromConfig();
 
   return new Discover({
-    makeBuilder: call
-      ? (userId: string) =>
-          builder({
+    makeBuilder: (userId: string) =>
+      builder({
             userId,
             maxPaise: BUILD_PAISE,
             call,
@@ -88,13 +90,12 @@ export function discoverService(o: DiscoverServerOptions = {}): Discover {
               return { answer: out.answer, sources: sourcesFrom(out.sources) };
             },
 
-            ...(pics
-              ? {
-                  photos: (place: string, want: number) => pics.find(place, { want }),
-                }
-              : {}),
-          })
-      : undefined,
+        ...(pics
+          ? {
+              photos: (place: string, want: number) => pics.find(place, { want }),
+            }
+          : {}),
+      }),
   });
 }
 
