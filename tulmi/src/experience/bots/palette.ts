@@ -44,10 +44,16 @@ export const PALETTE_HEX: Record<string, string> = {
   // A neutral for a built-in that wants one, warmer than stone so the two do not read as the same grey. stone is
   // also the fallback colour below, so nothing that ships may wear it.
   ash: "#6B6762",
+  // A cool graphite for the one built-in that is not a specialist. Distinct from both neutrals above on purpose:
+  // stone is greener and may not ship at all, ash is warmer and is Lingo's.
+  slate: "#4A535C",
 };
 
 /** The built-ins, in the order the app lists them. */
-export const BUILTIN_SLUGS = ["code", "keybot", "plan", "travel"] as const;
+// Talk goes LAST on purpose. Home's grid draws three bots and "Make a bot", and the Bots tab glyph draws four:
+// putting a fifth built-in first pushed Plan off the grid and Travel off the glyph, which is a change to what
+// people already have and nobody asked for it.
+export const BUILTIN_SLUGS = ["code", "keybot", "plan", "travel", "talk"] as const;
 
 /**
  * THE LINE ICON OF EACH BUILT-IN. Only the icon: a bot's COLOUR is decided in src/bots/builtin.ts and read from
@@ -55,6 +61,8 @@ export const BUILTIN_SLUGS = ["code", "keybot", "plan", "travel"] as const;
  * builtin.ts said Xode was pine while this said moss — for as long as both existed. One answer now.
  */
 const BUILTIN_ICON: Record<string, IconName> = {
+  // Three balloons on one thread. Not the spark: that is X0's own mark, below, and the bot is not the app.
+  talk: "balloons",
   code: "code",
   keybot: "keyboard",
   plan: "calendar",

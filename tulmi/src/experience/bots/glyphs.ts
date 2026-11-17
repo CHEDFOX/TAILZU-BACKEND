@@ -66,6 +66,11 @@ export const ICONS = {
   sun: circ(12, 12, 4) + "M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4",
   swap: "M4 8h15l-3.5-3.5M20 16H5l3.5 3.5",
   spark: "M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z",
+  // Three balloons tied to one thread, for the bot you just talk to. The balloons are kept APART rather than
+  // bunched: at the 18 and 24 pixels a list actually draws them, overlapping strokes close up into a blob.
+  balloons: circ(6.4, 7.1, 2.7) + circ(17.6, 7.1, 2.7) + circ(12, 4.8, 2.7)
+    + "M6.4 9.8C7.6 13.4 10.6 15.6 12 18.6M17.6 9.8C16.4 13.4 13.4 15.6 12 18.6M12 7.5C12.5 11.8 11.6 15.4 12 18.6"
+    + "M10.6 20.4c1-1.4 1.8-1.4 2.8 0",
 } as const;
 export type IconName = keyof typeof ICONS;
 

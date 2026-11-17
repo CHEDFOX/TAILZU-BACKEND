@@ -22,7 +22,7 @@ export const PALETTE = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", 
  * outside PALETTE: in it, it would be offered in the picker, it would change which colour `colourFor` hands every
  * future bot a person makes, and somebody's own bot could come out the same colour as one of ours.
  */
-export const SHIPPED_ONLY = ["ash"] as const;
+export const SHIPPED_ONLY = ["ash", "slate"] as const;
 
 export type Colour = (typeof PALETTE)[number] | (typeof SHIPPED_ONLY)[number];
 
@@ -135,7 +135,11 @@ export const LIMITS = {
 
 /** Slugs nobody may take: the built-in bots, Notes (its own tile on Home), and words the routes use. */
 export const RESERVED_SLUGS: readonly string[] = [
-  "code", "keybot", "plan", "travel", "oracle", "mail", "meet", "cinema", "notes", "me", "new", "draft", "approve", "export", "any", "admin", "api", "v1", "bots", "bot", "tailzu", "test", "keys", "memory", "commands",
+  "code", "keybot", "plan", "travel", "oracle", "mail", "meet", "cinema", "talk", "notes", "me", "new", "draft", "approve", "export", "any", "admin", "api", "v1", "bots", "bot", "tailzu", "test", "keys", "memory", "commands",
+  // Two gaps found while adding `talk`: `lingo` is a built-in and was never listed here, and these are static route
+  // segments under the bots area (routes/bots/botsBots.ts) that a slug would be matched before, which is the whole
+  // reason this list exists.
+  "lingo", "chat", "listing", "rules", "session", "sessions", "share", "store", "trip",
 ];
 
 // ------------------------------------------------------------------ what a message became

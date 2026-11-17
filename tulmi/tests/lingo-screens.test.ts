@@ -97,7 +97,7 @@ describe("every tree the kit would draw", () => {
 });
 
 describe("Lingo in the bots list", () => {
-  it("appears on Home once the platform lists it, beside the four that always show", async () => {
+  it("appears on Home once the platform lists it, beside the five that always show", async () => {
     const { liveFrom } = await import("../src/experience/bots/live.js");
     const { SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
     const withLingo = [...SAMPLE_BOTS, { slug: "lingo", name: "Lingo", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true }];
@@ -117,7 +117,7 @@ describe("Lingo in the bots list", () => {
     const model = liveFrom({ bots: SAMPLE_BOTS, jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 0, now: Date.UTC(2026, 9, 28), tzOffsetMinutes: 330 });
     expect(model.bots.find((b) => b.slug === "lingo")).toBeUndefined();
     // The four that are always there are still the first four, in order.
-    expect(model.bots.slice(0, 4).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
+    expect(model.bots.slice(0, 5).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
   });
 });
 

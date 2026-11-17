@@ -360,6 +360,7 @@ export function liveFrom(i: LiveInput): BotsLive {
 
 /** The built-ins' own words, for when the bots platform is off (src/bots/builtin.ts is the source when it is on). */
 const BUILTIN_LITE: Record<(typeof BUILTIN_SLUGS)[number], { name: string; purpose: string }> = {
+  talk: { name: "Talk", purpose: "Just talk to it: questions, ideas, writing, working something out, and it looks things up when the answer has to be current." },
   code: { name: "Xode", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests." },
   keybot: { name: "Keylessbord", purpose: "Writes, rewrites and replies in your own voice, in any language you mix." },
   plan: { name: "Plan Ease", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list." },

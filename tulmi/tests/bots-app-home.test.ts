@@ -38,7 +38,7 @@ describe("live state from real records", () => {
   it("who is working, the week, the month's spend, the greeting", () => {
     const code = live.bots.find((b) => b.slug === "code")!;
     expect(code).toMatchObject({ state: "needs", working: true, needs: 1, doing: "fixing cart", color: "#4F7A3A" });
-    expect(live.bots.map((b) => b.slug).slice(0, 4)).toEqual(["code", "keybot", "plan", "travel"]);
+    expect(live.bots.map((b) => b.slug).slice(0, 5)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
     expect(live.week).toEqual({ done: 4, minutesSaved: 124 });
     expect(weekLine(live.week)).toBe("4 things done this week · 2 h saved");
     // Last month's job is not this month's spend.
@@ -55,8 +55,8 @@ describe("live state from real records", () => {
     expect(l.needs[0]).toMatchObject({ bot: "plan", botName: "Plan Ease", question: "Move the dentist to Friday 10 am?" });
     expect(l.needs[0]!.choices[0]!.action).toMatchObject({ path: "/v1/tasks/t1/approve", body: { approvalId: "a1" } });
     expect(l.needs[0]!.choices[1]!.action).toMatchObject({ path: "/v1/tasks/t1/deny" });
-    // The four built-ins are there even with the bots platform off.
-    expect(l.bots.map((b) => b.name)).toEqual(["Plan Ease", "Xode", "Keylessbord", "Travel bot"]);
+    // The five built-ins are there even with the bots platform off.
+    expect(l.bots.map((b) => b.name)).toEqual(["Plan Ease", "Xode", "Keylessbord", "Travel bot", "Talk"]);
     expect(l.spend.budgetPaise).toBe(50_000);
     expect(weekLine(l.week)).toBe("Nothing done yet this week");
   });
