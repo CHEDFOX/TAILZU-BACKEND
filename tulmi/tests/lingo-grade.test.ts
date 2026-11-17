@@ -12,7 +12,7 @@
  *   - nothing here returns a sentence: only a reason code the screens word themselves
  */
 import { describe, expect, it } from "vitest";
-import { distance, fold, gradeChips, gradeChoice, gradeSpoken, gradeText, slipBudget, tidy } from "../src/lingo/grade.js";
+import { distance, fold, gradeChips, gradeChoice, gradeSpoken, gradeUsed, gradeText, slipBudget, tidy } from "../src/lingo/grade.js";
 
 describe("tidying an answer", () => {
   it("sets aside case, punctuation and stray spaces, and keeps the marks over letters", () => {
@@ -186,5 +186,51 @@ describe("every script is a first-class script", () => {
     for (const m of [gradeText("", ["a"]), gradeText("pato", ["gato"]), gradeText("como estas", ["c\u00F3mo est\u00E1s"])]) {
       expect(reasons).toContain(m.why);
     }
+  });
+});
+
+describe("a turn of conversation, marked on whether the word was used", () => {
+  it("is right when the word comes out inside something of their own", () => {
+    expect(gradeUsed("quiero un café con leche por favor", ["café"])).toMatchObject({ verdict: "right", why: "" });
+    expect(gradeUsed("café", ["café"])).toMatchObject({ verdict: "right" });
+    // At either end of the turn, not only in the middle.
+    expect(gradeUsed("café por favor", ["café"])).toMatchObject({ verdict: "right" });
+    expect(gradeUsed("me gusta el café", ["café"])).toMatchObject({ verdict: "right" });
+  });
+
+  it("does not accept the word hiding inside a longer one", () => {
+    // "cafetería" is not "café": a grader that took it would pass somebody who never said the word.
+    expect(gradeUsed("fuimos a la cafetería", ["café"])).toMatchObject({ verdict: "wrong" });
+  });
+
+  it("takes a whole phrase only when all of it is there, in order", () => {
+    expect(gradeUsed("le dije buenos días a mi vecina", ["buenos días"])).toMatchObject({ verdict: "right" });
+    expect(gradeUsed("buenos y luego días", ["buenos días"])).toMatchObject({ verdict: "wrong" });
+  });
+
+  it("is close, not wrong, when the transcriber slipped a letter", () => {
+    // They said it; the machine in the middle heard it slightly wrong. Marking that wrong is how you lose somebody.
+    expect(gradeUsed("quiero un cafe con leche", ["cafés"])).toMatchObject({ verdict: "close" });
+  });
+
+  it("is wrong, not close, when they talked about something else entirely", () => {
+    expect(gradeUsed("hoy hace mucho calor en la ciudad", ["bibliotecaria"])).toMatchObject({ verdict: "wrong", why: "word" });
+  });
+
+  it("says silence when nothing was heard, which has its own gesture and is not a mistake", () => {
+    expect(gradeUsed("", ["café"])).toMatchObject({ verdict: "wrong", why: "silence" });
+    expect(gradeUsed("   ", ["café"])).toMatchObject({ verdict: "wrong", why: "silence" });
+  });
+
+  it("works where a script puts no spaces between its words", () => {
+    expect(gradeUsed("我每天喝咖啡", ["咖啡"])).toMatchObject({ verdict: "right" });
+    expect(gradeUsed("我每天喝茶", ["咖啡"])).toMatchObject({ verdict: "wrong" });
+  });
+
+  it("holds a long turn without the near-miss search running away", () => {
+    const long = "palabra ".repeat(400).trim();
+    const t = Date.now();
+    expect(gradeUsed(long, ["café"])).toMatchObject({ verdict: "wrong" });
+    expect(Date.now() - t).toBeLessThan(500);
   });
 });

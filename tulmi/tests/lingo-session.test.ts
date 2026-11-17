@@ -34,6 +34,58 @@ describe("how long a session is", () => {
   });
 });
 
+describe("the grid: both ways of being asked, at every level", () => {
+  // Held enough to be produced, and said enough times to count: the state every rung below is working towards.
+  const ready = (over: Partial<LingoItem> = {}) => item({
+    spoken: 2, memory: { ...freshMemory(T0), state: "review", stability: 400, difficulty: 5, reps: 9, lastMs: T0 }, ...over,
+  });
+
+  it("asks a WORD to be said and a whole UTTERANCE to be spoken", () => {
+    const unsaid = { spoken: 0, memory: { ...freshMemory(T0), state: "review", stability: 40, difficulty: 5, reps: 4, lastMs: T0 } };
+    expect(shapeFor(item({ ...unsaid, kind: "word" }), T0)).toBe("say");
+    expect(shapeFor(item({ ...unsaid, kind: "phrase" }), T0)).toBe("speak");
+  });
+
+  it("asks an utterance what you would SAY here, where a word gets a gap to fill", () => {
+    const twice = { memory: { ...freshMemory(T0), state: "learning", stability: 2, difficulty: 5, reps: 2, lastMs: T0 }, spoken: 2 };
+    expect(shapeFor(item({ ...twice, kind: "word" }), T0)).toBe("blank");
+    expect(shapeFor(item({ ...twice, kind: "phrase" }), T0)).toBe("reply");
+  });
+
+  it("ends at conversation once a word is held and has been said, and not before", () => {
+    expect(shapeFor(ready(), T0)).toBe("talk");
+    // Said enough times but going cold: back down to producing it on its own, not up to open conversation.
+    expect(shapeFor(ready({ memory: { ...freshMemory(T0), state: "review", stability: 2, difficulty: 5, reps: 9, lastMs: T0 - 40 * DAY } })), T0).not.toBe("talk");
+    // Held, but never said out loud: it has to be said before it can be used.
+    expect(shapeFor(ready({ spoken: 0 }), T0)).toBe("say");
+  });
+
+  it("offers real things to say for a reply, with the right one among them", () => {
+    const want = item({ item: "un café por favor", gloss: "a coffee please", kind: "phrase" });
+    const pool = [want, item({ item: "la cuenta por favor", gloss: "the bill please", kind: "phrase" }), item({ item: "buenos días", gloss: "good morning", kind: "phrase" })];
+    const ex = exerciseFor(want, pool, T0, "reply");
+    expect(ex.prompt).toBe("a coffee please");
+    expect(ex.options).toContain("un café por favor");
+    expect(ex.options[ex.correct]).toBe("un café por favor");
+    expect(ex.options.length).toBeGreaterThan(1);
+    expect(ex.spoken).toBe(false);
+  });
+
+  it("counts speak and talk as out loud, and never shows the answer for either", () => {
+    const want = item({ item: "café", gloss: "coffee" });
+    for (const k of ["say", "speak", "talk"] as const) {
+      const ex = exerciseFor(want, [want], T0, k);
+      expect(ex.spoken, k).toBe(true);
+      // The thing they must produce is never on the screen: the prompt is its meaning.
+      expect(ex.prompt, k).toBe("coffee");
+      expect(ex.prompt, k).not.toBe("café");
+    }
+    expect(answered(want, "speak", { verdict: "right", matched: null, why: "" }, T0).spoken).toBe(1);
+    expect(answered(want, "talk", { verdict: "right", matched: null, why: "" }, T0).spoken).toBe(1);
+    expect(answered(want, "reply", { verdict: "right", matched: null, why: "" }, T0).spoken).toBe(0);
+  });
+});
+
 describe("an item climbs towards being said", () => {
   it("only asks for recognition the first time it is met", () => {
     expect(shapeFor(item(), T0)).toBe("choose");

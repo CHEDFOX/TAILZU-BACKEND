@@ -26,7 +26,7 @@ import {
   sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
-import { field, inputBox, isDesk } from "./parts.js";
+import { chatBar, field, inputBox, isDesk } from "./parts.js";
 import { searchField, searchLine } from "../keybotParts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
 import type { Exercise } from "../../../../lingo/session.js";
@@ -285,6 +285,15 @@ function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
       listCard(ex.options.map((o, i) => listRow({ label: o, onPress: answer({ picked: i }) }))),
     ];
   }
+  if (ex.kind === "reply") {
+    // The same shape as choose, the other way round: the meaning is the question and the answers are things you
+    // could really say. Picking what you would say is how somebody reaches conversation before they can speak it.
+    return [
+      meta("What would you say?", { size: 13 }),
+      head(ex.prompt),
+      listCard(ex.options.map((o, i) => listRow({ label: o, onPress: answer({ picked: i }) }))),
+    ];
+  }
   if (ex.kind === "blank") {
     return [
       meta(ex.prompt, { size: 14 }),
@@ -308,9 +317,11 @@ function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
       primaryButton("Check", answer({ said: "$state.said" })),
     ];
   }
-  if (ex.kind === "say" || ex.kind === "talk") {
+  if (ex.kind === "say" || ex.kind === "speak" || ex.kind === "talk") {
     return [
-      meta("Say it out loud", { size: 13 }),
+      // `talk` is the only rung that is the real thing: nothing is read back, and what is marked is whether the word
+      // came out inside something of their own.
+      meta(ex.kind === "talk" ? "Say something that uses it" : ex.kind === "speak" ? "Say the whole thing out loud" : "Say it out loud", { size: 13 }),
       head(ex.prompt),
       // voiceLive writes what was heard into state; the server marks it, never the app.
       // The whole turn's words go into state; the SERVER marks them. `onHeard` only stops the session.
@@ -382,6 +393,11 @@ export const LINGO_SCREENS: BotsScreen[] = [
       back: true,
       backTitle: "Lingo",
       body: territory(ctx, data),
+      // TALKING TO IT. Every other bot with a page of its own has this in its footer, and Lingo — the one bot whose
+      // whole point is conversation — had no way to be spoken to at all: its tile opens the territory rather than
+      // the shared bot page, and nothing on any of its four screens asked for a word. It is not on a lesson, only
+      // here: the middle of a set is not the moment to be offered a chat.
+      footer: [chatBar(ctx, LINGO_SLUG, "Lingo", "Ask how to say something…", open(SCREENS.chat, { slug: LINGO_SLUG }))],
     }),
   }),
   screen<PickerData>({

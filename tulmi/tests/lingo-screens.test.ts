@@ -22,7 +22,7 @@ import {
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
 import type { Exercise } from "../src/lingo/session.js";
-import type { ExerciseKind } from "../src/lingo/types.js";
+import { EXERCISE_KINDS, type ExerciseKind } from "../src/lingo/types.js";
 
 const live = sampleLive();
 const ctx = (client: "phone" | "desktop" = "phone") => ctxFor(SCREENS.lingo, client, live);
@@ -68,7 +68,9 @@ describe("every tree the kit would draw", () => {
       expect(clean(picker(c, { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [{ tag: "ta", name: "தமிழ்", en: "Tamil" }] })), client).toEqual([]);
       expect(clean(leaving(c, "es", "Español")), client).toEqual([]);
       expect(clean(whyScreen(c, "es", "Español")), `${client} why`).toEqual([]);
-      for (const k of ["choose", "blank", "write", "listen", "chips", "say", "talk"] as ExerciseKind[]) {
+      // EVERY kind, from the list itself and not a copy of it: a kind added without a screen to draw it would
+      // otherwise reach a person as a blank page, and the copy would go on passing.
+      for (const k of EXERCISE_KINDS) {
         const data: SetData = {
           exercises: [ex(k, { options: ["coffee", "dog", "book"], chips: ["un", "café"], sentence: "Quiero un ——— con leche" })],
           progress: course().progress, mastery: course().mastery,
@@ -165,6 +167,33 @@ describe("the territory", () => {
     const n = territory(ctx(), { courses: [course()] });
     expect(buddies(n)).toEqual([]);
     expect(json(n)).toContain("Your languages");
+  });
+});
+
+describe("the new rungs draw with nodes every build already has", () => {
+  it("draws a reply as a list of things you could say, and never says which is right", () => {
+    const data: SetData = {
+      exercises: [ex("reply", { prompt: "a coffee please", options: ["un café por favor", "la cuenta por favor", "buenos días"] })],
+      progress: course().progress, mastery: course().mastery,
+    };
+    const s = json(setScreen(ctx(), "es", data));
+    expect(s).toContain("What would you say?");
+    expect(s).toContain("un café por favor");
+    expect(s).not.toContain("correct");
+  });
+
+  it("asks for the whole thing out loud for speak, and for something of their own for talk", () => {
+    const one = (k: ExerciseKind) => json(setScreen(ctx(), "es", {
+      exercises: [ex(k, { prompt: "coffee", spoken: true })], progress: course().progress, mastery: course().mastery,
+    }));
+    expect(one("say")).toContain("Say it out loud");
+    expect(one("speak")).toContain("Say the whole thing out loud");
+    expect(one("talk")).toContain("Say something that uses it");
+    // All three take a voice, and none of them puts the answer on the screen.
+    for (const k of ["say", "speak", "talk"] as ExerciseKind[]) {
+      expect(one(k), k).toContain("Hold to speak");
+      expect(one(k), k).not.toContain("café");
+    }
   });
 });
 

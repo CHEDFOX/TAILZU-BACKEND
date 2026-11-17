@@ -107,7 +107,18 @@ out loud. It gets one slip more than the typed budget, and the first slip still 
 
 ## 5. The exercises
 
-Seven kinds (`types.ts` `EXERCISE_KINDS`), and the order is the point:
+It is a **grid, not a line**. Three levels — a word, a whole utterance, a turn of conversation — and at every level
+both ways of being asked: **pick the right one** and **say the right thing**. Recognising is not the lesson and never
+was, but it is how saying gets within reach, so the two run side by side all the way up rather than one replacing the
+other.
+
+| | pick the right one | say the right thing |
+| --- | --- | --- |
+| **a word** | `choose` | `say` |
+| **a whole utterance** | `reply`, `blank`, `chips` | `speak` |
+| **a turn of conversation** | — | `talk` |
+
+Nine kinds (`types.ts` `EXERCISE_KINDS`):
 
 | Kind | What it asks | Marked by |
 | --- | --- | --- |
@@ -116,10 +127,24 @@ Seven kinds (`types.ts` `EXERCISE_KINDS`), and the order is the point:
 | `listen` | it is spoken, they type what they heard | `gradeText` |
 | `chips` | put the given words in order | `gradeChips` |
 | `blank` | a real sentence with the word taken out, and put back | `gradeChoice` |
-| `say` | say it out loud | `gradeSpoken` |
-| `talk` | a turn of real conversation, the item expected in it | `gradeSpoken` |
+| `reply` | what you would actually say here, out of a few | `gradeChoice` |
+| `say` | say the word out loud | `gradeSpoken` |
+| `speak` | say a whole utterance out loud, from its meaning | `gradeSpoken` |
+| `talk` | a turn of real conversation, the item expected somewhere in it | `gradeUsed` |
 
-The first five exist to get an item ready for the last two. They are the whole of most language apps.
+Everything else exists to get an item ready for `talk`, which is the only rung that is the real thing.
+
+**`talk` is marked differently from everything else, and the difference is the point.** `gradeUsed` does not check
+that they said the right sentence — it checks whether **the word they were due came out of their mouth inside
+something they made up themselves**. Nothing judges whether what they said was good, or true, or interesting: no
+grader can do that, and one that pretended to would be lying. Using a word in a sentence of your own is a far higher
+bar than repeating it, and it is the only thing the scheduler needs to know. A word hiding inside a longer one does
+not count (`cafetería` is not `café`), a transcriber's slipped letter is `close` rather than wrong, and saying
+nothing is `silence`, which has its own gesture rather than a mark against them.
+
+**`reply` is the rung that makes conversation reachable before somebody can speak it.** Pick what you would say,
+out of things you could really say. It needs no speech and no open-ended marking, so it works with the grader that
+already exists — and it is the on-ramp to `talk`.
 
 ## 6. A session
 
@@ -134,9 +159,13 @@ themselves come before anything off a list. Length follows the minutes they aske
 | Where the item is | What it gets |
 | --- | --- |
 | never met, or just lost | `choose` — recognise it. Asking somebody to produce a word they have not met teaches nothing but frustration |
-| going in | `listen`, then `chips` |
-| held, but never said enough | **`say`**, and it stays there until it has been said enough times to count |
-| held and said | `write`, or `chips` for a phrase |
+| going in | `listen`, then `blank` for a word or `reply` for an utterance, then `chips` |
+| held, but never said enough | **`say`** for a word, **`speak`** for a whole utterance, and it stays there until it has been said enough times to count |
+| held and said | `write` |
+| held well, and said enough | **`talk`** — use it in something of their own. The top of the ladder, and where every rung below was going |
+
+A whole utterance is **said**, not spelled, so where a word gets `say` a phrase gets `speak`; and where a word gets a
+gap to fill, an utterance gets the same question one level up — of these, what would you actually say here.
 
 That last row is the mechanism behind the whole idea. A tapping exercise is not the lesson; it is how a word gets
 ready to be spoken, and an item that is never asked for out loud never finishes.
@@ -172,6 +201,39 @@ languages anywhere in Lingo**, so any pair works the day somebody asks for it.
 ordinary bot loop with the course as its knowledge (`digest.ts`) — the pair, the level, the streak, the counts, and
 the words due now with the ones never said marked. So "what should I practise?" is answered from the real table in
 one model call, and the conversation can be steered onto what is about to be forgotten.
+
+## 8b. Talking to it, and the one thing the chat can do
+
+**Where you ask.** The chat bar is in the footer of the territory (`bots.lingo`), exactly as mail, meetings, cinema
+and Plan Ease have theirs. It is not on a lesson: the middle of a set is not the moment to be offered a chat.
+
+Until it was put there **there was nowhere to ask Lingo anything at all** — its tile opens the territory rather than
+the shared bot page, and none of its screens carried a chat bar. The bot whose entire point is conversation could
+not be spoken to.
+
+**`lingo_note_words`** (`src/lingo/tool.ts`) is the only thing its chat can do besides talk: write a word into the
+course. Lingo's rules already said *"their own words, the ones they reached for, come before anything off a list"*,
+and `unseen` already asked for those first — but nothing could put one there. Somebody could ask how to say a word,
+be told, and have it gone by the end of the conversation. **A bot that says it will remember something and cannot
+is worse than one that never offered**, so the tool's description ends: *never say you have written something down
+unless you have called this.*
+
+| | |
+| --- | --- |
+| which course | the one they last opened, which is the one the app is showing |
+| how they met it | `asked`, `said` or `heard` — and the scheduler already prefers them in that order, so a word Lingo itself used is the weakest of the three |
+| a word already there | left exactly as it is, history and all. Being mentioned again never resets what the scheduler knows |
+| half a word | refused. Both the word and its meaning, or nothing: a word with no meaning reaches them as a blank question |
+| how many at once | eight. A conversation produces a handful worth keeping, never a glossary |
+| no course yet | it says so, rather than dropping the words quietly |
+
+It is given to **Lingo and to no other bot** (`bots/tools.ts`, gated on the bot's id): another bot handed it would
+be filing words into a course it knows nothing about. A name with no definition gets no handler either, so it
+cannot be called behind the list's back.
+
+**What is still not solved:** a word earns its place the first time it is mentioned. The stricter rule — reached for
+twice, or got wrong once — is not built, and a course can fill with things said in passing. `source` softens it
+(what they went looking for is asked before what merely went past them) but does not fix it.
 
 ## 9. The sentence bank: not writing the exercises
 
@@ -217,6 +279,26 @@ splitting on spaces, which is the only way that works in a script that has none.
 `around(lang, gloss, maxWords)` finds sentences of about a length, for a level. How long a sentence is depends on
 its SCRIPT, not on whether it happens to contain a space: words where the script separates them, characters where
 it does not.
+
+## 9b. The spine: what a course is made of before anybody has said anything
+
+A course holds the words this person reached for. On the first day there are none — nothing to schedule, nothing to
+ask, and **"Nothing due" on the very first screen somebody sees**. So when a course is running dry (fewer than six
+never-seen items), `POST /v1/lingo/session` draws on the shared bank for short sentences of the pair before it picks
+anything.
+
+They are **real sentences with their meaning already on them**, which is the only reason they can be seeded at all:
+a bare frequency list would give words with nothing to say what they mean, and word-level translation of a corpus is
+a different and much harder problem. Length follows the level (five words at a1, twenty at c2), so what the spine
+offers grows with the person.
+
+**Need first, and the language in the end.** The spine goes in as `source: "seed"`, and `unseen` (`schedule.ts`)
+already orders `said → asked → heard → seed`. So anything somebody reached for themselves is always asked ahead of
+it and the spine is only ever the floor underneath. Their own words lead for as long as they keep coming; the spine
+fills in behind them when they do not. No ratio to tune — the ordering is the rule, and it was already there.
+
+An empty bank is not an error: the course stays as it is, and a language nobody has poured a corpus into simply has
+no spine yet (`scripts/lingo-seed.ts`).
 
 ## 10. The order a session is put in
 
