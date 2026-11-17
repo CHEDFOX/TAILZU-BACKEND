@@ -93,9 +93,19 @@ function groupTile(s: Space, height: number, padding: number): Node {
 /** Built-ins with a look of their own, on Home's grid beside the first three wherever they are set up (docs/oracle.md, docs/mail.md). */
 const FEATURED: readonly string[] = ["oracle", "mail", "cinema"];
 
+/**
+ * HOW MANY BOTS HOME DRAWS AS ROWS. One column means one bot a row, full width, and each row is a LIVING tile — a Blip
+ * of its own playing on it (BotTiles, app side: kept by slug for the life of the app). So this is not a layout number,
+ * it is how many bots are animating at once, and it is why the list is capped at all rather than simply showing every
+ * bot somebody has. Past it they are chips, which `moreBots` already does and which costs nothing to draw.
+ *
+ * Eight holds every built-in there can be today with room for a few of their own.
+ */
+const HOME_TILES = 8;
+
 /** The bots Home's grid draws: the first three, then the Oracle, the mail bot and the cinema bot. */
 export function homeShown(ctx: BotsCtx): LiveBot[] {
-  const first = ctx.live.bots.slice(0, 3);
+  const first = ctx.live.bots.slice(0, HOME_TILES);
   return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
 }
 
@@ -229,8 +239,12 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
     ...(first ? [needsCard(first)] : []),
     ...n.push,
-    tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
-    // Every bot past the first three, a chip each: the Oracle, the mail bot and their own are never out of reach.
+    // ONE COLUMN: one bot a row, full width. Two columns of 132 gave the phone four slots — three bots and "Make a
+    // bot" — so with five built-ins alone most of them were chips. A row is shallower than a tile (104 against 132)
+    // because a wide one needs less height to give its bot somewhere to play, and seven rows of 132 is three screens.
+    // Nothing about the tile changes: each row is the same living tile, with the same tap, at a different shape.
+    tiles(ctx, 1, 104, 16, more.notes, more.groups, more.planLine),
+    // Anything past the cap, a chip each. With the cap at eight this is usually empty, and moreBots draws nothing then.
     ...moreBots(ctx),
     ...routinesRow(ctx, more.routines),
   ];

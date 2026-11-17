@@ -87,8 +87,9 @@ describe("bots.home", () => {
       "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Talk", "Activity"]) {
       expect(words, w).toContain(w);
     }
-    // The board's three tiles; every other bot is a chip under them ("More bots"), so none is out of reach on the phone.
-    expect(words).toContain("More bots");
+    // The phone draws one bot a row now, up to HOME_TILES, so the fixtures' bots ALL fit and there is nothing left
+    // for a chip. moreBots draws nothing when the grid shows everything, so the section is simply absent.
+    expect(words).not.toContain("More bots");
     expect(words.filter((w) => w === "Travel bot")).toHaveLength(1);
     expect(words.filter((w) => w === "Gym bot")).toHaveLength(1);
     const acts = presses(s.root!);
@@ -126,15 +127,17 @@ describe("bots.home", () => {
   });
 
   it("living tiles for a build that draws them (BotsMotion): a tiny bot per tile, its play, its state; else today's tiles", async () => {
-    for (const [client, cols] of [["phone", 2], ["desktop", 4]] as const) {
+    // One bot a row on the phone; the window keeps its four across.
+    for (const [client, cols] of [["phone", 1], ["desktop", 4]] as const) {
       const r = { ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion"]) };
       const s = await buildBotsScreen(r, fakeDeps());
       const grid = walk(s.root!).find((n) => n.type === "BotTiles")!;
       expect(grid, client).toBeDefined();
       const tiles = grid.props!.tiles as Array<{ slug: string; name: string; sub: string; color: string; kind: string; state: string; action?: ActionSpec }>;
       expect(grid.props).toMatchObject({ columns: cols, faces: { semibold: "Tailzu Geist SemiBold" } });
-      expect(tiles).toHaveLength(4);
-      expect(tiles[3]).toMatchObject({ slug: "make", name: "Make a bot", kind: "make", color: "#0a0a0a", action: { kind: "navigate", screenId: "bots.make" } });
+      expect(tiles.length, client).toBeGreaterThanOrEqual(4);
+      // Make a bot is last, whatever came before it.
+      expect(tiles.at(-1)).toMatchObject({ slug: "make", name: "Make a bot", kind: "make", color: "#0a0a0a", action: { kind: "navigate", screenId: "bots.make" } });
       // The sample day: Xode both working and waiting on Aanya (needs first), each with its own colour and play.
       const code = tiles.find((t) => t.slug === "code")!;
       expect(code).toMatchObject({ kind: "code", color: "#4F7A3A", action: { kind: "navigate" } });
@@ -152,12 +155,12 @@ describe("bots.home", () => {
   it("Notes: a full-width strip under the whole grid, in the living grid's world where the build draws one (BotTilesStrip), else still", async () => {
     const stats = { week: { meetings: 3, seconds: 4440, people: 3 }, openTodos: 2, recording: false, organising: 0 };
     const deps = () => fakeDeps({ api: { "GET /v1/notes/stats": stats } });
-    for (const [client, cols, h] of [["phone", 2, 100], ["desktop", 4, 112]] as const) {
+    for (const [client, cols, h] of [["phone", 1, 100], ["desktop", 4, 112]] as const) {
       const r = { ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion", "BotTilesStrip"]) };
       const s = await buildBotsScreen(r, deps());
       const grid = walk(s.root!).find((n) => n.type === "BotTiles")!;
-      // The grid is as it was: three bots and Make a bot.
-      expect((grid.props!.tiles as Array<{ slug: string }>).map((t) => t.slug)).toEqual(["code", "keybot", "plan", "make"]);
+      // Every bot a row of its own, then Make a bot. The strip (Notes) is still its own full-width row under them.
+      expect((grid.props!.tiles as Array<{ slug: string }>).map((t) => t.slug)).toEqual(["code", "keybot", "plan", "travel", "talk", "gym-bot", "make"]);
       expect(grid.props).toMatchObject({
         columns: cols, stripHeight: h,
         strip: { slug: "notes", name: "Notes", kind: "notes", sub: "2 to-dos open", state: "idle", color: "#6E4A6B", action: { kind: "navigate", screenId: "bots.notes" } },
