@@ -20,13 +20,17 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../../lingo/grade.js";
+import { blendMs, thinkingTime } from "../../lingo/portrait.js";
+import { after, FIRST_UNIT, unitDone } from "../../lingo/course.js";
+import { lessonBank, unitFor, type LessonBank, type UnitItem } from "../../lingo/lessons.js";
+import { recall } from "../../lingo/schedule.js";
 import { learned } from "../../lingo/schedule.js";
 import { answered, dayOf, pick, plan, progress, refOf, shapeFor, streakAfter, wire, type Exercise, type SentenceLookup } from "../../lingo/session.js";
 import { againAfter } from "../../lingo/order.js";
 import { gestureFor, mastery, performanceOf, readSet, shapeNext, SET_SIZE, type Answered, type SetShape } from "../../lingo/set.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
-import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type LingoItem, type Verdict, type Why } from "../../lingo/types.js";
+import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type LingoItem, type Memory, type Verdict, type Why } from "../../lingo/types.js";
 import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
 
 export interface LingoRouteDeps {
@@ -36,6 +40,10 @@ export interface LingoRouteDeps {
   store?: LingoStore;
   /** The shared sentence bank (src/lingo/sentences.ts); the server's own when not given. */
   bank?: SentenceBank;
+  /** What fills a unit for a pair (src/lingo/lessons.ts); the server's own when not given, null to make none. */
+  lessons?: LessonBank | null;
+  /** The model door a unit is written through. Without one no unit is ever made, and the path simply waits. */
+  call?: unknown;
   now?: () => number;
 }
 
@@ -44,6 +52,8 @@ const TEXT_MAX = 200;
 const GLOSS_MAX = 300;
 /** Their own words for what the language is for. A line is plenty; the column holds 400. */
 const WHY_NOTE_MAX = 400;
+/** What writing one unit of a course for one pair may cost. It is paid once and then everybody on the pair has it. */
+const UNIT_PAISE = 400;
 const WORDS_PER_CALL = 50;
 /** Sentences fetched per word that needs one. A handful is plenty: the shortest usable one is taken. */
 const SENTENCES_PER_WORD = 4;
@@ -58,6 +68,9 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
   const rl = { config: deps.rateLimit as never };
   const store = (): LingoStore => deps.store ?? lingoStore();
   const bank = (): SentenceBank => deps.bank ?? sentenceBank();
+  const lessons = (): LessonBank => deps.lessons ?? lessonBank();
+  /** Whose call it is and what it may spend. A unit is written once for a pair and then taught to everybody. */
+  const modelCtx = (userId: string) => ({ userId, budget: { maxPaise: UNIT_PAISE } as never, ...(deps.call ? { call: deps.call as never } : {}) });
   const now = deps.now ?? Date.now;
 
   const begin = async (req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> => {
@@ -247,7 +260,57 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
   const SPINE_ADD = 12;
   const SPINE_WORDS: Record<Level, number> = { a1: 5, a2: 7, b1: 10, b2: 13, c1: 16, c2: 20 };
 
+  /**
+   * WALKING THE PATH. Somebody always has a next thing to do, and this is what decides what it is.
+   *
+   * The unit they are on is loaded into their course the first time they reach it — made for their pair if nobody
+   * has ever reached it before, and kept for everybody after (lessons.ts). When most of that unit is held AND has
+   * been said, they move to the next one and it is loaded in turn.
+   *
+   * "Most", not all: one stubborn word must not hold somebody at unit 3 for a fortnight, and nothing is lost by
+   * moving on, because the scheduler goes on asking for it wherever they are.
+   *
+   * This is the difference between a course and a pile of words. Without it there is no answer to "what now?"
+   * except "whatever is due", and on a quiet day that is nothing at all.
+   */
+  const walk = async (userId: string, course: Learner, items: readonly LingoItem[], at: number): Promise<{ items: readonly LingoItem[]; course: Learner }> => {
+    let here = course.unit || FIRST_UNIT;
+    let learner = course;
+    const held = (i: { memory?: Memory }) => (i.memory ? recall(i.memory, at) : 0);
+    let have = items;
+
+    // At most two steps in one sitting: somebody who has been away does not get three units poured in at once.
+    for (let step = 0; step < 2; step++) {
+      const mine = have.filter((i) => i.unit === here);
+      if (mine.length && unitDone([...have], here, held as never)) {
+        const next = after(here);
+        if (!next) break;                        // the end of the path: they carry on with everything they have
+        here = next.key;
+        continue;
+      }
+      if (mine.length) break;                     // this unit is loaded and not finished: nothing to do
+      // Never reached before. Make it for this pair, or take what was made for somebody else on it.
+      const made = deps.lessons === null ? null
+        : await unitFor(lessons(), modelCtx(userId), course.target, course.from, here).catch(() => null);
+      if (!made?.length) break;                   // could not be made: they carry on with what they have
+      await store().add(userId, course.target, made.map((m: UnitItem) => ({
+        item: m.text, gloss: m.meaning, kind: m.kind, source: "seed" as const, unit: here,
+      })), at).catch(() => 0);
+      have = await store().items(userId, course.target).catch(() => have);
+      break;
+    }
+    if (here !== (course.unit || FIRST_UNIT)) {
+      learner = { ...course, unit: here };
+      await store().setCourse(userId, { ...learner, usedMs: at }, at).catch(() => undefined);
+    }
+    return { items: have, course: learner };
+  };
+
   const topUp = async (userId: string, course: Learner, items: readonly LingoItem[], at: number): Promise<readonly LingoItem[]> => {
+    // ONLY WHERE THE PATH COULD NOT REACH. The spine was built for a course with nothing in it; the path fills that
+    // now, and better, because it is in an order that goes somewhere. Pouring in loose sentences beside a unit
+    // drowns it — twenty of them against a unit of eight — so it stands down the moment the path has anything.
+    if (items.some((i) => i.unit)) return items;
     if (items.filter((i) => i.memory.state === "new").length >= SPINE_LOW) return items;
     const rows = await bank().around(course.target, course.from, SPINE_WORDS[course.level] ?? 5, SPINE_ADD * 3).catch(() => []);
     const have = new Set(items.map((i) => keyOf(i.item)));
@@ -270,19 +333,24 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     if (!course) return bad(reply, "That course has not been started.");
 
     const at = now();
-    // Running dry: bring in the spine before anything is picked, so the first set of a new course is a real set.
-    const items = await topUp(user.id, course, await store().items(user.id, target).catch(() => []), at);
+    // The path first: load the unit they are on, or move them to the next one when this one is done. Then the
+    // spine, which is only ever the floor under a course the path could not fill.
+    const walked = await walk(user.id, course, await store().items(user.id, target).catch(() => []), at);
+    const items = await topUp(user.id, walked.course, walked.items, at);
+    const onPath = walked.course;
     // The shape of this set, as the last one's performance left it. The app hands back what /v1/lingo/set gave it
     // and never invents one; anything that cannot be read as a shape means the first set of a sitting.
     const shape = readShape(b["shape"]);
     // Only the words the ladder would put into a sentence are looked up in the bank.
     const wants = items.filter((i) => shapeFor(i, at) === "blank").map((i) => i.item);
-    const sentences = await lookupFor(target, course.from, pick(items, course, at, shape), wants);
-    // Opening a session is what makes this the course the app shows next time.
-    await store().setCourse(user.id, { ...course, usedMs: at }, at).catch(() => undefined);
+    const sentences = await lookupFor(target, onPath.from, pick(items, onPath, at, shape), wants);
+    // Opening a session is what makes this the course the app shows next time. It writes back the course AS THE
+    // PATH LEFT IT, not as it was read: walking may just have moved them to the next unit, and writing the old row
+    // back over it put them where they started. Whole-row writes mean every writer has to carry what the last one did.
+    await store().setCourse(user.id, { ...onPath, usedMs: at }, at).catch(() => undefined);
     // Wired: the item's own text, the accepted answers and which option is right are all taken out. A typed or
     // spoken exercise would otherwise travel with its own answer in it.
-    const exercises = plan(items, course, at, sentences, shape).map((ex) => wire(ex, refOf(user.id, target, ex.item)));
+    const exercises = plan(items, onPath, at, sentences, shape).map((ex) => wire(ex, refOf(user.id, target, ex.item)));
     return reply.header("cache-control", "no-store")
       .send({
         exercises, progress: progress(items, at), mastery: mastery(items, at),
@@ -398,16 +466,33 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       : kind === "say" || kind === "speak" ? gradeSpoken(said, ex.accepted)
       : gradeText(said, ex.accepted);
 
-    const next = answered(item, kind, mark, at);
+    // HOW LONG THEY THOUGHT ABOUT IT: the gap since their last answer here, which is the only honest measure of it
+    // that exists — no clock in the app, and no message that could say otherwise. A gap where they put the phone
+    // down is not thinking and is thrown away rather than capped (portrait.ts). It is the difference between a word
+    // somebody HAS and one they can work out, and nothing else here can tell those apart: both are marked right.
+    const thought = thinkingTime(course.lastAnswerMs, at);
+    const answeredItem = answered(item, kind, mark, at);
+    const next = thought
+      ? { ...answeredItem, memory: { ...answeredItem.memory, thinkMs: blendMs(item.memory.thinkMs ?? 0, thought) } }
+      : answeredItem;
     await store().save(user.id, target, [next], at);
 
     // A session that got anywhere counts for the day. The streak is the person's own day, not the server's.
     const tz = num(b["tzOffsetMinutes"]) ?? 0;
     const today = dayOf(at, Math.max(-840, Math.min(840, tz)));
     const streak = streakAfter(course, today);
-    if (streak.lastDay !== course.lastDay || streak.streakDays !== course.streakDays) {
-      await store().setCourse(user.id, { ...course, ...streak, usedMs: at }, at).catch(() => undefined);
-    }
+    // Per kind: asked, right, and the middle time. The portrait's rates are built from these, and they are counted
+    // here because this is the only place that knows what was actually asked and how it went.
+    const was = course.tally?.[kind] ?? { asked: 0, right: 0, ms: 0 };
+    const tally = {
+      ...(course.tally ?? {}),
+      [kind]: {
+        asked: was.asked + 1,
+        right: was.right + (mark.verdict === "right" ? 1 : 0),
+        ms: thought ? blendMs(was.ms, thought) : was.ms,
+      },
+    };
+    await store().setCourse(user.id, { ...course, ...streak, tally, lastAnswerMs: at, usedMs: at }, at).catch(() => undefined);
 
     return reply.send({
       mark,

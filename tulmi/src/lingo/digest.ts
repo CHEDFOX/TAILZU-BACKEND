@@ -12,6 +12,7 @@
 import { neutral } from "../bots/prompt.js";
 import { due, unseen } from "./schedule.js";
 import { progress } from "./session.js";
+import { portraitOf } from "./portrait.js";
 import { lingoStore, type LingoStore } from "./store.js";
 
 const DUE_SHOWN = 25;
@@ -43,8 +44,14 @@ export async function lingoDigest(userId: string, o: DigestDeps = {}): Promise<s
   const items = await store.items(userId, course.target).catch(() => []);
   const p = progress(items, now);
 
+  const me = portraitOf(items, course, now);
   const lines: string[] = [];
-  lines.push(`Learning: ${course.target}. Speaks: ${course.from}. Level: ${course.level}. ${course.goalMin} minutes a day.`);
+  lines.push(`Learning: ${course.target}. Speaks: ${course.from}. ${course.goalMin} minutes a day.`);
+  // WHERE THEY ARE ON THE PATH. Without it the conversation has no idea what this person is supposed to be able to
+  // do this week, and drifts into whatever the model finds interesting.
+  lines.push(`On the path: unit ${me.unit.at} of ${me.unit.of} — "${me.unit.goal}"`);
+  lines.push(`Level: ${me.earned}${me.earned === me.said ? "" : ` (they said ${me.said} when they started)`}.`);
+  lines.push(`Holding ${(me.hold * 100).toFixed(0)}% of what they have met.`);
   if (courses.length > 1) lines.push(`Also learning: ${courses.slice(1).map((c) => c.target).join(", ")}.`);
   lines.push(`Streak: ${course.streakDays} day${course.streakDays === 1 ? "" : "s"}.`);
   // WHAT THEY CAME FOR (bots.lingo.why). Everything else here is counts; this is the only line that says what the
@@ -54,6 +61,25 @@ export async function lingoDigest(userId: string, o: DigestDeps = {}): Promise<s
   if (course.whyNote) lines.push(`In their own words: ${course.whyNote}`);
   if (why || course.whyNote) lines.push("Keep what you teach and what you talk about pointed at that.");
   lines.push(`Words and phrases: ${p.items}, of which ${p.learned} are learned (said out loud), ${p.due} are due now and ${p.unseen} are new.`);
+
+  // HOW THEY DO AT EACH KIND, hardest first, and how sure that is. A rate with three answers behind it is said to
+  // be a rate with three answers behind it, because a model told "0% at speaking" will act on it either way.
+  if (me.kinds.length) {
+    lines.push("", "How they do, hardest first:");
+    for (const k of me.kinds.slice(0, 6)) {
+      const sure = k.sure < 0.5 ? ` — only ${k.n} so far, so this is a guess` : "";
+      lines.push(`- ${k.kind}: ${(k.p * 100).toFixed(0)}% of ${k.n}${sure}`);
+    }
+  }
+  if (me.thinkMs) lines.push("", `They take about ${(me.thinkMs / 1000).toFixed(1)}s to answer. Slower than that on a word means they are working it out, not remembering it.`);
+  if (me.hard.length) {
+    lines.push("", "Costing them the most. Bring these up, and do not let them off:");
+    for (const h of me.hard.slice(0, 8)) lines.push(`- ${h.item} = ${h.gloss}${h.lapses ? ` (lost it ${h.lapses}x)` : ""}${h.effort > 1.3 ? ` (${h.effort}x their usual thinking time)` : ""}`);
+  }
+  if (me.easy.length) {
+    lines.push("", "Solid. Use these freely, and do not waste their time testing them:");
+    lines.push(me.easy.slice(0, 8).map((e) => e.item).join(", "));
+  }
 
   const ready = due(items, now, DUE_SHOWN);
   if (ready.length) {

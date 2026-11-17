@@ -236,6 +236,34 @@ describe("a session and an answer", () => {
     expect((await store.items("u1", "es")).length, "a second look does not pour the bank in again").toBe(first);
   });
 
+  it("times how long they thought, from the gap between answers, and counts how each kind goes", async () => {
+    const store = new MemoryLingoStore();
+    let clock = T0;
+    const app = await server(store, () => clock);
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    await call(app, "POST", "/v1/lingo/words", { target: "es", items: [{ item: "hola", gloss: "hello" }, { item: "adiós", gloss: "bye" }] });
+    const ref = refOf("u1", "es", "hola");
+
+    // The first answer has nothing to be measured from, so nothing is claimed about it.
+    await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "choose", picked: 0 });
+    expect((await store.items("u1", "es")).find((i) => i.item === "hola")!.memory.thinkMs ?? 0).toBe(0);
+
+    // Four seconds later, on the other word: that gap IS the time they spent on this one.
+    clock += 4_000;
+    const ref2 = refOf("u1", "es", "adiós");
+    await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: ref2, kind: "choose", picked: 0 });
+    expect((await store.items("u1", "es")).find((i) => i.item === "adiós")!.memory.thinkMs).toBe(4_000);
+
+    // Then they put the phone down for ten minutes. That is not thinking, and it is thrown away, not capped.
+    clock += 600_000;
+    await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "choose", picked: 0 });
+    expect((await store.items("u1", "es")).find((i) => i.item === "hola")!.memory.thinkMs ?? 0).toBe(0);
+
+    const course = (await store.course("u1", "es"))!;
+    expect(course.tally?.["choose"]?.asked).toBe(3);
+    expect(course.lastAnswerMs).toBe(clock);
+  });
+
   it("marks a turn of talk on whether the word came out, not on saying it back", async () => {
     const { app, store } = await start();
     const ref = refOf("u1", "es", "hola");

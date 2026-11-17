@@ -230,6 +230,64 @@ describe("what the language is for", () => {
   });
 });
 
+describe("which language it is taught in", () => {
+  it("lets them pick the language they speak, instead of handing them English", () => {
+    // Every meaning in every exercise is written in this language. Deciding it for somebody because nobody asked is
+    // the one assumption this app does not make.
+    const n = whyScreen(ctxFor(SCREENS.lingoWhy, "phone", live, { params: { target: "es", name: "Español" } }), "es", "Español");
+    const s = json(n);
+    expect(s).toContain("Taught in");
+    expect(s).toContain(SCREENS.lingoAdd);
+    expect(s).toContain('"pick":"from"');
+  });
+
+  it("sends the one they picked, and shows it by name", () => {
+    const ctxWith = ctxFor(SCREENS.lingoWhy, "phone", live, { params: { target: "es", name: "Español", from: "hi", fromName: "हिन्दी" } });
+    const s = json(whyScreen(ctxWith, "es", "Español"));
+    expect(s).toContain("हिन्दी");
+    expect(s).toContain('"from":"hi"');
+  });
+
+  it("asks the picker the other way round, and picking goes back with the answer", () => {
+    const asking = ctxFor(SCREENS.lingoAdd, "phone", live, { params: { pick: "from", target: "es", name: "Español" } });
+    const s = json(picker(asking, { from: null, fromName: null, suggested: [], languages: [{ tag: "hi", name: "हिन्दी", en: "Hindi" }] }));
+    expect(s).toContain("Which language do you speak?");
+    // It must not start a course: it carries the answer back to the question that does.
+    expect(s).toContain(SCREENS.lingoWhy);
+    expect(s).toContain('"from":"hi"');
+    expect(s).toContain('"target":"es"');
+  });
+});
+
+describe("a course with nothing in it", () => {
+  const bare = { items: 0, learned: 0, due: 0, unseen: 0, held: 0 };
+
+  it("does not tell somebody they are up to date on a language they cannot speak", () => {
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: bare, mastery: course().mastery }));
+    expect(s).not.toContain("Nothing due");
+    expect(s).toContain("Nothing to learn yet");
+    // The way out is the one thing that always works, whatever the shared bank has in it.
+    expect(s).toContain(SCREENS.chat);
+  });
+
+  it("still says nothing is due when they have met things and are holding them", () => {
+    const held = { items: 20, learned: 3, due: 0, unseen: 0, held: 0.9 };
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: held, mastery: course().mastery }));
+    expect(s).toContain("Nothing due");
+    expect(s).not.toContain("Nothing to learn yet");
+  });
+
+  it("offers talking rather than a lesson that has nothing to ask", () => {
+    const s = json(territory(ctx(), { courses: [course({ progress: bare })] }));
+    expect(s).toContain("Start by talking");
+    expect(s).toContain("no words yet");
+    // "0% of what you've met" is a measurement of nothing, drawn as though it were a fact about them.
+    expect(s).not.toContain("you'd still have now");
+    expect(s).not.toContain("Practise anyway");
+    expect(s).not.toContain("nothing due");
+  });
+});
+
 describe("the picker", () => {
   it("has a search box that can actually be typed in, not a picture of one", () => {
     const n = picker(ctx(), { from: "en", fromName: "English", suggested: [], languages: [{ tag: "ta", name: "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", en: "Tamil" }] });
