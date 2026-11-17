@@ -27,6 +27,44 @@ what is numbered above `LIVE_MIGRATION` — a colliding number does not fail, it
 - **The site's phone screen** (`claude/loving-goldberg-wvp95p`, TAILZU-WEB) and **the Blip structure sheet**
   (`claude/jolly-brown-p8nhu2`, brand assets only).
 
+**HOME IS ONE BOT A ROW ON THE PHONE** (17 Nov). `tiles(ctx, 1, 104, 16, …)` — two columns of 132 gave the phone FOUR
+slots, three bots and "Make a bot", so with five built-ins alone most bots were chips under a "More bots" label. One
+column is full-width rows and everything fits.
+
+**Only the width changed.** It is the same living tile at a different shape: the same Blip playing on it in the bot's
+colour, the same tap (the tile presses in, the cloth is drawn under the finger, that bot perks up and every other bot
+turns its head to it), the same moments and the same engine. `columns` was always a parameter of `BotTiles`, and the
+app already honoured it — `const cols = Math.max(1, Number(props?.columns) || 2)` — so this is server side alone, no
+app change. (The first answer given here was that it needed one: that was from looking only at `strip`, which is one
+full-width row and singular. `columns: 1` was the whole of it.)
+
+* **104, not 132**: a wide row needs less height to give its bot somewhere to play, and seven rows of 132 is three
+  screens of scrolling.
+* **`HOME_TILES = 8`** is the cap, and it is not a layout number — each row is a LIVING bot the app keeps for its
+  lifetime, so it is how many animate at once. Past it they are chips, which `moreBots` already did and which now
+  draws nothing, because nothing is left over.
+* **`emptyHome` changed with it.** Its own comment says it shows the bots "as Home shows them once they've started",
+  so leaving it at two columns would have changed the grid's shape under someone as they gained a bot.
+* **The window keeps its four across** (`homeDesk`, `tiles(ctx, 4, 150, 18, …)`), untouched.
+* Talk had no card line and was showing its purpose cut mid-word ("Just talk to it: questions, ideas, writ…"). It
+  reads **"Answers your questions"** now, in the style of the others (`shell/parts.ts` idleLine).
+
+**THE CHAT IS A TAB NOW, AND YOU IS NOT.** Tabs are **bots, talk, activity** (17 Nov). None of it needed an app
+release: the tab bar is server data and the app maps whatever tabs it is given — `TabBar.tsx` hardcodes no ids — and a
+tab's icon travels as `{viewBox, layers}` for the app to draw, so a new tab with a new glyph is entirely this side.
+
+* **Talk is second, not first.** Bots is what this app IS and what it opens on, and a tab is one tap wherever it sits.
+* **Its page is the usual chat as a TAB ROOT** (`bots.talk`, `screens/bots.ts` `chatPage(…, { root: true })`): no back
+  button, the bot's head instead of the phone's back row, and the slug is FIXED in the screen because a tab root is
+  fetched with no params. Warmed at launch like the other roots.
+* **The balloons fill on the tab you are on**; the thread does not. Nothing in that glyph reads `live`, unlike the
+  other three — a conversation has no count to show and no ring to fill, and a dot invented to match would be lying.
+* **You left the tab bar for Home's header**, where it already was: `homeHead` has carried a person button labelled
+  "Profile and settings" all along, it just did `toTab("you")`. It pushes the page now. It was also **phone-only**,
+  because the window reached You through its sidebar tab — with the tab gone that was the only way in on desktop, so
+  the button is on both. Spaces' own "You" link pushes too. The page is unchanged and still warmed; it gained a back
+  bar, as every pushed page has. The You tab's living ring went with the tab.
+
 **A FIFTH BUILT-IN: THE BOT YOU JUST TALK TO** (slug `talk`, name **provisional**). Every other built-in is for a job —
 code, a trip, a calendar, a film — so a person who just wanted to ask something had nowhere to go. This is the plainest
 bot here: no service, no store, no tick, no migration. It is the chat loop (`botsBots/chat.ts`) and the role `bot_run`,
@@ -89,8 +127,10 @@ and `OPENROUTER_API_KEY`, which the config requires outright — the server does
 
 These are the ones worth knowing about, because turning them on gives you a feature that draws and does nothing.
 
-* **Lingo — a course cannot get any words.** (Still true after another session's 16 Nov work, which added what a
-  learner wants the language FOR and fixed the language picker — migration 0105 — but did not touch this.) Everything downstream is built and tested: the scheduler, marking on the
+* ~~**Lingo — a course cannot get any words.**~~ **CLOSED, 17 Nov**, by another session: `src/lingo/tool.ts` gives the
+  bot `lingo_note_words`, which files the words a person reached for into the course they are on — the fix this entry
+  called for. The sentence bank is still optional and still not seeded, which is a different thing: an empty bank is
+  handled on purpose (the `blank` exercise is skipped and the ladder closes over it). Everything downstream is built and tested: the scheduler, marking on the
   server, the seven exercise kinds, the sets, the grader's gestures, the 85-language picker, 165 tests. But words arrive
   only through `POST /v1/lingo/words`, and **nothing calls it** — not the app, not a screen, and not the bot, which
   `builtin.ts` says outright has no tools. Switch it on today and you can start a Spanish course with nothing in it. The

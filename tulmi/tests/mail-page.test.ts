@@ -341,16 +341,20 @@ describe("the mail bot's look", () => {
     return walk(s.root as Node);
   };
 
-  it("puts the Oracle and the mail bot on Home's grid, the mail bot as the postie filing letters on a loop; the rest stay chips", async () => {
+  it("puts the Oracle and the mail bot on Home's grid, the mail bot as the postie filing letters on a loop; one bot a row, so none is a chip", async () => {
     const nodes = await home([...DRAWS, "BotTilesStrip"]);
     const grid = nodes.find((n) => n.type === "BotTiles")!;
     const tiles = (grid.props as { tiles: Array<Record<string, unknown>> }).tiles;
     expect(tiles.map((t) => t.slug)).toEqual(expect.arrayContaining(["oracle", "mail"]));
     expect(tiles.find((t) => t.slug === "mail")).toMatchObject({ avatar: "postie", moment: "m.sort", momentMode: "loop", sub: "Answers your business mail" });
     expect(tiles.find((t) => t.slug === "oracle")).toMatchObject({ sub: "Reads your sky" });
-    expect(tiles.some((t) => t.slug === "travel")).toBe(false);
-    const chips = nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content));
-    expect(chips).toEqual(expect.arrayContaining(["More bots", "Travel bot", "Gym bot"]));
+    // These used to be chips: the grid had four slots, so the Oracle and the mail bot took the last of them and the
+    // rest fell through to "More bots". One bot a row fits them all, so they are tiles now and the chip row is gone.
+    expect(tiles.map((t) => t.slug)).toEqual(expect.arrayContaining(["travel", "gym-bot"]));
+    // A tile's name lives in the BotTiles props, not in a Text node — the names only became text when they were
+    // chips. So the check is that the chip section is gone; the tiles themselves are asserted above.
+    const words = nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content));
+    expect(words).not.toContain("More bots");
     expect(lintTree(nodes[0]!)).toEqual([]);
   });
 

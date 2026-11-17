@@ -162,8 +162,9 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...n.about,
       ...(n.arrival ? arrivalCard(ctx) : []),
       hello(ctx, more),
-      // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
-      tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
+      // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started — which
+      // means ONE COLUMN here too, or the grid would change shape under them as they gained a bot.
+      tiles(ctx, 1, 104, 16, more.notes, more.groups, more.planLine),
       // And every other bot a chip, so none is out of reach on the phone (the Oracle, the mail bot, their own).
       ...moreBots(ctx),
       ...routinesRow(ctx, more.routines),

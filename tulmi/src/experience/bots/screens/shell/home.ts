@@ -10,7 +10,7 @@ import { homeDayLine } from "../../../settingsWords.js";
 import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
-  makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
+  makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, C, headBar, type PageOpts, hasOutbox,
   needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
@@ -93,9 +93,19 @@ function groupTile(s: Space, height: number, padding: number): Node {
 /** Built-ins with a look of their own, on Home's grid beside the first three wherever they are set up (docs/oracle.md, docs/mail.md). */
 const FEATURED: readonly string[] = ["oracle", "mail", "cinema"];
 
+/**
+ * HOW MANY BOTS HOME DRAWS AS ROWS. One column means one bot a row, full width, and each row is a LIVING tile — a Blip
+ * of its own playing on it (BotTiles, app side: kept by slug for the life of the app). So this is not a layout number,
+ * it is how many bots are animating at once, and it is why the list is capped at all rather than simply showing every
+ * bot somebody has. Past it they are chips, which `moreBots` already does and which costs nothing to draw.
+ *
+ * Eight holds every built-in there can be today with room for a few of their own.
+ */
+const HOME_TILES = 8;
+
 /** The bots Home's grid draws: the first three, then the Oracle, the mail bot and the cinema bot. */
 export function homeShown(ctx: BotsCtx): LiveBot[] {
-  const first = ctx.live.bots.slice(0, 3);
+  const first = ctx.live.bots.slice(0, HOME_TILES);
   return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
 }
 
@@ -201,7 +211,10 @@ export function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
   const mark = alive ? liveMark(markSize, ctx.live.bots.filter((b) => b.working).map((b) => b.color)) : tailzuMark(markSize);
   const quiet = (glyph: "search" | "person", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 38 : 36, light: true, label });
   const head = col([
-    row([mark, grow(), quiet("search", open(SCREENS.search), "Search everything"), ...(desk ? [] : [quiet("person", toTab("you"), "Profile and settings")])], { gap: 6, alignItems: "flex-start" }),
+    // The person button is on BOTH now. It used to be phone-only, because the window reached You by its sidebar tab;
+    // with the tab gone that was the only way in on desktop, so the button is no longer phone-only. It pushes the
+    // page rather than switching tab, for the same reason.
+    row([mark, grow(), quiet("search", open(SCREENS.search), "Search everything"), quiet("person", open(SCREENS.you), "Profile and settings")], { gap: 6, alignItems: "flex-start" }),
     col([text(greet, { size: desk ? 16 : 15, color: C.meta, lineHeight: desk ? 21 : 20 }), bold], { gap: desk ? 12 : 10, ...(desk ? { maxWidth: 680 } : {}) }),
   ], { gap: desk ? 30 : 34, paddingTop: desk ? 4 : 10, paddingBottom: desk ? 10 : 14 });
   const bar = headBar([row([tailzuMark(desk ? 24 : 26), text("Your bots", { size: desk ? 16 : 17, weight: 600, lineHeight: 22 })], {
@@ -226,8 +239,12 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
     ...(first ? [needsCard(first)] : []),
     ...n.push,
-    tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
-    // Every bot past the first three, a chip each: the Oracle, the mail bot and their own are never out of reach.
+    // ONE COLUMN: one bot a row, full width. Two columns of 132 gave the phone four slots — three bots and "Make a
+    // bot" — so with five built-ins alone most of them were chips. A row is shallower than a tile (104 against 132)
+    // because a wide one needs less height to give its bot somewhere to play, and seven rows of 132 is three screens.
+    // Nothing about the tile changes: each row is the same living tile, with the same tap, at a different shape.
+    tiles(ctx, 1, 104, 16, more.notes, more.groups, more.planLine),
+    // Anything past the cap, a chip each. With the cap at eight this is usually empty, and moreBots draws nothing then.
     ...moreBots(ctx),
     ...routinesRow(ctx, more.routines),
   ];

@@ -52,7 +52,8 @@ describe("Notes on Home", () => {
       const s = await buildBotsScreen(req("bots.home", client, {}, ["BotsKit", "BotsMotion", "BotTilesStrip"]), fakeDeps({ api: { "GET /v1/shell/started": { started: true }, "GET /v1/notes/stats": STATS } }));
       const tiles = walk(s.root!).find((n) => n.type === "BotTiles")!;
       const specs = tiles.props!.tiles as Array<{ slug: string }>;
-      expect(specs).toHaveLength(4);
+      // One bot a row now, so every bot of the fixtures is a tile; Make a bot is the last.
+      expect(specs.length).toBeGreaterThanOrEqual(4);
       expect(specs.map((t) => t.slug)).not.toContain("notes");
       expect(SAMPLE_BOTS.map((b) => b.slug)).toEqual(expect.arrayContaining(specs.slice(0, 3).map((t) => t.slug)));
       expect(tiles.props!.strip).toMatchObject({ slug: "notes", kind: "notes", state: "working", sub: "Taking notes now", action: { kind: "navigate", screenId: "bots.notes" } });

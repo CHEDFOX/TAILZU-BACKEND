@@ -15,6 +15,7 @@ import {
 /** A bot's idle line on its tile. */
 export function idleLine(bot: LiveBot, client: "phone" | "desktop"): string {
   switch (bot.slug) {
+    case "talk": return "Answers your questions";
     case "code": return "Fixes and ships your code";
     case "keybot": return client === "desktop" ? "Hold a key, speak, done" : "Your keyboard, everywhere";
     case "plan": return "Plans your day";

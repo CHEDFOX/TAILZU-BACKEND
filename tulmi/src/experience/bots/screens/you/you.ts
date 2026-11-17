@@ -122,7 +122,8 @@ export function youPhone(ctx: BotsCtx, d: YouData | undefined) {
   const line = limitLine(ctx, m);
   const planLine = `${d?.plan.name ?? "Your plan"} · ${plural(ctx.live.bots.length, "bot")}`;
   return page(ctx, {
-    tab: "you", title: "You", gap: 18,
+    // Pushed from Home's person button now, not a tab, so it carries a back bar like any other pushed page.
+    back: true, nav: "you", title: "You", gap: 18,
     // On until this phone says otherwise (it writes its own `soundsOn` over this).
     ...(soundsCard(ctx).length ? { state: { soundsOn: true } } : {}),
     body: [
@@ -183,7 +184,7 @@ export function youDesk(ctx: BotsCtx, d: YouData | undefined) {
   ];
   const moreApps = (apps?.connected.length ?? 0) - 3;
   return page(ctx, {
-    tab: "you", title: "You", maxWidth: 1040, gap: 22,
+    back: true, nav: "you", title: "You", maxWidth: 1040, gap: 22,
     body: [
       row([
         face(ctx, 52),
