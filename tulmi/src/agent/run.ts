@@ -54,7 +54,7 @@ import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
 import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserPrompt } from "./llm.js";
-import { agentPictureContent, agentUserMessage, drawOrderFor } from "./prompt.js";
+import { agentPictureContent, agentUserMessage, drawOrderFor, signInCardOn } from "./prompt.js";
 import { stableBlock } from "../principles/roles.js";
 import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
@@ -65,6 +65,8 @@ import { sensitiveApp } from "../pipeline/sensitive.js";
 
 export interface StepContext {
   req: AgentStepRequest;
+  /** Whose run. The sign-in card is staged per account (SIGN_IN_CARD_USERS), so the prompt only carries its rules where it is on. */
+  userId?: string;
   /** AGENT_MAX_STEPS: steps are counted from 0, and one past this is refused. */
   maxSteps: number;
   /** AGENT_JOB_MAX_STEPS: the same, for a run that carries a long job's ledger (req.job). Absent: maxSteps. */
@@ -335,7 +337,7 @@ async function planWithModel(
   },
 ): Promise<StepResult> {
   const { req } = ctx;
-  const user = agentUserMessage(req, s.said, s.mode, req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps, ctx.context);
+  const user = agentUserMessage(req, s.said, s.mode, req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps, ctx.context, ctx.userId);
   const ids = new Set(req.screen.elements.map((e) => e.id));
   const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
   const reads = s.act === false ? "show" : s.mode;
@@ -346,7 +348,7 @@ async function planWithModel(
   const apps = deps.connectors ? await deps.connectors.cards(req, s.routeBy ?? s.said) : null;
   if (!apps || !deps.connectors) {
     return follow(ctx, deps, sink, {
-      reader: new LineReader(ids, reads, { draws: drawMax(ctx) }),
+      reader: new LineReader(ids, reads, { draws: drawMax(ctx), card: signInCardOn(ctx.userId) }),
       stream: deps.plan(stableBlock("ask_planner"), user, deps.signal),
       // The text prompt teaches every model the one order, and its places in
       // a picture are dropped anyway: it has no picture.
@@ -370,7 +372,7 @@ async function planWithModel(
     const fix = use.fix;
     use.fix = undefined;
     await follow(ctx, deps, sink, {
-      reader: new LineReader(ids, reads, { draws: drawMax(ctx), connectors: !last }),
+      reader: new LineReader(ids, reads, { draws: drawMax(ctx), connectors: !last, card: signInCardOn(ctx.userId) }),
       stream: deps.plan(apps.system, apps.message(user, use.results, fix), deps.signal),
       order: () => "xy",
       scene: s.scene,

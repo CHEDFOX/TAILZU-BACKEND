@@ -597,6 +597,12 @@ export interface ReaderRules {
   says?: number;
   /** DRAW lines honoured in the step (AGENT_DRAW_MAX). */
   draws?: number;
+  /**
+   * The sign-in card is on for this person (SIGN_IN_CARD). Without it a FIELD or ALSO line is read and counted as dropped,
+   * and the handover goes out with no card — the plain one, the page itself, which always works. The two verbs are in the
+   * contract whatever this says, so a model that writes them anyway must be stopped HERE and not only by the prompt.
+   */
+  card?: boolean;
   /** USE lines honoured: the planner was shown a connected app's tools.
    *  Without it a USE line is read and ignored, as any other prose is. */
   connectors?: boolean;
@@ -718,6 +724,7 @@ export class LineReader {
   cardDropped = 0;
 
   constructor(private readonly ids: Set<string>, private readonly mode: "show" | "do", rules: ReaderRules = {}) {
+    this.cardOn = rules.card === true;
     this.picture = rules.picture === true;
     this.connectors = rules.connectors === true && !this.picture;
     this.saysMax = rules.says ?? SAYS_MAX;
@@ -847,8 +854,11 @@ export class LineReader {
    * which is the right answer whenever the planner could not read the page with confidence. `payment` and
    * `captcha` never get one, however many FIELD lines were written (CARD_WHY).
    */
+  /** Whether a handover may carry a card at all (ReaderRules.card). */
+  private readonly cardOn: boolean = false;
+
   private card(why: AgentHandoverWhy): AgentHandoverCard | undefined {
-    if (!this.fields.length || !(CARD_WHY as readonly string[]).includes(why)) {
+    if (!this.cardOn || !this.fields.length || !(CARD_WHY as readonly string[]).includes(why)) {
       this.cardDropped += this.fields.length + this.ways.length;
       return undefined;
     }

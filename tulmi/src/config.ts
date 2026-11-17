@@ -875,6 +875,16 @@ const EnvSchema = z.object({
    * Off by default; SCREEN_DRAW_USERS, a comma-separated list of account ids, is the stage before everyone, as BOT_SHOW_USERS is.
    * No built screen goes near this: they are answered from BOTS_SCREENS exactly as they are today.
    */
+  /**
+   * THE SIGN-IN CARD (src/agent, docs/sign-in.md): the planner describes a sign-in page's real boxes and the ways in it offers, and the window
+   * draws them on the handover card. Off by default: with it off the planner is not told the rules, and any FIELD or ALSO it writes anyway is
+   * dropped, so every sign-in ends in the plain handover it always did — the page itself, which always works.
+   *
+   * It exists so the card can be turned OFF FROM HERE. Everything it draws is in the window's own page (guide.html), which only a new build can
+   * change, so without a switch a card that came out wrong would need a release to undo. SIGN_IN_CARD_USERS is the stage before everyone.
+   */
+  SIGN_IN_CARD: bool(false),
+  SIGN_IN_CARD_USERS: orDefault(""),
   SCREEN_DRAW: bool(false),
   SCREEN_DRAW_USERS: orDefault(""),
   /**

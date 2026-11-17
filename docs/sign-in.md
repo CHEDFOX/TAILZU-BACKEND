@@ -55,6 +55,16 @@ Why this half first: rule S3 exists because people rarely remember **which** way
 buttons are often below the fold or behind "more options". The card puts the real choices in front of them, and it
 needed no decision about anything.
 
+## The switch
+
+`SIGN_IN_CARD`, **off**, staged by `SIGN_IN_CARD_USERS`. Off, the planner is not told the card's rules (so they are not
+paid for either), any `FIELD` or `ALSO` it writes anyway is dropped and counted in `cardDropped`, and a handover carries
+no card — the plain one, the page itself, which always works.
+
+It exists for a specific reason: **everything the card draws lives in the window's own page** (`guide.html`), which only
+a new build can change. Without a switch here, a card that came out wrong would need a release to undo. With it, the
+card is turned off from the server and the next sign-in is the one people had yesterday.
+
 ## The boxes, and the one moment the window takes the keyboard
 
 **Built (17 Nov).** The card draws the page's real boxes, named in the person's own language. A `secret` and a `code`

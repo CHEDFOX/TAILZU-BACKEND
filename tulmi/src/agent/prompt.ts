@@ -54,6 +54,7 @@
  * is measured now, instead of being paid for on every step.
  */
 import type { AgentElement, AgentStepRequest } from "../../../shared/types/api.js";
+import { getConfig } from "../config.js";
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
 import type { SpotOrder } from "./lines.js";
 import { isGemini, type UserPart } from "./llm.js";
@@ -132,6 +133,21 @@ const WAY_IN = /\b(?:sign[\s-]?in|signin|log[\s-]?in|login|continue with|one[\s-
 const SECRET_WORD = /\b(?:password|passcode|secure)\b/i;
 /** Elements you can type into. A combo is a chooser, not a box to type a password in. */
 const TYPEABLE = new Set(["field", "area"]);
+
+/**
+ * Whether the sign-in card is on for this account (SIGN_IN_CARD, off by default). SIGN_IN_CARD_USERS, while it names anyone, is the stage
+ * before everyone. Read as every other stage is; off when the settings cannot be read.
+ */
+export function signInCardOn(userId?: string): boolean {
+  try {
+    const cfg = getConfig();
+    if (cfg.SIGN_IN_CARD !== true) return false;
+    const only = String(cfg.SIGN_IN_CARD_USERS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    return !only.length || (!!userId && only.includes(userId));
+  } catch {
+    return false;
+  }
+}
 
 export function looksLikeSignIn(screen: AgentStepRequest["screen"]): boolean {
   if (screen.field && SECRET_WORD.test(`${screen.field.kind} ${screen.field.label ?? ""}`)) return true;
@@ -222,6 +238,8 @@ export function agentUserMessage(
   mode: "show" | "do",
   maxSteps: number,
   context?: string,
+  /** Whose run: the sign-in card is staged per account (SIGN_IN_CARD_USERS), so its rules are only paid for where it is on. */
+  userId?: string,
 ): string {
   const head = [
     `Platform: ${req.platform}. App: ${fenced(req.app) || "unknown"}. Mode: ${mode}. Step ${req.step + 1} of at most ${maxSteps + 1}.`,
@@ -234,7 +252,7 @@ export function agentUserMessage(
   const kept = req.step === 0 ? context?.trim() : "";
   const page = req.step === 0 && req.page ? reducePage(req.page, said).text : "";
   // The sign-in rules, only on a screen that is one, and only on a do-run: a show run answers questions, it never signs in.
-  const signIn = mode === "do" && !onAPhone(req.platform) && looksLikeSignIn(req.screen);
+  const signIn = mode === "do" && !onAPhone(req.platform) && signInCardOn(userId) && looksLikeSignIn(req.screen);
   const parts = [head.join(" "), ...(onAPhone(req.platform) ? [PHONE_NOTE] : []), ...(job ? [JOB_NOTE] : []), ...(signIn ? [SIGN_IN_NOTE] : []), ...(kept ? [CONTEXT_NOTE] : []), ...(page ? [PAGE_NOTE] : [])];
   if (kept) parts.push(`<context>\n${fenced(kept)}\n</context>`);
   if (page) parts.push(`<page>\n${fenced(page)}\n</page>`);
