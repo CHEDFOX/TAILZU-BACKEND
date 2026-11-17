@@ -78,6 +78,9 @@ export const sizeFor = (goalMin: number): number => Math.max(5, Math.min(60, Mat
 /** At most this much of a session is things never seen before, so revision is never crowded out. */
 const NEW_SHARE = 0.3;
 
+/** How many of their OWN never-seen words come in whatever the shape says, because they asked for them. */
+const OWN_ALWAYS = 2;
+
 /**
  * WHICH SHAPE AN ITEM GETS, by how well it is held and whether it has ever been said.
  *
@@ -244,7 +247,16 @@ export function pick(items: readonly LingoItem[], learner: Learner, now: number,
   // made entirely of words they have never seen is the exact failure this is meant to prevent.
   const want = Math.max(0, Math.min(room, size - Math.min(revision.length, size - room)));
   const fresh = want > 0 ? unseen(items, want) : [];
-  return [...revision.slice(0, size - fresh.length), ...fresh];
+  // EVEN A SET WITH NO ROOM takes what they went looking for themselves. "No new words" is there to stop a person
+  // who is losing their grip being piled on with material off a list — it was never meant to hold back a word they
+  // asked for ten seconds ago. Being told it was written down and then not being asked it is a promise broken in
+  // the one place they were watching, and a bad set before it is no reason at all.
+  const held = new Set(fresh.map((i) => i.item));
+  const theirs = fresh.length < OWN_ALWAYS
+    ? unseen(items.filter((i) => (i.source === "asked" || i.source === "said") && !held.has(i.item)), OWN_ALWAYS - fresh.length)
+    : [];
+  const bring = [...fresh, ...theirs];
+  return [...revision.slice(0, Math.max(0, size - bring.length)), ...bring];
 }
 
 /**
