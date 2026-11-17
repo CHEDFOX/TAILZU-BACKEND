@@ -55,7 +55,34 @@ Why this half first: rule S3 exists because people rarely remember **which** way
 buttons are often below the fold or behind "more options". The card puts the real choices in front of them, and it
 needed no decision about anything.
 
-**Still not built: the BOXES** (`fields`). The guide's window is deliberately never focused — the app being worked on
+## The boxes, and the one moment the window takes the keyboard
+
+**Built (17 Nov).** The card draws the page's real boxes, named in the person's own language. A `secret` and a `code`
+are hidden as typed (rule S5), nothing asks the browser for autofill (`autocomplete="off"`, because this is not the
+site's own page and must never look to the browser as if it were), and nothing is remembered: the values live in the
+inputs, go across once on Continue, and go with the card.
+
+**The window is never focusable except for this.** That flag is load-bearing — the app being worked on keeps the
+keyboard, and a dictation's paste must land in it — so `ask.js` turns it on while a card with boxes is up and off again
+in a `finally`, where a thrown or cancelled card cannot leave the window able to steal the next keystroke.
+
+**Then: the app first, the boxes after.** On Continue the agent gives the keyboard back to the app they were in
+(`drive("open", run.app)`) before setting anything, because a field cannot be set in an app that is behind. Each box is
+set by the id the CARD named, so a value for an id the card did not name is ignored. **What they typed is not logged
+and does not enter the run's history** — the log says which box was filled and never what went into it, and a test
+holds that their password and address appear nowhere in what is sent.
+
+**And a way out of all of it:** a sign-in handover also offers **"Sign in in X0 Bot's browser"**, which opens the Sites
+list in the app — the same flow the phone uses (`docs/sites.md`). The person picks the site there and signs in on a
+real page in our own browser, which keeps the session; the card stays up here, and they press Continue when they are
+in. It opens the LIST rather than a panel at a guessed address, because the window knows the site in front only by its
+display name ("Swiggy") and never its domain.
+
+**There is still no test for the card's own drawing** — `src/agent/guide/` has none, and `node --test` has no DOM. Look
+at it with **`guide.html?demo=signIn`**, which draws the whole card still: two boxes, three ways in, the browser button,
+Continue and Stop.
+
+**Why it was left until last.** The guide's window is deliberately never focused — the app being worked on
 keeps the keyboard, and a dictation's paste must still land in it (`src/agent/ask.js`, "THE PILL'S RECIPE") — so it
 cannot take a keystroke, let alone a password. That is a decision, not an omission, and there are three ways out: make
 the window focusable for that one moment and hand focus back; a separate window that may take the keyboard; or the
