@@ -31,6 +31,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { getConfig } from "../../config.js";
 import { verifyRecall } from "../../meet/recall.js";
+import { nowMeeting, type EventSource } from "../../meet/calendar.js";
 import { stageHtml, stageHub } from "../../meet/stage.js";
 import type { MeetingDetail, MeetingView, MeetOverview, StageHub } from "../../meet/types.js";
 import type { MeetSettings } from "../../meet/store.js";
@@ -61,6 +62,11 @@ export interface MeetRouteDeps {
   now?: () => number;
   /** Whether the person's Google Calendar is connected (for auto-join); never when not given. */
   calendarConnected?: (userId: string) => Promise<boolean>;
+  /**
+   * The person's calendar meetings with a link, for "take notes" with one key (`POST /v1/meet/now`). Without it that route can
+   * only use a link the caller read off the screen itself, and says so rather than guessing.
+   */
+  events?: EventSource;
 }
 
 const BASE = "/v1/meet";
@@ -130,6 +136,51 @@ export function registerMeetRoutes(app: FastifyInstance, deps: MeetRouteDeps): v
     if (typeof b.title === "string") input.title = b.title;
     if (typeof b.voice === "boolean") input.voice = b.voice;
     if (typeof b.forUser === "string" && b.forUser) input.forUser = b.forUser;
+    try { return send(reply, { meeting: await got.s.join(got.user.id, input) }, 201); } catch (err) { return fail(reply, err); }
+  });
+
+  /**
+   * ONE KEY, IN A MEETING: "take notes" and the bot goes in (docs/meet.md).
+   *
+   *   POST /v1/meet/now { url? }  ->  201 { meeting }
+   *
+   * `/join` wants the meeting's link, which is right for a page with a box to paste into and no use at all to somebody who
+   * pressed a key mid-meeting. So this finds the meeting itself, two ways, cheapest first:
+   *
+   *   1. a `url` the caller already has — the window can SEE the screen, so a link read off the meeting in front of them is
+   *      better evidence than anything a calendar knows;
+   *   2. else the calendar's meeting that is running now (`meet/calendar.ts nowMeeting`).
+   *
+   * It never guesses, and "I cannot tell" is not a dead end: `409 { code: "meet_which", ask: "link" }` is the key's cue to ASK
+   * for the link with a card and call this again with it. Most people have it on the clipboard already — they clicked Copy link
+   * to get in — so the card can offer that with one button and need no typing, which matters because the guide's window is
+   * deliberately never focused and cannot take a keystroke (`docs/window-setup.md`).
+   *
+   * Sending a bot into the WRONG call would be worse than sending none: it would sit there and take notes of it. So a guess is
+   * never made, and a person with no calendar connected is asked rather than refused.
+   *
+   * Our OWN calls need none of this: the bot takes its seat with the first person in (`rooms/sitIn.ts`). This is for the
+   * meetings somebody else is hosting.
+   */
+  app.post(`${BASE}/now`, rl, async (req, reply) => {
+    const got = await begin(req, reply);
+    if (!got) return reply;
+    const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+    if (b.url !== undefined && (typeof b.url !== "string" || b.url.length > 2000)) return bad(reply, "url is the meeting's link.");
+    const seen = typeof b.url === "string" ? b.url.trim() : "";
+    let url = seen;
+    let title: string | undefined;
+    if (!url) {
+      if (!deps.events) return reply.code(409).send({ code: "meet_which", ask: "link", message: "Which meeting? Give me its link." });
+      let found: Awaited<ReturnType<typeof nowMeeting>> = null;
+      // A calendar that is not connected, or needs signing in again, is "I cannot see which" and not an error of theirs.
+      try { found = await nowMeeting(deps.events, got.user.id, now()); } catch { found = null; }
+      if (!found) return reply.code(409).send({ code: "meet_which", ask: "link", message: "Which meeting? Give me its link." });
+      url = found.url;
+      title = found.title;
+    }
+    const input: { url: string; title?: string } = { url };
+    if (title) input.title = title;
     try { return send(reply, { meeting: await got.s.join(got.user.id, input) }, 201); } catch (err) { return fail(reply, err); }
   });
 

@@ -107,6 +107,35 @@ export async function autoJoinSweep(d: AutoJoinDeps): Promise<{ scheduled: numbe
 }
 
 /** Runs the sweep every `everyMs` (five minutes by default), unref'd; returns a function that stops it. Never throws. */
+/** How long after a meeting started one key can still put a bot in it, and how soon before it may. */
+export const NOW_LATE_MS = 90 * MIN;
+export const NOW_EARLY_MS = 10 * MIN;
+
+/**
+ * THE MEETING THEY ARE IN, for "take notes" with one key (docs/meet.md).
+ *
+ * Auto-join above is for meetings 11 to 45 minutes AWAY: it is the plan made in advance. This is the other case — somebody is
+ * already in a meeting, says "take notes", and the bot has to go in now. So it asks the calendar for the meetings with a link
+ * around this moment and keeps the one that is running: started no more than NOW_LATE_MS ago, and no more than NOW_EARLY_MS
+ * from starting.
+ *
+ * When several overlap, the NEAREST start wins. A day with a meeting at 10 and another at 10:30 is common, and at 10:31 the one
+ * they mean is the one they just joined, not the one they are late leaving.
+ *
+ * It answers null rather than guessing: no calendar, nothing running, or a meeting with no link, and the caller says it cannot
+ * see which meeting rather than sending a bot into the wrong one.
+ */
+export async function nowMeeting(source: EventSource, userId: string, nowMs: number): Promise<UpcomingEvent | null> {
+  const from = nowMs - NOW_LATE_MS;
+  const to = nowMs + NOW_EARLY_MS;
+  let best: UpcomingEvent | null = null;
+  for (const e of await source(userId, from, to)) {
+    if (!e.url || e.startMs < from || e.startMs > to) continue;
+    if (!best || Math.abs(e.startMs - nowMs) < Math.abs(best.startMs - nowMs)) best = e;
+  }
+  return best;
+}
+
 export function startAutoJoin(d: AutoJoinDeps, everyMs = 5 * MIN): () => void {
   let running = false;
   const tick = (): void => {
