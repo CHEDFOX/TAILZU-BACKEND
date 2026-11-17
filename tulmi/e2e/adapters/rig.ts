@@ -33,6 +33,7 @@ import { addProject, createWorkBranch, initEmptyRepo, type ProjectDeps } from ".
 import type { CodeProject } from "../../src/code/store.js";
 import { MemoryCodeStore } from "../../src/code/store.js";
 import { MemoryWorklogStore, WorkLog } from "../../src/code/work/index.js";
+import { MemoryArtifactStore } from "../../src/artifacts/store.js";
 import { appKeys, type AppKeys } from "../../tests/github-fake.js";
 import { cloneObjects, getRepo, type RepoSpec } from "../repos.js";
 import { snapshotBase, type Task } from "../tasks/schema.js";
@@ -217,6 +218,10 @@ export async function createRig(o: RigOptions) {
       // The product asks once for a focused test of a source fix before the checks run (CODE_PROVE_FIX, on by default). A scripted persona (the oracle, a failing one) plays
       // "edit, done" and has no test to write, so it runs without the round; a real model gets the product as it ships.
       ...(o.mode !== "real" ? { proveFix: false } : {}),
+      // WHAT THE PROJECT ALREADY LOOKS LIKE (artifacts/kit.ts), as the product shows it to a job on files people see: its own tokens, fonts, icon
+      // library and components, read with no model and cached against the brain's head. Without it the harness runs a job that is blind to the
+      // project's own look, which is not what ships, so a UI task here would never exercise the thing a UI task actually relies on.
+      kit: new MemoryArtifactStore(),
       ...(o.effort ? { effort: o.effort } : {}),
     })!;
   }
