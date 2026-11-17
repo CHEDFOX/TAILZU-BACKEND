@@ -50,6 +50,16 @@ export const WRITING_MS = 10 * 60_000;
 export const BOARD_SPARE = 0.25;
 /** How many other cuts of one film we keep: three shapes, with and without captions, is more than anyone needs. */
 const EDITIONS_MAX = 5;
+/**
+ * What a failure says in the log. The name alone ("CinemaError", "Error") says nothing at all: a run where every reference sheet failed
+ * took three separate probes to find out that the model catalog had come back empty, because the one line written about it was the word
+ * "CinemaError". The message is cut short because it may carry a provider's prose.
+ */
+const why = (err: unknown): string => {
+  const e = err as { name?: string; code?: string; message?: string } | null;
+  const msg = typeof e?.message === "string" ? e.message.replace(/\s+/g, " ").slice(0, 200) : "";
+  return [e?.code ?? e?.name ?? "error", msg].filter(Boolean).join(": ");
+};
 /** How many of the sounds of what is seen a film gets, and how long each runs: a sound on every cut is a cartoon. */
 const SPOTS_MAX = 6, SPOT_SECONDS = 3;
 /** An enlargement: how much bigger, the largest film we can send as bytes, and how long we wait for it. */
@@ -536,7 +546,7 @@ export class CinemaService {
         try {
           await this.advance(f, models);
         } catch (err) {
-          this.d.log?.(`[cinema] a film could not move on: ${err instanceof Error ? err.name : "error"}`);
+          this.d.log?.(`[cinema] a film could not move on: ${why(err)}`);
         }
       }
     } finally {
@@ -594,7 +604,7 @@ export class CinemaService {
         try {
           await asPerson(f.ownerId, () => this.run(f, s, models));
         } catch (err) {
-          this.d.log?.(`[cinema] ${s.kind} failed: ${err instanceof Error ? err.name : "error"}`);
+          this.d.log?.(`[cinema] ${stepKey(s)} failed: ${why(err)}`);
         } finally {
           busy.delete(key);
           this.reserved.set(f.id, Math.max(0, (this.reserved.get(f.id) ?? 0) - hold));
@@ -1490,7 +1500,7 @@ export class CinemaService {
   }
 
   private track(_filmId: string, work: () => Promise<void>): void {
-    const p = work().catch((err) => this.d.log?.(`[cinema] background work failed: ${err instanceof Error ? err.name : "error"}`));
+    const p = work().catch((err) => this.d.log?.(`[cinema] background work failed: ${why(err)}`));
     this.work.add(p);
     void p.finally(() => this.work.delete(p));
   }
