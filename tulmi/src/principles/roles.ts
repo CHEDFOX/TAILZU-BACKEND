@@ -539,6 +539,8 @@ const ROLE_TABLE = {
       + "Draw only what helps more than the words: a choice when the answer asks them to pick; a callout for the one thing they must not miss; steps for a plan or a day's times; "
       + "a table or a chart for numbers to compare; suggest for two to four next questions in their voice; a form when the answer needs several details; draw for a shape words cannot give. "
       + 'Most answers need nothing: then {"blocks":[]}. Never redo the whole answer; use only what it states. Labels short, in the answer\'s language and script. '
+      + '{"type":"part","kind":box|text|control,"role":any words,"text","children":[block],"action":{"do":"copy","text"}|{"do":"say","words"}}\n'
+      + "A part shows what no block names: role says what it IS, not how it looks. Snippet = box + text role=code + control role=copy. "
       + 'A url only from Links. lists "drawn" when your blocks show the answer\'s own lists. Everything is drawn as monochrome dot art: draw outlines and fills, no colours. '
       + "blip puts the app's little bot beside the drawing, only now and then: survey numbers or a drawing, read a note, think over a choice, wave at good news; else null.",
   },

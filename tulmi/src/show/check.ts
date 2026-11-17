@@ -13,9 +13,11 @@
  */
 import { scanForSecrets } from "../code/policy.js";
 import { safeUrl } from "./links.js";
+import { controlLook } from "./style.js";
 import {
-  BLIP_ACTS, BOXES, CHART_KINDS, DRAW_COLOURS, FIELD_KINDS, LIST_STYLES, SHOW_LIMITS as L, STEP_STATES, TEXT_STYLES, TONES,
-  type Block, type DrawShape, type Field, type Option, type Shown,
+  BLIP_ACTS, BOXES, CHART_KINDS, DRAW_COLOURS, FIELD_KINDS, LIST_STYLES, PART_ACTIONS, PART_KINDS, SHOW_LIMITS as L,
+  STEP_STATES, TEXT_STYLES, TONES,
+  type Block, type DrawShape, type Field, type Option, type PartAction, type Shown,
 } from "./types.js";
 
 type Raw = Record<string, unknown>;
@@ -84,6 +86,8 @@ interface Walk {
   keys: number;
   asks: number;
   suggests: number;
+  /** Controls so far (part kind="control"), so a drawing cannot become a control panel. */
+  controls: number;
 }
 
 function blockOf(v: unknown, depth: number, w: Walk): Block | null {
@@ -156,6 +160,44 @@ function blockOf(v: unknown, depth: number, w: Walk): Block | null {
         return v.type === "image" ? { type: "image", url, alt: label(v.alt) || "Picture" } : { type: "link", url, label: label(v.label) || new URL(url).hostname };
       }
       case "divider": return { type: "divider" };
+      /**
+       * A PART: the one open block (types.ts). The role is whatever the model called the thing; style.ts resolves it onto a
+       * look this app already has, so nothing here has to know the name. What IS checked is that the part can be drawn at
+       * all: text with no words, a box with no children and a control with nothing to do are dropped, because each of them
+       * would come out as a shape that says nothing or a button that does nothing.
+       */
+      case "part": {
+        const kind = oneOf(PART_KINDS, v.kind);
+        if (!kind) return null;
+        const role = words(v.role, L.role) || kind;
+        if (kind === "text") {
+          const text = words(v.text, L.text);
+          return text ? { type: "part", kind, role, text } : null;
+        }
+        if (kind === "control") {
+          if (w.controls >= L.controls) return null;
+          const a = isObj(v.action) ? v.action : {};
+          const doing = oneOf(PART_ACTIONS, a.do);
+          const copyText = words(a.text, L.text);
+          const sayWords = words(a.words, L.label);
+          const look = controlLook(role, { copy: !!(doing !== "say" && copyText), say: !!(doing !== "copy" && sayWords) });
+          if (!look) return null;
+          const action: PartAction = look === "copy" ? { do: "copy", text: copyText } : { do: "say", words: sayWords };
+          const text = words(v.text, L.label) || (look === "copy" ? "Copy" : sayWords);
+          w.controls += 1;
+          return { type: "part", kind, role, text, action };
+        }
+        // A box, which is the only part that holds others.
+        if (depth >= L.depth) return null;
+        w.count += 1;
+        const kids: Block[] = [];
+        for (const c of Array.isArray(v.children) ? v.children : []) {
+          const k = blockOf(c, depth + 1, w);
+          if (k) kids.push(k);
+        }
+        if (!kids.length) { w.count -= 1; return null; }
+        return { type: "part", kind, role, children: kids };
+      }
       case "row": case "grid": case "card": {
         if (depth >= L.depth) return null;
         // The box takes its own place before its children take theirs, so a full tree is the total, not one over it.
@@ -227,7 +269,7 @@ const listy = (b: Block): boolean => LISTY.has(b.type) || (BOXES.has(b.type) && 
 /** The model's `blocks` and `lists`, checked. Null when nothing is left to draw. */
 export function checkShown(raw: { blocks?: unknown; lists?: unknown; blip?: unknown } | null | undefined, o: { seen: { has(url: string): boolean } }): Shown | null {
   if (!raw || !Array.isArray(raw.blocks)) return null;
-  const w: Walk = { seen: o.seen, count: 0, links: 0, keys: 0, asks: 0, suggests: 0 };
+  const w: Walk = { seen: o.seen, count: 0, links: 0, keys: 0, asks: 0, suggests: 0, controls: 0 };
   const blocks: Block[] = [];
   for (const v of raw.blocks) {
     if (blocks.length >= L.top) break;

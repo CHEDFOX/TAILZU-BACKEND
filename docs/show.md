@@ -28,8 +28,21 @@ Code: `tulmi/src/show/` (the blocks, the checker, the designer, picks back into 
 | pictures | `draw` (circles and SVG paths on a canvas of its own), `image`, `link` | an SVG with shapes, sized to its box and captioned; a picture; an outline button that opens the page |
 | boxes | `row`, `grid`, `card` | a wrapping row, the kit's grid, a card (a tone colours its edge) |
 | asking | `choice` (one tap, or several and Send), `suggest` (next questions in the person's voice), `form` (text, number and choice fields, and Send) | outlined chips, or rows with a note; filled grey chips; a card with fields |
+| open | `part` (`kind`: `box`, `text` or `control`; `role`: any words) | whatever look its role resolves to (section 1a) — the one block for a thing this app has no name for |
 
-`draw` is the way out for anything the rest cannot say (a floor plan, a route, a diagram): the model writes the shapes, so a new kind of picture needs no new block. Colours are a hex or a name of the kit's (`ink`, `grey`, `bot`, and the natural palette).
+**`part` is the way out for anything the rest cannot say at all** — the one OPEN block, and the answer to "a catalogue is never finished". A person makes a bot nobody planned for, it needs a thing nobody wrote, and the answer cannot be "wait for a release". So the model names what a thing IS (`role`: any words — `code`, `comparison`, `severity`, `rating`, `deployment_failure`) and **never how it looks**. `show/style.ts` resolves every role, invented ones included, onto a look this app already draws and has already tested: `role: "api_snippet"` is mono, `role: "deployment_failure"` is a card with a warning's edge, `role: "zzz"` is plain body text. **The vocabulary is open at the name and closed at the look**, so nothing can come out off-style, because there is no style for it to come out in except ours.
+
+| kind | holds | drawn as |
+| --- | --- | --- |
+| `text` | `text` | one of the seven text looks |
+| `box` | `children` (any block) | a plain stack, a row, a card, or a card with a tone on its edge |
+| `control` | `action` | a button: `{"do":"copy","text"}` puts text on the clipboard (the window's `copyText`, the phone's `copyToClipboard`), `{"do":"say","words"}` sends words as if typed |
+
+A role is resolved in three steps: the table of every role we thought of and its synonyms; then the HINTS, which read the shape of an invented name (`api_snippet` has `snip` in it, so it is code); then the family's plain look. Deliberately not clever — no string distance, no model call, no learning — because the failure of a guess is a thing drawn wrong with nobody told, and a rule a person can read off the page is worth more than one that is right more often. What a control was GIVEN wins over what it was called: one named `copy` holding only words to send can only send, and one holding neither is not a control and is dropped.
+
+A **copiable snippet**, which no named block can express, is three parts: a `box` holding a `text` part with `role: "code"` and a `control` with `role: "copy"`. Nothing was added to the apps for it; `copyToClipboard` is an action every build already honours, and five of the app's own screens use it.
+
+`draw` remains the way out for anything PICTORIAL the rest cannot say (a floor plan, a route, a diagram): the model writes the shapes, so a new kind of picture needs no new block. Colours are a hex or a name of the kit's (`ink`, `grey`, `bot`, and the natural palette).
 
 ## 2. Who decides, and when
 

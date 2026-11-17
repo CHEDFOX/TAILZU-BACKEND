@@ -312,7 +312,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   talk_reply: 1779, // 1617 measured
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
-  bot_show: 2924, // 2658 measured
+  bot_show: 3188, // 2898 measured (the open `part` block is in its contract now; 2638 before it)
   screen_draw: 2290, // 2082 measured
   cinema_scene: 2743, // 2494 measured
   cinema_eye: 1354, // 1231 measured

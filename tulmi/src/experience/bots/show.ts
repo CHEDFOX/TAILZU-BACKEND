@@ -31,6 +31,7 @@
  */
 import type { ActionRef, ActionSpec, Condition, Node, SvgShape } from "../../../../shared/types/sdui.js";
 import { BAR_ROW, barsPic, drawPic, glyphPic, linePic, meterPic, thinPic, type DotPic, type GlyphKind } from "../../show/dots.js";
+import { boxLook, textLook } from "../../show/style.js";
 import type { Block, BlipAct, Shown } from "../../show/types.js";
 import type { BlipPose } from "./art.js";
 import { done as momentDone, failed, start as momentStart, streamed } from "./askMoment.js";
@@ -344,6 +345,45 @@ function form(ctx: BotsCtx, b: Extract<Block, { type: "form" }>, o: ShowOpts): N
   ], { padding: 14, gap: 12, style: dottedEdge() });
 }
 
+/**
+ * A PART: THE ONE OPEN BLOCK, DRAWN BY THE SAME HELPERS AS EVERY NAMED ONE.
+ *
+ * The model named what the thing is (`role`) and never how it looks. `show/style.ts` resolves that name — invented ones
+ * included — onto a look this app already draws, and then this hands it to the very helper the named blocks use: a
+ * `text` part goes through the text case, a `box` part through a card or a row, a `control` through `button`. So an
+ * invented role cannot come out in a style of its own, because there is no style HERE for it to come out in.
+ *
+ * A control that sends words is live-only, as every asking block is: an older turn's button would send today's words
+ * about yesterday's answer. A control that copies works on any turn, because copying says nothing to anybody.
+ */
+function partNode(ctx: BotsCtx, b: Extract<Block, { type: "part" }>, o: ShowOpts, room: number, key: string): Node | null {
+  if (b.kind === "text") {
+    const words = b.text ?? "";
+    return words ? node(ctx, { type: "text", text: words, style: textLook(b.role) }, o, room, key) : null;
+  }
+  if (b.kind === "control") {
+    const a = b.action;
+    if (!a) return null;
+    if (a.do === "say" && !o.live) return null;
+    const act = a.do === "copy"
+      ? seq(ctx.client === "desktop"
+        ? { kind: "copyText", text: a.text, message: "Copied" }
+        : { kind: "copyToClipboard", text: a.text, toastMessage: "Copied" })
+      : sayThis(ctx, o, a.words);
+    return button(b.text || (a.do === "copy" ? "Copy" : a.words), act, { kind: "secondary", size: "md" });
+  }
+  const look = boxLook(b.role);
+  const inner = look.card ? room - 28 : room;
+  const kids = (b.children ?? []).map((c, i) => node(ctx, c, o, inner, `${key}.${i}`)).filter((n): n is Node => !!n);
+  if (!kids.length) return null;
+  if (look.row) {
+    const each = Math.max(96, (room - 10 * (kids.length - 1)) / kids.length);
+    return row(kids.map((k, i) => box([node(ctx, (b.children ?? [])[i]!, o, each, `${key}.${i}`) ?? k], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 96 })), { gap: 10, alignItems: "stretch", flexWrap: "wrap" });
+  }
+  if (!look.card) return col(kids, { gap: 10 });
+  return card(kids, { padding: 14, gap: 10, radius: 16, style: dottedEdge(look.tone === "warn" ? C.ink : C.dashed) });
+}
+
 function node(ctx: BotsCtx, b: Block, o: ShowOpts, room: number, key: string): Node | null {
   switch (b.type) {
     case "text":
@@ -416,6 +456,7 @@ function node(ctx: BotsCtx, b: Block, o: ShowOpts, room: number, key: string): N
     case "choice": return asking(ctx, b, o);
     case "suggest": return o.live ? row(b.items.map((s) => suggestion(s, sayThis(ctx, o, s))), { gap: 8, flexWrap: "wrap" }) : null;
     case "form": return o.live ? form(ctx, b, o) : null;
+    case "part": return partNode(ctx, b, o, room, key);
     default: return null;
   }
 }

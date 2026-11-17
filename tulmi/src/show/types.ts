@@ -70,17 +70,42 @@ export type Block =
   /** `key`: where its picks are kept on the screen (check.ts gives it), so the server can turn them back into words (answer.ts). */
   | { type: "choice"; key: string; question?: string; options: Option[]; multi: boolean; send: string }
   | { type: "suggest"; items: string[] }
-  | { type: "form"; key: string; title?: string; fields: Field[]; send: string };
+  | { type: "form"; key: string; title?: string; fields: Field[]; send: string }
+  /**
+   * A PART: the one open block. Every block above is a NAMED thing the app has a drawing for; a part is a thing the app has
+   * no name for, and it is how a conversation shows something nobody wrote a block for — a copiable snippet, a comparison,
+   * a severity, whatever this moment needs.
+   *
+   * The model names what the thing IS (`role`, any words it likes) and never how it looks. `style.ts` resolves every role,
+   * invented ones included, onto a look this app already has and has already tested. So the vocabulary is open at the name
+   * and closed at the look: a role nobody wrote still comes out in this app's own type, spacing and colour.
+   */
+  | { type: "part"; kind: PartKind; role: string; text?: string; children?: Block[]; action?: PartAction };
+
+/** The three families every drawable thing falls into. A picture is the `draw` block, which a part may hold. */
+export const PART_KINDS = ["box", "text", "control"] as const;
+export type PartKind = (typeof PART_KINDS)[number];
+
+/**
+ * What a control does. Vocabulary 1 only, so every build already honours it with no release:
+ *   copy  the text goes on the clipboard (the window's `copyText`, the phone's `copyToClipboard`)
+ *   say   the words are sent as if the person typed them, the way a `choice` option is
+ */
+export type PartAction =
+  | { do: "copy"; text: string }
+  | { do: "say"; words: string };
+
+export const PART_ACTIONS = ["copy", "say"] as const;
 
 export type BlockType = Block["type"];
 
 export const BLOCK_TYPES: readonly BlockType[] = [
   "text", "callout", "list", "facts", "table", "stat", "progress", "steps", "chart", "draw", "image", "link", "divider",
-  "row", "grid", "card", "choice", "suggest", "form",
+  "row", "grid", "card", "choice", "suggest", "form", "part",
 ];
 
-/** The blocks that hold others. */
-export const BOXES: ReadonlySet<BlockType> = new Set(["row", "grid", "card"]);
+/** The blocks that hold others. A part holds others only when its kind is `box`, which check.ts reads. */
+export const BOXES: ReadonlySet<BlockType> = new Set(["row", "grid", "card", "part"]);
 
 /**
  * Blip beside a drawing, now and then, doing what fits it: survey (numbers or a drawing to look at), read (a note to read), think (a
@@ -125,4 +150,8 @@ export const SHOW_LIMITS = {
   grid: 4,
   /** Links and pictures in one answer. */
   links: 6,
+  /** A part's role name: enough for words, not for a sentence. */
+  role: 40,
+  /** Controls in one answer, so a drawing cannot become a control panel. */
+  controls: 8,
 } as const;

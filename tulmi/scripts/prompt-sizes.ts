@@ -88,7 +88,10 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   bot_run: 1379,
   bot_memory: 1058,
   // What a bot's answer draws (src/show/design.ts): it replaces nothing, so its first size is its "before" (a NEW_ROLE).
-  bot_show: 2420,
+  // What it was before the OPEN block (the `part`, src/show/style.ts) was added to its contract: re-measured on the day,
+  // not the 2,420 of its first version, because the role had already drifted to this and a stale anchor makes the 10% rule
+  // below mean nothing. The same treatment the cinema's roles were given when they grew by the block they now carry.
+  bot_show: 2638,
   // A screen nobody built, drawn from the same blocks (src/drawn): new, so its first measured size is its own "before".
   screen_draw: 2082,
   cinema_scene: 2494,
