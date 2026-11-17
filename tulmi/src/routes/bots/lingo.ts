@@ -382,7 +382,12 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
 
     const said = str(b["said"], TEXT_MAX * 2);
     const picked = num(b["picked"]);
-    const chips = Array.isArray(b["chips"]) ? (b["chips"] as unknown[]).map((c) => str(c, TEXT_MAX)).filter(Boolean).slice(0, 40) : [];
+    // Tapping chips builds ONE LINE ("un café"), and that is what the screen sends — a string, not a list. Taking
+    // only a list meant every chips answer arrived empty and was marked wrong with the reason "silence", however
+    // right it was. A list is still read, because a caller may have one.
+    const chips = Array.isArray(b["chips"])
+      ? (b["chips"] as unknown[]).map((c) => str(c, TEXT_MAX)).filter(Boolean).slice(0, 40)
+      : str(b["chips"], TEXT_MAX * 2).split(/\s+/).filter(Boolean).slice(0, 40);
 
     const mark =
       // A gap in a sentence is answered by choosing a word; when the bank had no sentence for it, exerciseFor fell
