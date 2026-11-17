@@ -62,6 +62,7 @@ const fromOf = (c: CourseView): string => c.fromName?.trim() || c.from;
 
 /** "12 due · 41 words · 3 learned", leaving out what is nothing. */
 function countsLine(p: Progress): string {
+  if (!p.items) return "no words yet";
   const bits = [p.due ? `${p.due} due` : "nothing due", `${p.items} word${p.items === 1 ? "" : "s"}`];
   if (p.learned) bits.push(`${p.learned} learned`);
   return bits.join(" · ");
@@ -88,11 +89,15 @@ function courseCard(ctx: BotsCtx, c: CourseView): Node {
       grow(),
       roundButton("close", open(SCREENS.lingoLeave, { target: c.target, name }), { size: 28, light: true, label: `Stop learning ${name}` }),
     ], { alignItems: "flex-start", gap: 8 }),
-    meter(c.mastery.held, 1, { label: `${held}% of what you've met, you'd still have now`, color: look(ctx).color, height: 6 }),
+    // No meter on a course with nothing in it: "0% of what you've met" is a measurement of nothing, drawn as a fact.
+    ...(c.progress.items ? [meter(c.mastery.held, 1, { label: `${held}% of what you've met, you'd still have now`, color: look(ctx).color, height: 6 })] : []),
     meta(countsLine(c.progress), { size: 13 }),
-    c.progress.due || c.progress.unseen
-      ? primaryButton("Continue", open(SCREENS.lingoSet, { target: c.target }))
-      : secondaryButton("Practise anyway", open(SCREENS.lingoSet, { target: c.target })),
+    // A course with nothing in it is offered the thing that actually works, not a lesson that has nothing to ask.
+    c.progress.items === 0
+      ? primaryButton("Start by talking", open(SCREENS.chat, { slug: LINGO_SLUG }))
+      : c.progress.due || c.progress.unseen
+        ? primaryButton("Continue", open(SCREENS.lingoSet, { target: c.target }))
+        : secondaryButton("Practise anyway", open(SCREENS.lingoSet, { target: c.target })),
   ], { gap: 10, padding: 16, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line });
 }
 
@@ -141,14 +146,21 @@ export function territory(ctx: BotsCtx, data: TerritoryData | undefined): Node[]
 // ===================================================================== the picker
 
 /** One language, named in itself with the English name beside it, because somebody looks for the word they call it by. */
-function languageRow(l: LanguageRow): Node {
+/**
+ * One language on the picker. It does double duty, because the list and the search behind it are the same either way:
+ * normally it is the language to LEARN and picking it goes on to ask what the language is for; with `pick=from` it is
+ * the language they already SPEAK, and picking it goes back to that question carrying the answer.
+ */
+function languageRow(l: LanguageRow, forFrom?: { target: string; name: string }): Node {
   // Picking one does not start the course: it asks what the language is FOR first, and that answer starts it. Going
   // straight in used to land on "Nothing due", because a course nobody has said anything to has no words in it yet.
   return listRow({
     label: l.name,
     ...(l.en && l.en !== l.name ? { value: l.en } : {}),
     chevron: true,
-    onPress: open(SCREENS.lingoWhy, { target: l.tag, name: l.name }),
+    onPress: forFrom
+      ? open(SCREENS.lingoWhy, { target: forFrom.target, name: forFrom.name, from: l.tag, fromName: l.name })
+      : open(SCREENS.lingoWhy, { target: l.tag, name: l.name }),
   });
 }
 
@@ -177,8 +189,14 @@ const WHY_REASONS: Array<{ label: string; value: string }> = [
  * mother is in Seville and I meet her in March" tells Lingo what a hundred taps could not. Both are optional, Skip is
  * one tap, and backing out adds no language at all.
  */
-export function whyScreen(_ctx: BotsCtx, target: string, name: string): Node[] {
-  const begin = (why: unknown, whyNote: unknown): ActionRef => call("PUT", `${PATH}/course`, { target, why, whyNote }, {
+export function whyScreen(ctx: BotsCtx, target: string, name: string): Node[] {
+  // WHICH LANGUAGE IT IS TAUGHT IN. The server knows it only once they have a course, so on the first language
+  // nobody knows it and it falls back to English — which is the one place this must not quietly decide for them.
+  // Every meaning in every exercise is written in this language; being handed English because nobody asked is
+  // exactly the assumption this app does not make.
+  const from = String(ctx.params?.from ?? "");
+  const fromName = String(ctx.params?.fromName ?? "");
+  const begin = (why: unknown, whyNote: unknown): ActionRef => call("PUT", `${PATH}/course`, { target, why, whyNote, ...(from ? { from } : {}) }, {
     ok: seq(toast(`Learning ${name}`), { kind: "navigate", screenId: SCREENS.lingo, replace: true }),
     fail: toast("Couldn't start that one. Try again in a moment.", "error"),
   });
@@ -186,6 +204,16 @@ export function whyScreen(_ctx: BotsCtx, target: string, name: string): Node[] {
     title(`What's ${name} for?`),
     meta("It decides what Lingo teaches you first and what it talks to you about. Nothing here is a test, and you can tell it more any time.", { size: 13 }),
     chips(WHY_REASONS, "why"),
+    col([
+      sectionLabel("Taught in"),
+      listCard([listRow({
+        label: fromName || "The language you speak",
+        value: "Change",
+        chevron: true,
+        onPress: open(SCREENS.lingoAdd, { pick: "from", target, name }),
+      })]),
+      ...(fromName ? [] : [meta("Every meaning is written in this. Pick yours if it is not English.", { size: 12 })]),
+    ], { gap: 8 }),
     col([
       sectionLabel("In your own words"),
       inputBox([field("lingo-for", "note", "Who you'll speak it with, and when. A line is plenty.", { multiline: true })], { radius: RADIUS.card }),
@@ -201,19 +229,28 @@ export function picker(ctx: BotsCtx, data: PickerData | undefined): Node[] {
   const suggested = data?.suggested ?? [];
   const all = data?.languages ?? [];
   const q = String(ctx.params?.q ?? "").trim();
+  // The same screen, asked the other way round: which language do they already speak. Everything below is the same,
+  // because a person looks for their own language exactly as they look for the one they want.
+  const target = String(ctx.params?.target ?? "");
+  const forFrom = String(ctx.params?.pick ?? "") === "from" && target
+    ? { target, name: String(ctx.params?.name ?? target) }
+    : undefined;
+  const row = (l: LanguageRow) => languageRow(l, forFrom);
   const out: Node[] = [
-    title("Add a language"),
-    data?.fromName ? meta(`Taught in ${data.fromName}, which is what you already speak.`, { size: 13 }) : meta("Search in any language.", { size: 13 }),
+    title(forFrom ? "Which language do you speak?" : "Add a language"),
+    forFrom
+      ? meta(`${forFrom.name} will be taught in whichever you pick, and it is what every meaning is written in.`, { size: 13 })
+      : data?.fromName ? meta(`Taught in ${data.fromName}, which is what you already speak.`, { size: 13 }) : meta("Search in any language.", { size: 13 }),
     // The search runs on the server (the list of languages never ships in the app), so Enter opens this screen again
     // with `q` and the server answers with what matches. The same field every other search in the app uses.
     searchField(SCREENS.lingoAdd, "Search in any language, or in English"),
     ...(q ? [searchLine(SCREENS.lingoAdd, q)] : []),
   ];
   if (suggested.length) {
-    out.push(sectionLabel("Suggested"), listCard(suggested.map(languageRow)));
+    out.push(sectionLabel("Suggested"), listCard(suggested.map(row)));
   }
   if (all.length) {
-    out.push(sectionLabel(suggested.length ? "All languages" : "Languages"), listCard(all.map(languageRow)));
+    out.push(sectionLabel(suggested.length ? "All languages" : "Languages"), listCard(all.map(row)));
   } else {
     out.push(notice("Nothing by that name. Try the language's own name, or the English one."));
   }
@@ -361,6 +398,22 @@ function markRow(): Node {
 export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefined): Node[] {
   const exs = data?.exercises ?? [];
   if (!exs.length) {
+    // TWO DIFFERENT EMPTIES, and telling somebody the wrong one is how this screen read as broken. "Nothing due"
+    // means they have met things and are holding them. A course with NOTHING IN IT has not earned that sentence:
+    // they picked a language a minute ago and are being told they are up to date on a language they cannot speak.
+    // It happens whenever the shared bank has no sentences for the pair yet, which is every pair nobody has poured
+    // a corpus into — so the way out is the one thing that always works, which is saying something to Lingo.
+    const nothingYet = (data?.progress?.items ?? 0) === 0;
+    if (nothingYet) {
+      return [
+        emptyState({
+          pose: "listen",
+          title: "Nothing to learn yet",
+          body: "Lingo hasn't got any words for you in this one. Tell it something you want to say, or ask how to say a word, and it will start from there.",
+          action: { label: "Talk to Lingo", onPress: open(SCREENS.chat, { slug: LINGO_SLUG }) },
+        }),
+      ];
+    }
     return [
       emptyState({
         pose: "done",
