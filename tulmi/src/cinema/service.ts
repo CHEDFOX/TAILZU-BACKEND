@@ -27,7 +27,7 @@ import { usdToPaise } from "../code/brain/money.js";
 import { asPerson } from "../privacy/aiGate.js";
 import { animaticPrint, castVoice, characterSheetPrompt, linePrint, spotPrint, spotPrompt, tonePrint, tonePrompt, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
 import { frameOf } from "./cut.js";
-import { animaticOf, blankShot, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
+import { animaticOf, blankShot, cannotMake, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
 import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
 import type { CatalogModel, JobModel } from "./models.js";
@@ -603,8 +603,10 @@ export class CinemaService {
       this.track(f.id, async () => {
         try {
           await asPerson(f.ownerId, () => this.run(f, s, models));
+          await this.tried(f, key, false);
         } catch (err) {
           this.d.log?.(`[cinema] ${stepKey(s)} failed: ${why(err)}`);
+          await this.tried(f, key, true);
         } finally {
           busy.delete(key);
           this.reserved.set(f.id, Math.max(0, (this.reserved.get(f.id) ?? 0) - hold));
@@ -613,11 +615,29 @@ export class CinemaService {
     }
   }
 
+  /**
+   * One more go at a piece of work, or one less. A take has always known when to stop; a sheet, a still and a voice-over did not, and a
+   * provider that refuses one of them refuses it on every tick - which is a film that says "drawing the storyboard" for ever while it
+   * pays for the same refusal again and again. Counted on the film, so a restart remembers, and cleared the moment the work succeeds.
+   */
+  private async tried(f: Film, key: string, failed: boolean): Promise<void> {
+    const had = f.tries?.[key] ?? 0;
+    if (!failed && !had) return;
+    await this.update(f.ownerId, f.id, (x) => {
+      const tries = { ...(x.tries ?? {}) };
+      if (failed) tries[key] = (tries[key] ?? 0) + 1;
+      else delete tries[key];
+      x.tries = tries;
+    });
+  }
+
   private async move(f: Film, status: Film["status"], hold: Film["hold"]): Promise<void> {
     const before = { status: f.status, hold: f.hold };
+    const cannot = status === "failed" ? cannotMake(f) : "";
     const out = await this.update(f.ownerId, f.id, (x) => {
       x.status = status;
       x.hold = hold;
+      if (cannot && !x.error) x.error = `We could not make ${cannot}. Change the words for it and try again.`;
     });
     const title = out.script?.bible.title || "Your film";
     const data = { f: out.id };

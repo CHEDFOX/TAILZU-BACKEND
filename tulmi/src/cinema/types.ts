@@ -378,6 +378,12 @@ export interface Film {
   /** The person asked for the film enlarged. Unlike another shape, this is a real job at a model, so it is only started if it fits. */
   wantBig?: boolean;
   /** Warnings for the person: a shot kept as the best of its tries, a line too long for its shot. */
+  /**
+   * How many times each step has failed in a row (flow.ts stepKey), cleared the moment it works. A take has always known when to give
+   * up; a sheet, a still and a voice-over did not, and a model that refuses one of those refuses it every tick for ever - a film stuck
+   * on "drawing the storyboard" while it spends. Counted on the film itself, so a restart does not forget.
+   */
+  tries?: Record<string, number>;
   notes: string[];
   error: string | null;
   createdAt: number;

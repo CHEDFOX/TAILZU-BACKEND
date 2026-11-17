@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { voicePrint } from "../src/cinema/compile.js";
-import { prints, refresh, steps, type Step } from "../src/cinema/flow.js";
+import { cannotMake, prints, refresh, stepKey, steps, type Step } from "../src/cinema/flow.js";
 import { afterCheck, bestTake, mean, parseVerdict, passes } from "../src/cinema/qc.js";
 import { editable, pickJob, runFrom, wantsLipSync } from "../src/cinema/route.js";
 import { runPrompt } from "../src/cinema/compile.js";
@@ -267,6 +267,36 @@ describe("coverage: the beats the film turns on, shot twice", () => {
     // The one still unchecked is checked, and the film does not go to the cut while it is in the air.
     expect(k).toContain("check");
     expect(k).not.toContain("move:cutting:");
+  });
+});
+
+describe("giving up on work that cannot be done", () => {
+  it("stops asking for a sheet that has failed three times, and fails the film with what it could not make", () => {
+    const f = film({ ...rich, status: "boarding" });
+    const look: Step = { kind: "sheet", of: "look", key: "look" };
+    expect(kinds(steps(f, { now: 0, busy: none, cost: flat(10) }))).toContain("sheet:look");
+
+    f.tries = { [stepKey(look)]: 3 };
+    const after = steps(f, { now: 0, busy: none, cost: flat(10) });
+    expect(kinds(after)).not.toContain("sheet:look");
+    expect(kinds(after)).toEqual(["move:failed:"]);
+    expect(cannotMake(f)).toContain("the film's look");
+  });
+
+  it("counts each piece of work on its own, and two short of the limit still tries", () => {
+    const f = film({ ...rich, status: "boarding" });
+    f.tries = { "sheet:look:look": 2, "still:1": 1 };
+    const k = kinds(steps(f, { now: 0, busy: none, cost: flat(10) }));
+    expect(k).toContain("sheet:look");
+    expect(k).not.toContain("move:failed:");
+  });
+
+  it("says which still or voice-over could not be made, not just that something could not", () => {
+    const f = boarded({ ...rich, status: "boarding" });
+    f.shots[0]!.still = null;
+    f.tries = { "still:1": 3 };
+    expect(cannotMake(f)).toContain("the still for shot 1");
+    expect(kinds(steps(f, { now: 0, busy: none, cost: flat(10) }))).toEqual(["move:failed:"]);
   });
 });
 
