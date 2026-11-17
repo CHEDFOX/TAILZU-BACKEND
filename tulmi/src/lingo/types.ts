@@ -36,6 +36,13 @@ export interface Memory {
   dueMs: number;
   /** When it was last answered; null while it has never been asked. */
   lastMs: number | null;
+  /**
+   * HOW LONG THEY THINK ABOUT THIS ONE, in ms, as a running middle (portrait.ts blendMs); 0 until it is timed.
+   * Taken from the gap between one answer and the next, so no clock in the app and no message can say otherwise.
+   * It is the difference between a word somebody HAS and one they can work out, which nothing else here can see:
+   * both are marked right.
+   */
+  thinkMs?: number;
 }
 
 export interface LingoItem {
@@ -82,6 +89,12 @@ export interface Learner {
   lastDay: string | null;
   usedMs: number;
   updatedMs: number;
+  /** Where they are on the path (course.ts UNITS). Empty until they start; the first unit is assumed. */
+  unit?: string;
+  /** When they last answered anything on this course: what the next answer's thinking time is measured from. */
+  lastAnswerMs?: number;
+  /** Per kind of exercise: asked, right, and the middle time. What the portrait's rates are built from. */
+  tally?: { [kind: string]: { asked: number; right: number; ms: number } };
   /** What the language is for, one of WHY_CODES; "" when they skipped the question or the course predates it. */
   why?: Why;
   /** The same thing in their own words, which is worth more than the code: who they will speak it with, and when. */

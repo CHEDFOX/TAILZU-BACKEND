@@ -20,6 +20,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../../lingo/grade.js";
+import { blendMs, thinkingTime } from "../../lingo/portrait.js";
 import { learned } from "../../lingo/schedule.js";
 import { answered, dayOf, pick, plan, progress, refOf, shapeFor, streakAfter, wire, type Exercise, type SentenceLookup } from "../../lingo/session.js";
 import { againAfter } from "../../lingo/order.js";
@@ -398,16 +399,33 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       : kind === "say" || kind === "speak" ? gradeSpoken(said, ex.accepted)
       : gradeText(said, ex.accepted);
 
-    const next = answered(item, kind, mark, at);
+    // HOW LONG THEY THOUGHT ABOUT IT: the gap since their last answer here, which is the only honest measure of it
+    // that exists — no clock in the app, and no message that could say otherwise. A gap where they put the phone
+    // down is not thinking and is thrown away rather than capped (portrait.ts). It is the difference between a word
+    // somebody HAS and one they can work out, and nothing else here can tell those apart: both are marked right.
+    const thought = thinkingTime(course.lastAnswerMs, at);
+    const answeredItem = answered(item, kind, mark, at);
+    const next = thought
+      ? { ...answeredItem, memory: { ...answeredItem.memory, thinkMs: blendMs(item.memory.thinkMs ?? 0, thought) } }
+      : answeredItem;
     await store().save(user.id, target, [next], at);
 
     // A session that got anywhere counts for the day. The streak is the person's own day, not the server's.
     const tz = num(b["tzOffsetMinutes"]) ?? 0;
     const today = dayOf(at, Math.max(-840, Math.min(840, tz)));
     const streak = streakAfter(course, today);
-    if (streak.lastDay !== course.lastDay || streak.streakDays !== course.streakDays) {
-      await store().setCourse(user.id, { ...course, ...streak, usedMs: at }, at).catch(() => undefined);
-    }
+    // Per kind: asked, right, and the middle time. The portrait's rates are built from these, and they are counted
+    // here because this is the only place that knows what was actually asked and how it went.
+    const was = course.tally?.[kind] ?? { asked: 0, right: 0, ms: 0 };
+    const tally = {
+      ...(course.tally ?? {}),
+      [kind]: {
+        asked: was.asked + 1,
+        right: was.right + (mark.verdict === "right" ? 1 : 0),
+        ms: thought ? blendMs(was.ms, thought) : was.ms,
+      },
+    };
+    await store().setCourse(user.id, { ...course, ...streak, tally, lastAnswerMs: at, usedMs: at }, at).catch(() => undefined);
 
     return reply.send({
       mark,

@@ -214,7 +214,7 @@ describe("three weeks of somebody actually using it", () => {
     const end = (await go("GET", "/v1/lingo/courses")).body.courses[0];
     say(`\n  after three weeks: ${end.progress.items} words, ${end.progress.learned} learned, ${end.mastery.spoken} ever said out loud, streak ${end.streakDays}`);
     const digest = await lingoDigest("maria", { store, now: clock });
-    say(`\n=== WHAT LINGO KNOWS ABOUT HER ===\n${digest?.split("\n").slice(0, 10).map((l) => `  ${l}`).join("\n")}`);
+    say(`\n=== WHAT LINGO KNOWS ABOUT HER ===\n${digest?.split("\n").slice(0, 40).map((l) => `  ${l}`).join("\n")}`);
 
     // What has to be true at the end of all that.
     noticed(sets > 15, `She only got a set on ${sets} of the 20 days.`);
