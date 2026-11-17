@@ -182,7 +182,8 @@ const LINGO: BotDef = {
     "Never say a word is learned until they have said it out loud.",
     "Their own words, the ones they reached for, come before anything off a list.",
   ],
-  // Its words, its scheduling and its marking are its own (src/lingo): no tools here. Its chat reads their course.
+  // Its scheduling and its marking are its own (src/lingo) and no tool touches them. Its chat READS the course
+  // (lingo/digest.ts) and has exactly one thing it can do to it: write down a word they reached for (lingo/tool.ts).
   skills: skills({}),
   knowledge: [], tone: "patient, warm, and never sarcastic about a mistake", visibility: "private",
   budgets: { perRequestPaise: 200, dailyPaise: 2000 },

@@ -26,7 +26,7 @@ import {
   sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
-import { field, inputBox, isDesk } from "./parts.js";
+import { chatBar, field, inputBox, isDesk } from "./parts.js";
 import { searchField, searchLine } from "../keybotParts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
 import type { Exercise } from "../../../../lingo/session.js";
@@ -393,6 +393,11 @@ export const LINGO_SCREENS: BotsScreen[] = [
       back: true,
       backTitle: "Lingo",
       body: territory(ctx, data),
+      // TALKING TO IT. Every other bot with a page of its own has this in its footer, and Lingo — the one bot whose
+      // whole point is conversation — had no way to be spoken to at all: its tile opens the territory rather than
+      // the shared bot page, and nothing on any of its four screens asked for a word. It is not on a lesson, only
+      // here: the middle of a set is not the moment to be offered a chat.
+      footer: [chatBar(ctx, LINGO_SLUG, "Lingo", "Ask how to say something…", open(SCREENS.chat, { slug: LINGO_SLUG }))],
     }),
   }),
   screen<PickerData>({

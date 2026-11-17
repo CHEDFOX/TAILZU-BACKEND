@@ -65,7 +65,9 @@ export async function lingoDigest(userId: string, o: DigestDeps = {}): Promise<s
     lines.push("", "Not met yet:");
     for (const it of fresh) lines.push(`- ${it.item} = ${it.gloss}`);
   }
-  if (!ready.length && !fresh.length) lines.push("", "Nothing is due. Talk with them, and add any new word they reach for.");
+  if (!ready.length && !fresh.length) lines.push("", "Nothing is due. Talk with them, and write down any new word they reach for.");
+  // The one thing it can DO. Without this line it talks about remembering words and never calls the tool that does it.
+  lines.push("", "When they reach for a word — they ask how to say it, they try it, you correct one — write it down with lingo_note_words. Saying you will remember something without calling it is a promise you have not kept.");
 
   return neutral(lines.join("\n"));
 }

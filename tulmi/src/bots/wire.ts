@@ -11,6 +11,7 @@
  * given them (Plan Ease is) reads and writes the person's own days, with or without connected apps switched on.
  */
 import type { Artifacts } from "../artifacts/index.js";
+import { lingoWords } from "../lingo/tool.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import { CodeChat } from "../code/chat/index.js";
 import type { Code } from "../code/index.js";
@@ -54,5 +55,7 @@ export function botPorts(o: WireOptions): BotPorts {
     code: codeAskPort(o.code, o),
     // Flights, hotels, currency and weather, live and free, with no sign-in of the person's (src/everyday).
     everyday: everyday(),
+    // Lingo's own: writing down a word somebody reached for, mid-conversation. buildTools gives it to Lingo alone.
+    lingo: lingoWords(),
   };
 }

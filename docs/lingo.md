@@ -202,6 +202,39 @@ ordinary bot loop with the course as its knowledge (`digest.ts`) — the pair, t
 the words due now with the ones never said marked. So "what should I practise?" is answered from the real table in
 one model call, and the conversation can be steered onto what is about to be forgotten.
 
+## 8b. Talking to it, and the one thing the chat can do
+
+**Where you ask.** The chat bar is in the footer of the territory (`bots.lingo`), exactly as mail, meetings, cinema
+and Plan Ease have theirs. It is not on a lesson: the middle of a set is not the moment to be offered a chat.
+
+Until it was put there **there was nowhere to ask Lingo anything at all** — its tile opens the territory rather than
+the shared bot page, and none of its screens carried a chat bar. The bot whose entire point is conversation could
+not be spoken to.
+
+**`lingo_note_words`** (`src/lingo/tool.ts`) is the only thing its chat can do besides talk: write a word into the
+course. Lingo's rules already said *"their own words, the ones they reached for, come before anything off a list"*,
+and `unseen` already asked for those first — but nothing could put one there. Somebody could ask how to say a word,
+be told, and have it gone by the end of the conversation. **A bot that says it will remember something and cannot
+is worse than one that never offered**, so the tool's description ends: *never say you have written something down
+unless you have called this.*
+
+| | |
+| --- | --- |
+| which course | the one they last opened, which is the one the app is showing |
+| how they met it | `asked`, `said` or `heard` — and the scheduler already prefers them in that order, so a word Lingo itself used is the weakest of the three |
+| a word already there | left exactly as it is, history and all. Being mentioned again never resets what the scheduler knows |
+| half a word | refused. Both the word and its meaning, or nothing: a word with no meaning reaches them as a blank question |
+| how many at once | eight. A conversation produces a handful worth keeping, never a glossary |
+| no course yet | it says so, rather than dropping the words quietly |
+
+It is given to **Lingo and to no other bot** (`bots/tools.ts`, gated on the bot's id): another bot handed it would
+be filing words into a course it knows nothing about. A name with no definition gets no handler either, so it
+cannot be called behind the list's back.
+
+**What is still not solved:** a word earns its place the first time it is mentioned. The stricter rule — reached for
+twice, or got wrong once — is not built, and a course can fill with things said in passing. `source` softens it
+(what they went looking for is asked before what merely went past them) but does not fix it.
+
 ## 9. The sentence bank: not writing the exercises
 
 A sentence pair IS an exercise. "Me gustaría un café" against "I would like a coffee" is already something to type,
