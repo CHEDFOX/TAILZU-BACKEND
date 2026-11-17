@@ -40,6 +40,29 @@ They are paid for only on a screen that looks like a sign-in (`looksLikeSignIn`)
 `CONTEXT_NOTE` are paid for only when they apply, so the stable block and every ordinary step cost nothing.
 The two verbs themselves are in the contract (`src/principles/roles.ts`), which is two lines.
 
+## The window draws the ways in now
+
+**Built (17 Nov):** the `ALSO` lines reach the handover card as buttons. Each is a real control on that screen — the
+server checked every id against the screen list and dropped the rest before it left — so the button simply presses it
+(`TAILZU-DESKTOP/src/agent/run/agent.js` `handover`, `waysOf`).
+
+Pressing one does **not** finish the handover: starting a way in is the beginning of their part, not the end, so the
+card comes back and waits, and only Continue or Stop ends it. A press that fails is logged and the card still comes
+back, because the page is theirs to finish either way. At most four, no repeat, and nothing without both an id and a
+label — the window does not trust the cap, it keeps its own.
+
+Why this half first: rule S3 exists because people rarely remember **which** way they signed up with, and a page's own
+buttons are often below the fold or behind "more options". The card puts the real choices in front of them, and it
+needed no decision about anything.
+
+**Still not built: the BOXES** (`fields`). The guide's window is deliberately never focused — the app being worked on
+keeps the keyboard, and a dictation's paste must still land in it (`src/agent/ask.js`, "THE PILL'S RECIPE") — so it
+cannot take a keystroke, let alone a password. That is a decision, not an omission, and there are three ways out: make
+the window focusable for that one moment and hand focus back; a separate window that may take the keyboard; or the
+cloud browser's panel in a `LiveView`, which both clients already have and which never holds the secret itself (each
+character goes to the real page and the box is emptied before the call goes out). Until one is chosen, every `FIELD`
+line still ends in a correct plain handover.
+
 `looksLikeSignIn` is a cheap guess and is meant to be: the focused field's kind says password, or there is a
 box to type in on a screen that also says one of the things a sign-in page says. It is wrong in the safe
 direction both ways. A page it misses gets the plain handover every sign-in page got before this existed. A
