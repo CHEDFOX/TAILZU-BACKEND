@@ -81,6 +81,9 @@ const NEW_SHARE = 0.3;
 /** How many of their OWN never-seen words come in whatever the shape says, because they asked for them. */
 const OWN_ALWAYS = 2;
 
+/** How long a set of early practice is. Shorter than a real one: they are ahead, and it should feel like a top-up. */
+const EARLY_MAX = 8;
+
 /**
  * WHICH SHAPE AN ITEM GETS, by how well it is held and whether it has ever been said.
  *
@@ -256,7 +259,20 @@ export function pick(items: readonly LingoItem[], learner: Learner, now: number,
     ? unseen(items.filter((i) => (i.source === "asked" || i.source === "said") && !held.has(i.item)), OWN_ALWAYS - fresh.length)
     : [];
   const bring = [...fresh, ...theirs];
-  return [...revision.slice(0, Math.max(0, size - bring.length)), ...bring];
+  const out = [...revision.slice(0, Math.max(0, size - bring.length)), ...bring];
+  if (out.length) return out;
+
+  // NOTHING IS DUE AND THERE IS NOTHING NEW — and they have just pressed Continue. Giving them an empty screen
+  // because a scheduler says they do not NEED practice yet is the whole difference between a course somebody walks
+  // and a pile they dip into. So they practise what is closest to due, early.
+  //
+  // It costs a little: an item reviewed before its time teaches less than one reviewed on it. It buys the thing
+  // the app is otherwise worst at — somebody who turns up every day always has something to do, and never loses a
+  // streak to the scheduler being satisfied with them.
+  return [...items]
+    .filter((i) => i.memory.state !== "new")
+    .sort((a, b) => a.memory.dueMs - b.memory.dueMs)
+    .slice(0, Math.max(1, Math.min(size, EARLY_MAX)));
 }
 
 /**

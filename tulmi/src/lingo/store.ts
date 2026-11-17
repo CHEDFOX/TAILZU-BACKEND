@@ -26,6 +26,8 @@ export interface NewItem {
   kind: ItemKind;
   gloss: string;
   source: ItemSource;
+  /** Which unit of the path it came from, when it came from one (course.ts). */
+  unit?: string;
 }
 
 export interface LingoStore {
@@ -101,7 +103,7 @@ export class MemoryLingoStore implements LingoStore {
       const k = MemoryLingoStore.ik(userId, target, item);
       if (this.rows.has(k)) continue;
       if ((await this.items(userId, target)).length >= ITEMS_MAX) break;
-      this.rows.set(k, { item, kind: raw.kind, gloss: raw.gloss, source: raw.source, spoken: 0, memory: freshMemory(now) });
+      this.rows.set(k, { item, kind: raw.kind, gloss: raw.gloss, source: raw.source, ...(raw.unit ? { unit: raw.unit } : {}), spoken: 0, memory: freshMemory(now) });
       added++;
     }
     return added;
@@ -137,11 +139,11 @@ interface LearnerRow {
 interface ItemRow {
   item: string; kind: string; gloss: string; source: string; spoken: number;
   stability: number; difficulty: number; reps: number; lapses: number; steps: number;
-  state: string; due_ms: number; last_ms: number | null; think_ms: number | null;
+  state: string; due_ms: number; last_ms: number | null; think_ms: number | null; unit: string | null;
 }
 
 const LEARNER_COLS = "target, from_lang, level, goal_min, calls, voice, streak_days, last_day, used_ms, updated_ms, why, why_note, unit, last_answer_ms, tally";
-const ITEM_COLS = "item, kind, gloss, source, spoken, stability, difficulty, reps, lapses, steps, state, due_ms, last_ms, think_ms";
+const ITEM_COLS = "item, kind, gloss, source, spoken, stability, difficulty, reps, lapses, steps, state, due_ms, last_ms, think_ms, unit";
 
 const toLearner = (r: LearnerRow): Learner => ({
   target: r.target, from: r.from_lang, level: r.level as Level, goalMin: r.goal_min, calls: r.calls, voice: r.voice,
@@ -153,6 +155,7 @@ const toLearner = (r: LearnerRow): Learner => ({
 
 const toItem = (r: ItemRow): LingoItem => ({
   item: r.item, kind: r.kind as ItemKind, gloss: r.gloss, source: r.source as ItemSource, spoken: r.spoken,
+  ...(r.unit ? { unit: r.unit } : {}),
   memory: {
     stability: r.stability, difficulty: r.difficulty, reps: r.reps, lapses: r.lapses, steps: r.steps,
     state: r.state as MemoryState, dueMs: Number(r.due_ms), lastMs: r.last_ms === null ? null : Number(r.last_ms),
@@ -200,6 +203,7 @@ export class SupabaseLingoStore implements LingoStore {
       .filter((r) => r.item)
       .map((r) => ({
         user_id: userId, target, item: r.item, kind: r.kind, gloss: r.gloss, source: r.source, spoken: 0,
+        unit: r.unit ?? null,
         stability: 0, difficulty: 0, reps: 0, lapses: 0, steps: 0, state: "new", due_ms: now, last_ms: null,
         created_ms: now, updated_ms: now,
       }));
@@ -216,7 +220,7 @@ export class SupabaseLingoStore implements LingoStore {
       user_id: userId, target, item: keyOf(it.item), kind: it.kind, gloss: it.gloss, source: it.source, spoken: it.spoken,
       stability: it.memory.stability, difficulty: it.memory.difficulty, reps: it.memory.reps, lapses: it.memory.lapses,
       steps: it.memory.steps, state: it.memory.state, due_ms: it.memory.dueMs, last_ms: it.memory.lastMs,
-      think_ms: it.memory.thinkMs ?? null,
+      think_ms: it.memory.thinkMs ?? null, unit: it.unit ?? null,
       created_ms: now, updated_ms: now,
     }));
     const { error } = await this.db.from("lingo_items").upsert(rows, { onConflict: "user_id,target,item" });

@@ -106,3 +106,20 @@ export function after(key: string): Unit | null {
 
 /** Where somebody is, as "3 of 24", for a screen to show. */
 export const placeOf = (key: string): { at: number; of: number } => ({ at: Math.max(1, indexOf(key) + 1), of: UNITS.length });
+
+/**
+ * HAS THIS UNIT BEEN DONE? Not "were its items shown" — whether the person can now do the thing the goal says.
+ *
+ * A unit is done when most of what it taught is HELD and has been SAID. Most, not all: one stubborn word must not
+ * hold somebody at unit 3 for a fortnight, and the word is not lost by moving on — the scheduler keeps asking for
+ * it wherever they are. Saying it is required because the goal is always something you can say, never something
+ * you can recognise.
+ */
+export const DONE_SHARE = 0.75;
+
+export function unitDone(items: readonly { unit?: string; spoken: number }[], unit: string, held: (i: { unit?: string }) => number): boolean {
+  const mine = items.filter((i) => i.unit === unit);
+  if (!mine.length) return false;
+  const have = mine.filter((i) => i.spoken > 0 && held(i) >= 0.8).length;
+  return have / mine.length >= DONE_SHARE;
+}

@@ -52,6 +52,8 @@ export interface LingoItem {
   /** What it means, in the language they are taught in. */
   gloss: string;
   source: ItemSource;
+  /** Which unit of the path it came from (course.ts), when it came from one. A word they reached for has none. */
+  unit?: string;
   /**
    * Times they got it right OUT LOUD. The whole point is talking, so a word that has only ever been read or tapped is
    * not counted as learned however well the scheduler thinks it is held.

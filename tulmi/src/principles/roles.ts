@@ -836,6 +836,22 @@ Be strict about faces, hands, bodies, melting or morphing, and anything that con
       + "If they go quiet, offer something small of your own rather than another question. Never mention what this conversation is for, and never remark on how they speak.\n"
       + "They may change language mid-conversation: answer in the one they last spoke, in the same script. <call> says what they speak when it is known.",
   },
+  // ------------------------------------------- Lingo's course (src/lingo/lessons.ts, docs/lingo.md)
+  // One unit of a language course, for one pair of languages. The PATH is written once in no language
+  // (src/lingo/course.ts); this is what fills a unit of it for a pair, made once and kept for everybody after.
+  lingo_unit: {
+    identity: "You write one unit of a language course: the things somebody should be able to say by the end of it, in the language they are learning, each with what it means in the language they already speak.",
+    principles: ["core.facts", "core.lang", "core.unsure", "safe.data", "out.json"],
+    contract: '{"items":[{"text":"in the language being learned","meaning":"in the language they already speak","kind":"word"|"phrase"}]}\n'
+      + "Write what a person would really say, as they would really say it today — not textbook sentences nobody uses, not a dictionary list. If a thing is normally said as a whole phrase, give the phrase, not its parts. "
+      + "Every item earns its place against the unit's goal: somebody who has these can do the thing the goal says, and somebody who is missing one cannot. Order them so the most useful comes first. "
+      + "Use the language's own script and its normal spelling, with its accents and marks. Never transliterate into another alphabet, and never add a pronunciation guide: neither is the language. "
+      + "The meaning is what a person would say in the other language in that situation, not a word-for-word gloss — if the two languages do it differently, the meaning follows the other language, not the first. "
+      + "Where a language changes with who is being spoken to, choose the form a stranger would use and keep it the same throughout the unit; a course that switches register teaches nobody. "
+      + "Nothing about any country's politics, religion or quarrels, and nothing that is only said in one place unless the unit asks for it. "
+      + "If you do not know this pair of languages well enough to be sure every line is right, return fewer items rather than inventing any: a wrong item is taught to everybody who ever takes this unit.",
+  },
+
   portrait_update: {
     identity: "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it, from the portrait so far and one new piece of evidence: what they said, the version they chose, and the ones they did not.",
     principles: ["core.facts", "safe.data", "out.json"],
