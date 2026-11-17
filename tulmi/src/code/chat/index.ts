@@ -38,6 +38,8 @@ import { RESEARCH_PAISE } from "../../front/path.js";
 import type { ResearchDepth } from "../../front/types.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
 import { newThread, THREAD_ID, threadStore, withJob, type ChatThread, type ThreadStore } from "./threads.js";
+import { drawFor, showOn } from "../../show/design.js";
+import { Seen } from "../../show/links.js";
 import type { CodeCopies } from "../project/copies.js";
 
 export * from "./answer.js";
@@ -208,6 +210,29 @@ export class CodeChat {
       brain, look: this.lookTools(r.userId, project, brain, r.question, await this.copyOf(r.userId, project), r.signal), read, ...(r.startJob ? { startJob: r.startJob } : {}),
       ...(webDefs.length ? { web: { defs: webDefs, run: async (name: string, args: Record<string, unknown>) => String((await web.run({ id: `w${Date.now()}`, name, arguments: JSON.stringify(args) })).message.content ?? "") } } : {}),
     }, this.model(r.userId, r.signal));
+    /**
+     * AFTER THE WORDS, WHAT TO DRAW UNDER THEM (src/show, docs/show.md). The same step a bot's chat runs (bots/run.ts step 7) and the same
+     * blocks, the open `part` included, so Xode can answer with a copiable command, a table of files, a severity instead of only words.
+     * It runs after the answer is whole, so it adds no wait before the words: it comes with the chat's next read.
+     *
+     * Its `Seen` is EMPTY on purpose. A link or a picture must be an address this turn read, and what this turn read are file paths, not
+     * addresses — so the checker drops every one and a drawing here can never build an address out of nothing.
+     *
+     * It never costs an answer: off (BOT_SHOW), no money left, a model that is down, or a drawing that does not hold up, and the turn is
+     * the words it already was.
+     */
+    if (out.thread && out.text && showOn(r.userId)) {
+      try {
+        const shown = await drawFor({
+          ...(this.d.call ? { call: this.d.call } : {}), ...(this.d.gateway ? { gateway: this.d.gateway } : {}),
+          userId: r.userId, leftPaise: Math.max(0, r.maxPaise - out.paise), ...(r.signal ? { signal: r.signal } : {}),
+        }, { asked: r.question, answer: out.text, seen: new Seen() });
+        const turn = out.thread.history.at(-1);
+        if (shown && turn) turn.s = shown;
+      } catch (err) {
+        this.d.log?.warn({ error: (err as Error)?.name }, "code chat: the drawing was not made");
+      }
+    }
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;
   }

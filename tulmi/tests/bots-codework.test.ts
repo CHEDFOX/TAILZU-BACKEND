@@ -10,7 +10,7 @@ import { setSpendSource } from "../src/experience/bots/live.js";
 import { lintTree, walk } from "../src/experience/bots/lint.js";
 import { threadFor } from "../src/experience/bots/screens/codeWork/parts.js";
 import { citations, flowOf, outline, plainWords, stageOf, testCount, tries, visibleParts, workLines } from "../src/botsCodeWork/read.js";
-import { ART, CODEWORK_API, JOB_ANSWER, JOB_ASK, JOB_DONE, JOB_FAILED, JOB_LEAD, PROJECT } from "./bots-codework-data.js";
+import { ART, CODEWORK_API, CODEWORK_CHAT_API, JOB_ANSWER, JOB_ASK, JOB_DONE, JOB_FAILED, JOB_LEAD, PROJECT } from "./bots-codework-data.js";
 
 type Client = "phone" | "desktop";
 
@@ -91,6 +91,29 @@ describe("bots app · Xode at work", () => {
       const reply = walk(s.root!).find((n) => n.type === "Stack" && JSON.stringify(n).includes("In lib/session.ts:42.") && n.style?.borderWidth === 1)!;
       expect(reply, client).toBeTruthy();
       expect(reply.style).toMatchObject({ borderWidth: 1, borderColor: "#e6e6e6", borderRadius: 20, borderBottomLeftRadius: 6 });
+    }
+  });
+
+  /**
+   * Xode's chat draws what its answer drew under its words (src/show, wired in code/chat/index.ts). The fixture's turn carries
+   * a copiable snippet built from the OPEN `part` block — a thing no named block can express, and the thing a coding bot most
+   * wants. Here it has to come out as the kit's own nodes, with the right client's copy action, and nothing a client had to
+   * declare.
+   */
+  it("draws what an answer drew under its words, with a copy that is wired to the clipboard", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const { s, words } = await build("bots.code.job", client, { project: PROJECT }, CODEWORK_CHAT_API);
+      expect(words, client).toContain("npx vitest run");
+      expect(words, client).toContain("Copy");
+      expect(words, client).toContain("From tulmi");
+      // Each client's own way of copying, and only its own.
+      const json = JSON.stringify(s);
+      expect(json.includes(client === "desktop" ? "copyText" : "copyToClipboard"), client).toBe(true);
+      expect(json.includes(client === "desktop" ? "copyToClipboard" : "copyText"), client).toBe(false);
+      // The copy really carries the command, not the label.
+      expect(actionsOf(s.root!).some((a) => (a as { text?: string }).text === "npx vitest run"), client).toBe(true);
+      // Vocabulary 1 throughout: nothing here needs a block the client had to declare.
+      expect(lintTree(s.root!), client).toEqual([]);
     }
   });
 

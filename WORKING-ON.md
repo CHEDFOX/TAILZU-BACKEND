@@ -39,10 +39,23 @@ clean and the app's own design rules passing.
 the cinema's roles were given when they grew by the block they now carry, and it keeps the 10% rule meaning something
 going forward instead of resting on a stale anchor. Measured now: 2,898, ceiling 2,902. It is still tight on purpose.
 
-**Next in this work:** the drawing step runs in ONE place, `bots/run.ts`. Cinema, Mail, Meetings, Lingo and every bot a
-person makes run that loop and get parts; **Xode's chat never calls it**, so the bot most likely to need a copiable
-command can only write words. The bot builder draws nothing either, so creating a bot gets no components. Those two are
-the reach, and they are what is left.
+**XODE'S CHAT DRAWS NOW TOO.** The drawing step ran in one place, `bots/run.ts`, which Xode does not use — its chat is
+its own loop — so the bot most likely to need a copiable command could only write words. It is asked for in
+`code/chat/index.ts` after `converse` and before the thread is kept, and rides on the turn as `s`
+(`code/chat/threads.ts ChatTurn`). Two things differ there, both on purpose:
+
+- **Its `Seen` is empty.** What a Xode turn reads are file paths, not addresses, so the checker's existing "an address
+  this turn read" rule drops every link and picture — a drawing here cannot build an address out of nothing.
+- **The chat draws it `live: false`** (`screens/codeWork/job.ts`), so a control that SENDS words is left out while a copy
+  is drawn on every turn. This chat's Send is not the bots chat's: a `say` would post into the wrong conversation.
+
+Held by `tests/bots-codework.test.ts`: a turn carrying a copiable snippet comes out with the right client's copy action
+and only that one (`copyText` in the window, `copyToClipboard` on the phone), the copy carries the command and not the
+label, and `lintTree` is clean. Its fixture is a `CODEWORK_CHAT_API` of its own rather than the shared one, because
+several tests read the shared one for the EMPTY chat's words — the first attempt changed the shared fixture and broke
+two of them.
+
+**What is left of the reach:** the bot builder draws nothing, so creating a bot still gets no components.
 
 ### 16 Nov: A SCREEN NOBODY BUILT, DRAWN BY A MODEL (`docs/screen-draw.md`, switch `SCREEN_DRAW`, off)
 

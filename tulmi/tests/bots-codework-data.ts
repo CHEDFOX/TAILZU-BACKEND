@@ -30,6 +30,7 @@ const askLog = [
 export const CODEWORK_API: Record<string, unknown> = {
   [`GET /v1/code/projects/${PROJECT}`]: { project: { id: PROJECT, fullName: "aanya-sharma/storefront", defaultBranch: "main" } },
 
+
   [`GET /v1/code/jobs/${JOB_ASK}`]: {
     job: job({ id: JOB_ASK, task: "Fix cart total rounding", state: "waiting_for_you", waitingOn: "answer", spentPaise: 420, createdAt: FIXED_NOW - 6 * MIN, updatedAt: FIXED_NOW - MIN }),
     steps: [],
@@ -120,4 +121,33 @@ export const CODEWORK_API: Record<string, unknown> = {
     { id: "f0000000-0000-4000-8000-000000000002", name: "Price list.pdf", kind: "pdf", format: "pdf", mime: "application/pdf", bytes: 120000, sha256: "b".repeat(64), chars: 900, keep: false, expiresAt: 0, createdAt: FIXED_NOW - HOUR, pages: 2, notes: [], tables: [] },
     { id: "f0000000-0000-4000-8000-000000000003", name: "Recording on Redmi", kind: "video", format: "mp4", mime: "video/mp4", bytes: 3_000_000, sha256: "c".repeat(64), chars: 0, keep: false, expiresAt: 0, createdAt: FIXED_NOW - 3 * HOUR, durationSeconds: 24, notes: [], tables: [] },
   ] },
+};
+
+/**
+ * CODEWORK_API plus a project chat whose turn DREW under its words (src/show): a copiable snippet built from the open
+ * `part` block. Its own api, not the shared one, because several tests read the shared one for the EMPTY chat's words.
+ */
+export const CODEWORK_CHAT_API: Record<string, unknown> = {
+  ...CODEWORK_API,
+  /**
+   * The project's chat, with a turn that DREW under its words (src/show): a copiable snippet built from the open `part`
+   * block — the thing no named block can express, and the thing a coding bot most wants.
+   */
+  [`GET /v1/code/projects/${PROJECT}/chat`]: {
+    thread: "11111111-0000-4000-8000-00000000cha7",
+    turns: [{
+      q: "how do I run the tests?",
+      a: "Run the suite from `tulmi` with vitest.",
+      at: FIXED_NOW - 2 * MIN,
+      s: {
+        blocks: [{
+          type: "part", kind: "box", role: "snippet", children: [
+            { type: "part", kind: "text", role: "label", text: "From tulmi" },
+            { type: "part", kind: "text", role: "code", text: "npx vitest run" },
+            { type: "part", kind: "control", role: "copy", text: "Copy", action: { do: "copy", text: "npx vitest run" } },
+          ],
+        }],
+      },
+    }],
+  },
 };

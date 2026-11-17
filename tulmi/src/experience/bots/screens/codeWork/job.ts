@@ -8,6 +8,8 @@ import {
   type WorkLine, type JobRow, isOver, approvalLineOf, type ProjectRow, isUuid, projectName, stageOf, STAGES, firstSentence,
 } from "../../../../botsCodeWork/read.js";
 import type { ChatTurn } from "../../../../code/chat/threads.js";
+import { showNodes } from "../../show.js";
+import { SCREEN_DOTS } from "../bots/parts.js";
 import { askMoment } from "../../askMoment.js";
 import { notifyWhenDone, PUSH_STATE, withPushCheck } from "../pushAsk.js";
 import {
@@ -135,7 +137,7 @@ const SHOW_TURNS = 4;
 const FOLDED_ANSWER = 280;
 
 /** The chat about the project so far: the last SHOW_TURNS turns in full, the earlier ones folded. A long chat stays one light page. */
-function history(turns: readonly ChatTurn[], size: number, show = SHOW_TURNS, fold = "earlier"): Node[] {
+function history(ctx: BotsCtx, turns: readonly ChatTurn[], size: number, budget: { left: number }, show = SHOW_TURNS, fold = "earlier"): Node[] {
   const full = show > 0 ? turns.slice(-show) : [];
   const folded = turns.slice(0, Math.max(0, turns.length - show));
   const out: Node[] = [];
@@ -149,7 +151,15 @@ function history(turns: readonly ChatTurn[], size: number, show = SHOW_TURNS, fo
       text(clip(t.a.replace(/[#*`_]/g, "").replace(/\s+/g, " ").trim(), FOLDED_ANSWER), { size: size - 2, lineHeight: Math.round((size - 2) * 1.45), color: C.meta }),
     ]), { gap: 10 })));
   }
-  for (const t of full) out.push(mine(t.q, size), t.a ? reportable(theirs(t.a, { size }), t.a) : meta("Xode didn't send words back.", { size: 13 }));
+  for (const t of full) {
+    out.push(mine(t.q, size), t.a ? reportable(theirs(t.a, { size }), t.a) : meta("Xode didn't send words back.", { size: 13 }));
+    /**
+     * What the answer drew under its words (src/show, docs/show.md): a copiable command, a table of files, a severity, and
+     * anything the open `part` named. `live: false` because this chat's Send is not the bots chat's: a control that sends
+     * words is left out, and a copy — which says nothing to anybody — is drawn on every turn.
+     */
+    if (t.s) out.push(...showNodes(ctx, t.s, { slug: "code", turn: String(t.at), live: false, budget }));
+  }
   return out;
 }
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -159,9 +169,11 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n -
  * asked, its questions and the answers, what it said at the end; then the chat so far (the job's own, or the project's), and the question
  * just asked.
  */
-function conversation(d: JobData | undefined, p: { asked?: string; answer?: string; flow?: string[]; turns?: readonly ChatTurn[]; before?: readonly ChatTurn[] }, size: number): Node[] {
+function conversation(ctx: BotsCtx, d: JobData | undefined, p: { asked?: string; answer?: string; flow?: string[]; turns?: readonly ChatTurn[]; before?: readonly ChatTurn[] }, size: number): Node[] {
   const out: Node[] = [];
-  if (p.before?.length) out.push(...history(p.before, size, 2, "earlierBefore"));
+  // One dot budget for every drawing on this screen, newest first, as the bots chat does (screens/bots/parts.ts).
+  const budget = { left: SCREEN_DOTS };
+  if (p.before?.length) out.push(...history(ctx, p.before, size, budget, 2, "earlierBefore"));
   if (d) {
     out.push(mine(d.job.task, size));
     for (const e of d.log) {
@@ -178,7 +190,7 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
   const kept = !!p.asked && turns.at(-1)?.q === p.asked.trim();
   if (turns.length) {
     // The question just asked counts as one of the turns drawn in full.
-    out.push(...(kept ? history(turns.slice(0, -1), size, SHOW_TURNS - 1) : history(turns, size, p.asked ? SHOW_TURNS - 1 : SHOW_TURNS)));
+    out.push(...(kept ? history(ctx, turns.slice(0, -1), size, budget, SHOW_TURNS - 1) : history(ctx, turns, size, budget, p.asked ? SHOW_TURNS - 1 : SHOW_TURNS)));
   }
   if (p.asked) {
     out.push(mine(p.asked, size));
@@ -272,7 +284,7 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
     && !(data.xode.job && isOver(data.xode.job.job.state as JobRow["state"]));
   const p = askedOf(ctx);
   const turns = data?.chat?.turns ?? [];
-  const talk = conversation(data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}), turns, ...(data?.before ? { before: data.before } : {}) }, 15);
+  const talk = conversation(ctx, data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}), turns, ...(data?.before ? { before: data.before } : {}) }, 15);
   return page(ctx, {
     nav: "code", title: "Xode", gap: 18,
     body: [
@@ -344,7 +356,7 @@ function chatPane(ctx: BotsCtx, data: ChatData, c: ChatCtx): Node {
   const p = askedOf(ctx);
   const d = data.job;
   const turns = data.chat?.turns ?? [];
-  const talk = conversation(d, { ...p, ...(data.flow ? { flow: data.flow } : {}), turns, ...(data.before ? { before: data.before } : {}) }, 15);
+  const talk = conversation(ctx, d, { ...p, ...(data.flow ? { flow: data.flow } : {}), turns, ...(data.before ? { before: data.before } : {}) }, 15);
   const pr = d?.agent?.pr;
   return col([
     row([
