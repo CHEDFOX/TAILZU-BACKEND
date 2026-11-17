@@ -77,8 +77,17 @@ send them today and the phone loses them. The window still draws them as CSS.
 (`8446728`: `tulmi/src/experience/sdui2/{build,lint,gate}.ts`). They are behind the server switch `SDUI_V2` (+
 `SDUI_V2_USERS`), off by default. While it is off no client is treated as having any block, so a screen that states `needs`
 is never served. Build new screens with `sdui2/build.ts`, run them through `sdui2/lint.ts`, test on accounts in
-`SDUI_V2_USERS`, and only then ask the owner to turn the switch on. Phones get the blocks with the next over-the-air update
-of the new store build; the window with its next release. Where the text below says "not built" or "V1/S1", read it as
+`SDUI_V2_USERS`, and only then ask the owner to turn the switch on. **Phones already have the blocks** (checked 17 Nov). They are JavaScript only — `bfe4404` touched 31 files, every one
+under `app/src`, and no native file, no `app.config.ts` and no `native-inputs.lock` — so the runtime label did not move
+and `eas-release.yml`'s `update` job sends them over the air on any push of `app/**` to main that did not touch a native
+file. Runs 131 to 139 all pushed to main and all succeeded, `cba544d` (JS only, 14 Nov 21:59) among them. So every phone
+on `tailzu-2026-11-x0-blip` has them and **no store build is waiting on the phone's side**. (This line used to say they
+came "with the next over-the-air update of the new store build", which read as a store build being the gate. It was not.)
+
+**The window still needs a build published**, which is not a store either: it updates itself in place from our own site
+(`TAILZU-DESKTOP/src/main/updater.js` — download, SHA-512 against what the publish recorded, replace, restart). Its
+version has not moved since `af74cd7` landed, so a build carrying the blocks has to be published for installs to pick
+them up. Where the text below says "not built" or "V1/S1", read it as
 built and switched off.
 
 
