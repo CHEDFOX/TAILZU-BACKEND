@@ -164,6 +164,54 @@ function languageRow(l: LanguageRow, forFrom?: { target: string; name: string })
   });
 }
 
+// ===================================================================== a unit finished
+
+export interface DoneData {
+  unit: string;
+  goal: string;
+  /** The moment the bot plays for THIS unit (course.ts Unit.mark). */
+  mark: string;
+  at: number;
+  of: number;
+  /** Every goal they have reached, in order. */
+  canDo: string[];
+}
+
+/**
+ * A UNIT FINISHED, which until now passed in silence: the path moved them on and nobody ever said they had done
+ * the last one.
+ *
+ * What it shows is not a score. It is the thing they can now DO, and under it every other thing they can do —
+ * because that list is the only honest answer to "how far have I got", and watching it get longer is the reason
+ * finishing a unit is worth anything.
+ *
+ * The bot's gesture is THIS unit's own, so the first and the fourteenth do not feel identical, and the four units
+ * that end a level get the big one.
+ */
+export function doneScreen(ctx: BotsCtx, d: DoneData, target: string): Node[] {
+  const live = ctx.live.bots.find((b) => b.slug === LINGO_SLUG);
+  const bot = canBuddy(ctx) ? [botBuddy({
+    kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
+    height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
+    state: live?.working ? "working" : "idle", label: "Lingo",
+    ...botMoment(ctx, d.mark, "once"),
+  })] : [];
+  const earlier = d.canDo.slice(0, -1);
+  return [
+    ...bot,
+    meta(`Unit ${d.at} of ${d.of}`, { size: 13 }),
+    text(d.goal, { size: 26, weight: 700, lineHeight: 32, tracking: -0.4 }),
+    ...(earlier.length
+      ? [col([
+          sectionLabel("And already"),
+          ...earlier.slice(-6).reverse().map((g) => row([icon("check", { size: 14, color: C.meta }), text(g, { size: 14, color: C.grey70, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" })),
+        ], { gap: 8 })]
+      : []),
+    primaryButton("Keep going", open(SCREENS.lingoSet, { target })),
+    quietButton("Stop for now", open(SCREENS.lingo)),
+  ];
+}
+
 // ===================================================================== asking, from anywhere
 
 /**
@@ -538,6 +586,25 @@ export const LINGO_SCREENS: BotsScreen[] = [
       backTitle: "Languages",
       body: whyScreen(ctx, String(ctx.params?.target ?? ""), String(ctx.params?.name ?? "it")),
       state: { why: "", note: "" },
+    }),
+  }),
+  screen({
+    id: SCREENS.lingoDone,
+    build: (ctx) => page(ctx, {
+      nav: LINGO_SLUG,
+      title: "Done",
+      back: open(SCREENS.lingo),
+      backTitle: "Languages",
+      body: doneScreen(ctx, {
+        unit: String(ctx.params?.unit ?? ""),
+        goal: String(ctx.params?.goal ?? ""),
+        mark: String(ctx.params?.mark ?? "celebrate"),
+        at: Number(ctx.params?.at ?? 1),
+        of: Number(ctx.params?.of ?? 24),
+        canDo: String(ctx.params?.canDo ?? "").split("\u0000").filter(Boolean),
+      }, String(ctx.params?.target ?? "")),
+      footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingo)],
+      state: { say: "" },
     }),
   }),
   screen({

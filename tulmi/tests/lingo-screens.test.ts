@@ -17,10 +17,11 @@ import { lintTree } from "../src/experience/bots/lint.js";
 import { SCREENS } from "../src/experience/bots/ids.js";
 import { botRoute } from "../src/experience/bots/ids.js";
 import {
-  LINGO_SCREENS, leaving, picker, saidScreen, setScreen, territory, whyScreen, whyWords,
+  LINGO_SCREENS, doneScreen, leaving, picker, saidScreen, setScreen, territory, whyScreen, whyWords,
   type CourseView, type PickerData, type SetData,
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
+import { UNITS } from "../src/lingo/course.js";
 import type { Exercise } from "../src/lingo/session.js";
 import { EXERCISE_KINDS, type ExerciseKind } from "../src/lingo/types.js";
 
@@ -88,8 +89,8 @@ describe("every tree the kit would draw", () => {
     }
   });
 
-  it("is six screens, and Lingo's tile in the bots list opens the first of them", () => {
-    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoSaid, SCREENS.lingoLeave]);
+  it("is seven screens, and Lingo's tile in the bots list opens the first of them", () => {
+    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoDone, SCREENS.lingoSaid, SCREENS.lingoLeave]);
     expect(botRoute("lingo")).toMatchObject({ kind: "navigate", screenId: SCREENS.lingo });
     // A bot with no page of its own still goes to the shared one.
     expect(botRoute("gym-bot")).toMatchObject({ kind: "navigate", screenId: SCREENS.bot, params: { slug: "gym-bot" } });
@@ -285,6 +286,47 @@ describe("a course with nothing in it", () => {
     expect(s).not.toContain("you'd still have now");
     expect(s).not.toContain("Practise anyway");
     expect(s).not.toContain("nothing due");
+  });
+});
+
+describe("finishing a unit", () => {
+  const d = { unit: "food", goal: "You can order food and drink.", mark: "celebrate", at: 6, of: 24,
+    canDo: ["You can greet someone.", "You can say who you are.", "You can order food and drink."] };
+
+  it("says what they can DO, not what they scored", () => {
+    const s = json(doneScreen(livelyCtx(), d, "es"));
+    expect(s).toContain("You can order food and drink.");
+    expect(s).toContain("Unit 6 of 24");
+    // Everything they could already do, so the list getting longer is the reward.
+    expect(s).toContain("You can greet someone.");
+    expect(s).not.toMatch(/\bXP\b|points|score/i);
+  });
+
+  it("plays THIS unit's gesture, so the first and the fourteenth do not feel the same", () => {
+    const buddy = buddies(doneScreen(livelyCtx(), d, "es"))[0];
+    expect(buddy?.moment).toBe("celebrate");
+    const other = buddies(doneScreen(livelyCtx(), { ...d, mark: "l.earcup" }, "es"))[0];
+    expect(other?.moment).toBe("l.earcup");
+  });
+
+  it("borrows no other bot's props", () => {
+    // juggle is Xode's binary digits and w.wave is the Wanderer's poncho: either would put another bot's things
+    // in Lingo's hands, which is the one rule the look of these bots has.
+    for (const u of UNITS) expect(["juggle", "w.wave"], u.key).not.toContain(u.mark);
+  });
+
+  it("carries on into the next set rather than dropping them at the front", () => {
+    const s = json(doneScreen(livelyCtx(), d, "es"));
+    expect(s).toContain("Keep going");
+    expect(s).toContain(SCREENS.lingoSet);
+    expect(s).toContain('"target":"es"');
+  });
+
+  it("holds up for the very first unit, where there is nothing earlier", () => {
+    const first = { ...d, unit: "hello", at: 1, canDo: ["You can greet someone."] };
+    const s = json(doneScreen(livelyCtx(), first, "es"));
+    expect(s).toContain("Unit 1 of 24");
+    expect(s).not.toContain("And already");
   });
 });
 
