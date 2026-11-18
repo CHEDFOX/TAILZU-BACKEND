@@ -112,16 +112,21 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
   // 1. When.
   const saveWhen: ActionSpec = {
     kind: "condition", if: { truthy: OC.date },
-    then: call("PUT", SKY, { date: `$state.${OC.date}`, time: `$state.${OC.time}` }, {
-      ok: kept(OC.when), fail: toast("Couldn't read that. Try a date like 13 July 1994, and a time like 9:30 am."),
-    }),
+    then: {
+      kind: "condition", if: { truthy: OC.time },
+      then: call("PUT", SKY, { date: `$state.${OC.date}`, time: `$state.${OC.time}` }, {
+        ok: kept(OC.when), fail: toast("Couldn't read that. Try a date like 13 July 1994, and a time like 9:30 am."),
+      }),
+      // The time is what fixes the sky to a place and a moment, so it is asked for rather than guessed at.
+      else: toast("Add the time you were born. Someone at home will know it, or it is on your birth certificate."),
+    } as ActionSpec,
     else: toast("Add the date you were born."),
   } as ActionSpec;
   const editing = ctx.params.edit === "1" && !!d.sky?.sky;
   const whenStep = permitStep({
     when: { falsy: OC.when },
     title: "When were you born?",
-    lines: [line("The date, and the time if you know it: the time makes the reading sharper. Leave it empty if you don't.")],
+    lines: [line("The date and the time you were born. The time is what fixes the sky to that moment, so the Oracle asks for both.")],
     extra: [
       cardField(OC.date, "Date, like 13 July 1994", desk, { label: "the date" }),
       cardField(OC.time, "Time, like 9:30 am", desk, { label: "the time", onSubmit: saveWhen }),

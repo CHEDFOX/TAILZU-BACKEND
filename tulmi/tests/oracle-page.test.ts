@@ -66,6 +66,17 @@ describe("there is a way off the screen", () => {
     expect(q.card!.on?.onDismiss).toEqual({ kind: "navigateBack" });
   });
 
+  it("asks for all three: the date, the time and the place, each named when it is the one missing", async () => {
+    const q = await oraclePage({});
+    const acts = JSON.stringify(q.every());
+    // the time is no longer optional: nothing is sent until both are there, and each missing one says which
+    expect(acts).toContain("Add the date you were born.");
+    expect(acts).toContain("Add the time you were born");
+    expect(acts).toContain("Type the town or city you were born in.");
+    // and the words no longer invite them to leave the time out
+    expect(q.texts.join(" ")).not.toMatch(/leave it empty|if you know it/i);
+  });
+
   it("shows a clear only once there is something to clear, so an x is never mistaken for the way out", async () => {
     const q = await oraclePage({});
     const clears = q.nodes.filter((n) => String((n.props as { accessibilityLabel?: string })?.accessibilityLabel ?? "").startsWith("Clear "));
