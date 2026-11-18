@@ -41,9 +41,20 @@ export interface Sky extends BirthWhen {
 /** What is kept while the cards are filled in: the when first (its card), the place after (its card). Only a whole one is read. */
 export type SkyDraft = BirthWhen & Partial<Pick<Sky, "lat" | "lng" | "place">>;
 
-/** A sky the engine can read: when, and where on the map. */
-export function isComplete(s: SkyDraft | null | undefined): s is Sky {
+/** Where on the map they were born, kept: the place card is answered, whatever else is still owed. */
+export function hasPlace(s: SkyDraft | null | undefined): s is Sky {
   return !!s && Number.isFinite(s.lat) && Number.isFinite(s.lng) && typeof s.place === "string" && s.place.length > 0;
+}
+
+/**
+ * A sky the engine can read: where on the map, AND the time they were born.
+ *
+ * The time is not optional to the engine. The worker takes an hour and a minute and nothing that says they were guessed at, so a
+ * sky without a time can only be sent as noon — a chart built on an hour nobody gave, whose ascendant and houses are confidently
+ * wrong. So a sky is read only once the time is known; one saved before the time was asked for is not read until it is given.
+ */
+export function isComplete(s: SkyDraft | null | undefined): s is Sky {
+  return hasPlace(s) && s.timeKnown === true;
 }
 
 /** The when of a reading (or of a sky). */

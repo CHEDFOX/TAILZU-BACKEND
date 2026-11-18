@@ -19,7 +19,7 @@ import { cardsDue, cardsState, openCards, oracleCards } from "./oracleCards.js";
 import { type BotPageData, ANSWERING, askBot, chatBar, chatTurns, isDesk, lookOf } from "./parts.js";
 
 /** What the page reads of the Oracle's own store (GET /v1/oracle/sky): the sky once it is whole, the when as soon as it is kept. */
-export interface OracleSkyView { sky: { place: string } | null; line: string | null; when?: { date: string; time: string; line: string } | null }
+export interface OracleSkyView { sky: { place: string } | null; line: string | null; place?: string | null; when?: { date: string; time: string; line: string } | null }
 /** And the person's name and gender (the About you card's read, GET /v1/bots/first-run/about). */
 export type OraclePageData = BotPageData & { sky?: OracleSkyView; about?: About };
 const STARTERS = [
