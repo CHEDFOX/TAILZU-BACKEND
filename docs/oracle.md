@@ -48,12 +48,12 @@ decides, as for any bot.
 
 ## 2. Birth details, and the cards that ask for them
 
-The Oracle needs the date, the time (when known) and the place of birth, and reads better with the person's name and gender. They come two ways:
+The Oracle needs the date, the time and the place of birth — **all three**, since none of them can be guessed at — and reads better with the person's name and gender. They come two ways:
 
 * **The cards** (`experience/bots/screens/bots/oracleCards.ts`), the first time someone opens the Oracle: one card over its page, the way the
   microphone and keyboard card and the About you card ask (a BotCard overlay, the page blurred behind it), with the day's character on its stage.
   One step after another, each kept as soon as it is answered, so leaving halfway loses nothing:
-  1. **When**: the date, and the time if they know it (`PUT /v1/oracle/sky { date, time }`). The cards cannot be put off: there is no reading
+  1. **When**: the date and the time, both asked for (`PUT /v1/oracle/sky { date, time }`; the route still takes a sky without a time, for the ones saved before this and for an older build). The cards cannot be put off: there is no reading
      without a chart. Only Change's cards, with a sky already kept, have a Cancel.
   2. **Where**: the town or city, with suggestions as they type (`GET /v1/oracle/places`); a tap keeps one (`PUT { placeId, place, session }`),
      Keep finds what they typed (`PUT { place }`). With `GOOGLE_PLACES_API_KEY` the suggestions are Google's (`oracle/places.ts`: the Places API
@@ -68,7 +68,10 @@ The Oracle needs the date, the time (when known) and the place of birth, and rea
 * **The chat**: "13 July 1994, 9:30 am, Mumbai" or "13/07/1994 subah 9 baje Delhi" in a message is read, kept, and said back in the notes.
 
 Both are read by the same rules (`oracle/birth.ts`, no model). A date is day before month (05/07/1994 is the 5th of July) unless the first number
-cannot be a month. A time not given is noon, marked as not known, and the reading is gentler about the hour. A sky is read only once it is whole
+cannot be a month. **A sky with no time is not read at all** (`birth.ts isComplete`): the worker takes an hour and a minute and
+nothing that says they were guessed at, so a sky without a time could only be sent as noon — a chart whose ascendant and houses are
+confidently wrong, built on an hour nobody gave. `timeKnown: false` survives on a draft and on the skies saved before the time was
+asked for; those are not read until the time is given, and the cards ask for it alone, keeping the place. A sky is read only once it is whole
 (the cards keep the when first). The name and gender go to the engine with the birth details: several of its systems read a woman's chart as a
 man's without the gender ("Other" is not sent: the engine reads only male and female).
 

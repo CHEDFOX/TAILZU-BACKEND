@@ -37,7 +37,7 @@ describe("the Oracle's card", () => {
 
   it("reads the date, the time and the place, keeps them, and says them back", async () => {
     const { a } = await app();
-    expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json()).toEqual({ sky: null, line: null, when: null });
+    expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json()).toEqual({ sky: null, line: null, place: null, when: null });
     const put = await a.inject({ method: "PUT", url: "/v1/oracle/sky", payload: { date: "13 July 1994", time: "9:30 am", place: "Mumbai" } });
     expect(put.statusCode).toBe(200);
     expect(put.json().line).toBe("13 July 1994, 9:30 am, Mumbai");
@@ -50,7 +50,7 @@ describe("the Oracle's card", () => {
     const { a } = await app();
     const when = await put(a, { date: "13 July 1994", time: "9:30 am" });
     expect(when.statusCode).toBe(200);
-    expect(when.json()).toEqual({ sky: null, line: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" } });
+    expect(when.json()).toEqual({ sky: null, line: null, place: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" } });
     expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json().when.line).toBe("13 July 1994, 9:30 am");
 
     const where = await put(a, { placeId: "c:19.0760,72.8777", place: "Mumbai", session: "0b6c1d0e-6a0f-4a43-9c1e-6f5b1a2c3d4e" });
@@ -58,8 +58,14 @@ describe("the Oracle's card", () => {
     expect(where.json().line).toBe("13 July 1994, 9:30 am, Mumbai");
     expect(where.json().sky).toMatchObject({ lat: 19.076, lng: 72.8777, timeKnown: true });
 
+    // The time taken away: the engine would only get a noon nobody gave, so there is no sky and no line until it is back —
+    // and the place they already answered is kept, so they are asked for the time alone.
     const changed = await put(a, { date: "14 July 1994", time: "" });
-    expect(changed.json().line).toBe("14 July 1994, time not known, Mumbai");
+    expect(changed.json().line).toBe(null);
+    expect(changed.json().sky).toBe(null);
+    expect(changed.json().place).toBe("Mumbai");
+    const again = await put(a, { date: "14 July 1994", time: "6:05 pm" });
+    expect(again.json().line).toBe("14 July 1994, 6:05 pm, Mumbai");
   });
 
   it("asks for the when before the place, and says an unreadable time in words", async () => {
@@ -82,7 +88,9 @@ describe("the Oracle's card", () => {
     expect(asked).toEqual([{ q: "mum", session: "0b6c1d0e-6a0f-4a43-9c1e-6f5b1a2c3d4e" }]);
     await put(a, { date: "13 July 1994", time: "" });
     const kept = await put(a, { placeId: "g:ChIJwe1EZjDG5zsRaYxkjY_tpF0", place: "Mumbai", session: "0b6c1d0e-6a0f-4a43-9c1e-6f5b1a2c3d4e" });
-    expect(kept.json().line).toBe("13 July 1994, time not known, Mumbai");
+    // The place is kept and said back; with no time there is still no sky to read.
+    expect(kept.json().place).toBe("Mumbai, Maharashtra, India");
+    expect(kept.json().line).toBe(null);
     expect((await put(a, { placeId: "g:nowhere", place: "" })).json().message).toMatch(/couldn't find that place/);
   });
 

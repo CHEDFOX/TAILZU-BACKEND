@@ -21,12 +21,12 @@
  */
 import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, chips, col, divider, emptyState, grow, listCard,
+  back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, chips, col, divider, emptyState, grow, icon, listCard,
   listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
   sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
-import { chatBar, field, inputBox, isDesk } from "./parts.js";
+import { field, inputBox, isDesk, sendField } from "./parts.js";
 import { searchField, searchLine } from "../keybotParts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
 import type { Exercise } from "../../../../lingo/session.js";
@@ -162,6 +162,102 @@ function languageRow(l: LanguageRow, forFrom?: { target: string; name: string })
       ? open(SCREENS.lingoWhy, { target: forFrom.target, name: forFrom.name, from: l.tag, fromName: l.name })
       : open(SCREENS.lingoWhy, { target: l.tag, name: l.name }),
   });
+}
+
+// ===================================================================== a unit finished
+
+export interface DoneData {
+  unit: string;
+  goal: string;
+  /** The moment the bot plays for THIS unit (course.ts Unit.mark). */
+  mark: string;
+  at: number;
+  of: number;
+  /** Every goal they have reached, in order. */
+  canDo: string[];
+}
+
+/**
+ * A UNIT FINISHED, which until now passed in silence: the path moved them on and nobody ever said they had done
+ * the last one.
+ *
+ * What it shows is not a score. It is the thing they can now DO, and under it every other thing they can do —
+ * because that list is the only honest answer to "how far have I got", and watching it get longer is the reason
+ * finishing a unit is worth anything.
+ *
+ * The bot's gesture is THIS unit's own, so the first and the fourteenth do not feel identical, and the four units
+ * that end a level get the big one.
+ */
+export function doneScreen(ctx: BotsCtx, d: DoneData, target: string): Node[] {
+  const live = ctx.live.bots.find((b) => b.slug === LINGO_SLUG);
+  const bot = canBuddy(ctx) ? [botBuddy({
+    kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
+    height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
+    state: live?.working ? "working" : "idle", label: "Lingo",
+    ...botMoment(ctx, d.mark, "once"),
+  })] : [];
+  const earlier = d.canDo.slice(0, -1);
+  return [
+    ...bot,
+    meta(`Unit ${d.at} of ${d.of}`, { size: 13 }),
+    text(d.goal, { size: 26, weight: 700, lineHeight: 32, tracking: -0.4 }),
+    ...(earlier.length
+      ? [col([
+          sectionLabel("And already"),
+          ...earlier.slice(-6).reverse().map((g) => row([icon("check", { size: 14, color: C.meta }), text(g, { size: 14, color: C.grey70, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" })),
+        ], { gap: 8 })]
+      : []),
+    primaryButton("Keep going", open(SCREENS.lingoSet, { target })),
+    quietButton("Stop for now", open(SCREENS.lingo)),
+  ];
+}
+
+// ===================================================================== asking, from anywhere
+
+/**
+ * THE ASK BOX, at the foot of every Lingo screen including the middle of a set.
+ *
+ * The moment somebody wants a word is the moment they are using the language, and sending them off to have a
+ * conversation about it loses both the word and their place in the lesson. So this is one question and one card,
+ * and `back` is where Continue puts them — exactly where they were.
+ */
+function askBar(ctx: BotsCtx, target: string, back: string): Node {
+  const ask = call("POST", `${PATH}/ask`, { target, q: "$state.say" }, {
+    assignTo: "said",
+    ok: seq(
+      { kind: "setState", path: "say", value: "" },
+      open(SCREENS.lingoSaid, {
+        target, back,
+        say: "$state.said.say", means: "$state.said.means", note: "$state.said.note",
+      }),
+    ),
+    fail: toast("Couldn't answer that just now. Still here when you're back.", "error"),
+  });
+  return sendField("say", "say", "How do you say…?", ask, { desk: isDesk(ctx) });
+}
+
+/**
+ * THE ANSWER, ON A CARD. The thing to say is the biggest thing on it and nothing competes with it; what it means
+ * is underneath; the note is about USING it and is often not there at all.
+ *
+ * Continue is the whole point of the screen: it goes back to the screen they asked from, so a word looked up in
+ * the middle of a set costs them nothing. And it is already in their course, which the screen says plainly rather
+ * than leaving them to wonder whether to write it down.
+ */
+export function saidScreen(_ctx: BotsCtx, p: { say: string; means: string; note: string; target: string; back: string }): Node[] {
+  const go = p.back === SCREENS.lingoSet
+    ? open(SCREENS.lingoSet, { target: p.target })
+    : open(p.back || SCREENS.lingo);
+  return [
+    meta("You say", { size: 13 }),
+    text(p.say, { size: 30, weight: 700, lineHeight: 38, tracking: -0.5 }),
+    text(p.means, { size: 16, color: C.grey70, lineHeight: 22 }),
+    ...(p.note ? [notice(p.note)] : []),
+    // A check, not the kit's "done" mark: that one is an outlined circle, and at this size beside a line of text it
+    // reads as a radio button nobody has ticked — the opposite of what this line says.
+    row([icon("check", { size: 14, color: C.meta }), meta("Added to your words — it'll come back in your practice.", { size: 12, style: { flexShrink: 1 } })], { gap: 6, alignItems: "center" }),
+    primaryButton("Continue", go),
+  ];
 }
 
 // ===================================================================== what the language is for
@@ -450,7 +546,9 @@ export const LINGO_SCREENS: BotsScreen[] = [
       // whole point is conversation — had no way to be spoken to at all: its tile opens the territory rather than
       // the shared bot page, and nothing on any of its four screens asked for a word. It is not on a lesson, only
       // here: the middle of a set is not the moment to be offered a chat.
-      footer: [chatBar(ctx, LINGO_SLUG, "Lingo", "Ask how to say something…", open(SCREENS.chat, { slug: LINGO_SLUG }))],
+      // The ask box, here and on every other Lingo screen. On the territory there is no one course to ask about,
+      // so it asks about the one they opened last, which is the one the cards are showing.
+      footer: [askBar(ctx, String(data?.courses?.[0]?.target ?? ""), SCREENS.lingo)],
     }),
   }),
   screen<PickerData>({
@@ -474,7 +572,9 @@ export const LINGO_SCREENS: BotsScreen[] = [
       back: open(SCREENS.lingo),
       backTitle: "Languages",
       body: setScreen(ctx, String(ctx.params?.target ?? ""), data),
-      state: { said: "", mark: null },
+      // Mid-lesson is exactly when somebody wants a word, and Continue puts them back on this set.
+      footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingoSet)],
+      state: { said: "", mark: null, say: "" },
     }),
   }),
   screen({
@@ -486,6 +586,43 @@ export const LINGO_SCREENS: BotsScreen[] = [
       backTitle: "Languages",
       body: whyScreen(ctx, String(ctx.params?.target ?? ""), String(ctx.params?.name ?? "it")),
       state: { why: "", note: "" },
+    }),
+  }),
+  screen({
+    id: SCREENS.lingoDone,
+    build: (ctx) => page(ctx, {
+      nav: LINGO_SLUG,
+      title: "Done",
+      back: open(SCREENS.lingo),
+      backTitle: "Languages",
+      body: doneScreen(ctx, {
+        unit: String(ctx.params?.unit ?? ""),
+        goal: String(ctx.params?.goal ?? ""),
+        mark: String(ctx.params?.mark ?? "celebrate"),
+        at: Number(ctx.params?.at ?? 1),
+        of: Number(ctx.params?.of ?? 24),
+        canDo: String(ctx.params?.canDo ?? "").split("\u0000").filter(Boolean),
+      }, String(ctx.params?.target ?? "")),
+      footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingo)],
+      state: { say: "" },
+    }),
+  }),
+  screen({
+    id: SCREENS.lingoSaid,
+    build: (ctx) => page(ctx, {
+      nav: LINGO_SLUG,
+      title: "How to say it",
+      back: true,
+      backTitle: "Lingo",
+      body: saidScreen(ctx, {
+        say: String(ctx.params?.say ?? ""),
+        means: String(ctx.params?.means ?? ""),
+        note: String(ctx.params?.note ?? ""),
+        target: String(ctx.params?.target ?? ""),
+        back: String(ctx.params?.back ?? SCREENS.lingo),
+      }),
+      footer: [askBar(ctx, String(ctx.params?.target ?? ""), String(ctx.params?.back ?? SCREENS.lingo))],
+      state: { say: "" },
     }),
   }),
   screen({

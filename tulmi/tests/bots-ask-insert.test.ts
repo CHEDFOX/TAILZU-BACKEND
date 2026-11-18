@@ -69,7 +69,7 @@ describe("the card", () => {
   });
   it("HAS A WAY OUT, which is what draws its × and takes a swipe away", () => {
     const card = bar().find((n) => n.type === "BotCard")!;
-    expect(card.on?.onDismiss).toEqual({ kind: "setState", path: "insert", value: false });
+    expect(card.on?.onDismiss).toEqual({ kind: "setState", path: "insert", value: false });  // botCard maps onLeave to it
   });
   it("each way in shuts the card FIRST, so the picker opens over the page and not under the card", () => {
     const photo = bar().find((n) => n.on?.onPress && JSON.stringify(n.on.onPress).includes('"pick":"photo"'));

@@ -30,6 +30,18 @@ export interface Unit {
   level: Level;
   /** Roughly how many things this unit is made of. Short units early: finishing one is the point. */
   size: number;
+  /**
+   * WHAT THE BOT DOES WHEN THEY FINISH IT (shared/bots/looks.json). Not the same every time: finishing the first
+   * unit and the fourteenth should not feel identical, and a celebration that never changes stops being one.
+   *
+   * It fits what the unit taught wherever anything fits — a hand cupped to the ear for the unit about not
+   * following, a shrug for the one about saying no — and the four units that END A LEVEL get the big one, so
+   * finishing a level is plainly a larger thing than finishing a unit.
+   *
+   * Only Lingo's own moments and the ones that carry nobody's props: `juggle` is Xode's binary digits and `w.wave`
+   * is the Wanderer's poncho, and borrowing either puts another bot's things in Lingo's hands.
+   */
+  mark: string;
 }
 
 /**
@@ -39,56 +51,56 @@ export interface Unit {
  * Nothing here is about a country, and nothing assumes what somebody already speaks.
  */
 export const UNITS: readonly Unit[] = [
-  { key: "hello", level: "a1", size: 8, goal: "You can greet someone and say goodbye.",
+  { key: "hello", level: "a1", size: 8, mark: "react.cheer", goal: "You can greet someone and say goodbye.",
     about: "Greetings and goodbyes at different times of day, and the polite words that go with them." },
-  { key: "you", level: "a1", size: 8, goal: "You can say who you are and ask who someone else is.",
+  { key: "you", level: "a1", size: 8, mark: "highfive", goal: "You can say who you are and ask who someone else is.",
     about: "Giving your name, asking someone theirs, saying where you are from and asking the same back." },
-  { key: "yesno", level: "a1", size: 8, goal: "You can say yes, no, please and thank you, and apologise.",
+  { key: "yesno", level: "a1", size: 8, mark: "shrug", goal: "You can say yes, no, please and thank you, and apologise.",
     about: "Yes, no, please, thank you, sorry, excuse me, and the short answers people actually give." },
-  { key: "lost", level: "a1", size: 10, goal: "You can say you did not understand, and ask for it again.",
+  { key: "lost", level: "a1", size: 10, mark: "l.earcup", goal: "You can say you did not understand, and ask for it again.",
     about: "Saying you don't understand, asking someone to repeat or slow down, asking how to say something, and asking whether they speak your language." },
-  { key: "numbers", level: "a1", size: 12, goal: "You can count, say how many, and ask what something costs.",
+  { key: "numbers", level: "a1", size: 12, mark: "dance", goal: "You can count, say how many, and ask what something costs.",
     about: "Numbers to a hundred, how much, how many, and the words for money and paying." },
-  { key: "food", level: "a1", size: 14, goal: "You can order food and drink, and say what you do not want.",
+  { key: "food", level: "a1", size: 14, mark: "celebrate", goal: "You can order food and drink, and say what you do not want.",
     about: "Ordering in a cafe or restaurant, asking for the bill, saying you would like something, and saying you cannot eat something." },
 
-  { key: "where", level: "a1", size: 14, goal: "You can ask where something is and follow the answer.",
+  { key: "where", level: "a1", size: 14, mark: "l.shuffle", goal: "You can ask where something is and follow the answer.",
     about: "Asking where a place is, left, right, straight on, near, far, and the names of everyday places." },
-  { key: "time", level: "a1", size: 14, goal: "You can say when something happens.",
+  { key: "time", level: "a1", size: 14, mark: "dance", goal: "You can say when something happens.",
     about: "Telling the time, days of the week, today, tomorrow, yesterday, and making an arrangement to meet." },
-  { key: "people", level: "a1", size: 14, goal: "You can talk about your family and the people around you.",
+  { key: "people", level: "a1", size: 14, mark: "highfive", goal: "You can talk about your family and the people around you.",
     about: "Family members, friends, who someone is to you, and saying how many people there are." },
-  { key: "home", level: "a1", size: 14, goal: "You can say where you live and what it is like.",
+  { key: "home", level: "a1", size: 14, mark: "react.cheer", goal: "You can say where you live and what it is like.",
     about: "Where you live, the rooms and things in a home, and saying what a place is like." },
-  { key: "day", level: "a2", size: 16, goal: "You can describe an ordinary day.",
+  { key: "day", level: "a2", size: 16, mark: "l.hum", goal: "You can describe an ordinary day.",
     about: "Waking, eating, working, going out, coming home: the verbs of a normal day in the present." },
-  { key: "liking", level: "a2", size: 14, goal: "You can say what you like, want and need.",
+  { key: "liking", level: "a2", size: 14, mark: "celebrate", goal: "You can say what you like, want and need.",
     about: "Liking, not liking, preferring, wanting, needing, and asking someone else what they like." },
 
-  { key: "past", level: "a2", size: 18, goal: "You can say what you did.",
+  { key: "past", level: "a2", size: 18, mark: "l.shuffle", goal: "You can say what you did.",
     about: "Talking about finished events in the past: what you did yesterday, where you went, what happened." },
-  { key: "plans", level: "a2", size: 16, goal: "You can say what you are going to do.",
+  { key: "plans", level: "a2", size: 16, mark: "l.mutter", goal: "You can say what you are going to do.",
     about: "Talking about the future: plans, intentions, what is going to happen, and arranging something with someone." },
-  { key: "feel", level: "a2", size: 14, goal: "You can say how you feel and ask after someone.",
+  { key: "feel", level: "a2", size: 14, mark: "shrug", goal: "You can say how you feel and ask after someone.",
     about: "Feelings and states: tired, happy, ill, worried, and asking someone how they are and meaning it." },
-  { key: "body", level: "a2", size: 14, goal: "You can say something is wrong and get help.",
+  { key: "body", level: "a2", size: 14, mark: "l.earcup", goal: "You can say something is wrong and get help.",
     about: "Parts of the body, saying something hurts, asking for a doctor or a chemist, and an emergency." },
-  { key: "travel", level: "a2", size: 16, goal: "You can get yourself from one place to another.",
+  { key: "travel", level: "a2", size: 16, mark: "dance", goal: "You can get yourself from one place to another.",
     about: "Tickets, trains, buses, airports, asking what time something leaves, and a place to stay." },
-  { key: "shops", level: "a2", size: 14, goal: "You can buy what you need and say what is wrong with it.",
+  { key: "shops", level: "a2", size: 14, mark: "celebrate", goal: "You can buy what you need and say what is wrong with it.",
     about: "Shopping, sizes, colours, trying something on, asking for something else, and returning something." },
 
-  { key: "work", level: "b1", size: 16, goal: "You can talk about what you do.",
+  { key: "work", level: "b1", size: 16, mark: "highfive", goal: "You can talk about what you do.",
     about: "Work and study: what you do, where, how long for, and asking someone the same." },
-  { key: "stories", level: "b1", size: 18, goal: "You can tell someone what happened to you.",
+  { key: "stories", level: "b1", size: 18, mark: "l.mouthit", goal: "You can tell someone what happened to you.",
     about: "Telling a story: joining events, saying what was happening when something else happened, and reacting to someone else's story." },
-  { key: "opinion", level: "b1", size: 16, goal: "You can say what you think and agree or disagree.",
+  { key: "opinion", level: "b1", size: 16, mark: "shrug", goal: "You can say what you think and agree or disagree.",
     about: "Giving an opinion, agreeing, disagreeing politely, and saying why you think something." },
-  { key: "ifs", level: "b1", size: 16, goal: "You can talk about what would happen.",
+  { key: "ifs", level: "b1", size: 16, mark: "l.swap", goal: "You can talk about what would happen.",
     about: "Conditions and consequences: if this, then that, and what you would do." },
-  { key: "polite", level: "b1", size: 14, goal: "You can ask for something awkward without being rude.",
+  { key: "polite", level: "b1", size: 14, mark: "l.accent", goal: "You can ask for something awkward without being rude.",
     about: "Softening a request, asking permission, complaining politely, and saying no to someone kindly." },
-  { key: "longtalk", level: "b2", size: 18, goal: "You can keep a conversation going without it drying up.",
+  { key: "longtalk", level: "b2", size: 18, mark: "celebrate", goal: "You can keep a conversation going without it drying up.",
     about: "Holding a conversation: asking a question back, changing the subject, buying yourself time to think, and the small words people use to keep talking." },
 ];
 
@@ -122,4 +134,16 @@ export function unitDone(items: readonly { unit?: string; spoken: number }[], un
   if (!mine.length) return false;
   const have = mine.filter((i) => i.spoken > 0 && held(i) >= 0.8).length;
   return have / mine.length >= DONE_SHARE;
+}
+
+/**
+ * WHAT THEY CAN DO NOW: the goal of every unit they have finished, in order, as a list of abilities.
+ *
+ * This is the only honest answer to "how far have I got" — not a percentage of a course and not a score, but the
+ * things they could not do a month ago and can do today. It is what the end of a unit shows them and what makes
+ * finishing one worth anything.
+ */
+export function canDo(upTo: string): string[] {
+  const at = indexOf(upTo);
+  return at < 0 ? [] : UNITS.slice(0, at + 1).map((u) => u.goal);
 }

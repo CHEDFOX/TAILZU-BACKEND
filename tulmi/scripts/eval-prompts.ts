@@ -58,6 +58,8 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   // A unit of a course is written once for a pair and then taught to everybody who ever takes it, so it is worth a
   // strong model: a wrong line here is not one bad answer, it is a wrong line in a course.
   lingo_unit: "strong",
+  // Asked mid-lesson and answered on a card: it has to be right and it has to be quick.
+  lingo_say: "cheap",
 };
 
 /** The most each role may write, so a call's worst case stays small. */

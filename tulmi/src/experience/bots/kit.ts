@@ -420,11 +420,11 @@ export const canStrip = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(B
  * A card with the tiny bot playing across its top (BotCard) and its steps below: each step a node with its own
  * visibleIf. `onComplete` runs when `doneWhen` holds, after the bot's small happy moment.
  */
-export function botCard(steps: Node[], o: BotCardProps & { onComplete?: ActionRef; onDismiss?: ActionRef }): Node {
-  const { onComplete, onDismiss, ...props } = o;
-  // `onDismiss` is what gives an OVERLAY card its way out: BotCard.tsx draws the × and takes a swipe away only when
-  // the node carries one (`canLeave`). A card the person opened and cannot close is a trap.
-  const on = { ...(onComplete ? { onComplete } : {}), ...(onDismiss ? { onDismiss } : {}) };
+export function botCard(steps: Node[], o: BotCardProps & { onComplete?: ActionRef; onLeave?: ActionRef }): Node {
+  const { onComplete, onLeave, ...props } = o;
+  // `onLeave` is the way out of an overlay card (on.onDismiss): the card draws a Back in its corner and takes a swipe to the
+  // right and the phone's own back. A card without one is answered where it stands, as the permission cards are.
+  const on = { ...(onComplete ? { onComplete } : {}), ...(onLeave ? { onDismiss: onLeave } : {}) };
   return { type: "BotCard", props: { ...props }, ...(Object.keys(on).length ? { on } : {}), children: steps };
 }
 

@@ -1041,6 +1041,9 @@ export interface BotCardProps {
   closeWhen?: Condition;
   /** Once closed on this device, never drawn again (a key). */
   once?: string;
+  /** A WAY OUT, overlay only: with `on.onDismiss` the card draws a Back in its own corner and answers a swipe to the right over
+   *  it or the blur behind it, and the phone's own back. An overlay card is a modal — it covers the page's back and sits over the
+   *  navigator, so without this there is no way off the screen on either phone. A card that must be answered sends none. */
   label?: string;
   /** The bot's look, and a moment he plays once the card is open (BOT_MOMENTS_CAPABILITY). */
   avatar?: BotAvatarRef;

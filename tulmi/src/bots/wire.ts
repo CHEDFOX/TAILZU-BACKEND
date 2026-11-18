@@ -23,6 +23,7 @@ import type { MediaService } from "../media/service.js";
 import { calendar, withOwnDays } from "../calendar/index.js";
 import { connectorsPort, type BotPorts, type CodeAsk } from "./ports.js";
 import { everyday } from "../everyday/index.js";
+import { discover } from "../discover/server.js";
 
 export interface WireOptions {
   connectors?: Connectors | null;
@@ -55,6 +56,9 @@ export function botPorts(o: WireOptions): BotPorts {
     code: codeAskPort(o.code, o),
     // Flights, hotels, currency and weather, live and free, with no sign-in of the person's (src/everyday).
     everyday: everyday(),
+    // Places worth going (src/discover): our own written catalogue, and a card built from the web for a place
+    // nobody has written yet. The model is handed in so a build can fill its slots.
+    discover: discover({ ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}) }),
     // Lingo's own: writing down a word somebody reached for, mid-conversation. buildTools gives it to Lingo alone.
     lingo: lingoWords(),
   };

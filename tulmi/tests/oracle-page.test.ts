@@ -59,6 +59,37 @@ async function oraclePage(o: { sky?: unknown; about?: unknown; turns?: ReturnTyp
   };
 }
 
+describe("there is a way off the screen", () => {
+  it("the card carries a way back, because a card over the page is a modal with no back and no swipe of its own", async () => {
+    const q = await oraclePage({});
+    expect(q.card).toBeDefined();
+    expect(q.card!.on?.onDismiss).toEqual({ kind: "navigateBack" });
+  });
+
+  it("asks for all three: the date, the time and the place, each named when it is the one missing", async () => {
+    const q = await oraclePage({});
+    const acts = JSON.stringify(q.every());
+    // the time is no longer optional: nothing is sent until both are there, and each missing one says which
+    expect(acts).toContain("Add the date you were born.");
+    expect(acts).toContain("Add the time you were born");
+    expect(acts).toContain("Type the town or city you were born in.");
+    // and the words no longer invite them to leave the time out
+    expect(q.texts.join(" ")).not.toMatch(/leave it empty|if you know it/i);
+  });
+
+  it("shows a clear only once there is something to clear, so an x is never mistaken for the way out", async () => {
+    const q = await oraclePage({});
+    const clears = q.nodes.filter((n) => String((n.props as { accessibilityLabel?: string })?.accessibilityLabel ?? "").startsWith("Clear "));
+    expect(clears.length).toBeGreaterThan(0);
+    for (const c of clears) expect(c.visibleIf, String((c.props as { accessibilityLabel?: string }).accessibilityLabel)).toBeDefined();
+  });
+
+  it("leaving is leaving the Oracle, not putting the cards off: nothing marks them closed", async () => {
+    const q = await oraclePage({});
+    expect(JSON.stringify(q.card!.on?.onDismiss)).not.toContain("oc_closed");
+  });
+});
+
 describe("the Oracle's cards", () => {
   it("ask when, then where, then name and gender (only when the app lacks them), over the page with the day's character", async () => {
     const p = await oraclePage({ about: UNKNOWN });
@@ -81,9 +112,28 @@ describe("the Oracle's cards", () => {
   });
 
   it("pass what is already kept: the place is next when the when is kept, and there is no name and gender step when the app has them", async () => {
-    const p = await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "", line: "13 July 1994, time not known" } }, about: KNOWN });
-    expect(p.state).toMatchObject({ oc_when: true, oc_place: false, oc_you: true, oc_date: "13 July 1994", oc_time: "" });
+    const p = await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" } }, about: KNOWN });
+    expect(p.state).toMatchObject({ oc_when: true, oc_place: false, oc_you: true, oc_date: "13 July 1994", oc_time: "9:30 am" });
     expect(walk(p.card!).some((n) => n.props?.content === "And you?")).toBe(false);
+  });
+
+  it("a date with no time is not an answered when: the engine would only get a noon nobody gave", async () => {
+    const p = await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "", line: "13 July 1994, time not known" } }, about: KNOWN });
+    expect(p.state).toMatchObject({ oc_when: false, oc_date: "13 July 1994", oc_time: "" });
+    // the date they gave is still in the field: they are asked for the time, not for both again
+    expect(walk(p.card!).some((n) => n.props?.content === "When were you born?")).toBe(true);
+  });
+
+  it("a sky saved before the time was asked for: the time is asked for, and the place they gave is kept", async () => {
+    const p = await oraclePage({
+      sky: { sky: null, line: null, place: "Mumbai, Maharashtra, India", when: { date: "13 July 1994", time: "", line: "13 July 1994, time not known" } },
+      about: KNOWN,
+    });
+    expect(p.state).toMatchObject({ oc_when: false, oc_place: true, oc_you: true });
+    // the place step is there but shut: it shows only while the place is still owed, and theirs is kept
+    const where = walk(p.card!).find((n) => walk(n).some((x) => x.props?.content === "Where were you born?") && JSON.stringify(n.visibleIf ?? "").includes("oc_place"));
+    // it waits for the when to be answered AND for the place to still be owed, and theirs is kept, so it never opens
+    expect(where?.visibleIf).toEqual({ all: [{ truthy: "oc_when" }, { falsy: "oc_place" }] });
   });
 
   it("are not there once everything is kept: the sky is one line, and Change opens them again, filled in", async () => {

@@ -74,7 +74,7 @@ function insertCard(ctx: BotsCtx, path: string): Node[] {
   ];
   const card = botCard([col([sectionLabel("Insert"), ...ways], { gap: 2, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 16 })], {
     kind: "custom", color: C.ink, stageHeight: 72, overlay: true, width: desk ? 360 : 330,
-    label: "Insert a photo or a file", onDismiss: shut,
+    label: "Insert a photo or a file", onLeave: shut,
   });
   return [when({ truthy: INSERT }, card)];
 }

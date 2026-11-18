@@ -19,6 +19,39 @@ export type ItemKind = "word" | "phrase";
  */
 export type ItemSource = "seed" | "said" | "asked" | "heard";
 
+/**
+ * THE THREE WAYS A THING CAN BE KNOWN, and they are not the same knowledge.
+ *
+ * Picking it out of three is not writing it, and writing it is not saying it with somebody waiting. Everything
+ * until now kept ONE number for an item, so a word somebody could recognise and a word they could say were the
+ * same word to the scheduler. These are what the exercise kinds mean when you stop looking at the screen and ask
+ * what the person actually did.
+ */
+export const MODES = ["pick", "write", "say"] as const;
+export type Mode = (typeof MODES)[number];
+
+export const MODE_OF: Readonly<Record<ExerciseKind, Mode>> = {
+  choose: "pick", reply: "pick", blank: "pick",
+  write: "write", chips: "write", listen: "write",
+  say: "say", speak: "say", talk: "say",
+};
+
+/** Asked, and right, in one mode. Two numbers, because a rate without its count is a number that lies. */
+export type Count = { asked: number; right: number };
+
+/**
+ * WHAT IS KNOWN ABOUT ONE ITEM, kept on the item itself: how it goes in each of the three ways it can be known,
+ * and how it goes wrong when it does. The grader already says WHY something was wrong (a dropped accent is not the
+ * same as the wrong word); until now nothing kept that, so the same mistake five times looked like five mistakes.
+ */
+export interface ItemMarks {
+  pick?: Count;
+  write?: Count;
+  say?: Count;
+  /** How it goes wrong, by the grader's own reason, counted. */
+  why?: Partial<Record<Exclude<MarkReason, "">, number>>;
+}
+
 /** Where the scheduler has got to with one item (src/lingo/schedule.ts). */
 export type MemoryState = "new" | "learning" | "review" | "relearning";
 
@@ -60,6 +93,8 @@ export interface LingoItem {
    */
   spoken: number;
   memory: Memory;
+  /** How it goes in each of the three ways it can be known, and how it goes wrong (ItemMarks). */
+  marks?: ItemMarks;
 }
 
 /** One person, one language they are learning. Somebody may be learning several at once. */

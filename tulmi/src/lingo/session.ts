@@ -22,7 +22,7 @@ import { fold } from "./grade.js";
 import { createHash } from "node:crypto";
 import type { Sentence } from "./sentences.js";
 import { underCap, type SetShape } from "./set.js";
-import { SPOKEN_KINDS, type ExerciseKind, type Learner, type LingoItem, type Mark, type Verdict } from "./types.js";
+import { MODE_OF, SPOKEN_KINDS, type ExerciseKind, type ItemMarks, type Learner, type LingoItem, type Mark, type Verdict } from "./types.js";
 
 /**
  * What a sentence with a hole in it shows where the word was taken out. One marker everywhere, so the screens never
@@ -299,9 +299,26 @@ export function plan(items: readonly LingoItem[], learner: Learner, now: number,
 }
 
 /** The item after an answer: the scheduler moved on, and a time said out loud counted if that is what it was. */
-export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number): LingoItem {
+/**
+ * The item after an answer: the scheduler moved on, a time out loud counted if that is what it was, and WHAT THEY
+ * DID is written down — which of the three ways they were asked, whether it went in, and how it went wrong.
+ *
+ * The last part is the bit nothing kept before. The grader has always said why something was wrong — a dropped
+ * accent is not the wrong word — and it was thrown away the moment it had been shown once, so the same mistake
+ * five times read as five mistakes with nothing in common.
+ */
+export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number, slow = false): LingoItem {
   const outLoud = SPOKEN_KINDS.includes(kind);
-  return review(item, mark.verdict, outLoud, now);
+  const mode = MODE_OF[kind];
+  const was = item.marks?.[mode] ?? { asked: 0, right: 0 };
+  const marks: ItemMarks = {
+    ...item.marks,
+    [mode]: { asked: was.asked + 1, right: was.right + (mark.verdict === "right" ? 1 : 0) },
+    ...(mark.verdict !== "right" && mark.why
+      ? { why: { ...item.marks?.why, [mark.why]: (item.marks?.why?.[mark.why] ?? 0) + 1 } }
+      : {}),
+  };
+  return { ...review(item, mark.verdict, outLoud, now, slow), marks };
 }
 
 /** How a course is going, for the page and for the chat. Counts only, nothing invented. */

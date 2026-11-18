@@ -9,8 +9,8 @@
  *   - a level is earned on what can be produced, and never jumps on a handful of words
  */
 import { describe, expect, it } from "vitest";
-import { AWAY_MS, CONFIDENCE, blendMs, earnedLevel, median, portraitOf, rate, thinkingTime } from "../src/lingo/portrait.js";
-import { freshMemory } from "../src/lingo/schedule.js";
+import { AWAY_MS, CONFIDENCE, blendMs, earnedLevel, median, portraitOf, rate, thinkingTime, vectorOf, workedForIt } from "../src/lingo/portrait.js";
+import { freshMemory, ratingFor, review } from "../src/lingo/schedule.js";
 import type { Learner, LingoItem, Memory } from "../src/lingo/types.js";
 
 const T0 = Date.UTC(2026, 10, 17, 9, 0, 0);
@@ -167,5 +167,85 @@ describe("the whole picture", () => {
     expect(p.earned).toBe("a1");
     expect(p.unit.at).toBe(1);
     expect(Number.isFinite(p.pace)).toBe(true);
+  });
+});
+
+describe("recalled, or worked out", () => {
+  it("is only slow against that person's own pace, never a stopwatch", () => {
+    // Four seconds is fast for somebody who usually takes six, and slow for somebody who usually takes one.
+    expect(workedForIt(4000, 6000)).toBe(false);
+    expect(workedForIt(4000, 1500)).toBe(true);
+  });
+
+  it("claims nothing where there is nothing to compare against", () => {
+    expect(workedForIt(9000, 0)).toBe(false);
+    expect(workedForIt(null, 3000)).toBe(false);
+  });
+
+  it("tells the scheduler a right-but-laboured answer was hard, which is what it was", () => {
+    // Right and quick is Good; right and laboured is Hard — and FSRS already means exactly that by Hard, so the
+    // recall curve is never fudged behind its back.
+    expect(ratingFor("right", false, false)).not.toBe(ratingFor("right", false, true));
+    expect(ratingFor("right", true, true)).not.toBe(ratingFor("right", true, false));
+    // Wrong is wrong however fast it came.
+    expect(ratingFor("wrong", false, true)).toBe(ratingFor("wrong", false, false));
+  });
+
+  it("schedules a laboured word sooner than one they own", () => {
+    const start = item({ memory: held({ reps: 3 }) });
+    const easy = review(start, "right", false, T0, false);
+    const hard = review(start, "right", false, T0, true);
+    expect(hard.memory.dueMs, "the one they had to work for comes back first").toBeLessThan(easy.memory.dueMs);
+    expect(hard.memory.stability).toBeLessThan(easy.memory.stability);
+  });
+});
+
+describe("one item as numbers", () => {
+  const marked = (over: Partial<LingoItem> = {}) => item({ memory: held({ thinkMs: 6000, lapses: 1 }), ...over });
+
+  it("tells recognising from writing from saying, which one memory never could", () => {
+    const v = vectorOf(marked({ marks: {
+      pick: { asked: 6, right: 6 }, write: { asked: 3, right: 2 }, say: { asked: 4, right: 0 },
+    } }), T0, 3000);
+    expect(v.pick.n).toBe(6);
+    expect(v.say.n).toBe(4);
+    // Perfect when shown it, never once said right: the same word, three different pieces of knowledge.
+    expect(v.pick.p).toBeGreaterThan(v.say.p);
+  });
+
+  it("counts how it goes wrong, worst first, instead of throwing the reason away", () => {
+    const v = vectorOf(marked({ marks: { why: { accent: 1, word: 4, spelling: 2 } } }), T0, 3000);
+    expect(v.why[0]).toEqual({ reason: "word", n: 4 });
+    expect(v.why.map((w) => w.reason)).toEqual(["word", "spelling", "accent"]);
+  });
+
+  it("flags right-so-far-but-unproven, which a plain success rate hides", () => {
+    // Two out of two is a hundred per cent and is almost no evidence. It should come back to be SURE — which is a
+    // different reason from coming back because it is hard, and the two want different treatment.
+    const thin = vectorOf(marked({ marks: { pick: { asked: 2, right: 2 } } }), T0, 3000);
+    expect(thin.unproven).toBe(true);
+    const proven = vectorOf(marked({ marks: { pick: { asked: 30, right: 28 } } }), T0, 3000);
+    expect(proven.unproven).toBe(false);
+    // Something they are plainly bad at is not "unproven": it is known, and known to be going wrong.
+    const bad = vectorOf(marked({ marks: { say: { asked: 20, right: 2 } } }), T0, 3000);
+    expect(bad.unproven).toBe(false);
+  });
+
+  it("measures effort against the person, and says nothing with nothing to compare to", () => {
+    expect(vectorOf(marked(), T0, 3000).effort).toBe(2);
+    expect(vectorOf(marked(), T0, 0).effort).toBe(1);
+  });
+
+  it("says when the scheduler wants it, including overdue", () => {
+    const over = vectorOf(marked({ memory: held({ dueMs: T0 - 2 * DAY }) }), T0, 3000);
+    expect(over.dueInDays).toBeCloseTo(-2, 1);
+  });
+
+  it("holds up for an item nothing has ever been recorded against", () => {
+    const v = vectorOf(item({ marks: undefined }), T0, 0);
+    expect(v.pick.n).toBe(0);
+    expect(v.why).toEqual([]);
+    expect(v.unproven).toBe(false);
+    expect(Number.isFinite(v.hold)).toBe(true);
   });
 });
