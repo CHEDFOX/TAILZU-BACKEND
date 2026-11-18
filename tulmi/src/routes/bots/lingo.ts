@@ -22,6 +22,7 @@ import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../../lingo/grade.js";
 import { blendMs, thinkingTime, workedForIt } from "../../lingo/portrait.js";
 import { after, FIRST_UNIT, unitDone } from "../../lingo/course.js";
+import { askLingo, ASK_MAX } from "../../lingo/ask.js";
 import { lessonBank, unitFor, type LessonBank, type UnitItem } from "../../lingo/lessons.js";
 import { recall } from "../../lingo/schedule.js";
 import { learned } from "../../lingo/schedule.js";
@@ -323,6 +324,38 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const added = await store().add(userId, course.target, add, at).catch(() => 0);
     return added ? await store().items(userId, course.target).catch(() => items) : items;
   };
+
+  /**
+   * "HOW DO I SAY…?", FROM ANY SCREEN, INCLUDING THE MIDDLE OF A SET.
+   *
+   * One question, one card, and the word goes into their course on the way past so it comes back in the practice
+   * instead of being read once and lost. It is not a conversation: somebody mid-lesson who is made to go and have
+   * one loses both the word and their place.
+   */
+  app.post("/v1/lingo/ask", rl, async (req, reply) => {
+    const user = await begin(req, reply);
+    if (!user) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const target = str(b["target"], TAG_MAX);
+    const question = str(b["q"], ASK_MAX);
+    if (!question) return bad(reply, "What did you want to say?");
+    const course = isTag(target) ? await store().course(user.id, target).catch(() => null) : null;
+    if (!course) return bad(reply, "That course has not been started.");
+
+    const said = await askLingo(modelCtx(user.id), {
+      target, from: course.from, question, level: course.level,
+      ...(course.whyNote ? { why: course.whyNote } : {}),
+    }).catch(() => null);
+    if (!said) return reply.status(503).send({ code: "lingo_down", error: "Couldn't answer that just now." });
+
+    // Into the course on the way past: `asked` is what they went looking for themselves, which the scheduler
+    // already puts ahead of anything off a list.
+    const at = now();
+    await store().add(user.id, target, [{
+      item: keyOf(said.say), gloss: said.means, kind: said.kind, source: "asked" as const,
+    }], at).catch(() => 0);
+    return reply.header("cache-control", "no-store").send({ ...said, target, kept: true });
+  });
 
   app.post("/v1/lingo/session", rl, async (req, reply) => {
     const user = await begin(req, reply);

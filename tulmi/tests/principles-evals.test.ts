@@ -31,6 +31,7 @@ const root = path.join(here, "..");
 const { ROLES, ROLE_IDS, stableBlock } = await import("../src/principles/roles.js");
 const { at, check, fixtureProblem, parseAnswerJson } = await import("../src/principles/evalcheck.js");
 const { UnitDraft } = await import("../src/lingo/lessons.js");
+const { SaidDraft } = await import("../src/lingo/ask.js");
 const { EVALS_DIR, ROLE_TIER, formatReport, loadFixtures, realCall, runRole } = await import("../scripts/eval-prompts.js");
 const { ModelClassification } = await import("../src/code/brain/classify.js");
 const { PlanReply } = await import("../src/code/work/plan.js");
@@ -404,6 +405,10 @@ describe("a known-good answer for each role", () => {
       text: '{"core":"Easy and wandering. Long run-on sentences, casual fillers dropped in writing.","words":[],"styles":[],"rhythms":[]}',
       reads: (t) => parsePortraitDraft(t).core,
     },
+  lingo_say: {
+    text: '{"say":"estoy lleno","means":"I\'m full","note":"After a meal, to say you could not eat more. A woman would say llena.","kind":"phrase"}',
+    reads: (t: string) => SaidDraft.parse(JSON.parse(t)),
+  },
   lingo_unit: {
     text: '{"items":[{"text":"hola","meaning":"hello","kind":"word"},{"text":"buenos días","meaning":"good morning","kind":"phrase"},{"text":"buenas tardes","meaning":"good afternoon","kind":"phrase"},{"text":"buenas noches","meaning":"good evening / good night","kind":"phrase"},{"text":"adiós","meaning":"goodbye","kind":"word"},{"text":"hasta luego","meaning":"see you later","kind":"phrase"},{"text":"hasta mañana","meaning":"see you tomorrow","kind":"phrase"},{"text":"mucho gusto","meaning":"nice to meet you","kind":"phrase"}]}',
     reads: (t: string) => UnitDraft.parse(JSON.parse(t)),

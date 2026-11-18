@@ -17,7 +17,7 @@ import { lintTree } from "../src/experience/bots/lint.js";
 import { SCREENS } from "../src/experience/bots/ids.js";
 import { botRoute } from "../src/experience/bots/ids.js";
 import {
-  LINGO_SCREENS, leaving, picker, setScreen, territory, whyScreen, whyWords,
+  LINGO_SCREENS, leaving, picker, saidScreen, setScreen, territory, whyScreen, whyWords,
   type CourseView, type PickerData, type SetData,
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
@@ -88,8 +88,8 @@ describe("every tree the kit would draw", () => {
     }
   });
 
-  it("is five screens, and Lingo's tile in the bots list opens the first of them", () => {
-    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoLeave]);
+  it("is six screens, and Lingo's tile in the bots list opens the first of them", () => {
+    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoSaid, SCREENS.lingoLeave]);
     expect(botRoute("lingo")).toMatchObject({ kind: "navigate", screenId: SCREENS.lingo });
     // A bot with no page of its own still goes to the shared one.
     expect(botRoute("gym-bot")).toMatchObject({ kind: "navigate", screenId: SCREENS.bot, params: { slug: "gym-bot" } });
@@ -285,6 +285,61 @@ describe("a course with nothing in it", () => {
     expect(s).not.toContain("you'd still have now");
     expect(s).not.toContain("Practise anyway");
     expect(s).not.toContain("nothing due");
+  });
+});
+
+describe("asking from anywhere, without losing your place", () => {
+  const built = (id: string, params: Record<string, string>) => {
+    const screen = LINGO_SCREENS.find((x) => x.id === id)!;
+    return JSON.stringify(screen.build(ctxFor(id, "phone", live, { params }), undefined as never));
+  };
+
+  it("puts the ask box on every screen where there is a language to ask about", () => {
+    // The moment somebody wants a word is the moment they are using the language — including mid-set.
+    for (const [id, params] of [
+      [SCREENS.lingo, {}],
+      [SCREENS.lingoSet, { target: "es" }],
+      [SCREENS.lingoSaid, { target: "es", say: "x", means: "y" }],
+    ] as Array<[string, Record<string, string>]>) {
+      expect(built(id, params), id).toContain("How do you say");
+      expect(built(id, params), id).toContain("/v1/lingo/ask");
+    }
+  });
+
+  it("does not offer it before the course exists, where it could only fail", () => {
+    // Setting a language up, or choosing one: there is nothing yet to ask a question against, and an ask box that
+    // answers "that course has not been started" is worse than no ask box.
+    for (const [id, params] of [
+      [SCREENS.lingoWhy, { target: "es", name: "Español" }],
+      [SCREENS.lingoAdd, {}],
+    ] as Array<[string, Record<string, string>]>) {
+      expect(built(id, params), id).not.toContain("/v1/lingo/ask");
+    }
+  });
+
+  it("sends them back to the set they asked from, not to the front", () => {
+    const s = built(SCREENS.lingoSet, { target: "es" });
+    expect(s).toContain(SCREENS.lingoSaid);
+    expect(s).toContain(`"back":"${SCREENS.lingoSet}"`);
+  });
+
+  it("leads with the thing to say, and says it is already theirs", () => {
+    const n = saidScreen(ctx(), { say: "estoy lleno", means: "I'm full", note: "After a meal.", target: "es", back: SCREENS.lingoSet });
+    const s = json(n);
+    expect(s).toContain("estoy lleno");
+    expect(s).toContain("I'm full");
+    expect(s).toContain("After a meal.");
+    // They should not be left wondering whether to write it down themselves.
+    expect(s).toContain("Added to your words");
+    // Continue goes back to the set, carrying which language, so a word looked up mid-lesson costs nothing.
+    expect(s).toContain(SCREENS.lingoSet);
+    expect(s).toContain('"target":"es"');
+  });
+
+  it("leaves the note out rather than filling it", () => {
+    const s = json(saidScreen(ctx(), { say: "hola", means: "hello", note: "", target: "es", back: SCREENS.lingo }));
+    expect(s).toContain("hola");
+    expect(s).not.toContain("Notice");
   });
 });
 

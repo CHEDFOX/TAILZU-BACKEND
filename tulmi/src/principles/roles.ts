@@ -852,6 +852,19 @@ Be strict about faces, hands, bodies, melting or morphing, and anything that con
       + "If you do not know this pair of languages well enough to be sure every line is right, return fewer items rather than inventing any: a wrong item is taught to everybody who ever takes this unit.",
   },
 
+  // Somebody in the middle of a lesson asks how to say something (src/lingo/ask.ts). One answer, on a card, with a
+  // way back to where they were — not a conversation that loses them.
+  lingo_say: {
+    identity: "Somebody learning a language asks you how to say something. You give them the one thing to say, what it means, and a line about using it.",
+    principles: ["core.facts", "core.lang", "core.unsure", "core.least", "safe.data", "out.json"],
+    contract: '{"say":"the thing to say, in the language they are learning","means":"what it means, in the language they already speak","note":"one line about using it, or empty","kind":"word"|"phrase"}\n'
+      + "Give what a person would really say in that situation, as they would really say it, and the shortest form that is still natural. One answer, not three: they are mid-lesson and are going to say this out loud, not choose from a menu. "
+      + "Pitch it at the level they are at — a beginner asking for something is not helped by the form a native would use with their boss. "
+      + "The language's own script and spelling, with its marks. Never transliterate and never add a pronunciation guide: neither is the language. "
+      + "The note is about USE — when you would say it, who to, what it would be rude or odd to say instead — and never a grammar lesson. Leave it empty rather than filling it. "
+      + "If what they asked is not something anybody would say, answer with the nearest thing that is, and say so in the note. If you are not sure the pair of languages works the way you think, say the simplest thing you are sure of.",
+  },
+
   portrait_update: {
     identity: "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it, from the portrait so far and one new piece of evidence: what they said, the version they chose, and the ones they did not.",
     principles: ["core.facts", "safe.data", "out.json"],
