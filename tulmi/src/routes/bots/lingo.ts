@@ -21,7 +21,7 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../../lingo/grade.js";
 import { blendMs, thinkingTime, workedForIt } from "../../lingo/portrait.js";
-import { after, FIRST_UNIT, unitDone } from "../../lingo/course.js";
+import { after, canDo, FIRST_UNIT, placeOf, unitDone, unitOf } from "../../lingo/course.js";
 import { askLingo, ASK_MAX } from "../../lingo/ask.js";
 import { lessonBank, unitFor, type LessonBank, type UnitItem } from "../../lingo/lessons.js";
 import { recall } from "../../lingo/schedule.js";
@@ -441,12 +441,19 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const items = await store().items(user.id, target).catch(() => []);
     const result = readSet(answers);
     const performance = performanceOf(result);
+    // DID THEY JUST FINISH A UNIT? It used to pass in silence: walking the path moved them to the next one on
+    // their next session and nobody ever told them they had done the last one. The thing they came for is being
+    // able to DO something, so the moment it becomes true is the moment worth showing.
+    const here = course.unit || FIRST_UNIT;
+    const u = unitOf(here);
+    const done = u && unitDone([...items], here, (i) => ("memory" in i ? recall((i as LingoItem).memory, at) : 0));
     return reply.send({
       result,
       performance,
       gesture: gestureFor(performance),
       next: shapeNext(performance, result),
       mastery: mastery(items, at),
+      ...(done && u ? { finished: { unit: u.key, goal: u.goal, mark: u.mark, ...placeOf(u.key), canDo: canDo(u.key) } } : {}),
     });
   });
 
