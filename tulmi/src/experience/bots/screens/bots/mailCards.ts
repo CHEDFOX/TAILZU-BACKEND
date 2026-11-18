@@ -85,8 +85,9 @@ export function mailField(path: string, placeholder: string, desk: boolean, o: {
   };
   return row([
     input,
-    ...(o.multiline ? [] : [labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-      setState(path, "")), `Clear ${o.label}`)]),
+    // Only once there is something to clear: an x on an empty field does nothing, and on a card like this it reads as a way out.
+    ...(o.multiline ? [] : [when({ truthy: path }, labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+      setState(path, "")), `Clear ${o.label}`))]),
   ], {
     ...(o.multiline ? { minHeight: tall + 2, alignItems: "flex-start" } : { height: desk ? 54 : 56 }),
     borderWidth: 1.5, borderColor: C.ink, borderRadius: desk ? 14 : 16, paddingLeft: 16, paddingRight: o.multiline ? 12 : desk ? 6 : 4,

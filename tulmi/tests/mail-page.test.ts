@@ -91,6 +91,13 @@ describe("there is a way off the screen", () => {
     expect(p.card!.on?.onDismiss).toEqual({ kind: "navigateBack" });
   });
 
+  it("shows a clear only once there is something to clear, so an x is never mistaken for the way out", async () => {
+    const p = await build();
+    const clears = p.nodes.filter((n) => String((n.props as { accessibilityLabel?: string })?.accessibilityLabel ?? "").startsWith("Clear "));
+    expect(clears.length).toBeGreaterThan(0);
+    for (const c of clears) expect(c.visibleIf, String((c.props as { accessibilityLabel?: string }).accessibilityLabel)).toBeDefined();
+  });
+
   it("leaving keeps what was answered: it does not close the cards or undo a step", async () => {
     const p = await build();
     expect(JSON.stringify(p.card!.on?.onDismiss)).not.toContain("mc_closed");

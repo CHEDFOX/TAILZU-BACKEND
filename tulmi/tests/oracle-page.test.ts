@@ -66,6 +66,13 @@ describe("there is a way off the screen", () => {
     expect(q.card!.on?.onDismiss).toEqual({ kind: "navigateBack" });
   });
 
+  it("shows a clear only once there is something to clear, so an x is never mistaken for the way out", async () => {
+    const q = await oraclePage({});
+    const clears = q.nodes.filter((n) => String((n.props as { accessibilityLabel?: string })?.accessibilityLabel ?? "").startsWith("Clear "));
+    expect(clears.length).toBeGreaterThan(0);
+    for (const c of clears) expect(c.visibleIf, String((c.props as { accessibilityLabel?: string }).accessibilityLabel)).toBeDefined();
+  });
+
   it("leaving is leaving the Oracle, not putting the cards off: nothing marks them closed", async () => {
     const q = await oraclePage({});
     expect(JSON.stringify(q.card!.on?.onDismiss)).not.toContain("oc_closed");
