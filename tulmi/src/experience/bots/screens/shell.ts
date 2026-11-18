@@ -20,10 +20,11 @@ import { upiOf } from "../../../shell/parse.js";
 import type { SearchResult, SearchKind } from "../../../shell/search.js";
 import { nicknameOf } from "../../assistantName.js";
 import {
-  duration, type BotsCtx, page, hasOutbox, needsCard, askBar, botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
+  duration, type BotsCtx, page, hasOutbox, needsCard,  botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
   sectionLabel, grid, icon, grow, botAvatar, botRoute, labelled, back, emptyState, mono, secondaryButton, title, segmented, when,
   statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought, canSpaces2, hasSpaces, canPersonBot,
 } from "../kit.js";
+import { askBar, ASK_BAR_STATE } from "../ask.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
 import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
@@ -81,7 +82,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ],
     // The foot of the window: what is happening in his thought (HOME_UPDATES), else the ask in his thought, else the ask bar.
     ...(updates ? { dock: [homeUpdatesBot(ctx, more.feed ?? [])], talkTo: homeTalkTo(ctx) }
-      : thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })] }),
+      : thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })], state: ASK_BAR_STATE }),
   });
 }
 

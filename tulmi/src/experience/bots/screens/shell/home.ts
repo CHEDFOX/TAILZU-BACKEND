@@ -11,9 +11,10 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
+  needsCard,  page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homePeek, homePeekEar, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
+import { askBar, ASK_BAR_STATE } from "../../ask.js";
 import { HOME_UPDATES_STATE, homeUpdatesBot, homeUpdatesOn } from "./homeUpdates.js";
 import type { FeedRow } from "../../../../shell/feed.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
@@ -276,7 +277,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const gone: Condition = { truthy: "helloGone" };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought || peeks ? HOME_THOUGHT_STATE : {}) },
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought || peeks ? HOME_THOUGHT_STATE : {}), ...(updates || thought ? {} : ASK_BAR_STATE) },
     ...(thought ? { talkTo: homeTalkTo(ctx) } : {}),
     // THE PEEKER goes in `pinned`, over the top of the page and outside its scroll, because his pocket is at the edge
     // of the whole screen and must not move with the list. He waits out the welcome: a bot peeking in while another

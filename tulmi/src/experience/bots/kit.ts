@@ -41,7 +41,7 @@ import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Ma
 import type { BotsLive, LiveBot, NeedsItem } from "./live.js";
 import { C, botLook, type BotLook } from "./palette.js";
 import { botRoute, SCREENS } from "./ids.js";
-import { askMoment, failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
+import { failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
 export { icon, peekKey, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -420,9 +420,12 @@ export const canStrip = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(B
  * A card with the tiny bot playing across its top (BotCard) and its steps below: each step a node with its own
  * visibleIf. `onComplete` runs when `doneWhen` holds, after the bot's small happy moment.
  */
-export function botCard(steps: Node[], o: BotCardProps & { onComplete?: ActionRef }): Node {
-  const { onComplete, ...props } = o;
-  return { type: "BotCard", props: { ...props }, ...(onComplete ? { on: { onComplete } } : {}), children: steps };
+export function botCard(steps: Node[], o: BotCardProps & { onComplete?: ActionRef; onDismiss?: ActionRef }): Node {
+  const { onComplete, onDismiss, ...props } = o;
+  // `onDismiss` is what gives an OVERLAY card its way out: BotCard.tsx draws the × and takes a swipe away only when
+  // the node carries one (`canLeave`). A card the person opened and cannot close is a trap.
+  const on = { ...(onComplete ? { onComplete } : {}), ...(onDismiss ? { onDismiss } : {}) };
+  return { type: "BotCard", props: { ...props }, ...(Object.keys(on).length ? { on } : {}), children: steps };
 }
 
 /** A build that draws a bot's own tiny bot on its pages (BotBuddy, with BotsMotion). */
@@ -1113,10 +1116,10 @@ export const answerParams = (message: string): Record<string, unknown> => ({
   finds: "$state.asked.shell.finds",
 });
 
-export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSpec {
+export function askAction(client: Client, path = "ask", ctx?: BotsCtx, o: { attachments?: string } = {}): ActionSpec {
   // Given the screen's ctx: the moment an ask is out (askMoment.ts): the words up as a bubble at once, the box cleared, the answer
   // written in as it comes.
-  if (ctx) return askMomentAction(ctx, path);
+  if (ctx) return askMomentAction(ctx, path, o);
   return {
     kind: "sequence", actions: [
       { kind: "condition", if: { falsy: path }, then: { kind: "toast", message: "Type what you need first" }, else: keptOffline(client, { message: `$state.${path}`, clear: path }, {
@@ -1143,17 +1146,20 @@ export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSp
 }
 
 /** askAction, the moment's way (askMoment.ts): the same call and answer, the words up as a bubble first, the answer streamed. */
-function askMomentAction(ctx: BotsCtx, path: string): ActionSpec {
+function askMomentAction(ctx: BotsCtx, path: string, o: { attachments?: string } = {}): ActionSpec {
   return {
     kind: "condition", if: { falsy: path }, then: { kind: "toast", message: "Type what you need first" }, else: keptOffline(ctx.client, { message: `$state.${path}`, clear: path }, {
       kind: "sequence", actions: [
         ...momentStart({ message: `$state.${path}`, from: path, busy: "asking" }),
         momentStreamed(ctx, {
           kind: "callEndpoint", method: "POST", path: ASK_PATH,
-          body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "any", tz: ctx.tzOffsetMinutes },
+          // The files the person inserted ride with the words: the ask door reads `attachments` and routes on them
+          // (a bot with the `files` skill is worth 3 to the door when one is there).
+          body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "any", tz: ctx.tzOffsetMinutes, ...(o.attachments ? { attachments: o.attachments } : {}) },
           assignTo: "asked",
           onSuccess: { kind: "sequence", actions: [
             { kind: "setState", path: "asking", value: false },
+            ...(o.attachments ? [{ kind: "clearState", path: o.attachments.replace(/^\$state\./, "") } as ActionSpec, { kind: "clearState", path: "sent" } as ActionSpec] : []),
             { kind: "navigate", screenId: SCREENS.ask, params: answerParams(SENT_WORDS) },
           ] },
           onError: momentFailed({ busy: "asking", from: path, then: { kind: "toast", message: "Couldn't reach your bots. Try again.", tone: "error" } }),
@@ -1189,37 +1195,11 @@ export function keptOffline(client: Client, o: { message: string; bot?: string; 
 }
 
 /**
- * The ask bar (Kit2): "Ask any bot…" with the mic, or send once something is typed. Enter / return sends. The
- * phone's mic opens the Ask screen listening; the window's starts dictation (hold Fn and speak).
+ * THE ASK BAR MOVED (experience/bots/ask.ts). It grew an INSERT KEY — a round + outside the box that blurs the page
+ * and pops a card of ways in (a photo, the camera, a file, a screenshot, the clipboard) — and that needs the media
+ * parts' `uploadPick` / `uploadChip`. media.ts imports this file, so this file cannot import it back, and the bar
+ * went where it can reach both. `askAction` below is still the kit's, and `taskBar` (Xode's own bar) is unchanged.
  */
-export function askBar(client: Client, o: { placeholder?: string; path?: string; ctx?: BotsCtx } = {}): Node {
-  const path = o.path ?? "ask";
-  const send = askAction(client, path, o.ctx);
-  const mic: ActionRef = client === "desktop" ? { kind: "dictate" } : { kind: "navigate", screenId: SCREENS.ask, params: { voice: true } };
-  return col([
-    row([
-      {
-        type: "TextField", id: "ask", bind: { value: path },
-        props: {
-          placeholder: o.placeholder ?? (client === "desktop" ? "Ask any bot…  or hold Fn and speak" : "Ask any bot…"),
-          placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0, paddingVertical: 0, minHeight: 44,
-          returnKeyType: "send", color: C.ink,
-        },
-        on: { onSubmit: send },
-        style: {
-          flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 44, paddingHorizontal: 0, paddingVertical: 0,
-          fontFamily: FACE.regular, fontSize: 16, color: C.ink, borderWidth: 0, backgroundColor: "transparent", outlineStyle: "none",
-        },
-      },
-      when({ truthy: path }, roundButton("send", send, { label: "Send" })),
-      // The keyboard's own mic key, so speaking looks the same in the app as in every other app.
-      when({ falsy: path }, micKey(mic, { label: "Speak" })),
-    ], { gap: 10, borderRadius: client === "desktop" ? 30 : RADIUS.input, borderWidth: 1, borderColor: C.line, paddingVertical: 6, paddingRight: 6, paddingLeft: client === "desktop" ? 22 : 18, backgroundColor: C.paper }),
-    o.ctx
-      ? askMoment(o.ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking your bots…", bubble: "surface" })
-      : when({ truthy: "asking" }, row([statusMark("working", { color: C.ink }), meta("Asking your bots…", { size: 13 })], { gap: 8, paddingLeft: 18 })),
-  ], { gap: 8 });
-}
 
 // ===================================================================== navigation
 

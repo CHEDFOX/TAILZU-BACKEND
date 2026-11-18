@@ -4,7 +4,8 @@
 
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import { upiOf } from "../../../../shell/parse.js";
-import { type BotsCtx, row, box, body, button, C, col, icon, meta, statusMark, text, grow, open, SCREENS, toTab, page, askBar } from "../../kit.js";
+import { type BotsCtx, row, box, body, button, C, col, icon, meta, statusMark, text, grow, open, SCREENS, toTab, page } from "../../kit.js";
+import { askBar, ASK_BAR_STATE } from "../../ask.js";
 import type { Card } from "../../../../everyday/index.js";
 import { findsCards } from "../finds.js";
 import { isRoutineToken, routineCard, routineCardState } from "../routines.js";
@@ -56,5 +57,5 @@ export function askAnswer(ctx: BotsCtx, cards?: Card[]) {
       gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line,
     }, toTab("activity")));
   }
-  return page(ctx, { back: true, backTitle: "Ask", title: "Ask", nav: "bots", body: blocks, footer: [askBar(ctx.client, { ctx })], gap: 18 });
+  return page(ctx, { back: true, backTitle: "Ask", title: "Ask", nav: "bots", body: blocks, footer: [askBar(ctx.client, { ctx })], gap: 18, state: ASK_BAR_STATE });
 }
