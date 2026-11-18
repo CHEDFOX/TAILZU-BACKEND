@@ -2,6 +2,9 @@
  * THE MAIL BOT'S SET-UP (docs/mail.md section 9): asked as the Oracle's cards ask (oracleCards.ts), one card over the mail bot's page with its
  * stage on top, one step after the other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
+ *   back            the card is a modal over the page, so the page's own back is behind it and the phone's edge swipe never reaches
+ *                   it: it carries its own way out (`onLeave`), and since every step is kept as it is answered, leaving halfway
+ *                   loses nothing and the cards carry on from where they were
  *   1. the business   its name and its domain: POST /v1/mail/businesses. The domain and its mailbox (hello@) are made on our mail server, and
  *                     the page comes back with the business, for the rest. Also "Add a domain", on the page and in its settings (params add=1)
  *   2. the records    what to add at the domain's DNS (MX, SPF, DKIM, DMARC), each with Copy and its live check; "Check again" reads them
@@ -19,7 +22,7 @@
  * gets the same steps in a plain card at the top.
  */
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, SCREENS, seq, statusMark, text, when } from "../../kit.js";
+import { type BotsCtx, back, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, SCREENS, seq, statusMark, text, when } from "../../kit.js";
 import { line, permitStep, setState, toast } from "../firstRun/parts.js";
 import { copyAction } from "./keysDesk.js";
 import { type BriefView, type DnsView, MAIL, MAIL_SLUG, type MailData, type MailBusinessView, MODE_WORDS, shownBusiness } from "./mailParts.js";
@@ -241,6 +244,9 @@ function frame(steps: Node[], o: { living: boolean; desk: boolean; look: { color
       kind: "custom", color: o.look.color, stageHeight: 96, overlay: true, width: WIDTH[o.desk ? "desktop" : "phone"], label: "The mail bot",
       ...(o.look.avatar ? { avatar: o.look.avatar } : {}), ...(o.look.moment ?? {}),
       doneWhen: o.done, doneDelayMs: 1600, onComplete: seq(setState(MC.closed, true), again(o.business)), closeWhen: { truthy: MC.closed },
+      // A way off the screen: the card is a modal over the page, so without this there is no back and no swipe on either phone.
+      // Every step is kept as it is answered, so leaving halfway loses nothing and the cards carry on from there.
+      onLeave: back(),
     })];
   }
   return [when({ all: [{ falsy: MC.closed }, { not: o.done }] }, col(steps, {

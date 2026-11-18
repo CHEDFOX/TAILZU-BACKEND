@@ -59,6 +59,19 @@ async function oraclePage(o: { sky?: unknown; about?: unknown; turns?: ReturnTyp
   };
 }
 
+describe("there is a way off the screen", () => {
+  it("the card carries a way back, because a card over the page is a modal with no back and no swipe of its own", async () => {
+    const q = await oraclePage({});
+    expect(q.card).toBeDefined();
+    expect(q.card!.on?.onDismiss).toEqual({ kind: "navigateBack" });
+  });
+
+  it("leaving is leaving the Oracle, not putting the cards off: nothing marks them closed", async () => {
+    const q = await oraclePage({});
+    expect(JSON.stringify(q.card!.on?.onDismiss)).not.toContain("oc_closed");
+  });
+});
+
 describe("the Oracle's cards", () => {
   it("ask when, then where, then name and gender (only when the app lacks them), over the page with the day's character", async () => {
     const p = await oraclePage({ about: UNKNOWN });

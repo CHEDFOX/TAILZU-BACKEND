@@ -3,6 +3,9 @@
  * one card over the Oracle's page (a BotCard overlay, the page blurred behind it) with the day's character on its stage, and one step after the
  * other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
+ *   back        the card is a modal over the page, so the page's own back is behind it and the phone's edge swipe never reaches it:
+ *                it carries its own way out (`onLeave`, the card draws a Back and takes a swipe to the right and the phone's back).
+ *                It leaves the Oracle; it does not put the cards off, and what was answered is kept for next time
  *   1. when      the date of birth, and the time if they know it: PUT /v1/oracle/sky { date, time }. There is no putting the cards off: the
  *                Oracle reads nothing without a chart (oracle/run.ts refuses too). Opened by Change, with a sky kept, Cancel leaves it as it was
  *   2. where     the town or city, with suggestions as they type (GET /v1/oracle/places: Google's with GOOGLE_PLACES_API_KEY, else the
@@ -17,7 +20,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, seq, text, when } from "../../kit.js";
+import { type BotsCtx, back, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, seq, text, when } from "../../kit.js";
 import { SCREENS } from "../../ids.js";
 import { genderChips } from "../firstRun/aboutCard.js";
 import { type About, GENDERS, line, nameField, permitStep, setState, toast } from "../firstRun/parts.js";
@@ -182,6 +185,10 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
       kind: "custom", color: look.color, stageHeight: 96, overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "The Oracle",
       ...(look.avatar ? { avatar: look.avatar } : {}), ...(look.moment ?? {}),
       doneWhen: allKept, doneDelayMs: 1800, onComplete: seq(setState(OC.closed, true), again()), closeWhen: { truthy: OC.closed },
+      // A way off the screen. The card is a modal over the page, so without this there is no back and no swipe on either phone.
+      // It does not put the cards off — there is nothing to read without a sky — it leaves the Oracle, and they are here again
+      // next time, filled in as far as they got.
+      onLeave: back(),
     })];
   }
   return [when({ all: [{ falsy: OC.closed }, { not: allKept }] }, col(steps, {
