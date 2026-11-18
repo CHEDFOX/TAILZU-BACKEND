@@ -85,6 +85,15 @@ async function build(o: {
 const callsOf = (acts: ActionSpec[]) => acts.filter((a) => a.kind === "callEndpoint") as Array<Extract<ActionSpec, { kind: "callEndpoint" }>>;
 
 describe("there is a way off the screen", () => {
+  it("draws the Back itself, so a build already out there has one without waiting for a release", async () => {
+    const p = await build();
+    const back = walk(p.card!).find((n) => (n.props as { accessibilityLabel?: string })?.accessibilityLabel === "Back");
+    expect(back).toBeDefined();
+    expect(back!.on?.onPress).toEqual({ kind: "navigateBack" });
+    // and it is always there, not behind a step's own condition
+    expect(back!.visibleIf).toBeUndefined();
+  });
+
   it("the set-up card carries a way back, because a card over the page is a modal with no back and no swipe of its own", async () => {
     const p = await build();
     expect(p.card).toBeDefined();

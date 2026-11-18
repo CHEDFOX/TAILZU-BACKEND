@@ -23,7 +23,7 @@ import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../s
 import { type BotsCtx, back, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, seq, text, when } from "../../kit.js";
 import { SCREENS } from "../../ids.js";
 import { genderChips } from "../firstRun/aboutCard.js";
-import { type About, GENDERS, line, nameField, permitStep, setState, toast } from "../firstRun/parts.js";
+import { type About, cardBack, GENDERS, line, nameField, permitStep, setState, toast } from "../firstRun/parts.js";
 
 const SKY = "/v1/oracle/sky";
 const PLACES = "/v1/oracle/places";
@@ -191,7 +191,9 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
   const steps = [whenStep, whereStep, ...youStep];
 
   if (living) {
-    return [botCard([...steps, done], {
+    // The Back is drawn here, as a part of the card, so every build that is already out has one; the apps add the swipe and
+    // the phone's own back on top of it (`onLeave`).
+    return [botCard([cardBack(back()), ...steps, done], {
       kind: "custom", color: look.color, stageHeight: 96, overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "The Oracle",
       ...(look.avatar ? { avatar: look.avatar } : {}), ...(look.moment ?? {}),
       doneWhen: allKept, doneDelayMs: 1800, onComplete: seq(setState(OC.closed, true), again()), closeWhen: { truthy: OC.closed },
