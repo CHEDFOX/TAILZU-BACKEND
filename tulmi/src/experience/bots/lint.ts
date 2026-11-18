@@ -95,7 +95,11 @@ export function lintTree(root: Node, opts: LintOpts = {}): string[] {
       const m = /^border(Top|Right|Bottom|Left)?Width$/.exec(k);
       if (m && Number(st[k]) > 0 && !st[`border${m[1] ?? ""}Color`] && !st.borderColor) bad.push(`${n.type} has ${k} without a colour`);
     }
-    if (n.type === "Image" && !(n.props?.source as { url?: string } | undefined)?.url) bad.push("an image without a { url } source");
+    // An image needs a source neither client has to guess at: a literal `{ url }`, or `bind: { source }` — a path to
+    // one in the screen's state, which the renderer writes into the prop before the component ever sees it (the
+    // insert card draws the file still on the phone that way, since nothing serves an uploaded one back).
+    if (n.type === "Image" && !(n.props?.source as { url?: string } | undefined)?.url
+      && typeof (n.bind as Record<string, unknown> | undefined)?.source !== "string") bad.push("an image without a { url } source");
     // VOCABULARY-2 SYNTAX, not just vocabulary-2 node types. A screen that says no `needs` skips the publish gate
     // and lint altogether (sdui2/gate.ts isVocab1), which is what keeps today's screens costing nothing — so the
     // only place an expression, a gesture, a node rule or the new motion can be caught before it ships to a client

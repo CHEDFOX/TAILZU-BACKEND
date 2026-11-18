@@ -71,11 +71,17 @@ describe("the card", () => {
     const card = bar().find((n) => n.type === "BotCard")!;
     expect(card.on?.onDismiss).toEqual({ kind: "setState", path: "insert", value: false });  // botCard maps onLeave to it
   });
-  it("each way in shuts the card FIRST, so the picker opens over the page and not under the card", () => {
-    const photo = bar().find((n) => n.on?.onPress && JSON.stringify(n.on.onPress).includes('"pick":"photo"'));
-    const acts = (photo!.on!.onPress as any).actions as any[];
+  it("a way in does NOT shut the card: the picker opens over it and it is still there, holding the file", () => {
+    const photo = bar().find((n) => n.on?.onPress && JSON.stringify(n.on.onPress).includes('"pick":"photo"'))!;
+    const act = photo.on!.onPress as any;
+    const inner = act.kind === "sequence" ? act.actions : [act];
+    expect(inner.some((a: any) => a?.kind === "setState" && a.path === "insert")).toBe(false);
+    expect(inner.some((a: any) => a?.kind === "uploadFile")).toBe(true);
+  });
+  it("pasting DOES shut it: there is nothing to come back to", () => {
+    const paste = bar().find((n) => JSON.stringify(n.on?.onPress ?? {}).includes("readClipboard"))!;
+    const acts = (paste.on!.onPress as any).actions as any[];
     expect(acts[0]).toEqual({ kind: "setState", path: "insert", value: false });
-    expect(acts[1].kind).toBe("uploadFile");
   });
   it("the camera is a pick of its own, not a photo from the library", () => {
     expect(JSON.stringify(bar())).toContain('"pick":"camera"');
@@ -101,7 +107,7 @@ describe("what the ask carries", () => {
     expect(send).toContain('{"kind":"clearState","path":"attach"}');
   });
   it("the screen starts with the card shut and nothing attached", () => {
-    expect(ASK_BAR_STATE).toEqual({ insert: false, attach: [], up: null, sent: null });
+    expect(ASK_BAR_STATE).toEqual({ insert: false, attach: [], shots: [], up: null, sent: null });
   });
 });
 
@@ -118,5 +124,56 @@ describe("on the real screen", () => {
     const s = await buildBotsScreen(req("phone", NO_UPLOAD), fakeDeps({}));
     expect(walk(s.root!).some((n) => n.type === "BotCard")).toBe(false);
     expect(lintTree(s.root!, { client: "phone" })).toEqual([]);
+  });
+});
+
+describe("the card grows with what you chose", () => {
+  it("every pick ADDS, up to the eight the ask door takes — it does not replace the one before", () => {
+    const up = bar().find((n) => JSON.stringify(n.on?.onPress ?? {}).includes('"pick":"photo"'))!.on!.onPress as any;
+    const ok = (up.kind === "sequence" ? up.actions : [up]).find((a: any) => a.kind === "uploadFile").onSuccess.actions;
+    const adds = ok.filter((a: any) => a.kind === "appendState");
+    expect(adds.map((a: any) => a.path)).toEqual(["attach", "shots"]);
+    for (const a of adds) expect(a.max).toBe(8);
+    expect(ok.some((a: any) => a.kind === "clearState" && a.path === "attach")).toBe(false);
+  });
+  it("the ref goes where the ask reads it, and the picture where the card draws it", () => {
+    const up = bar().find((n) => JSON.stringify(n.on?.onPress ?? {}).includes('"pick":"photo"'))!.on!.onPress as any;
+    const ok = (up.kind === "sequence" ? up.actions : [up]).find((a: any) => a.kind === "uploadFile").onSuccess.actions;
+    expect(ok.find((a: any) => a.path === "attach").value).toBe("$state.sent.attachment");
+    expect(ok.find((a: any) => a.path === "shots").value).toBe("$state.sent.pic");
+  });
+  it("A PICTURE PER FILE, its source bound to the copy still on the phone", () => {
+    const imgs = bar().filter((n) => n.type === "Image");
+    expect(imgs.length).toBe(8);
+    expect(imgs.map((n) => (n.bind as any).source)).toEqual(Array.from({ length: 8 }, (_, i) => `shots.${i}`));
+    for (const n of imgs) expect(n.props!.contentFit).toBe("cover");
+  });
+  it("each one is drawn only once there is a file in its place, so the card is only as tall as what is on the ask", () => {
+    const slots = bar().filter((n) => (n.children ?? []).some((c) => c.type === "Image"));
+    expect(slots.length).toBe(8);
+    expect(slots.map((n) => n.visibleIf)).toEqual(Array.from({ length: 8 }, (_, i) => ({ truthy: `attach.${i}` })));
+  });
+  it("a file with no picture still shows something: its kind's glyph, under the image that draws nothing", () => {
+    const box = bar().find((n) => n.visibleIf && JSON.stringify(n.visibleIf) === JSON.stringify({ truthy: "attach.0" }) && (n.children ?? []).some((c) => c.type === "Image"))!;
+    expect((box.children ?? []).some((c) => c.type === "SVG" && c.props?.d === ICONS.clip)).toBe(true);
+  });
+  it("Clear takes them all off, both lists together, so they can never get out of step", () => {
+    const press = (n: { on?: Record<string, unknown> }) => JSON.stringify(n.on?.onPress ?? {});
+    const clear = bar().find((n) => press(n).includes('"path":"attach"') && press(n).includes('"path":"shots"'));
+    expect(clear).toBeTruthy();
+    // and nothing else clears one without the other
+    for (const n of bar()) {
+      const p = press(n);
+      if (p.includes('"clearState","path":"shots"')) expect(p).toContain('"path":"attach"');
+    }
+  });
+  it("the strip only exists once something is on the ask", () => {
+    const label = bar().find((n) => n.type === "Text" && n.props?.content === "On the ask");
+    expect(label).toBeTruthy();
+    const strip = bar().find((n) => JSON.stringify(n.visibleIf ?? {}) === JSON.stringify({ truthy: "attach.0" }) && (n.children ?? []).length === 2);
+    expect(strip).toBeTruthy();
+  });
+  it("the screen starts with both lists empty", () => {
+    expect(ASK_BAR_STATE).toEqual({ insert: false, attach: [], shots: [], up: null, sent: null });
   });
 });

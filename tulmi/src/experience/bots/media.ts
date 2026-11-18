@@ -44,6 +44,30 @@ export function uploadPick(pick: UploadPick, list: string, then?: ActionRef): Ac
   };
 }
 
+/**
+ * ADD a picked file to the ask, rather than replacing the one before it (`uploadPick` keeps one at a time, which is
+ * what a screen with a single file chip wants). `list` takes the attachment ref the ask carries; `shots` takes the
+ * file as an image source still on this phone (media.ts `pic`), so a card can SHOW what was attached — nothing
+ * serves an uploaded file's bytes back, so the local copy is the only picture there is.
+ *
+ * `max` is the ask door's own limit (routes/bots/botsShell.ts takes 8), and `appendState` drops the oldest past it,
+ * so the two lists cannot run past what will be sent or get out of step with each other.
+ */
+export function uploadAdd(pick: UploadPick, o: { list: string; shots: string; max?: number; then?: ActionRef }): ActionSpec {
+  const max = o.max ?? 8;
+  return {
+    kind: "uploadFile", pick, path: "/v1/files", assignTo: "sent", progressTo: "up", maxBytes: UPLOAD_MAX_BYTES,
+    onSuccess: seq(
+      { kind: "appendState", path: o.list, value: "$state.sent.attachment", max },
+      { kind: "appendState", path: o.shots, value: "$state.sent.pic", max },
+      // The chip above the bar is for ONE file on its way; with a list in the card, `sent` only muddles it.
+      { kind: "clearState", path: "sent" },
+      o.then,
+    ),
+    onError: seq({ kind: "clearState", path: "up" }, toastError("$event")),
+  };
+}
+
 /** Take the sent file off the ask. */
 const dropSent = (list: string): ActionRef => seq({ kind: "clearState", path: "sent" }, { kind: "clearState", path: list });
 
