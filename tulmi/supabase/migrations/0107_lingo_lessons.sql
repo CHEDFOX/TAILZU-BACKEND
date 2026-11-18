@@ -26,3 +26,9 @@ alter table public.lingo_lessons enable row level security;
 -- Which unit of the path an item came from, where it came from one. A word somebody reached for in a conversation
 -- has none, and that is the difference the scheduler already cares about (src/lingo/schedule.ts unseen).
 alter table public.lingo_items add column if not exists unit text;
+
+-- What is known about one item in each of the three ways it can be known — picking it out, writing it, saying it —
+-- and how it goes wrong, by the grader's own reason (src/lingo/types.ts ItemMarks). One memory per item could not
+-- tell a word somebody recognises from one they can say, and the grader's reason was thrown away after being shown
+-- once, so the same mistake five times looked like five unrelated mistakes.
+alter table public.lingo_items add column if not exists marks jsonb;
