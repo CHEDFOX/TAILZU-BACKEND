@@ -9,7 +9,7 @@
  *   - a level is earned on what can be produced, and never jumps on a handful of words
  */
 import { describe, expect, it } from "vitest";
-import { AWAY_MS, CONFIDENCE, blendMs, earnedLevel, median, portraitOf, rate, thinkingTime, workedForIt } from "../src/lingo/portrait.js";
+import { AWAY_MS, CONFIDENCE, blendMs, earnedLevel, median, portraitOf, rate, thinkingTime, vectorOf, workedForIt } from "../src/lingo/portrait.js";
 import { freshMemory, ratingFor, review } from "../src/lingo/schedule.js";
 import type { Learner, LingoItem, Memory } from "../src/lingo/types.js";
 
@@ -197,5 +197,55 @@ describe("recalled, or worked out", () => {
     const hard = review(start, "right", false, T0, true);
     expect(hard.memory.dueMs, "the one they had to work for comes back first").toBeLessThan(easy.memory.dueMs);
     expect(hard.memory.stability).toBeLessThan(easy.memory.stability);
+  });
+});
+
+describe("one item as numbers", () => {
+  const marked = (over: Partial<LingoItem> = {}) => item({ memory: held({ thinkMs: 6000, lapses: 1 }), ...over });
+
+  it("tells recognising from writing from saying, which one memory never could", () => {
+    const v = vectorOf(marked({ marks: {
+      pick: { asked: 6, right: 6 }, write: { asked: 3, right: 2 }, say: { asked: 4, right: 0 },
+    } }), T0, 3000);
+    expect(v.pick.n).toBe(6);
+    expect(v.say.n).toBe(4);
+    // Perfect when shown it, never once said right: the same word, three different pieces of knowledge.
+    expect(v.pick.p).toBeGreaterThan(v.say.p);
+  });
+
+  it("counts how it goes wrong, worst first, instead of throwing the reason away", () => {
+    const v = vectorOf(marked({ marks: { why: { accent: 1, word: 4, spelling: 2 } } }), T0, 3000);
+    expect(v.why[0]).toEqual({ reason: "word", n: 4 });
+    expect(v.why.map((w) => w.reason)).toEqual(["word", "spelling", "accent"]);
+  });
+
+  it("flags right-so-far-but-unproven, which a plain success rate hides", () => {
+    // Two out of two is a hundred per cent and is almost no evidence. It should come back to be SURE — which is a
+    // different reason from coming back because it is hard, and the two want different treatment.
+    const thin = vectorOf(marked({ marks: { pick: { asked: 2, right: 2 } } }), T0, 3000);
+    expect(thin.unproven).toBe(true);
+    const proven = vectorOf(marked({ marks: { pick: { asked: 30, right: 28 } } }), T0, 3000);
+    expect(proven.unproven).toBe(false);
+    // Something they are plainly bad at is not "unproven": it is known, and known to be going wrong.
+    const bad = vectorOf(marked({ marks: { say: { asked: 20, right: 2 } } }), T0, 3000);
+    expect(bad.unproven).toBe(false);
+  });
+
+  it("measures effort against the person, and says nothing with nothing to compare to", () => {
+    expect(vectorOf(marked(), T0, 3000).effort).toBe(2);
+    expect(vectorOf(marked(), T0, 0).effort).toBe(1);
+  });
+
+  it("says when the scheduler wants it, including overdue", () => {
+    const over = vectorOf(marked({ memory: held({ dueMs: T0 - 2 * DAY }) }), T0, 3000);
+    expect(over.dueInDays).toBeCloseTo(-2, 1);
+  });
+
+  it("holds up for an item nothing has ever been recorded against", () => {
+    const v = vectorOf(item({ marks: undefined }), T0, 0);
+    expect(v.pick.n).toBe(0);
+    expect(v.why).toEqual([]);
+    expect(v.unproven).toBe(false);
+    expect(Number.isFinite(v.hold)).toBe(true);
   });
 });

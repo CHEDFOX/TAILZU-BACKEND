@@ -12,11 +12,13 @@
 import { neutral } from "../bots/prompt.js";
 import { due, unseen } from "./schedule.js";
 import { progress } from "./session.js";
-import { portraitOf } from "./portrait.js";
+import { portraitOf, vectorOf } from "./portrait.js";
 import { lingoStore, type LingoStore } from "./store.js";
 
 const DUE_SHOWN = 25;
 const NEW_SHOWN = 10;
+/** How many items the map carries. Enough to reason over, few enough that the reasoning survives reading it. */
+const MAP_SHOWN = 40;
 /** The seven codes (types.ts WHY_CODES) as a sentence the model can use. Their own words matter more and come after. */
 const WHY_WORDS: Record<string, string> = {
   someone: "somebody they love speaks it",
@@ -79,6 +81,30 @@ export async function lingoDigest(userId: string, o: DigestDeps = {}): Promise<s
   if (me.easy.length) {
     lines.push("", "Solid. Use these freely, and do not waste their time testing them:");
     lines.push(me.easy.slice(0, 8).map((e) => e.item).join(", "));
+  }
+
+  // THE MAP, IN LAYERS. A course can hold thousands of items and no reasoning survives being handed all of them,
+  // so this is the layer that is always worth the room: the ones that are due, the ones that keep going wrong, and
+  // the ones that LOOK fine on too little evidence. Each is the same fixed row of numbers, so a hundred of them
+  // read as a table rather than a hundred stories, and nothing in a row is a conclusion — those belong to whatever
+  // reads it.
+  const normal = me.thinkMs;
+  const vectors = items.map((i) => vectorOf(i, now, normal));
+  const worth = vectors
+    .filter((v) => v.dueInDays <= 1 || v.lapses > 0 || v.unproven || v.effort > 1.3)
+    .sort((a, b) => (b.lapses - a.lapses) || (a.dueInDays - b.dueInDays) || (a.hold - b.hold))
+    .slice(0, MAP_SHOWN);
+  if (worth.length) {
+    lines.push("", `Each word, as numbers. hold = the chance they have it right now; pick/write/say = right out of asked in that way of being asked (raw counts, so you can see how thin the evidence is); effort = their thinking time against their own normal; due = days (negative is overdue); unproven = right so far on too little evidence to believe yet.`);
+    for (const v of worth) {
+      // RAW, not the shrunk rate. "64% of 3" is mostly the prior talking and reads as a fact about them; "1/3" is
+      // what happened. The shrinkage does its work where there are enough answers for it to mean something — the
+      // per-kind rates above — and in `unproven`, which is what it is really for.
+      const mode = (c?: { asked: number; right: number }) => (c?.asked ? `${c.right}/${c.asked}` : "—");
+      const why = v.why.length ? ` why:${v.why.map((w) => `${w.reason}x${w.n}`).join(",")}` : "";
+      const raw = items.find((i) => i.item === v.item)?.marks;
+      lines.push(`- ${v.item} = ${v.gloss} | hold ${v.hold} | pick ${mode(raw?.pick)} write ${mode(raw?.write)} say ${mode(raw?.say)} | effort ${v.effort} | due ${v.dueInDays}${v.lapses ? ` | lost ${v.lapses}x` : ""}${v.unproven ? " | UNPROVEN" : ""}${why}`);
+    }
   }
 
   const ready = due(items, now, DUE_SHOWN);

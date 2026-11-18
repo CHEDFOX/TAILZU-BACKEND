@@ -175,6 +175,84 @@ export function earnedLevel(items: readonly LingoItem[], now: number, said: Leve
   return LEVELS[Math.max(j, Math.min(i, j + 1))] ?? band;
 }
 
+/**
+ * ONE ITEM AS NUMBERS — the whole of what is known about a word or a phrase, in a fixed shape, so a model can
+ * reason over a hundred of them without reading a hundred stories.
+ *
+ * Every field is a measurement, not a label. There is no "difficulty: hard" here, because that is a conclusion and
+ * conclusions belong to whatever reads this.
+ *
+ *   hold      the chance they would have it RIGHT NOW, from the scheduler. A probability, and it decays.
+ *   pick/write/say   how it goes in each of the three ways it can be known, each as a rate WITH its count and how
+ *             much of that rate is its own evidence. Knowing a word when shown it is not knowing it to say.
+ *   effort    their thinking time on it against their own middle. 1 is normal, 2 is twice as long.
+ *   why       how it goes wrong, counted by the grader's own reason, worst first.
+ *   lapses    times it was had and then lost. The strongest single sign of a word that will go again.
+ *   dueInDays when the scheduler wants it next; negative means it is overdue.
+ *   unproven  RIGHT SO FAR, BUT NOT YET PROVEN. The thing a plain success rate hides: two out of two is 100% and
+ *             says almost nothing. These are the ones to bring back to be sure, rather than to drill.
+ */
+export interface ItemVector {
+  item: string;
+  gloss: string;
+  kind: string;
+  unit?: string;
+  hold: number;
+  pick: Rate;
+  write: Rate;
+  say: Rate;
+  effort: number;
+  why: Array<{ reason: string; n: number }>;
+  lapses: number;
+  reps: number;
+  spoken: number;
+  dueInDays: number;
+  unproven: boolean;
+}
+
+/**
+ * Right so far, and not yet proven. A word answered twice and right twice looks perfect and is barely evidence;
+ * the shrinkage already knows that (`sure`), and this is what it is for. Anything that looks good on thin evidence
+ * should come back to be SURE, which is a different reason from coming back because it is hard.
+ */
+export const PROVEN_AT = 0.45;
+const LOOKS_GOOD = 0.75;
+
+/**
+ * "Looks good" is read from what ACTUALLY HAPPENED, not from the shrunk rate — the shrunk rate has already pulled
+ * two-out-of-two back towards the prior, which is exactly the correction this wants to see past. Observed success
+ * high, confidence low: that is the pair that means "come back and be sure", and either number alone hides it.
+ */
+const unprovenYet = (modes: Array<{ rate: Rate; seen?: { asked: number; right: number } }>): boolean => {
+  const tried = modes.filter((m) => m.seen?.asked);
+  if (!tried.length) return false;
+  const observed = Math.max(...tried.map((m) => m.seen!.right / m.seen!.asked));
+  const sure = Math.max(...tried.map((m) => m.rate.sure));
+  return observed >= LOOKS_GOOD && sure < PROVEN_AT;
+};
+
+export function vectorOf(item: LingoItem, now: number, normalMs: number, prior = EVEN): ItemVector {
+  const m = item.memory;
+  const of = (c?: { asked: number; right: number }) => rate(c?.right ?? 0, c?.asked ?? 0, prior);
+  const pick = of(item.marks?.pick);
+  const write = of(item.marks?.write);
+  const say = of(item.marks?.say);
+  return {
+    item: item.item, gloss: item.gloss, kind: item.kind, ...(item.unit ? { unit: item.unit } : {}),
+    hold: Number(recall(m, now).toFixed(2)),
+    pick, write, say,
+    effort: normalMs && m.thinkMs ? Number((m.thinkMs / normalMs).toFixed(2)) : 1,
+    why: Object.entries(item.marks?.why ?? {}).map(([reason, n]) => ({ reason, n: n as number })).sort((a, b) => b.n - a.n),
+    lapses: m.lapses, reps: m.reps, spoken: item.spoken,
+    dueInDays: Number(((m.dueMs - now) / 86_400_000).toFixed(1)),
+    unproven: unprovenYet([
+      { rate: pick, ...(item.marks?.pick ? { seen: item.marks.pick } : {}) },
+      { rate: write, ...(item.marks?.write ? { seen: item.marks.write } : {}) },
+      { rate: say, ...(item.marks?.say ? { seen: item.marks.say } : {}) },
+    ]),
+  };
+}
+
 /** Per kind: how many were asked, how many right, and the middle time. Kept on the course, counted as they answer. */
 export interface Tally { [kind: string]: { asked: number; right: number; ms: number } }
 
