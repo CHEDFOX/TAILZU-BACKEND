@@ -3,6 +3,7 @@
  * model reads back.
  *
  *   places_discover   places worth going, by what they are like, the month, the country and the budget
+ *   place_build       a place nobody has written yet: read about it, make a card, keep it in their feed
  *   place_open        one place in full, for when the bot is about to talk about it
  *
  * The Travel bot gets both, and so does any bot that searches the web. The tags in the schema are the closed list
@@ -79,6 +80,17 @@ export const DISCOVER_TOOLS: readonly DiscoverToolDef[] = [
     },
   },
   {
+    name: "place_build",
+    description:
+      "For a place nobody has written about yet: read about it and make a card for this person. Use it when they name somewhere places_discover does not have — a town, a temple, a park. It reads pages, cites them, and refuses places with nothing to see at a particular hour and no dated history: if it refuses, say so plainly and offer to plan the trip anyway. Takes a few seconds; never call it twice for the same place.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      required: ["place"],
+      properties: { place: { type: "string", minLength: 2, maxLength: 80, description: "What they called it: \"hampi\", \"Lalibela\", \"Mount Abu\"." } },
+    },
+  },
+  {
     name: "place_open",
     description: "One place in full, by the slug a places_discover result gave. Use it before describing a place at any length, so what you say is what the card says.",
     parameters: {
@@ -131,6 +143,32 @@ export async function runDiscover(d: Discover, userId: string, name: string, arg
         : `\nBuilt for this person from ${card.sources.map((s) => s.host).join(", ")}, read ${card.sources[0]?.readAt ?? "recently"}. Say where it came from if you use it.`,
     ].filter(Boolean);
     return { content: lines.join("\n"), ok: true };
+  }
+
+  if (name === "place_build") {
+    const place = typeof args.place === "string" ? args.place.trim() : "";
+    if (place.length < 2) return { content: "place_build needs a place.", ok: false };
+    if (!d.canBuild) return { content: "I cannot write up a new place right now. Say so, and offer what we already have, or to plan the trip anyway.", ok: false };
+
+    const out = await d.build(place, userId);
+    if (!out.ok) {
+      return { content: `${out.why} Say that plainly — do not invent the place — and offer to plan the trip there anyway, or to look on the web.`, ok: true };
+    }
+
+    const card = out.card;
+    const season = seasonWords(card.season);
+    if (found) found(placesCardOf(card.where, [{ card, score: 1, matched: [], wildcard: false }], 1));
+    return {
+      content: [
+        `Made a card for ${card.where} and kept it in their feed:`,
+        `${card.title} — "${card.hook}"`,
+        season ? `Best ${season}. ${card.budget}, effort ${card.effort} of 5.` : `${card.budget}, effort ${card.effort} of 5.`,
+        card.story,
+        card.sources.length ? `Read today from ${card.sources.map((s) => s.host).join(", ")} — say where it came from.` : "",
+        "These are not our own words: they are the web's, read just now. No prices in them.",
+      ].filter(Boolean).join("\n"),
+      ok: true,
+    };
   }
 
   if (name !== "places_discover") return { content: `There is no tool called ${name}.`, ok: false };

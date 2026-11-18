@@ -17,6 +17,8 @@
  */
 import { CURATED, curatedCountries } from "./catalog.js";
 import { pick, countFor } from "./query.js";
+import type { Built } from "./build.js";
+import type { Fail } from "./builder.js";
 import { store as makeStore, type DiscoverStore } from "./store.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
@@ -30,6 +32,7 @@ export { CURATED, curatedBySlug, curatedCountries } from "./catalog.js";
 export { store, type DiscoverStore } from "./store.js";
 export { pick, countFor } from "./query.js";
 export { DISCOVER_TOOLS, runDiscover, discoverFor } from "./tools.js";
+export type { Fail } from "./builder.js";
 
 export interface DiscoverOptions {
   /** The written catalogue. Handed in by the tests; the real one by default. */
@@ -38,6 +41,11 @@ export interface DiscoverOptions {
   store?: DiscoverStore;
   /** How many different people must search a place before it is worth writing ourselves. */
   writeAt?: number;
+  /**
+   * Makes a builder for one person (server.ts): the geocoder, the researcher and the model behind their own
+   * limits. Left out — no model, a test — and `build` says so instead of pretending.
+   */
+  makeBuilder?: (userId: string) => { build(query: string, ask: { userId: string; against?: readonly Card[] }): Promise<Built | Fail> };
 }
 
 const WRITE_AT = 25;
@@ -46,11 +54,38 @@ export class Discover {
   private readonly curated: readonly Card[];
   private readonly store: DiscoverStore;
   private readonly writeAt: number;
+  private readonly makeBuilder: DiscoverOptions["makeBuilder"];
 
   constructor(o: DiscoverOptions = {}) {
     this.curated = o.curated ?? CURATED;
     this.store = o.store ?? makeStore();
     this.writeAt = o.writeAt ?? WRITE_AT;
+    this.makeBuilder = o.makeBuilder;
+  }
+
+  /** Whether a place we have not written can be built at all right now. */
+  get canBuild(): boolean {
+    return !!this.makeBuilder;
+  }
+
+  /**
+   * Somebody named a place nobody has written. Resolve it, read about it, fill the card, judge it — and when it
+   * clears the bar, keep it in their feed and count the search. A place already written is returned as it is
+   * rather than built again, and a place built for them before is not paid for twice.
+   */
+  async build(query: string, userId: string): Promise<Built | Fail> {
+    const make = this.makeBuilder;
+    if (!make) return { ok: false, reason: "no_answer", why: "Building a card for a new place is switched off here." };
+
+    const already = await this.open(query, userId);
+    if (already) return { ok: true, card: already, verdict: { ok: true, checks: [] } };
+
+    const out = await make(userId).build(query, { userId, against: this.curated });
+    if (out.ok) {
+      await this.keep(out.card);
+      await this.searched(out.card.slug, userId, query);
+    }
+    return out;
   }
 
   /** Everything this person may see: what we wrote, plus what was built for them. */
