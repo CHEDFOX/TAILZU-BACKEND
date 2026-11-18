@@ -68,7 +68,12 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const thought = canHomeThought(ctx);
   const updates = thought && homeUpdatesOn(ctx.user?.id);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}) }, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
+    // ONE `state` KEY, and the ask bar's folded into it. It was briefly a second `state` in the spread below, which
+    // (being later in the same literal) REPLACED this one — and with it every reading the arrival and About-you cards
+    // stand on, so both drew nothing. A key that is already here is merged here.
+    tab: "bots", title: "Your bots",
+    state: { ...n.state, ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}), ...(updates || thought ? {} : ASK_BAR_STATE) },
+    pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
       head,
       ...n.leaving,
@@ -82,7 +87,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ],
     // The foot of the window: what is happening in his thought (HOME_UPDATES), else the ask in his thought, else the ask bar.
     ...(updates ? { dock: [homeUpdatesBot(ctx, more.feed ?? [])], talkTo: homeTalkTo(ctx) }
-      : thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })], state: ASK_BAR_STATE }),
+      : thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })] }),
   });
 }
 
