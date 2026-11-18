@@ -133,6 +133,22 @@ export function thinkingTime(prevMs: number | null | undefined, nowMs: number): 
 export const blendMs = (was: number, now: number): number => (was > 0 ? Math.round(was * 0.7 + now * 0.3) : now);
 
 /**
+ * HOW MUCH SLOWER THAN THEIR OWN NORMAL counts as having worked for it. Twice: a word that takes somebody twice as
+ * long as they usually take on that kind of question was reconstructed, not remembered.
+ */
+export const SLOW_AT = 2;
+
+/**
+ * WAS THAT RECALLED, OR WORKED OUT? The one thing marking cannot tell, and the only one the scheduler needs that
+ * it has never had: both come back "right".
+ *
+ * `normal` is this person's own middle for this kind of question, never a number from outside, so it does not
+ * reward fast tappers or punish careful ones (rule 3). With no history to compare against, nothing is claimed.
+ */
+export const workedForIt = (thoughtMs: number | null, normalMs: number): boolean =>
+  !!thoughtMs && normalMs > 0 && thoughtMs >= normalMs * SLOW_AT;
+
+/**
  * WHAT THE WORDS SAY THEIR LEVEL IS, which is not what they said at the start.
  *
  * Counted on what they can PRODUCE, not what they have seen: an item counts when it is held and has been said out

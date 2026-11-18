@@ -9,8 +9,8 @@
  *   - a level is earned on what can be produced, and never jumps on a handful of words
  */
 import { describe, expect, it } from "vitest";
-import { AWAY_MS, CONFIDENCE, blendMs, earnedLevel, median, portraitOf, rate, thinkingTime } from "../src/lingo/portrait.js";
-import { freshMemory } from "../src/lingo/schedule.js";
+import { AWAY_MS, CONFIDENCE, blendMs, earnedLevel, median, portraitOf, rate, thinkingTime, workedForIt } from "../src/lingo/portrait.js";
+import { freshMemory, ratingFor, review } from "../src/lingo/schedule.js";
 import type { Learner, LingoItem, Memory } from "../src/lingo/types.js";
 
 const T0 = Date.UTC(2026, 10, 17, 9, 0, 0);
@@ -167,5 +167,35 @@ describe("the whole picture", () => {
     expect(p.earned).toBe("a1");
     expect(p.unit.at).toBe(1);
     expect(Number.isFinite(p.pace)).toBe(true);
+  });
+});
+
+describe("recalled, or worked out", () => {
+  it("is only slow against that person's own pace, never a stopwatch", () => {
+    // Four seconds is fast for somebody who usually takes six, and slow for somebody who usually takes one.
+    expect(workedForIt(4000, 6000)).toBe(false);
+    expect(workedForIt(4000, 1500)).toBe(true);
+  });
+
+  it("claims nothing where there is nothing to compare against", () => {
+    expect(workedForIt(9000, 0)).toBe(false);
+    expect(workedForIt(null, 3000)).toBe(false);
+  });
+
+  it("tells the scheduler a right-but-laboured answer was hard, which is what it was", () => {
+    // Right and quick is Good; right and laboured is Hard — and FSRS already means exactly that by Hard, so the
+    // recall curve is never fudged behind its back.
+    expect(ratingFor("right", false, false)).not.toBe(ratingFor("right", false, true));
+    expect(ratingFor("right", true, true)).not.toBe(ratingFor("right", true, false));
+    // Wrong is wrong however fast it came.
+    expect(ratingFor("wrong", false, true)).toBe(ratingFor("wrong", false, false));
+  });
+
+  it("schedules a laboured word sooner than one they own", () => {
+    const start = item({ memory: held({ reps: 3 }) });
+    const easy = review(start, "right", false, T0, false);
+    const hard = review(start, "right", false, T0, true);
+    expect(hard.memory.dueMs, "the one they had to work for comes back first").toBeLessThan(easy.memory.dueMs);
+    expect(hard.memory.stability).toBeLessThan(easy.memory.stability);
   });
 });

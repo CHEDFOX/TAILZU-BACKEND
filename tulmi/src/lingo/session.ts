@@ -299,9 +299,9 @@ export function plan(items: readonly LingoItem[], learner: Learner, now: number,
 }
 
 /** The item after an answer: the scheduler moved on, and a time said out loud counted if that is what it was. */
-export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number): LingoItem {
+export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number, slow = false): LingoItem {
   const outLoud = SPOKEN_KINDS.includes(kind);
-  return review(item, mark.verdict, outLoud, now);
+  return review(item, mark.verdict, outLoud, now, slow);
 }
 
 /** How a course is going, for the page and for the chat. Counts only, nothing invented. */

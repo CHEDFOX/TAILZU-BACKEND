@@ -144,7 +144,7 @@ describe("three weeks of somebody actually using it", () => {
       expect(r.code).toBe(200);
       answers.push({ item: it!.item, kind: e.kind, verdict: r.body.mark.verdict, ...(r.body.learned ? { learnedNow: true } : {}) });
       n++;
-      clock += 20_000;
+      clock += picked === right ? 4_000 : 11_000;
     }
     const got = answers.filter((a) => a.verdict === "right").length;
     say(`  she got ${got} of ${answers.length} right`);
@@ -201,7 +201,10 @@ describe("three weeks of somebody actually using it", () => {
         todays.push({ item: it.item, kind: e.kind, verdict: r.body.mark.verdict, ...(r.body.learned ? { learnedNow: true } : {}) });
         if (r.body.mark.verdict === "right") rightAll++;
         asked++;
-        clock += 25_000;
+        // A real person is quick on a word they own and slow on one they are working out, and the gap between two
+        // answers is the only thing that can tell them apart. A fixed gap hides the whole signal.
+        const owned = (it.memory.stability ?? 0) > 20 && it.spoken > 0;
+        clock += knows ? (owned ? 2_200 : 9_000) : 14_000;
       }
       const done = await go("POST", "/v1/lingo/set", { target: "es", answers: todays });
       say(`    day ${String(day).padStart(2)}: ${todays.filter((a) => a.verdict === "right").length}/${todays.length} right -> ${done.body.performance.padEnd(11)} cap "${done.body.next.rungCap ?? "none"}" new ${done.body.next.newRoom}`);

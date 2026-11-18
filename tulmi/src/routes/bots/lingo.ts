@@ -20,7 +20,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../../lingo/grade.js";
-import { blendMs, thinkingTime } from "../../lingo/portrait.js";
+import { blendMs, thinkingTime, workedForIt } from "../../lingo/portrait.js";
 import { after, FIRST_UNIT, unitDone } from "../../lingo/course.js";
 import { lessonBank, unitFor, type LessonBank, type UnitItem } from "../../lingo/lessons.js";
 import { recall } from "../../lingo/schedule.js";
@@ -471,7 +471,12 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     // down is not thinking and is thrown away rather than capped (portrait.ts). It is the difference between a word
     // somebody HAS and one they can work out, and nothing else here can tell those apart: both are marked right.
     const thought = thinkingTime(course.lastAnswerMs, at);
-    const answeredItem = answered(item, kind, mark, at);
+    // RECALLED, OR WORKED OUT? Against their own middle for THIS kind of question, because speaking is slower than
+    // tapping for everybody and comparing the two would only measure that. The scheduler is told, and treats a
+    // right answer that cost them as what it is (schedule.ts ratingFor).
+    const normal = course.tally?.[kind]?.ms ?? 0;
+    const slow = workedForIt(thought, normal);
+    const answeredItem = answered(item, kind, mark, at, slow);
     const next = thought
       ? { ...answeredItem, memory: { ...answeredItem.memory, thinkMs: blendMs(item.memory.thinkMs ?? 0, thought) } }
       : answeredItem;
