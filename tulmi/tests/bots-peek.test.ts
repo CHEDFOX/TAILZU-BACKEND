@@ -18,6 +18,7 @@ const { ctxFor, sampleLive, fakeDeps } = await import("../src/experience/bots/fi
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
+const { resetConfigForTests } = await import("../src/config.js");
 
 type Ctx = ReturnType<typeof ctxFor>;
 const ME = "00000000-0000-4000-8000-00000000aaaa";
@@ -57,11 +58,9 @@ describe("the gate", () => {
 });
 
 describe("where he may rise", () => {
-  it("the sides and the notch, and NEVER the bottom: the bot with the thought walks there", () => {
+  it("every edge the phone has, the bottom included now that nothing walks there", () => {
     const edges = peekOf()!.spots.map((s: any) => s.edge);
-    expect(edges).toContain("notch");
-    expect(edges.filter((e: string) => e === "left" || e === "right").length).toBeGreaterThan(1);
-    expect(edges).not.toContain("bottom");
+    for (const e of ["left", "right", "bottom", "notch"]) expect(edges).toContain(e);
   });
   it("every spot is a real edge, somewhere between the ends of it", () => {
     for (const s of peekOf()!.spots) {
@@ -104,6 +103,16 @@ describe("he is the ear", () => {
   });
   it("no liveMoment: the antenna's light comes from the voice's own level in the listen act, not a recipe", () => {
     expect(peekOf()!.liveMoment).toBeUndefined();
+  });
+  it("called, Home goes soft behind him", () => {
+    expect(peekOf()!.veil).toBe(true);
+  });
+  it("a build that cannot hear gets the gesture and nothing else: no veil, no panel, no open microphone", () => {
+    const quiet = CAN.filter((c) => c !== "VoiceLive");
+    const p = peekOf(quiet)!;
+    expect(p.veil).toBeUndefined();
+    expect(p.liveWhen).toBeUndefined();
+    expect(homePeek(ctx("phone", quiet))[0]!.children).toBeUndefined();
   });
 });
 
@@ -148,10 +157,89 @@ describe("on the real screen", () => {
     const s = await buildBotsScreen(req("desktop"), fakeDeps({}));
     expect(walk(s.root!).some((n) => n.type === "BotPeek")).toBe(false);
   });
-  it("he touches nothing: no press, no on, so the page under him is as tappable as before", async () => {
+  it("THE BOTTOM BOT IS GONE: he is the ask, not a second one beside it", async () => {
+    const s = await buildBotsScreen(req(), fakeDeps({}));
+    const all = walk(s.root!);
+    expect(all.some((n) => n.type === "BotPeek")).toBe(true);
+    expect(all.filter((n) => n.type === "BotStage").length).toBe(0);
+    // and typing still has a door: the ask bar Home had before that bot
+    expect(all.filter((n) => n.type === "TextField").length).toBe(1);
+  });
+  it("a build that cannot draw him KEEPS the walking bot, because that one can answer", async () => {
+    const s = await buildBotsScreen(req("phone", NO_PEEK), fakeDeps({}));
+    expect(walk(s.root!).filter((n) => n.type === "BotStage").length).toBe(1);
+  });
+  it("the window keeps it too: its own Blip, its own frame, no notch", async () => {
+    const s = await buildBotsScreen(req("desktop"), fakeDeps({}));
+    expect(walk(s.root!).filter((n) => n.type === "BotStage").length).toBe(1);
+  });
+  it("HIS EAR OPENS WITH THE PAGE, on his own node, with nothing to press", async () => {
     const s = await buildBotsScreen(req(), fakeDeps({}));
     const peek = walk(s.root!).find((n) => n.type === "BotPeek")!;
-    expect(peek.on).toBeUndefined();
-    expect(peek.children).toBeUndefined();
+    const ear = peek.on?.onAppear as any;
+    expect(ear?.kind).toBe("condition");
+    // not while they are at the keyboard, and not twice over
+    expect(JSON.stringify(ear.if)).toContain("typing");
+    expect(JSON.stringify(ear.if)).toContain("voice");
+    expect(JSON.stringify(ear.then)).toContain("voiceLive");
+  });
+  it("a tap on the veil ends the turn: the microphone stops and the exchange is cleared", async () => {
+    const s = await buildBotsScreen(req(), fakeDeps({}));
+    const peek = walk(s.root!).find((n) => n.type === "BotPeek")!;
+    const bye = JSON.stringify(peek.on?.onDismiss);
+    expect(bye).toContain("voiceStop");
+    for (const path of ["sent", "reply", "asked"]) expect(bye).toContain(path);
+  });
+  it("the exchange Home already writes is what his panel draws — the same nodes the thought drew", async () => {
+    const s = await buildBotsScreen(req(), fakeDeps({}));
+    const peek = walk(s.root!).find((n) => n.type === "BotPeek")!;
+    const panel = JSON.stringify(peek.children);
+    expect(peek.children!.length).toBe(1);
+    expect(panel).toContain("LiveWords");       // the words as he hears them
+    expect(panel).toContain("asked.shell.text"); // the answer
+    expect(panel).toContain("reply.text");       // and it streaming in
+    expect(panel).toContain("Open");             // the whole of it
+    // not the ask field: typing is the ask bar now, not something inside his panel
+    expect(panel).not.toContain("TextField");
+  });
+  it("the state his panel reads survives the thought going away", async () => {
+    const s = await buildBotsScreen(req(), fakeDeps({}));
+    expect(s.state).toMatchObject({ askBot: "any", voice: "" });
+  });
+});
+
+describe("the one thing that stays at the foot", () => {
+  const on = () => { process.env.HOME_UPDATES = "true"; resetConfigForTests(); };
+  const off = () => { delete process.env.HOME_UPDATES; delete process.env.HOME_LISTEN; resetConfigForTests(); };
+
+  it("HOME_UPDATES: that bot is what is HAPPENING, not an ask, so it keeps the foot", async () => {
+    on();
+    try {
+      const s = await buildBotsScreen(req(), fakeDeps({}));
+      const all = walk(s.root!);
+      expect(all.filter((n) => n.type === "BotStage").length).toBe(1);
+      expect(all.some((n) => n.type === "BotPeek")).toBe(true);
+    } finally { off(); }
+  });
+  it("and then the peeker keeps the gesture and the listening, but NOT a second open ear", async () => {
+    on();
+    try {
+      const peek = walk((await buildBotsScreen(req(), fakeDeps({}))).root!).find((n) => n.type === "BotPeek")!;
+      expect(peek.props!.liveWhen).toEqual({ truthy: "voice" });   // he still leans in when it hears something
+      expect(peek.props!.veil).toBeUndefined();                     // that bot blurs and answers
+      expect(peek.children).toBeUndefined();
+      expect(peek.on?.onAppear).toBeUndefined();                    // two things listening is a bug
+      expect(peek.on?.onDismiss).toBeUndefined();
+    } finally { off(); }
+  });
+  it("HOME_LISTEN=false shuts the microphone and leaves him peeking, with typing still there", async () => {
+    process.env.HOME_LISTEN = "false"; resetConfigForTests();
+    try {
+      const s = await buildBotsScreen(req(), fakeDeps({}));
+      const peek = walk(s.root!).find((n) => n.type === "BotPeek")!;
+      expect(peek.on?.onAppear).toBeUndefined();
+      expect(peek.props!.veil).toBeUndefined();
+      expect(walk(s.root!).filter((n) => n.type === "TextField").length).toBe(1);
+    } finally { off(); }
   });
 });

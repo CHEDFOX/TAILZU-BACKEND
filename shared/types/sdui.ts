@@ -1092,8 +1092,11 @@ export const BOT_BUDDY_CARRY = "BotBuddyCarry";
  * THE ANTENNA IS THE MICROPHONE, as it is on the computer: lit while `liveWhen` holds, plain otherwise. One bot, one
  * meaning, on both machines.
  *
- * A build that does not declare the capability is sent no peek and draws none; the ask bar and his walk along the
- * bottom of Home are what it keeps. (This name existed once before and was taken out on 16 Nov for needing "a store
+ * HE IS THE WAY YOU TALK TO HOME, not an extra bot on it. A build that declares this gets no walking bot with a
+ * thought at the foot of Home at all: the ear opens with the page (`onAppear`, HOME_LISTEN), a voice command brings
+ * him to `home`, the screen blurs, and the answer is drawn in his own panel. Typing stays as the ask bar. A build
+ * that does NOT declare it keeps exactly what it has today — the bot walking the bottom with his thought — because
+ * that one can answer and this one could not until now. (This name existed once before and was taken out on 16 Nov for needing "a store
  * build": that was wrong — an OTA carries every bit of this, because none of it is native.)
  */
 export const BOT_PEEK_CAPABILITY = "BotPeek";
@@ -1129,6 +1132,17 @@ export interface BotPeekProps {
   home?: number;
   /** While this holds he hops once and then ducks: the answer has landed. */
   doneWhen?: Condition;
+  /**
+   * CALLED, HE IS THE WHOLE SCREEN. While `liveWhen` holds, the page behind him is blurred under a light veil (the
+   * same `<Blur/>` a thought's veil draws) and the node's CHILDREN are drawn over it, under wherever he is hanging:
+   * the words as he hears them, his thinking, the answer. He draws none of that himself — the server builds it, so
+   * what comes back can be a line of text or a card without shipping a build to decide which.
+   *
+   * A tap on the veil, or back, runs `onDismiss` (the turn ends). Not live, there is no veil and no panel at all and
+   * he takes no touches: a bot peeking from an edge must never be in the way of the page.
+   */
+  veil?: boolean;
+  onDismiss?: ActionRef;
 }
 
 export interface BotBuddyProps {

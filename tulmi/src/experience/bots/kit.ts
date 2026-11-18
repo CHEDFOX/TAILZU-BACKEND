@@ -451,9 +451,18 @@ export const canPeek = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.can.has
  * from the voice's own level (botTiles/core.ts: `glowTo = level * 1.2` in that act) — the same light the window's
  * Blip shows. Nothing here has to ask for the glow, and `liveMoment` is only for a page that wants something MORE
  * than the light while he listens.
+ *
+ * `panel`, with `veil`: what is drawn over the blurred page under him while he is live — the words as he hears them,
+ * his thinking, the answer. He draws none of it himself, so what comes back can be a line or a card without a build
+ * deciding which. His own press is on him; a button in the panel is not inside a pressable (lint PRESS_ON_ITSELF).
  */
-export function botPeek(o: BotPeekProps): Node {
-  return { type: "BotPeek", props: { ...o } };
+export function botPeek(o: BotPeekProps & { onDismiss?: ActionRef }, panel: Node[] = []): Node {
+  const { onDismiss, ...props } = o;
+  return {
+    type: "BotPeek", props: { ...props },
+    ...(panel.length ? { children: panel } : {}),
+    ...(onDismiss ? { on: { onDismiss } } : {}),
+  };
 }
 
 /**

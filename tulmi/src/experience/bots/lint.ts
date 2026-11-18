@@ -45,8 +45,9 @@ const BLOCK_OF_TYPE: Readonly<Record<string, string>> = Object.freeze(
   Object.fromEntries(Object.entries(BLOCK_NODES).flatMap(([block, types]) => types.map((t) => [t, block]))),
 );
 
-/** A BotStage's press is on the bot (his hit area), never on the thought it holds: a button in the box is not inside a pressable. */
-const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage"]);
+/** A BotStage's press is on the bot (his hit area), and a BotPeek's on his veil, never on the panel either one holds:
+ *  a button in the box is not inside a pressable. */
+const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage", "BotPeek"]);
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 

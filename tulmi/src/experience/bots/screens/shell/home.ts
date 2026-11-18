@@ -13,7 +13,7 @@ import {
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, C, headBar, type PageOpts, hasOutbox,
   needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
-import { HOME_THOUGHT_STATE, homePeek, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
+import { HOME_THOUGHT_STATE, homePeek, homePeekEar, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import { HOME_UPDATES_STATE, homeUpdatesBot, homeUpdatesOn } from "./homeUpdates.js";
 import type { FeedRow } from "../../../../shell/feed.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
@@ -248,10 +248,24 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...moreBots(ctx),
     ...routinesRow(ctx, more.routines),
   ];
-  // The foot of Home: what is happening in his thought (HOME_UPDATES), else the ask in his thought, else the ask bar.
-  const thought = canHomeThought(ctx);
-  const updates = thought && homeUpdatesOn(ctx.user?.id);
+  // THE FOOT OF HOME, and who owns the ask.
+  //
+  // Where the build can draw THE PEEKER, he is the ask: nothing walks the bottom at all. His ear opens with the page,
+  // a word brings him to the notch, Home blurs behind him and the answer is drawn in his panel — so the walking bot
+  // with the thought riding over him would be a second way to do the one thing he does. Typing is the ask bar, which
+  // is what Home had before that bot and still works.
+  //
+  // HOME_UPDATES is the one case where something stays at the foot: that bot is not an ask, it is what is happening,
+  // and it has an open ear of its own on the same `voice` path. Then the peeker keeps the gesture and the listening
+  // (`asks: false`) and that bot keeps the words and the answer, because two things listening is a bug.
+  const updates = canHomeThought(ctx) && homeUpdatesOn(ctx.user?.id);
+  const peek = homePeek(ctx, { asks: !updates });
+  const peeks = peek.length > 0;
+  const thought = canHomeThought(ctx) && !peeks;
   const footer = [updates ? homeUpdatesBot(ctx, more.feed ?? []) : thought ? homeThought(ctx) : askBar("phone", { ctx })];
+  // His ear, where he owns the ask: on his own node, so a build that cannot draw him is never sent an open microphone.
+  const ear = homePeekEar(ctx, { asks: !updates });
+  const peekNodes = ear ? peek.map((n) => ({ ...n, on: { ...(n.on ?? {}), onAppear: ear } })) : peek;
   // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on
   // a newer Home): only the bot waving with his line, for a few seconds. Then he turns and walks off the side, and the card
   // for whatever is missing (the microphone, the keyboard) comes in over him as he goes; with nothing missing it closes by
@@ -262,12 +276,12 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const gone: Condition = { truthy: "helloGone" };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}) },
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought || peeks ? HOME_THOUGHT_STATE : {}) },
     ...(thought ? { talkTo: homeTalkTo(ctx) } : {}),
     // THE PEEKER goes in `pinned`, over the top of the page and outside its scroll, because his pocket is at the edge
     // of the whole screen and must not move with the list. He waits out the welcome: a bot peeking in while another
     // one is waving hello and walking off is two bots talking over each other.
-    pinned: [...(intro ? pinned.map((x) => when(gone, x)) : pinned), ...(intro ? homePeek(ctx).map((x) => when(gone, x)) : homePeek(ctx))],
+    pinned: [...(intro ? pinned.map((x) => when(gone, x)) : pinned), ...(intro ? peekNodes.map((x) => when(gone, x)) : peekNodes)],
     ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
     body: intro
       ? [
