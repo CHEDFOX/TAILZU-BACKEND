@@ -249,8 +249,11 @@ describe("two tiers, one bar", () => {
 
     expect((await d.open("hampi", "user_1"))?.title).toContain("Tungabhadra");
     expect(await d.open("hampi", "user_2")).toBeNull();
-    expect(await d.ask({ country: "in", month: 12, userId: "user_1" })).toHaveLength(1);
-    expect(await d.ask({ country: "in", month: 12, userId: "user_2" })).toHaveLength(0);
+    // Membership, not a count: the written catalogue grows, and this is about whose card it is.
+    const mine = (await d.ask({ country: "in", month: 12, userId: "user_1" })).map((c) => c.card.slug);
+    const theirs = (await d.ask({ country: "in", month: 12, userId: "user_2" })).map((c) => c.card.slug);
+    expect(mine).toContain("hampi");
+    expect(theirs).not.toContain("hampi");
   });
 
   it("counts the people who searched a place, not the searches, and queues it once enough have", async () => {
