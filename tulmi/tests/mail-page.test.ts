@@ -84,6 +84,27 @@ async function build(o: {
 }
 const callsOf = (acts: ActionSpec[]) => acts.filter((a) => a.kind === "callEndpoint") as Array<Extract<ActionSpec, { kind: "callEndpoint" }>>;
 
+describe("there is a way off the screen", () => {
+  it("the set-up card carries a way back, because a card over the page is a modal with no back and no swipe of its own", async () => {
+    const p = await build();
+    expect(p.card).toBeDefined();
+    expect(p.card!.on?.onDismiss).toEqual({ kind: "navigateBack" });
+  });
+
+  it("shows a clear only once there is something to clear, so an x is never mistaken for the way out", async () => {
+    const p = await build();
+    const clears = p.nodes.filter((n) => String((n.props as { accessibilityLabel?: string })?.accessibilityLabel ?? "").startsWith("Clear "));
+    expect(clears.length).toBeGreaterThan(0);
+    for (const c of clears) expect(c.visibleIf, String((c.props as { accessibilityLabel?: string }).accessibilityLabel)).toBeDefined();
+  });
+
+  it("leaving keeps what was answered: it does not close the cards or undo a step", async () => {
+    const p = await build();
+    expect(JSON.stringify(p.card!.on?.onDismiss)).not.toContain("mc_closed");
+    expect(JSON.stringify(p.card!.on?.onDismiss)).not.toContain("callEndpoint");
+  });
+});
+
 describe("the mail bot's set-up", () => {
   it("asks for the business first, and makes it on our mail server", async () => {
     const p = await build();

@@ -41,7 +41,7 @@ const FIELD_MAX = 120;
 
 const MISSING: Record<string, string> = {
   date: "I couldn't read a date of birth there. Try something like 13 July 1994.",
-  time: "I couldn't read that time. Try 9:30 am, or leave it empty if you don't know it.",
+  time: "I couldn't read that time. Try 9:30 am.",
   when: "Tell me when you were born first.",
   place: "Add the town or city you were born in.",
   found: "I couldn't find that place on the map. Try the nearest city.",
