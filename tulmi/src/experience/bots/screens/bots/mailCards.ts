@@ -23,7 +23,7 @@
  */
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, back, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, SCREENS, seq, statusMark, text, when } from "../../kit.js";
-import { line, permitStep, setState, toast } from "../firstRun/parts.js";
+import { cardBack, line, permitStep, setState, toast } from "../firstRun/parts.js";
 import { copyAction } from "./keysDesk.js";
 import { type BriefView, type DnsView, MAIL, MAIL_SLUG, type MailData, type MailBusinessView, MODE_WORDS, shownBusiness } from "./mailParts.js";
 
@@ -241,7 +241,9 @@ export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string; avat
 function frame(steps: Node[], o: { living: boolean; desk: boolean; look: { color: string; avatar?: string; moment?: Record<string, unknown> }; done: Condition; business?: string }): Node[] {
   const doneLine = when(o.done, row([text(o.business ? "All set." : "Made.", { size: 22, weight: 600, tracking: -0.3, lineHeight: 28 })], { justifyContent: "center", paddingTop: 18, paddingBottom: 26 }));
   if (o.living) {
-    return [botCard([...steps, doneLine], {
+    // The Back is drawn here, as a part of the card, so every build that is already out has one; the apps add the swipe and
+    // the phone's own back on top of it (`onLeave`).
+    return [botCard([cardBack(back()), ...steps, doneLine], {
       kind: "custom", color: o.look.color, stageHeight: 96, overlay: true, width: WIDTH[o.desk ? "desktop" : "phone"], label: "The mail bot",
       ...(o.look.avatar ? { avatar: o.look.avatar } : {}), ...(o.look.moment ?? {}),
       doneWhen: o.done, doneDelayMs: 1600, onComplete: seq(setState(MC.closed, true), again(o.business)), closeWhen: { truthy: MC.closed },

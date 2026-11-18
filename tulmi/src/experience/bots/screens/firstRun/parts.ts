@@ -267,6 +267,17 @@ export function permitStep(o: { when: Condition; title: string; lines: Node[]; c
   ], { paddingHorizontal: 22, paddingTop: 16, paddingBottom: o.quiet ? 10 : 22, gap: 12 }));
 }
 
+/**
+ * THE WAY OFF A CARD, DRAWN BY THE SERVER. A card over a page is a modal in both apps: it covers the page's own back, and a
+ * modal sits over the navigator, so the screen's edge swipe never reaches it. The visible way out is therefore part of the
+ * card, like everything else in it — which means a card has one the day the server sends it, not the day a build ships. The
+ * apps add what markup cannot: a swipe to the right, and the phone's own back (BotCard `on.onDismiss`).
+ */
+export const cardBack = (onPress: ActionRef, label = "Back"): Node =>
+  row([labelled(box([icon("back", { size: 22, color: C.ink })], {
+    width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0,
+  }, onPress), label)], { paddingLeft: 8, paddingTop: 8, marginBottom: -8 });
+
 export const line = (s: string): Node => text(s, { size: 14, color: C.grey70, lineHeight: 20 });
 
 /** The card's last step, once everything is on: its words give way to one short line while the bot cheers, then it goes. */
