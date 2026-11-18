@@ -28,6 +28,8 @@ export const ICONS = {
   calendar: rect(3.5, 4.5, 17, 16, 2.5) + "M3.5 9.5h17M8 2.5v4M16 2.5v4M7.5 13.5h3M7.5 16.5h6",
   pin: "M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" + circ(12, 10, 2.4),
   plus: "M12 5v14M5 12h14",
+  // The camera: its body, the lens, and the little rise over the shutter.
+  camera: rect(3, 7, 18, 13, 2.5) + circ(12, 13.5, 3.4) + "M8.8 7l1.6-2.6h3.2L15.2 7",
   minus: "M5 12h14",
   mic: rect(9, 3, 6, 11, 3) + "M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21",
   send: "M12 19V5M6 11l6-6 6 6",

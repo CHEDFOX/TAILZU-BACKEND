@@ -27,10 +27,12 @@ export function walk(n: Node, out: Node[] = []): Node[] {
  *  living tiles' two (BotTiles, BotCard), which the kit sends only to a build that declares BotsMotion, and BotBuddy and Home's live header (WriteOn, LiveMark, HeadBar) with it,
  *  and Home's welcome (Rise: Home coming in; BlipWalkOut: Blip walking off, or MorphOut sliding him off where a build lacks it), with it too,
  *  and the new Spaces' and Home's Ask blocks (BotStage, BotCrowd, Vanish, MentionField, LiveWords: sdui 3i), sent only to a build that
- *  declares them (kit canSpaces2, canHomeThought, canVoice), and a person's own tiny bot (PersonBot: sdui 3j, kit canPersonBot). */
+ *  declares them (kit canSpaces2, canHomeThought, canVoice), and a person's own tiny bot (PersonBot: sdui 3j, kit canPersonBot),
+ *  and the peeker who rises from behind an edge of the screen (BotPeek, kit canPeek). */
 const KIT_TYPES: ReadonlySet<string> = new Set([
   "Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "Scroll", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark",
   "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "PersonBot",
+  "BotPeek",
 ]);
 
 /**
@@ -43,8 +45,9 @@ const BLOCK_OF_TYPE: Readonly<Record<string, string>> = Object.freeze(
   Object.fromEntries(Object.entries(BLOCK_NODES).flatMap(([block, types]) => types.map((t) => [t, block]))),
 );
 
-/** A BotStage's press is on the bot (his hit area), never on the thought it holds: a button in the box is not inside a pressable. */
-const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage"]);
+/** A BotStage's press is on the bot (his hit area), and a BotPeek's on his veil, never on the panel either one holds:
+ *  a button in the box is not inside a pressable. */
+const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage", "BotPeek"]);
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -92,7 +95,11 @@ export function lintTree(root: Node, opts: LintOpts = {}): string[] {
       const m = /^border(Top|Right|Bottom|Left)?Width$/.exec(k);
       if (m && Number(st[k]) > 0 && !st[`border${m[1] ?? ""}Color`] && !st.borderColor) bad.push(`${n.type} has ${k} without a colour`);
     }
-    if (n.type === "Image" && !(n.props?.source as { url?: string } | undefined)?.url) bad.push("an image without a { url } source");
+    // An image needs a source neither client has to guess at: a literal `{ url }`, or `bind: { source }` — a path to
+    // one in the screen's state, which the renderer writes into the prop before the component ever sees it (the
+    // insert card draws the file still on the phone that way, since nothing serves an uploaded one back).
+    if (n.type === "Image" && !(n.props?.source as { url?: string } | undefined)?.url
+      && typeof (n.bind as Record<string, unknown> | undefined)?.source !== "string") bad.push("an image without a { url } source");
     // VOCABULARY-2 SYNTAX, not just vocabulary-2 node types. A screen that says no `needs` skips the publish gate
     // and lint altogether (sdui2/gate.ts isVocab1), which is what keeps today's screens costing nothing — so the
     // only place an expression, a gesture, a node rule or the new motion can be caught before it ships to a client

@@ -20,10 +20,11 @@ import { upiOf } from "../../../shell/parse.js";
 import type { SearchResult, SearchKind } from "../../../shell/search.js";
 import { nicknameOf } from "../../assistantName.js";
 import {
-  duration, type BotsCtx, page, hasOutbox, needsCard, askBar, botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
+  duration, type BotsCtx, page, hasOutbox, needsCard,  botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
   sectionLabel, grid, icon, grow, botAvatar, botRoute, labelled, back, emptyState, mono, secondaryButton, title, segmented, when,
   statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought, canSpaces2, hasSpaces, canPersonBot,
 } from "../kit.js";
+import { askBar, ASK_BAR_STATE } from "../ask.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
 import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
@@ -67,7 +68,12 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const thought = canHomeThought(ctx);
   const updates = thought && homeUpdatesOn(ctx.user?.id);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}) }, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
+    // ONE `state` KEY, and the ask bar's folded into it. It was briefly a second `state` in the spread below, which
+    // (being later in the same literal) REPLACED this one — and with it every reading the arrival and About-you cards
+    // stand on, so both drew nothing. A key that is already here is merged here.
+    tab: "bots", title: "Your bots",
+    state: { ...n.state, ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}), ...(updates || thought ? {} : ASK_BAR_STATE) },
+    pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
       head,
       ...n.leaving,
