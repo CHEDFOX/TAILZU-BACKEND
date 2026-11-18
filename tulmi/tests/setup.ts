@@ -49,6 +49,10 @@ process.env.CODE_TREE_SITTER = "false";
 // The agent asks once for a focused test of a change before the checks run (agent/phases.ts testWanted, CODE_PROVE_FIX). Most of the agent's tests script a job as
 // "edit, done" and count the model's turns, so they run without the round; tests/code-agent-prove.test.ts turns it on for itself (`proveFix: true`).
 process.env.CODE_PROVE_FIX = "false";
+// Another model reads a plain job's diff before the pull request is ready (agent/review.ts, CODE_JOB_REVIEW). It is one more model call on
+// every job, and the suite's scripts answer only the calls they expect, so it is OFF here; a test that wants it asks the rig for it
+// (agentRig({ jobReview: true })).
+process.env.CODE_JOB_REVIEW = "false";
 
 // A project's chat is one loop (code/chat/converse.ts, CODE_CHAT_AGENT): the router decides only the action and the loop answers the rest. The front
 // door's older tests were written against the router and its roads in a project too, so they run with it off; tests/code-chat-converse.test.ts and the

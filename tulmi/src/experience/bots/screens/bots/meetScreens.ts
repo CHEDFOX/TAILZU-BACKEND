@@ -23,6 +23,7 @@ import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { clockOf, dayKeyOf, isDesk, setState, shortDate } from "./parts.js";
 import { shareButtonsFor } from "../../shareAction.js";
+import { showNodes } from "../../show.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
@@ -143,6 +144,19 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
     })]));
     body.push(secondaryButton("Leave the call", leave, { size: "md" }));
   }
+  // THE DOCUMENT THE BOT MADE OF THIS MEETING (src/brief, docs/brief.md): the overview, what it drew, what was said, who does
+  // what, what is still open — drawn with the same renderer a bot's own answers are drawn with, so nothing here is new in the
+  // apps. While the meeting runs it grows under the person's eyes; after, it is the meeting.
+  if (m.brief?.parts.length) {
+    body.push(col([
+      sectionLabel(live ? "The document, so far" : "The document"),
+      ...m.brief.parts.flatMap((part, i) => [
+        ...(part.title ? [text(plain(part.title), { size: 15, weight: 600, lineHeight: 20 })] : []),
+        ...showNodes(ctx, { blocks: part.blocks }, { slug: MEET_SLUG, turn: `brief.${part.id}.${part.v}`, live: false, fresh: i === 0 && live }),
+      ]),
+    ], { gap: 10 }));
+  }
+
   if (live) {
     const n = m.liveNotes;
     body.push(col([

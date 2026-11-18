@@ -17,15 +17,31 @@ import { lintTree } from "../src/experience/bots/lint.js";
 import { SCREENS } from "../src/experience/bots/ids.js";
 import { botRoute } from "../src/experience/bots/ids.js";
 import {
-  LINGO_SCREENS, leaving, picker, setScreen, territory, whyWords,
+  LINGO_SCREENS, leaving, picker, setScreen, territory, whyScreen, whyWords,
   type CourseView, type PickerData, type SetData,
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
 import type { Exercise } from "../src/lingo/session.js";
-import type { ExerciseKind } from "../src/lingo/types.js";
+import { EXERCISE_KINDS, type ExerciseKind } from "../src/lingo/types.js";
 
 const live = sampleLive();
 const ctx = (client: "phone" | "desktop" = "phone") => ctxFor(SCREENS.lingo, client, live);
+/** A build that draws the living bot and plays the catalog's moments; the plain `ctx` above is one that draws neither. */
+const ALIVE = new Set(["BotsKit", "BotsMotion", "BotBuddy", "BotMoments"]);
+const livelyCtx = (client: "phone" | "desktop" = "phone") => ctxFor(SCREENS.lingo, client, live, { can: ALIVE });
+const buddies = (n: Node[]): Array<Record<string, unknown>> => {
+  const out: Array<Record<string, unknown>> = [];
+  const walk = (x: unknown): void => {
+    if (Array.isArray(x)) return x.forEach(walk);
+    if (x && typeof x === "object") {
+      const node = x as { type?: string; props?: Record<string, unknown> };
+      if (node.type === "BotBuddy") out.push(node.props ?? {});
+      Object.values(x as Record<string, unknown>).forEach(walk);
+    }
+  };
+  walk(n);
+  return out;
+};
 
 const course = (over: Partial<CourseView> = {}): CourseView => ({
   target: "es", from: "en", level: "a1", goalMin: 10, calls: false, voice: null,
@@ -48,9 +64,13 @@ describe("every tree the kit would draw", () => {
       const c = ctxFor(SCREENS.lingo, client, live);
       expect(clean(territory(c, { courses: [course()] })), client).toEqual([]);
       expect(clean(territory(c, { courses: [] })), `${client} empty`).toEqual([]);
+      expect(clean(territory(livelyCtx(client), { courses: [course()] })), `${client} alive`).toEqual([]);
       expect(clean(picker(c, { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [{ tag: "ta", name: "தமிழ்", en: "Tamil" }] })), client).toEqual([]);
       expect(clean(leaving(c, "es", "Español")), client).toEqual([]);
-      for (const k of ["choose", "blank", "write", "listen", "chips", "say", "talk"] as ExerciseKind[]) {
+      expect(clean(whyScreen(c, "es", "Español")), `${client} why`).toEqual([]);
+      // EVERY kind, from the list itself and not a copy of it: a kind added without a screen to draw it would
+      // otherwise reach a person as a blank page, and the copy would go on passing.
+      for (const k of EXERCISE_KINDS) {
         const data: SetData = {
           exercises: [ex(k, { options: ["coffee", "dog", "book"], chips: ["un", "café"], sentence: "Quiero un ——— con leche" })],
           progress: course().progress, mastery: course().mastery,
@@ -68,8 +88,8 @@ describe("every tree the kit would draw", () => {
     }
   });
 
-  it("is four screens, and Lingo's tile in the bots list opens the first of them", () => {
-    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoLeave]);
+  it("is five screens, and Lingo's tile in the bots list opens the first of them", () => {
+    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoLeave]);
     expect(botRoute("lingo")).toMatchObject({ kind: "navigate", screenId: SCREENS.lingo });
     // A bot with no page of its own still goes to the shared one.
     expect(botRoute("gym-bot")).toMatchObject({ kind: "navigate", screenId: SCREENS.bot, params: { slug: "gym-bot" } });
@@ -77,7 +97,7 @@ describe("every tree the kit would draw", () => {
 });
 
 describe("Lingo in the bots list", () => {
-  it("appears on Home once the platform lists it, beside the four that always show", async () => {
+  it("appears on Home once the platform lists it, beside the five that always show", async () => {
     const { liveFrom } = await import("../src/experience/bots/live.js");
     const { SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
     const withLingo = [...SAMPLE_BOTS, { slug: "lingo", name: "Lingo", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true }];
@@ -97,7 +117,7 @@ describe("Lingo in the bots list", () => {
     const model = liveFrom({ bots: SAMPLE_BOTS, jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 0, now: Date.UTC(2026, 9, 28), tzOffsetMinutes: 330 });
     expect(model.bots.find((b) => b.slug === "lingo")).toBeUndefined();
     // The four that are always there are still the first four, in order.
-    expect(model.bots.slice(0, 4).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
+    expect(model.bots.slice(0, 5).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
   });
 });
 
@@ -123,9 +143,172 @@ describe("the territory", () => {
   it("offers a way out of each language", () => {
     expect(json(territory(ctx(), { courses: [course()] }))).toContain(SCREENS.lingoLeave);
   });
+
+  it("puts Lingo itself at the top, alive, instead of a heading", () => {
+    const n = territory(livelyCtx(), { courses: [course()] });
+    const [bot, ...rest] = buddies(n);
+    expect(rest).toEqual([]);
+    expect(bot?.life).toBe("page.lingo");
+    // The first thing on the page is the bot, not a title: the back bar already says Lingo.
+    expect((n[0] as { type?: string }).type).toBe("BotBuddy");
+    expect(json(n)).not.toContain("Your languages");
+  });
+
+  it("mutters while a word is due anywhere and hums once nothing is", () => {
+    const quiet = course({ progress: { items: 8, learned: 0, due: 0, unseen: 0, held: 0.5 } });
+    expect(buddies(territory(livelyCtx(), { courses: [course()] }))[0]?.moment).toBe("l.mutter");
+    expect(buddies(territory(livelyCtx(), { courses: [quiet] }))[0]?.moment).toBe("l.hum");
+    // One language with nothing due does not quieten it while another still has words waiting.
+    expect(buddies(territory(livelyCtx(), { courses: [quiet, course()] }))[0]?.moment).toBe("l.mutter");
+    expect(buddies(territory(livelyCtx(), { courses: [course()] }))[0]?.momentMode).toBe("loop");
+  });
+
+  it("gives a build that cannot draw him the words instead, so the page is never headless", () => {
+    const n = territory(ctx(), { courses: [course()] });
+    expect(buddies(n)).toEqual([]);
+    expect(json(n)).toContain("Your languages");
+  });
+});
+
+describe("the new rungs draw with nodes every build already has", () => {
+  it("draws a reply as a list of things you could say, and never says which is right", () => {
+    const data: SetData = {
+      exercises: [ex("reply", { prompt: "a coffee please", options: ["un café por favor", "la cuenta por favor", "buenos días"] })],
+      progress: course().progress, mastery: course().mastery,
+    };
+    const s = json(setScreen(ctx(), "es", data));
+    expect(s).toContain("What would you say?");
+    expect(s).toContain("un café por favor");
+    expect(s).not.toContain("correct");
+  });
+
+  it("asks for the whole thing out loud for speak, and for something of their own for talk", () => {
+    const one = (k: ExerciseKind) => json(setScreen(ctx(), "es", {
+      exercises: [ex(k, { prompt: "coffee", spoken: true })], progress: course().progress, mastery: course().mastery,
+    }));
+    expect(one("say")).toContain("Say it out loud");
+    expect(one("speak")).toContain("Say the whole thing out loud");
+    expect(one("talk")).toContain("Say something that uses it");
+    // All three take a voice, and none of them puts the answer on the screen.
+    for (const k of ["say", "speak", "talk"] as ExerciseKind[]) {
+      expect(one(k), k).toContain("Hold to speak");
+      expect(one(k), k).not.toContain("café");
+    }
+  });
+});
+
+describe("what the language is for", () => {
+  it("asks once, as the language is added, and never makes them answer", () => {
+    const n = whyScreen(ctx(), "es", "Español");
+    const s = json(n);
+    expect(s).toContain("What's Español for?");
+    // Seven reasons, none of them a country or a region, and the same seven for every language.
+    for (const w of ["Someone I love", "A trip", "Living there", "Work", "My family speaks it", "Studying it", "Just because"]) {
+      expect(s, w).toContain(w);
+    }
+    // Their own words matter more than the code, so there is a real box for them, not a picture of one.
+    const fields: Array<{ bind?: { value?: string } }> = [];
+    const walk = (x: unknown): void => {
+      if (Array.isArray(x)) return x.forEach(walk);
+      if (x && typeof x === "object") {
+        if ((x as { type?: string }).type === "TextField") fields.push(x as { bind?: { value?: string } });
+        Object.values(x as Record<string, unknown>).forEach(walk);
+      }
+    };
+    walk(n);
+    expect(fields.length).toBe(1);
+    expect(fields[0]?.bind?.value).toBe("note");
+    // Skip is one tap and still starts the course.
+    expect(s).toContain("Skip");
+    expect(s).toContain("/v1/lingo/course");
+  });
+
+  it("is where picking a language goes, instead of straight into a set with nothing in it", () => {
+    const s = json(picker(ctx(), { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [] }));
+    expect(s).toContain(SCREENS.lingoWhy);
+    expect(s).not.toContain(SCREENS.lingoSet);
+  });
+});
+
+describe("which language it is taught in", () => {
+  it("lets them pick the language they speak, instead of handing them English", () => {
+    // Every meaning in every exercise is written in this language. Deciding it for somebody because nobody asked is
+    // the one assumption this app does not make.
+    const n = whyScreen(ctxFor(SCREENS.lingoWhy, "phone", live, { params: { target: "es", name: "Español" } }), "es", "Español");
+    const s = json(n);
+    expect(s).toContain("Taught in");
+    expect(s).toContain(SCREENS.lingoAdd);
+    expect(s).toContain('"pick":"from"');
+  });
+
+  it("sends the one they picked, and shows it by name", () => {
+    const ctxWith = ctxFor(SCREENS.lingoWhy, "phone", live, { params: { target: "es", name: "Español", from: "hi", fromName: "हिन्दी" } });
+    const s = json(whyScreen(ctxWith, "es", "Español"));
+    expect(s).toContain("हिन्दी");
+    expect(s).toContain('"from":"hi"');
+  });
+
+  it("asks the picker the other way round, and picking goes back with the answer", () => {
+    const asking = ctxFor(SCREENS.lingoAdd, "phone", live, { params: { pick: "from", target: "es", name: "Español" } });
+    const s = json(picker(asking, { from: null, fromName: null, suggested: [], languages: [{ tag: "hi", name: "हिन्दी", en: "Hindi" }] }));
+    expect(s).toContain("Which language do you speak?");
+    // It must not start a course: it carries the answer back to the question that does.
+    expect(s).toContain(SCREENS.lingoWhy);
+    expect(s).toContain('"from":"hi"');
+    expect(s).toContain('"target":"es"');
+  });
+});
+
+describe("a course with nothing in it", () => {
+  const bare = { items: 0, learned: 0, due: 0, unseen: 0, held: 0 };
+
+  it("does not tell somebody they are up to date on a language they cannot speak", () => {
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: bare, mastery: course().mastery }));
+    expect(s).not.toContain("Nothing due");
+    expect(s).toContain("Nothing to learn yet");
+    // The way out is the one thing that always works, whatever the shared bank has in it.
+    expect(s).toContain(SCREENS.chat);
+  });
+
+  it("still says nothing is due when they have met things and are holding them", () => {
+    const held = { items: 20, learned: 3, due: 0, unseen: 0, held: 0.9 };
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: held, mastery: course().mastery }));
+    expect(s).toContain("Nothing due");
+    expect(s).not.toContain("Nothing to learn yet");
+  });
+
+  it("offers talking rather than a lesson that has nothing to ask", () => {
+    const s = json(territory(ctx(), { courses: [course({ progress: bare })] }));
+    expect(s).toContain("Start by talking");
+    expect(s).toContain("no words yet");
+    // "0% of what you've met" is a measurement of nothing, drawn as though it were a fact about them.
+    expect(s).not.toContain("you'd still have now");
+    expect(s).not.toContain("Practise anyway");
+    expect(s).not.toContain("nothing due");
+  });
 });
 
 describe("the picker", () => {
+  it("has a search box that can actually be typed in, not a picture of one", () => {
+    const n = picker(ctx(), { from: "en", fromName: "English", suggested: [], languages: [{ tag: "ta", name: "\u0ba4\u0bae\u0bbf\u0bb4\u0bcd", en: "Tamil" }] });
+    const fields: Array<Record<string, unknown>> = [];
+    const walk = (x: unknown): void => {
+      if (Array.isArray(x)) return x.forEach(walk);
+      if (x && typeof x === "object") {
+        const node = x as { type?: string };
+        if (node.type === "TextField") fields.push(x as Record<string, unknown>);
+        Object.values(x as Record<string, unknown>).forEach(walk);
+      }
+    };
+    walk(n);
+    expect(fields.length, "one field to type the search into").toBe(1);
+    expect((fields[0] as { bind?: { value?: string } }).bind?.value).toBe("q");
+    // A binding drawn as words is the bug this is here for: it ships the string "$state.q" in the box.
+    expect(json(n)).not.toContain('"content":"$state.q"');
+    // Enter asks the server again, because the list of languages is the server's and never ships in the app.
+    expect(json(n)).toContain(SCREENS.lingoAdd);
+  });
+
   it("names a language in itself as well as in English", () => {
     const data: PickerData = {
       from: "en", fromName: "English",

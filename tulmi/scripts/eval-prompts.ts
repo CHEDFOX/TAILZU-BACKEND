@@ -38,7 +38,7 @@ export const EVALS_DIR = path.join(HERE, "..", "evals");
 /** The tier each role is asked at, as its call sites ask it (the cheapest tier that does the job). */
 export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   classify: "tiny", locate_terms: "cheap", locate_pick: "cheap", plan_change: "code",
-  agent_work: "code", agent_fold: "cheap",
+  agent_work: "code", agent_fold: "cheap", code_review: "review", code_name: "tiny", code_which: "tiny", code_referent: "cheap",
   index_files: "cheap", index_cards: "cheap", project_overview: "cheap", code_check: "cheap", index_dirs: "cheap", index_repo: "cheap", index_features: "cheap", welcome: "cheap",
   spec: "strong", brief: "code", research_answer: "code", research_gaps: "cheap", search_plan: "tiny",
   artifact_element: "cheap", artifact_edit: "cheap", artifact_fix: "cheap", artifact_make: "code", artifact_ask: "cheap",
@@ -47,9 +47,17 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   care_review: "cheap", care_conflict: "cheap",
   team_split: "strong", team_review: "review",
   bot_builder: "cheap", bot_pick: "tiny", ask_decide: "tiny", talk_reply: "cheap", bot_run: "cheap", bot_memory: "tiny", bot_show: "tiny", cinema_scene: "code", cinema_eye: "vision",
+  // The cinema bot's film half, at the tier each of its call sites asks: the director and a revision are the whole film's
+  // shape, the two eyes on a still and a take look at pictures, and the rest are cheap reads.
+  cinema_propose: "cheap", cinema_direct: "strong", cinema_revise: "strong", cinema_picture_read: "cheap",
+  cinema_picture_check: "vision", cinema_still: "vision", cinema_take: "vision",
   widget_digest: "tiny",
+  site_read: "tiny",
   ask_planner: "cheap", ask_vision: "vision", writer: "cheap", edit_selection: "cheap", answer_about: "cheap", converse: "cheap",
   portrait_update: "code", portrait_transcript: "code", portrait_usage: "code",
+  // A unit of a course is written once for a pair and then taught to everybody who ever takes it, so it is worth a
+  // strong model: a wrong line here is not one bad answer, it is a wrong line in a course.
+  lingo_unit: "strong",
 };
 
 /** The most each role may write, so a call's worst case stays small. */

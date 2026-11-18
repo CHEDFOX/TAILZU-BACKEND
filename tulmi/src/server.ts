@@ -40,6 +40,7 @@ import { registerConnectorRoutes } from "./routes/connectors/connectors.js";
 import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { createArtifacts } from "./artifacts/index.js";
+import { artifactStore } from "./artifacts/store.js";
 import { registerArtifactRoutes } from "./routes/artifacts.js";
 import { liveViewerOf } from "./artifacts/livehost.js";
 import { AttachmentRegistry, createFront } from "./front/index.js";
@@ -48,6 +49,8 @@ import { registerFilesRoutes } from "./routes/files.js";
 import { registerFrontRoutes } from "./routes/ask/front.js";
 import { registerCodeRoutes } from "./routes/code/code.js";
 import { registerCodeJobRoutes } from "./routes/code/codeJobs.js";
+import { registerCodeScheduleRoutes, scheduleDeps } from "./routes/code/codeSchedules.js";
+import { CodeSchedules, codeScheduleStore, startCodeSchedules } from "./code/schedule/index.js";
 import { registerCodeInternalRoutes } from "./routes/code/codeInternal.js";
 import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
@@ -55,6 +58,14 @@ import { registerBotRoutes } from "./routes/bots/bots.js";
 import { registerBotHealthRoutes } from "./routes/bots/botHealth.js";
 import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
+import { registerPlanShareRoutes } from "./routes/bots/botsPlanShare.js";
+import { registerSitesRoutes } from "./routes/bots/botsSites.js";
+import { startSitesClock } from "./sites/clock.js";
+import { Panels } from "./sites/panel.js";
+import { cloudBrowserOn } from "./sites/gate.js";
+import { SITE_READ_PAISE } from "./sites/read.js";
+import { Sites } from "./sites/service.js";
+import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -85,6 +96,10 @@ import { registerMeetRoutes } from "./routes/bots/meet.js";
 import { registerRoomsRoutes } from "./routes/bots/rooms.js";
 import { roomService } from "./rooms/service.js";
 import { registerLingoRoutes } from "./routes/bots/lingo.js";
+import { registerCinemaRoutes } from "./routes/bots/cinema.js";
+import { buildCinemaService } from "./cinema/index.js";
+import { buildSceneService } from "./cinema/scene/service.js";
+import { cinemaOn } from "./bots/builtin.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
@@ -436,7 +451,9 @@ const codeJobs = code ? createJobs({ code, github: githubActions, notify: notify
 // most CODE_AGENT_CONCURRENCY at a time, checkpointing after every step so a restart carries on without redoing an
 // edit or a commit. It needs the project brain (CODE_PROJECT_BRAIN) as well; without it jobs are left to whatever
 // drives the router, as before. The ticker above hands back the claims of servers that went quiet.
-const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyJob, log: app.log, ...(jobsHandoff ? { remote: jobsHandoff } : {}) }) : null;
+// `kit` is what the project already LOOKS like (artifacts/kit.ts): read with no model from a dozen files, cached against the brain's head, and shown
+// to a job on files people see so it builds to the project's own tokens and components instead of discovering them or inventing a look.
+const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyJob, log: app.log, kit: artifactStore(), ...(jobsHandoff ? { remote: jobsHandoff } : {}) }) : null;
 // PR care (src/code/prcare, docs/pr-care.md): looks after the pull requests Tailzu opened (and ones the person hands over) after they are open: red CI, a reviewer's
 // ask, a conflict with the default branch. GitHub's events reach it through the webhook; it needs the App subscribed to them (docs/github-app.md). It makes jobs on
 // the agent above, so it exists only where that does.
@@ -450,6 +467,19 @@ if (code && codeJobs && codeAgent) {
     app.addHook("onClose", async () => { stopCare(); await c.idle(); });
   }
 }
+// Scheduled code work (src/code/schedule, docs/code-schedule.md): a project's own standing job, started by the clock instead of by a
+// person asking. Off unless CODE_SCHEDULES is true (the routes then answer 404 schedules_off, and nothing ticks).
+const codeSchedules = code && codeJobs && cfg.CODE_SCHEDULES
+  ? new CodeSchedules(scheduleDeps({
+    rateLimit: AUTHED_RL, code, jobs: codeJobs, agent: codeAgent, log: app.log,
+    store: codeScheduleStore(),
+  }))
+  : null;
+if (codeSchedules) {
+  const stopSchedules = startCodeSchedules(codeSchedules, app.log);
+  app.addHook("onClose", async () => { stopSchedules(); });
+}
+registerCodeScheduleRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs, agent: codeAgent, schedules: codeSchedules, log: app.log });
 registerCodeJobRoutes(app, {
   rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent, care,
   // The live session's passes (docs/cloudflare-jobs.md section 10): only when the jobs run on the Worker, and it can be reached.
@@ -537,6 +567,30 @@ const botsParts = botsAreaParts({ bots, connectors });
 // A routine's answer goes into the same chat the app's own shows (above).
 routineChat = botsParts.chat;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
+// Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
+// account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
+// plan can only be shared with someone you already share a space with) and the same meter the You tab shows. Every route answers
+// 404 while PLAN_SHARE is off, which is the default.
+registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending: you.spending });
+// A BROWSER THAT BELONGS TO THE PERSON (src/sites, docs/sites.md): signed in once, read while something is actually
+// happening, so "where is my order" works on a site with no API. Read only — nothing in there can press, type or spend.
+// Every route answers 404 while CLOUD_BROWSER is off, which is the default, and with no local Chrome there is no visitor
+// and the whole thing stays dark however the switches are set.
+{
+  const visit = cloudBrowserOn() ? getVisitor() : null;
+  if (visit) {
+    const sites = new Sites({ visit, read: { maxPaise: SITE_READ_PAISE } });
+    // The panel needs a page HELD open while a person looks at it, which only the local engine can do; `hold` is
+    // absent otherwise and the sign-in routes answer 503 rather than pretending.
+    const hold = getHolder();
+    const panels = hold ? new Panels({ hold }) : undefined;
+    registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
+    const stopSites = startSitesClock({ sites, log: app.log });
+    app.addHook("onClose", async () => { stopSites(); await panels?.closeAll(); });
+  } else if (cloudBrowserOn()) {
+    app.log.warn("CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be \"local\" with Chrome): sites stay off.");
+  }
+}
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 // The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.
@@ -600,6 +654,22 @@ if (roomService()) {
   const roomTick = setInterval(() => { void roomService()!.tick().catch((err) => app.log.warn({ err: (err as Error)?.message }, "rooms: tick failed")); }, 60_000);
   roomTick.unref();
   app.addHook("onClose", async () => { clearInterval(roomTick); });
+}
+// The cinema bot (src/cinema, docs/cinema.md): films made shot by shot and pictures, every model through OpenRouter. Its tick moves each film
+// on (the stills, the takes, the checks, the cut) every few seconds; only while it is switched on (CINEMA=true) and BOTS is on.
+const cinema = bots && cinemaOn() ? buildCinemaService() : null;
+// The same bot's 3D (src/cinema/scene, docs/cinema-3d.md): a scene built as data and rendered by Blender on this machine. It is built
+// alongside the film half under the one CINEMA switch, because the 3D is a part of this bot and not a bot of its own. Whether this
+// machine can actually render is a question it answers for itself (blender.ts ready): with no Blender here the doors still exist and
+// say so, which is the honest answer and the one a build can show.
+const scenes = cinema ? buildSceneService() : null;
+registerCinemaRoutes(app, { rateLimit: AUTHED_RL, bots, service: cinema, scenes });
+if (cinema) {
+  const stopCinema = cinema.start();
+  app.addHook("onClose", async () => { stopCinema(); });
+  // A restart leaves creations saying they are building that nothing is building: the process that was is gone. They are failed once,
+  // here, so a person sees what happened instead of a thing that never finishes.
+  void scenes?.sweep().catch((err) => app.log.warn({ err: (err as Error)?.message }, "cinema: the 3D sweep failed"));
 }
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
@@ -763,6 +833,32 @@ if (process.env.NODE_ENV !== "test") {
         ` expoToken=${cfg.EXPO_ACCESS_TOKEN ? "set" : "not set"}`);
     } else {
       console.log(`[push] smart notifications off (${cfg.PUSH_ENGINE ? "no Supabase" : "PUSH_ENGINE=false"})`);
+    }
+
+    /**
+     * THE REVIEW SIGN-IN, OUT LOUD ON EVERY BOOT.
+     *
+     * App Review rejected build 85 under 2.1(a) — "the app reverted to Enter the code page after entering demo
+     * code" — because the pair had lapsed. Nothing was broken and nothing said anything: unset is the normal state,
+     * so silence meant both "nobody is reviewing" and "the reviewer cannot get in", and those read the same.
+     *
+     * Three different faults look identical to a reviewer (no pair, a stale account, a code the number pad cannot
+     * take), so the only honest thing is to say which state this server is actually in. Never the code itself: the
+     * email is public to every client, the code is the whole secret, and a log is not the place for it.
+     */
+    {
+      const email = (cfg.REVIEW_EMAIL ?? "").trim();
+      const code = (cfg.REVIEW_CODE ?? "").trim();
+      if (!email && !code) {
+        console.log("[review] sign-in OFF — no demo account. Normal, EXCEPT while an app build is in review.");
+      } else if (!email || !code) {
+        console.log(`[review] sign-in BROKEN — only ${email ? "REVIEW_EMAIL" : "REVIEW_CODE"} is set; both are needed, so nobody can sign in.`);
+      } else if (!/^\d{6}$/.test(code)) {
+        console.log(`[review] sign-in BROKEN — the code is ${code.length} characters${/\D/.test(code) ? " and not all digits" : ""};`
+          + " the sign-in screen is a number pad that keeps six digits, so App Review cannot type it.");
+      } else {
+        console.log(`[review] sign-in ON for ${email} — six-digit code set. Clear both once the build is approved.`);
+      }
     }
     // Announce the EFFECTIVE speech config on every boot.
     //

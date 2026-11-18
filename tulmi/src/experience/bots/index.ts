@@ -85,16 +85,31 @@ const STILL: Record<string, TabGlyph> = {
     { d: ring(6, 19, 2.4), stroke: 1.6 }, { d: "M11.5 5h9M11.5 12h6.5M11.5 19h8", stroke: 1.8 },
   ] },
   you: { viewBox: "0 0 24 24", layers: [{ d: ring(12, 12, 9), stroke: 2.2 }, { d: ring(12, 12, 3.4), fill: true, activeFill: true }] },
+  // Three balloons on one thread. The balloons fill on the tab you are on; the thread does not.
+  talk: { viewBox: "0 0 24 24", layers: [
+    { d: "M6.4 9.8C7.6 13.4 10.6 15.6 12 18.6M17.6 9.8C16.4 13.4 13.4 15.6 12 18.6M12 7.5C12.5 11.8 11.6 15.4 12 18.6M10.6 20.4c1-1.4 1.8-1.4 2.8 0", stroke: 1.5 },
+    { d: ring(6.4, 7.1, 2.7), stroke: 1.6, activeFill: true },
+    { d: ring(17.6, 7.1, 2.7), stroke: 1.6, activeFill: true },
+    { d: ring(12, 4.8, 2.7), stroke: 1.6, activeFill: true },
+  ] },
 };
 
-/** The Bots app's tabs. One tab id per living icon; the screens are bots.home, bots.activity, bots.you. */
+/**
+ * The Bots app's tabs. One tab id per living icon; the screens are bots.home, bots.talk and bots.activity.
+ *
+ * YOU IS NOT ONE OF THEM. It is the person button in Home's header, which is where it already was and where a
+ * profile belongs; a tab as well was the same page twice. The page is unchanged, still warmed at launch, and
+ * reached by a push instead of a tab switch (screens/shell/home.ts, screens/spaces.ts).
+ */
 export function botsNav(): NavigationShell {
   return {
     kind: "tabs",
     tabs: [
       { id: "bots", title: "Bots", screenId: "bots.home", glyph: STILL.bots },
+      // SECOND, not first: the bots grid is what this app IS and what it opens on, and a tab is one tap wherever it
+      // sits. The point of putting the chat here is that it stops being a thing you go and find.
+      { id: "talk", title: "Talk", screenId: "bots.talk", glyph: STILL.talk },
       { id: "activity", title: "Activity", screenId: "bots.activity", glyph: STILL.activity },
-      { id: "you", title: "You", screenId: "bots.you", glyph: STILL.you },
     ],
     rail: false,
     initialTabId: "bots",
@@ -110,7 +125,7 @@ export function botsNav(): NavigationShell {
  */
 export const BOTS_WARM_SCREEN_IDS = [
   "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
-  "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
+  "bots.talk", "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
   "bots.usage", "bots.billing", "bots.notify", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
   "bots.keybot.style", "bots.keybot.tone", "bots.keybot.words", "bots.keybot.voices", "bots.keybot.settings", "bots.keybot.haptics", "bots.keybot.name",
   "bots.keybot.history", "bots.keybot.days", "bots.keybot.month", "bots.keybot.speak", "bots.keybot.apps",
@@ -144,7 +159,7 @@ export interface BotsRequest {
  */
 export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise<ScreenResponse> {
   const tz = req.tzOffsetMinutes ?? 0;
-  const live = await loadLive(deps, tz);
+  const live = await loadLive(deps, tz, req.user?.id);
   // Spaces switched off: a link, a widget row or a notification into one of its screens opens Home, with none of its params.
   const spaces = req.spaces ?? spacesOn();
   const away = !spaces && isSpacesScreen(req.screenId);

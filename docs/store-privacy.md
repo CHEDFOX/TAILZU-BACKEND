@@ -16,21 +16,25 @@ The account deletion link for Play is **https://x0bot.com/delete-account** (`tul
 
 ## 1. Decided (29 Oct 2026)
 
-1. **Meta on iPhone: off, switchable from the server.** The SDK stays in the build but does not start on iPhone until the
-   server's knob `ads.meta.ios.enabled` is turned on (default false; `app/src/telemetry/meta.ts`). Turned on, Apple's tracking
-   prompt (expo-tracking-transparency) comes first and the advertising id goes to Meta only from people who allow it. So today the
-   App Store answer is "No, we don't use data to track", as in section 3. **The day it is turned on**, update App Privacy (no new
-   build): "Yes" to tracking for Product Interaction and Device ID, purpose Third-Party Advertising. On Android, Meta's SDK reads
-   the advertising ID (`advertiserIDCollectionEnabled: true`): section 4 declares it as shared.
+1. **Meta is not in the iPhone build at all.** From 8.9.1 `app/app.config.ts` leaves out both Meta plugins
+   (`react-native-fbsdk-next`, `expo-tracking-transparency`) on iOS, so the binary holds no Meta SDK, no
+   `NSUserTrackingUsageDescription` and no `FacebookAppID`. **It is never turned on for iPhone by the server alone; Meta on iPhone
+   ships only in its own reviewed build** (App Review 2.5.19: nothing hidden or dormant). The server no longer has an
+   `ads.meta.ios.enabled` knob to turn on. So the App Store answer is "No, we don't use data to track", as in section 3, and it
+   stays that way until a build with Meta in it is submitted and reviewed. On Android, Meta's SDK reads the advertising ID
+   (`advertiserIDCollectionEnabled: true`): section 4 declares it as shared.
 2. **Sentry and PostHog: declared either way.** Whether their keys are in the EAS build is not known, so the answers declare crash
    and performance data (Sentry) and product interaction for analytics (PostHog). Declaring a type that is not collected is
    allowed; leaving out one that is, is not.
 3. **History is kept by default** (`HISTORY_DEFAULT_ON`, default true), and the privacy policy now says so: kept by default, can be
    turned off in Settings, deleted any time.
-4. **The privacy manifest** (`app/assets/PrivacyInfo.xcprivacy`) now lists the same types as section 3 (name, email, phone number,
-   contacts, emails or text messages, photos or videos, audio, other user content, user ID, purchase history, other financial info,
-   product interaction, crash and performance data), with `NSPrivacyTracking` false. If Meta is turned on for iPhone, set it true
-   and add the tracking domains in the next build.
+4. **The privacy manifest** (`app/assets/PrivacyInfo.xcprivacy`) lists the same types as section 3, each **linked** and none for
+   tracking (name, email, phone number, contacts, emails or text messages, coarse location, health, fitness, photos or videos,
+   audio, other user content, user ID, device ID, purchase history, other financial info, product interaction, crash, performance
+   and other diagnostic data, other data types), with `NSPrivacyTracking` false and no tracking domains. Crash Data and Performance
+   Data are **Linked true** and both carry **App Functionality and Analytics**; Other User Content carries **App Functionality and
+   Product Personalization**. Section 3 says the same, answer for answer. The manifest is in the binary, so a change to it needs a
+   new build — and the tracking flag only ever turns true in a build that actually ships Meta (section 1.1).
 
 ## 2. What the app collects, and where
 
@@ -47,7 +51,7 @@ section 1 says.
 | User ID | The account's ID (Supabase), also RevenueCat's app user ID | `tulmi/src/auth/supabase.ts`; `app/src/billing/purchases.ts` | Until deleted |
 | Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored); and, on a call from Plan Ease, the live voice conversation streamed to OpenAI's realtime service (no audio stored by X0 Bot; its words are kept in the Plan Ease chat) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/writing/transcribe.ts`, `routes/writing/transcribe-stream.ts`); `POST /v1/botsapp/bots/plan/calls/:id/live` (`tulmi/src/botsBots/planCallLive.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
 | Dictated text and history | What was dictated and the cleaned text, its language and voice | `cleanup_history` (`tulmi/src/history/store.ts`, migrations 0004, 0010) | On by default (section 1.3); 90-day purge of deleted rows; until the account is deleted |
-| Messages | Words, photos and files people send each other in Spaces' chats and a space's feed. A message to one person there is seen by them, its sender and the space's admin (who made the space) | `tulmi/src/botsBots/threads.ts`, `spaceFeed.ts`, `thread_messages` (migrations 0051, 0068 to_id) | Until taken out, the space or the account is deleted (a sender's messages stay in others' chats) |
+| Messages | Words, photos and files people send each other in Spaces' chats and a space's feed. A message to one person there is seen by them, its sender and the space's admin (who made the space) | `tulmi/src/botsBots/threads.ts`, `spaceFeed.ts`, `thread_messages` (migrations 0051, 0068 to_id) | Until taken out, the space or the account is deleted. A sender's messages stay in others' chats; once that account is deleted, or the two no longer share a space, the name beside them is drawn faded and opens nothing (`threads.ts` `gone`) |
 | Shared things | Lists, plans, notes, links, files, answers shared to a space or a person; one thing shared from Plan Ease, Notes, Travel bot or Xode (its title and a line, whose it is and who shared it: its owner, or the space's admin), and the notes people add to it | `tulmi/src/botsBots/shared.ts`, `space_items`; `grants.ts`, `work.ts`, `space_grants` (`by_id`: 0069), `space_work_notes` (0068) | Until taken out or deleted, or its owner leaves the space |
 | What a space's admin sees and shares | Once a member agreed to "The space's admin can see and share your work and messages here.": their messages to one person in the space, and their own plans, notes, trips and Xode projects (to read, move a plan's time, add notes, and share one with someone in the space or everyone there; the member is not told of each share, and only the admin stops it) | `tulmi/src/botsBots/work.ts`, `grants.ts`, `spaceFeed.ts`, `space_members.consent_ms` (0068) and `consent_v` (0069) | While they are both in the space |
 | Photos, videos and files | What the person picks or takes to give to a bot or send in a chat (and, with the image and video bots, what they make) | `app/src/sdui/media.ts` uploadFile → `POST /v1/files` (`tulmi/src/routes/files.ts`, `src/media`, `media_items`, a storage bucket) | `MEDIA_KEEP_DAYS` (30 days) unless sent or shared; until deleted |
@@ -104,10 +108,10 @@ fields.
 
 ## 3. App Store: App Privacy
 
-App Store Connect, the app, App Privacy. Answer "Yes, we collect data from this app". Assumes section 1: Meta off on iPhone,
-Sentry on, PostHog off.
+App Store Connect, the app, App Privacy. Answer "Yes, we collect data from this app". Assumes section 1: no Meta in the iPhone
+build, Sentry on, PostHog off. Every answer below matches `app/assets/PrivacyInfo.xcprivacy` (section 1.4) exactly.
 
-**Data Used to Track You:** none. (If Meta stays on on iPhone, see section 1.1.)
+**Data Used to Track You:** none. Nothing in the iPhone build can track: there is no Meta SDK and no tracking prompt (section 1.1).
 
 **Data Linked to You** (each: linked to the user's identity: Yes; used for tracking: No):
 
@@ -130,7 +134,7 @@ Sentry on, PostHog off.
 | Financial Info | Other Financial Info | App Functionality | UPI IDs and notes in a space's payment requests |
 | Usage Data | Product Interaction | App Functionality, Analytics | Usage counts that run the usage meter and limits |
 | Diagnostics | Crash Data | App Functionality, Analytics | Sentry |
-| Diagnostics | Performance Data | Analytics | Sentry traces; keyboard counters |
+| Diagnostics | Performance Data | **App Functionality**, Analytics | Sentry traces; keyboard counters |
 | Diagnostics | Other Diagnostic Data | **App Functionality**, Analytics | Keyboard counters (never text); **App Functionality from the server half of fraud prevention** (the type of network a request comes from, and the counts per network) |
 | Other Data | Other Data Types | App Functionality | Gender, to address you correctly; **from 8.9.1** whether a Focus is on (never which) and whether the phone is in a car just before a call |
 
@@ -261,8 +265,12 @@ one in. **No contacts permission is in the build**: the contact picker is an `AC
 `WRITE_CALENDAR` stays blocked: *Add to my calendar* on Android is an `ACTION_INSERT` intent, which needs none, and X0 Bot never
 writes to a calendar.
 
-**THE THREE ANDROID HALVES OF 8.9.1, each behind its own build switch and each blocked (`tools:node="remove"`) when its switch
-is off**, so a build without the switch cannot have the permission merged in by any library:
+**THE THREE ANDROID HALVES OF 8.9.1 SHIP IN THIS BUILD.** `TULMI_ANDROID_CALENDAR`, `TULMI_ANDROID_MOTION` and
+`TULMI_ANDROID_ARRIVAL` are all **on** in `preview`, `production` and `n0` (`app/eas.json`), so the Play build carries
+calendar busy times, steps with the driving check, and arrival reminders, and the Play forms below are filed **with this
+release** (the owner's checklist 7A). Health Connect is not: `TULMI_ANDROID_HEALTH` and `TULMI_ANDROID_HEALTH_SLEEP` stay off.
+Each half is still behind its own build switch and blocked (`tools:node="remove"`) when that switch is off, so a build
+without one cannot have the permission merged in by any library:
 
 | Build switch | Permissions | Play declaration | Server switch that draws the row |
 | --- | --- | --- | --- |

@@ -241,7 +241,9 @@ export const leave = (ctx: BotsCtx): ActionSpec => (fromApp(ctx) ? back : go(SCR
 
 /** A window that reads this computer's Accessibility into $state.axGranted (TAILZU-DESKTOP sdui.js axFollow). */
 export const AX_STATE = "DeskAxState";
-/** The window's own action (sdui.js, declared with its Ask card's): the main process opens the Mac's Accessibility page. */
+/** A window that reads this computer's Screen Recording into $state.seeGranted (the same way, seeFollow). */
+export const SEE_STATE = "DeskSeeState";
+/** The window's own actions (sdui.js, declared with its Ask card's): the main process opens one fixed Mac settings page. */
 export const OPEN_AX = { kind: "ask.openAccessibility" } as unknown as ActionSpec;
 
 export const MIC_SETTLED: Condition = { any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] };

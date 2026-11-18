@@ -26,6 +26,11 @@ process.env.AGENT_VISION_TIMEOUT_MS = "500";
 process.env.AGENT_IMAGE_MAX_BYTES = "50000";
 // Ask's own bucket is 60 a minute; this file sends more than that.
 process.env.AGENT_RATE_LIMIT_MAX = "1000";
+// And the burn brake (src/you/limits.ts `burning`) is a ceiling on what ONE account may spend in ONE HOUR — $0.20 on the free
+// plan, which is ten times a heavy real hour. This file sends a hundred steps for one account in a couple of seconds, which is
+// precisely the runaway the brake exists to stop, so it is switched off here for the same reason the rate limit is raised. The
+// brake itself is tested in usage-meter.test.ts.
+process.env.USAGE_BURN_TIMES = "0";
 
 /** Chunks to stream; a number is a pause of that many ms before the next. */
 type Plan = Array<string | number> | "throw" | "hang";

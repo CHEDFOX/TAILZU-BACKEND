@@ -80,6 +80,13 @@ export function cardLines(c: Card): string {
       `${i + 1}. ${h.name} · ${h.perNight}/night on ${h.advertiser} · ${h.stars ? `${h.stars}★ · ` : ""}${h.rating ? `${h.rating}/10 (${h.reviews} reviews)` : "no rating"} · ${h.area}${h.perks.length ? ` · ${h.perks.join(", ")}` : ""}`)].join("\n");
   }
   if (c.kind === "money") return `${c.amount} ${c.from} = ${c.result} ${c.to} (rate ${c.rate}, central-bank reference rate of ${c.day}).`;
+  // A places card is our own catalogue (src/discover), and the model already read these as the tool's own answer:
+  // one line each here so an answer written from an earlier card still says the right thing about it.
+  if (c.kind === "places") {
+    if (!c.results.length) return `No places of ours match ${c.query}.`;
+    return [`Places worth going, ${c.query} (shown to the person as cards; OUR words, no prices):`, ...c.results.slice(0, 5).map((p, i) =>
+      `${i + 1}. ${p.title} — ${p.where}${p.season ? ` · best ${p.season}` : ""} · ${p.budget}${p.ours ? "" : " · built for this person"}${p.wildcard ? " · not what they asked for" : ""}`)].join("\n");
+  }
   return [`Weather in ${c.place}${c.now ? `: now ${c.now.tempC}°C, ${c.now.symbol.replace(/_/g, " ")}` : ""}.`, ...c.days.map((d) => `${d.day}: ${d.minC}–${d.maxC}°C, rain ${d.rainMm} mm, ${d.symbol.replace(/_(day|night|polartwilight)$/, "").replace(/_/g, " ")}`)].join("\n");
 }
 

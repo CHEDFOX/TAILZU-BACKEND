@@ -43,6 +43,8 @@ import { ACTIVITY_TOKEN_RE, activityTokenStore, badLookIds, glanceStore, JOB_ID_
 import { designSince } from "../../experience/native/catalog.js";
 import { TOPIC, jobTopic } from "../../live/topics.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
+import { planShareSwitchOn } from "../../billing/planShare.js";
+import { PLAN_SHARE_DOOR } from "../../billing/planShareActs.js";
 import { readFocusPost, setFocus } from "../../widgets/focus.js";
 import { planPrefs } from "../../botsBots/planPrefs.js";
 import { focusEnded } from "../../botsBots/planCallCheck.js";
@@ -90,6 +92,9 @@ export function actPartsOf(deps: BotsAreaDeps, parts: Pick<SpaceParts, "tasks" |
     get threads() { return spacesOn() ? parts.threads : null; },
     // Plan Ease's own items (pt:, pe:, pm:): a to-do's Done and Later, a Move card's Move it and Keep, the box's Undo.
     plan: plan ? { scope: (item, action) => plan.scope(item, action), act: (userId, item, action) => plan.act(userId, item, action) } : null,
+    // An ask to be put on someone's plan (billing/planShareActs.ts): the Share and Not now on its notification, answered by the
+    // plan share routes themselves. Nothing while PLAN_SHARE is off, so with the switch off no button of its can answer anything.
+    get planShare() { return planShareSwitchOn() ? PLAN_SHARE_DOOR : null; },
     approvals: c ? {
       async risk(userId, taskId) {
         const t = await c.store.getTask(userId, taskId);

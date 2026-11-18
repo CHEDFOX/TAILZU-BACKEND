@@ -4,7 +4,7 @@
  *   - a colour is one of the eight natural ones; a name, purpose, tone, slug and rule are capped; at most 12 rules of 120 characters
  *   - skills is five switches and a list of apps, and nothing else; knowledge needs the Files skill; a request can't be allowed more than the day
  *   - a rule that tries to change Tailzu's own rules is accepted as typed, reported as ignored, and a rule that refuses such a thing is let through
- *   - the four built-ins are in the same format, with one colour each, and are copies
+ *   - the five built-ins are in the same format, with one colour each, and are copies
  *   - a command is capped and validated: only {{input}}, no secret, no override
  */
 import { describe, expect, it, vi } from "vitest";
@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true"; });
 
 const { parseBotInput, inertRules, slugOf, SlugSchema } = await import("../src/bots/validate.js");
-const { PALETTE, LIMITS, RESERVED_SLUGS } = await import("../src/bots/types.js");
+const { PALETTE, SHIPPED_ONLY, LIMITS, RESERVED_SLUGS } = await import("../src/bots/types.js");
 const { builtinBots, builtinBot, colourFor, isBuiltinSlug } = await import("../src/bots/builtin.js");
 const { checkCommand, expand } = await import("../src/bots/commands.js");
 const { PRINCIPLE_MAX } = await import("../src/principles/library.js");
@@ -47,9 +47,8 @@ describe("a bot's colour has ONE answer", () => {
     expect(new Set(taken).size).toBe(taken.length);
   });
 
-  it("does not offer ash to anybody: it is kept for a bot Tailzu ships", async () => {
-    const { SHIPPED_ONLY } = await import("../src/bots/types.js");
-    expect([...SHIPPED_ONLY]).toEqual(["ash"]);
+  it("offers neither ash nor slate to anybody: both are kept for bots Tailzu ships", async () => {
+    expect([...SHIPPED_ONLY]).toEqual(["ash", "slate"]);
     // Not in the palette, so the picker never shows it, colourFor never hands it out, and a draft asking for it is
     // refused — which is what keeps somebody's own bot from coming out the same colour as one of ours.
     for (const c of SHIPPED_ONLY) expect(errors({ colour: c }).join(), c).toMatch(/colour is one of/);
@@ -189,29 +188,39 @@ describe("the owner's rules that try to change ours", () => {
   });
 });
 
-describe("the four X0 Bot ships", () => {
-  it("are Code, Keylessbord, Plan and Travel, in the format of any bot, owned by nobody", () => {
+describe("the five X0 Bot ships", () => {
+  it("are Talk, Code, Keylessbord, Plan and Travel, in the format of any bot, owned by nobody", () => {
     const all = builtinBots();
-    expect(all.map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
+    expect(all.map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
     for (const b of all) {
       expect(b.ownerId, b.slug).toBeNull();
       expect(b.visibility).toBe("private");
-      expect(PALETTE).toContain(b.colour);
+      // Either list: PALETTE is what a person may pick for their own bot, and SHIPPED_ONLY is kept back for ours
+      // (ash is Lingo's, slate is Talk's). A built-in wearing a shipped-only colour is the point of that list,
+      // not a break from it — and until Talk, no built-in that is always listed wore one, so this never fired.
+      expect([...PALETTE, ...SHIPPED_ONLY]).toContain(b.colour);
       expect(b.purpose.length, b.slug).toBeLessThanOrEqual(LIMITS.purpose);
       expect(b.name.length).toBeLessThanOrEqual(LIMITS.name);
       expect(b.principles.length).toBeLessThanOrEqual(12);
       for (const r of b.principles) expect(r.length, r).toBeLessThanOrEqual(120);
       expect(inertRules(b.principles), b.slug).toEqual([]);
       expect(b.knowledge).toEqual([]);
-      // the same schema checks them: a built-in is a bot like any other
-      const check = parseBotInput({ name: b.name, slug: undefined, colour: b.colour, purpose: b.purpose, principles: b.principles, skills: b.skills, tone: b.tone, budgets: b.budgets }, { requestMax: 5000, dailyMax: 5000, requestDefault: 150, dailyDefault: 800 });
+      // The same schema checks them: a built-in is a bot like any other, in everything but its COLOUR. A
+      // shipped-only colour (ash, slate) is refused by this schema on purpose — that refusal is what stops
+      // somebody's own bot coming out the same colour as one of ours — so a built-in wearing one cannot be put
+      // through it as written. The colour is held to its own rule above (PALETTE or SHIPPED_ONLY), and a palette
+      // colour stands in here so the rest of the definition is still checked.
+      //
+      // This was latent, not new: Lingo has worn ash since it landed and only escapes because builtinBots() leaves
+      // it out while LINGO is off. Switching Lingo on would have failed this line.
+      const check = parseBotInput({ name: b.name, slug: undefined, colour: PALETTE[0], purpose: b.purpose, principles: b.principles, skills: b.skills, tone: b.tone, budgets: b.budgets }, { requestMax: 5000, dailyMax: 5000, requestDefault: 150, dailyDefault: 800 });
       expect(check.ok, b.slug).toBe(true);
     }
-    expect(new Set(all.map((b) => b.colour)).size).toBe(4);
+    expect(new Set(all.map((b) => b.colour)).size).toBe(5);
   });
 
   it("keep their addresses, which no one else may take, and are copies", () => {
-    for (const s of ["code", "keybot", "plan", "travel"]) { expect(isBuiltinSlug(s)).toBe(true); expect(RESERVED_SLUGS).toContain(s); }
+    for (const s of ["code", "keybot", "plan", "travel", "talk"]) { expect(isBuiltinSlug(s)).toBe(true); expect(RESERVED_SLUGS).toContain(s); }
     const a = builtinBot("travel")!;
     a.principles.push("changed");
     a.skills.connectors.push("changed");

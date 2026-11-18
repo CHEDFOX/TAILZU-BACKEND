@@ -215,7 +215,7 @@ describe("glance v2 (section 2)", () => {
 
   it("sends the bots in Home's order, 8 at most, each with its face, line and link", () => {
     const g = glanceV2Of(input(), payload());
-    expect(g.bots.map((b) => [b.slug, b.state])).toEqual([["code", "needs"], ["plan", "needs"], ["keybot", "idle"], ["travel", "idle"], ["gym-bot", "idle"]]);
+    expect(g.bots.map((b) => [b.slug, b.state])).toEqual([["code", "needs"], ["plan", "needs"], ["keybot", "idle"], ["travel", "idle"], ["talk", "idle"], ["gym-bot", "idle"]]);
     expect(g.bots[0]).toEqual({
       slug: "code", name: "Xode", color: "#4F7A3A", face: "code", faceUrl: "https://api.x0bot.com/blip/bots/head-code.png?v=1",
       state: "needs", needs: 1, working: true, line: "fixing cart", link: "tulmi://screen/bots.code",
@@ -235,7 +235,8 @@ describe("glance v2 (section 2)", () => {
     const many = Array.from({ length: 9 }, (_, n) => ({ slug: `bot-${n}`, name: `Bot ${n}`, colour: "sea", purpose: "x", builtin: false }));
     const crowded = glanceV2Of(input({ bots: [...SAMPLE_BOTS, ...many] }), payload());
     expect(crowded.bots).toHaveLength(8);
-    expect(crowded.more).toBe(SAMPLE_BOTS.length + many.length - 8);
+    // +1 for Talk: Home adds the built-ins whether or not the platform listed them, and Talk is not in SAMPLE_BOTS.
+    expect(crowded.more).toBe(SAMPLE_BOTS.length + many.length + 1 - 8);
     expect(glanceV2Of(input({ bots: [...SAMPLE_BOTS, ...many] }), knobs({ "x0.bots.max": 3 })).bots).toHaveLength(3);
   });
 

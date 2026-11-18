@@ -17,6 +17,7 @@ import {
 import { screen, type BotsScreen } from "../registry.js";
 import { REASON_WORDS } from "../../../botsBots/safety.js";
 import { personMark } from "./spaces/parts.js";
+import { ASK_PATH, PLAN_SHARE_API, loadShare, type PlanShareView } from "../planShare.js";
 
 const A = "/v1/botsapp/bots";
 const enc = encodeURIComponent;
@@ -47,12 +48,55 @@ const BLOCK_MEANS = "You won't see each other's messages or anything they share,
 
 /** `bot`: their tiny bot (src/botsBots/safety.ts person). */
 interface Person { userId: string; name: string; spaces: string[]; blockedByYou: boolean; canMessage: boolean; bot?: PersonLookSpec }
+/** The page: the person, and (PLAN_SHARE on) enough of the share to know which one row to draw. */
+interface PersonPage { person?: Person; share?: PlanShareView }
 
-function personPage(ctx: BotsCtx, p: Person | undefined) {
+/**
+ * SHARING A PLAN, ON SOMEONE'S PAGE (spec §5.3): one row, read either way round, and no row at all when both of you
+ * have a plan or neither does.
+ *
+ *   you have one, they do not → "Share my plan with Priya" / "They use the same month as you"
+ *   they have one, you do not → "Ask for their plan"       / "Priya has one"
+ *
+ * Whether they have a plan is a yes/no the server already knows, and it is used for nothing but choosing the row: their
+ * plan's name, their usage and their renewal date are never on this page (spec §8). Someone already on your plan gets
+ * no row — that list, and Stop sharing, live on Plan and billing.
+ */
+function planShareRow(p: Person, share: PlanShareView | undefined): Node[] {
+  if (!share) return [];
+  const them = share.people.find((x) => x.userId === p.userId);
+  if (!them || them.onMyPlan || share.on?.ownerId === p.userId) return [];
+  const left = icon("share", { size: 18 });
+  if (share.canShare && !them.hasPlan) {
+    return [listRow({
+      label: `Share my plan with ${p.name}`, sub: "They use the same month as you", left,
+      onPress: call("POST", PLAN_SHARE_API, { memberIds: [p.userId] }, {
+        ok: seq(toast(`${p.name} is on your plan`), refresh),
+        fail: toast("Couldn't share your plan. Try again.", true),
+      }),
+    })];
+  }
+  if (!share.canShare && !share.on && them.hasPlan) {
+    // Already asked: the row says so rather than letting the same ask go twice.
+    if (share.asked?.ownerId === p.userId) return [listRow({ label: "Asked for their plan", sub: "Waiting for their answer", left, chevron: false })];
+    return [listRow({
+      label: "Ask for their plan", sub: `${p.name} has one`, left,
+      onPress: call("POST", ASK_PATH, { ownerId: p.userId }, {
+        ok: seq(toast("Asked. You'll hear when they answer."), refresh),
+        fail: toast("Couldn't ask them. Try again.", true),
+      }),
+    })];
+  }
+  return [];
+}
+
+function personPage(ctx: BotsCtx, d: PersonPage | undefined) {
+  const p = d?.person;
   if (!p) return couldNot(ctx, "This person", "You can only see someone you share a space or a chat with.");
   const message = call("POST", `${A}/threads/direct`, { person: p.userId }, { assignTo: "dm", ok: { kind: "navigate", screenId: SCREENS.thread, params: { id: "$state.dm.id" } }, fail: toast("You can't message them from here.", true) });
   const rows: Node[] = [
     ...(p.canMessage ? [listRow({ label: `Message ${p.name}`, left: icon("send", { size: 18 }), onPress: message })] : []),
+    ...planShareRow(p, d?.share),
     listRow({ label: `Report ${p.name}`, sub: "Tell us they broke the rules", left: icon("shield", { size: 18 }), onPress: open(SCREENS.report, { kind: "person", id: p.userId }) }),
     p.blockedByYou
       ? listRow({ label: `Unblock ${p.name}`, left: icon("lock", { size: 18 }), onPress: unblockAction(p.userId, p.name) })
@@ -157,7 +201,17 @@ function blockedPage(ctx: BotsCtx, d: BlockedData | undefined) {
 // ===================================================================== the screens
 
 export const safetyScreens: BotsScreen[] = [
-  screen<Person>({ id: SCREENS.person, load: (ctx, deps) => deps.api<{ person: Person }>("GET", `${A}/people/${enc(idParam(ctx))}`).then((r) => r.person), build: personPage }),
+  screen<PersonPage>({
+    id: SCREENS.person,
+    load: async (ctx, deps) => {
+      const [person, share] = await Promise.all([
+        deps.api<{ person: Person }>("GET", `${A}/people/${enc(idParam(ctx))}`).then((r) => r.person).catch(() => undefined),
+        loadShare(deps, ctx.user?.id),
+      ]);
+      return { ...(person ? { person } : {}), ...(share ? { share } : {}) };
+    },
+    build: personPage,
+  }),
   screen<Preview>({
     id: SCREENS.report,
     load: (ctx, deps) => {

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-const { ConcurrencyLimiter, Overloaded, LIMITER_DEFAULTS } = await import("../src/guard/limiter.js");
+const { ConcurrencyLimiter, Overloaded, LIMITER_DEFAULTS, installSlowCheck } = await import("../src/guard/limiter.js");
 type Permit = import("../src/guard/limiter.js").Permit;
 
 /** A clock and the timers that go with it, moved by hand. */
@@ -46,8 +46,42 @@ async function settled<T>(p: Promise<T>): Promise<{ state: "pending" } | { state
 }
 
 describe("the defaults", () => {
-  it("are 64 at once for everyone, 3 for one person and 1 for a free one", () => {
-    expect(LIMITER_DEFAULTS).toMatchObject({ global: 64, perUser: 3, perUserFree: 1 });
+  it("are 64 at once for everyone and 3 for one person, free or paying alike; one for a slowed person", () => {
+    expect(LIMITER_DEFAULTS).toMatchObject({ global: 64, perUser: 3, perUserFree: 3, perUserSlowed: 1 });
+  });
+});
+
+describe("free and paying run the same number at once", () => {
+  /**
+   * The free plan used to be held to one request at a time, which with X0 Bot free for everyone meant nearly everybody. The caps are
+   * equal now; what paying buys is a place in the queue, which the priority tests below still prove.
+   */
+  it("gives a free person the same cap as a paying one", async () => {
+    const { limiter } = make({ global: 10, perUser: 3, perUserFree: 3 });
+    const held: Permit[] = [];
+    for (let i = 0; i < 3; i += 1) held.push(await limiter.acquire("nobody-pays", "free"));
+    expect(limiter.stats().active).toBe(3);
+    expect((await settled(limiter.acquire("nobody-pays", "free"))).state).toBe("pending");
+    for (const p of held) p.release();
+  });
+
+  /**
+   * ABUSE PREVENTION'S SLOW used to work by making the person count as free, back when free meant one at a time. With the caps equal it
+   * has a cap of its own, and this is the test that would have caught the slow quietly becoming three slots.
+   */
+  it("still takes a slowed person down to one, with the free cap at its real value", async () => {
+    installSlowCheck((id) => id === "slow-one");
+    try {
+      const { limiter } = make({ global: 10, perUser: 3, perUserFree: 3, perUserSlowed: 1 });
+      const first = await limiter.acquire("slow-one", "paid");
+      expect((await settled(limiter.acquire("slow-one", "paid"))).state).toBe("pending");
+      // Everyone else still has their three.
+      const theirs: Permit[] = [];
+      for (let i = 0; i < 3; i += 1) theirs.push(await limiter.acquire("not-slowed", "free"));
+      expect(limiter.stats().active).toBe(4);
+      first.release();
+      for (const p of theirs) p.release();
+    } finally { installSlowCheck(null); }
   });
 });
 

@@ -17,8 +17,8 @@
  * done above this file, and nothing here needs to change for it.
  */
 import { z } from "zod";
-import type { BlobStore } from "../media/blob.js";
-import { askJson, cut, fence, type ModelCtx } from "../code/work/model.js";
+import type { BlobStore } from "../../media/blob.js";
+import { askJson, cut, fence, type ModelCtx } from "../../code/work/model.js";
 import { checkScene, frameCount, sceneSize } from "./check.js";
 import { lookAt, type Verdict } from "./eye.js";
 import { creationKey, keep, type Kept, type Render, type Shot } from "./ports.js";

@@ -107,7 +107,18 @@ out loud. It gets one slip more than the typed budget, and the first slip still 
 
 ## 5. The exercises
 
-Seven kinds (`types.ts` `EXERCISE_KINDS`), and the order is the point:
+It is a **grid, not a line**. Three levels — a word, a whole utterance, a turn of conversation — and at every level
+both ways of being asked: **pick the right one** and **say the right thing**. Recognising is not the lesson and never
+was, but it is how saying gets within reach, so the two run side by side all the way up rather than one replacing the
+other.
+
+| | pick the right one | say the right thing |
+| --- | --- | --- |
+| **a word** | `choose` | `say` |
+| **a whole utterance** | `reply`, `blank`, `chips` | `speak` |
+| **a turn of conversation** | — | `talk` |
+
+Nine kinds (`types.ts` `EXERCISE_KINDS`):
 
 | Kind | What it asks | Marked by |
 | --- | --- | --- |
@@ -116,10 +127,24 @@ Seven kinds (`types.ts` `EXERCISE_KINDS`), and the order is the point:
 | `listen` | it is spoken, they type what they heard | `gradeText` |
 | `chips` | put the given words in order | `gradeChips` |
 | `blank` | a real sentence with the word taken out, and put back | `gradeChoice` |
-| `say` | say it out loud | `gradeSpoken` |
-| `talk` | a turn of real conversation, the item expected in it | `gradeSpoken` |
+| `reply` | what you would actually say here, out of a few | `gradeChoice` |
+| `say` | say the word out loud | `gradeSpoken` |
+| `speak` | say a whole utterance out loud, from its meaning | `gradeSpoken` |
+| `talk` | a turn of real conversation, the item expected somewhere in it | `gradeUsed` |
 
-The first five exist to get an item ready for the last two. They are the whole of most language apps.
+Everything else exists to get an item ready for `talk`, which is the only rung that is the real thing.
+
+**`talk` is marked differently from everything else, and the difference is the point.** `gradeUsed` does not check
+that they said the right sentence — it checks whether **the word they were due came out of their mouth inside
+something they made up themselves**. Nothing judges whether what they said was good, or true, or interesting: no
+grader can do that, and one that pretended to would be lying. Using a word in a sentence of your own is a far higher
+bar than repeating it, and it is the only thing the scheduler needs to know. A word hiding inside a longer one does
+not count (`cafetería` is not `café`), a transcriber's slipped letter is `close` rather than wrong, and saying
+nothing is `silence`, which has its own gesture rather than a mark against them.
+
+**`reply` is the rung that makes conversation reachable before somebody can speak it.** Pick what you would say,
+out of things you could really say. It needs no speech and no open-ended marking, so it works with the grader that
+already exists — and it is the on-ramp to `talk`.
 
 ## 6. A session
 
@@ -134,9 +159,13 @@ themselves come before anything off a list. Length follows the minutes they aske
 | Where the item is | What it gets |
 | --- | --- |
 | never met, or just lost | `choose` — recognise it. Asking somebody to produce a word they have not met teaches nothing but frustration |
-| going in | `listen`, then `chips` |
-| held, but never said enough | **`say`**, and it stays there until it has been said enough times to count |
-| held and said | `write`, or `chips` for a phrase |
+| going in | `listen`, then `blank` for a word or `reply` for an utterance, then `chips` |
+| held, but never said enough | **`say`** for a word, **`speak`** for a whole utterance, and it stays there until it has been said enough times to count |
+| held and said | `write` |
+| held well, and said enough | **`talk`** — use it in something of their own. The top of the ladder, and where every rung below was going |
+
+A whole utterance is **said**, not spelled, so where a word gets `say` a phrase gets `speak`; and where a word gets a
+gap to fill, an utterance gets the same question one level up — of these, what would you actually say here.
 
 That last row is the mechanism behind the whole idea. A tapping exercise is not the lesson; it is how a word gets
 ready to be spoken, and an item that is never asked for out loud never finishes.
@@ -172,6 +201,39 @@ languages anywhere in Lingo**, so any pair works the day somebody asks for it.
 ordinary bot loop with the course as its knowledge (`digest.ts`) — the pair, the level, the streak, the counts, and
 the words due now with the ones never said marked. So "what should I practise?" is answered from the real table in
 one model call, and the conversation can be steered onto what is about to be forgotten.
+
+## 8b. Talking to it, and the one thing the chat can do
+
+**Where you ask.** The chat bar is in the footer of the territory (`bots.lingo`), exactly as mail, meetings, cinema
+and Plan Ease have theirs. It is not on a lesson: the middle of a set is not the moment to be offered a chat.
+
+Until it was put there **there was nowhere to ask Lingo anything at all** — its tile opens the territory rather than
+the shared bot page, and none of its screens carried a chat bar. The bot whose entire point is conversation could
+not be spoken to.
+
+**`lingo_note_words`** (`src/lingo/tool.ts`) is the only thing its chat can do besides talk: write a word into the
+course. Lingo's rules already said *"their own words, the ones they reached for, come before anything off a list"*,
+and `unseen` already asked for those first — but nothing could put one there. Somebody could ask how to say a word,
+be told, and have it gone by the end of the conversation. **A bot that says it will remember something and cannot
+is worse than one that never offered**, so the tool's description ends: *never say you have written something down
+unless you have called this.*
+
+| | |
+| --- | --- |
+| which course | the one they last opened, which is the one the app is showing |
+| how they met it | `asked`, `said` or `heard` — and the scheduler already prefers them in that order, so a word Lingo itself used is the weakest of the three |
+| a word already there | left exactly as it is, history and all. Being mentioned again never resets what the scheduler knows |
+| half a word | refused. Both the word and its meaning, or nothing: a word with no meaning reaches them as a blank question |
+| how many at once | eight. A conversation produces a handful worth keeping, never a glossary |
+| no course yet | it says so, rather than dropping the words quietly |
+
+It is given to **Lingo and to no other bot** (`bots/tools.ts`, gated on the bot's id): another bot handed it would
+be filing words into a course it knows nothing about. A name with no definition gets no handler either, so it
+cannot be called behind the list's back.
+
+**What is still not solved:** a word earns its place the first time it is mentioned. The stricter rule — reached for
+twice, or got wrong once — is not built, and a course can fill with things said in passing. `source` softens it
+(what they went looking for is asked before what merely went past them) but does not fix it.
 
 ## 9. The sentence bank: not writing the exercises
 
@@ -217,6 +279,26 @@ splitting on spaces, which is the only way that works in a script that has none.
 `around(lang, gloss, maxWords)` finds sentences of about a length, for a level. How long a sentence is depends on
 its SCRIPT, not on whether it happens to contain a space: words where the script separates them, characters where
 it does not.
+
+## 9b. The spine: what a course is made of before anybody has said anything
+
+A course holds the words this person reached for. On the first day there are none — nothing to schedule, nothing to
+ask, and **"Nothing due" on the very first screen somebody sees**. So when a course is running dry (fewer than six
+never-seen items), `POST /v1/lingo/session` draws on the shared bank for short sentences of the pair before it picks
+anything.
+
+They are **real sentences with their meaning already on them**, which is the only reason they can be seeded at all:
+a bare frequency list would give words with nothing to say what they mean, and word-level translation of a corpus is
+a different and much harder problem. Length follows the level (five words at a1, twenty at c2), so what the spine
+offers grows with the person.
+
+**Need first, and the language in the end.** The spine goes in as `source: "seed"`, and `unseen` (`schedule.ts`)
+already orders `said → asked → heard → seed`. So anything somebody reached for themselves is always asked ahead of
+it and the spine is only ever the floor underneath. Their own words lead for as long as they keep coming; the spine
+fills in behind them when they do not. No ratio to tune — the ordering is the rule, and it was already there.
+
+An empty bank is not an error: the course stays as it is, and a language nobody has poured a corpus into simply has
+no spine yet (`scripts/lingo-seed.ts`).
 
 ## 10. The order a session is put in
 
@@ -354,6 +436,14 @@ language they are learning, each with its progress, a **Continue** on it, and **
 at once, by choice. `GET /v1/lingo/courses` carries `progress` and `mastery` per course, so the territory draws from
 one call.
 
+Where a heading would be, **Lingo itself is there, alive, across the width of the page** — the back bar already says
+its name, so a second one in words would only take the room. What it is doing says what the territory holds: while a
+word is due in any language it mutters conjugations under its breath with letter tiles drifting up (`l.mutter`), and
+once nothing is due it hums to itself (`l.hum`). Both are idlings of its own, on a loop, and no other bot is given
+them — they are not in `idle.moments`, which every bot draws from. It is the plain custom tile underneath, as every
+bot is: only the colour and the moments are Lingo's. A build too old to draw him gets the heading in words instead,
+so the page is never headless.
+
 **Leaving one** is a bin icon on its card. It opens a card with a box to write why, and a button that says **Just
 clean up** — which removes it with no reason given, because a person who does not want to explain themselves must
 not be made to.
@@ -367,17 +457,38 @@ be rid of a language is rid of it whether or not the note got written.
 Why keep it at all: **why people stop is the most useful thing a learning app can be told, and the one thing it is
 never told**, because stopping is silent.
 
+## 14b. What the language is for
+
+The only question Lingo asks before it teaches anything, asked **once**, as the language is added, on
+`bots.lingo.why`. Seven answers — someone I love, a trip, living there, work, my family speaks it, studying it, just
+because — and not one of them is a country, a region or a kind of person: the same seven whichever language was
+picked. "My family speaks it" is there because people learning the language of their own grandparents are a large
+share of all learners and most courses write them out.
+
+**The box under the chips is worth more than the chips.** "My partner's mother is in Seville and I meet her in March"
+tells Lingo what a hundred taps could not. Both are optional, **Skip** is one tap and starts the course anyway, and
+backing out adds no language at all.
+
+Kept on the course as `why` (one of the codes in `types.ts` `WHY_CODES`) and `why_note` (their own words), migration
+**0105**. Both reach Lingo's chat through `digest.ts`, which is the point of asking: the one line in that block that
+says why any of this is happening, so the conversation is about the thing they came for. A later write that says
+nothing about it never wipes what they said.
+
+**Why it is a screen and not the bot's first question:** it is vocabulary 1, so it needs no app release, and it is one
+tap instead of a typed sentence. The bot can go deeper afterwards, and it has their own words to go on.
+
 ## 15. The screens
 
-`experience/bots/screens/bots/lingoPage.ts`, four of them, **vocabulary 1** — every node is one each installed build
+`experience/bots/screens/bots/lingoPage.ts`, five of them, **vocabulary 1** — every node is one each installed build
 already draws, so none of this needs a release. A lesson must never be the screen that answers "Open X0 again",
 which is what the gate sends a client missing a block.
 
 | | |
 | --- | --- |
-| `bots.lingo` | the territory: a card per language with its own meter, counts, Continue and a bin; Add a language beside them |
+| `bots.lingo` | the territory: Lingo alive along the top, then a card per language with its own meter, counts, Continue and a bin; Add a language beside them |
 | `bots.lingo.set` | a set, one exercise at a time, with the verdict under it |
 | `bots.lingo.add` | the picker: search at the top, the suggested few, then all of them |
+| `bots.lingo.why` | what the language is for, asked once as it is added; Skip is one tap |
 | `bots.lingo.leave` | stop learning one: a box for why, and **Just clean up** |
 
 Lingo's tile in the bots list opens the first of these: `ids.ts` `botRoute` now has `lingo` among the built-ins with

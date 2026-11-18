@@ -48,7 +48,7 @@ export function keybotCard(ctx: BotsCtx): Node[] {
         props: {
           place: "home", eyebrow: "Keylessbord", title: "Turn on", titleEm: "Accessibility",
           lede: "So Keylessbord can put your words where your cursor is, in any app.",
-          on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
+          on: "Allowed", allow: "Allow", allowAgain: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
           rows: [{ key: "read", title: "Accessibility", sub: "Lets Keylessbord type what you said into the app you're in." }],
         },
       });

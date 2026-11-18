@@ -710,6 +710,10 @@ const EnvSchema = z.object({
    * compare a run with and without the round (the e2e harness can).
    */
   CODE_PROVE_FIX: bool(true),
+  /** A model of another family reads a plain job's diff before the pull request is marked ready (code/agent/review.ts). */
+  CODE_JOB_REVIEW: bool(true),
+  /** Scheduled code work: a project's own standing job, started by the clock (code/schedule, docs/code-schedule.md). */
+  CODE_SCHEDULES: bool(false),
   CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid", "transcript"]).optional()),
   /**
    * HOW A NEW CODE JOB IS WORKED WHEN NEITHER THE JOB NOR ITS PROJECT SAYS (src/code/agent/orchestrator.ts enqueue, docs/code-agent.md): "freeform" (the
@@ -804,6 +808,15 @@ const EnvSchema = z.object({
   MEET_SPEAKING_VARIANT: z.enum(["web", "web_4_core"]).default("web_4_core"),
   /** How many minutes of meetings one person's bot may sit in, in any 24 hours (Recall bills by the minute). */
   MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
+  /**
+   * THE BRIEF (src/brief, docs/brief.md): the document the bot makes while a meeting runs — the overview, what it drew, what
+   * was said, who does what, what is still open — from the same building blocks a bot draws under its words. Off until the
+   * owner turns it on; with it off a meeting keeps the notes it always had and nothing else changes. Migration 0095 keeps a
+   * brief between restarts; without it the document is the server's memory only. One model call a pass, on MEET_MODEL.
+   */
+  MEETING_BRIEF: bool(false),
+  /** How often the document is written while the meeting goes on (the notes pass's own cadence by default). */
+  MEETING_BRIEF_EVERY_S: z.coerce.number().int().min(30).max(900).default(180),
   /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
   MEET_LANGUAGE: z.string().trim().default("en"),
   /**
@@ -840,6 +853,24 @@ const EnvSchema = z.object({
    */
   BOTS: bool(false),
   /**
+   * A SWITCH PER BOT: the slugs NOT to list, comma separated ("travel,talk"). Empty (the default) lists every bot
+   * that is otherwise available, which is what the server does today.
+   *
+   * WHY A DENY LIST AND NOT AN ALLOW LIST. The connectors' own list (CONNECTORS_ENABLED_IDS) is the other way round
+   * because every app there ships disabled. Bots do not: Xode, Keylessbord, Plan Ease, Travel and Talk are listed the
+   * moment BOTS is on. An allow list would mean that naming one bot to switch it on silently switched off the four
+   * that were already there — the footgun being avoided here is a person turning the cinema on and losing Xode.
+   *
+   * It is the LAST word, not the only one. A bot still has to be available before this can hide it: the meeting bot
+   * needs RECALL_API_KEY, the mail bot its worker, the Oracle its own, and Lingo and the cinema their own switches.
+   * Those say "this is set up"; this says "and I want it listed". Naming a bot that is not available does nothing,
+   * and an unknown slug does nothing.
+   *
+   * HIDING A BOT DOES NOT FREE ITS NAME. A hidden slug is still reserved (RESERVED_SLUGS, isBuiltinSlug), so nobody
+   * can take "travel" while the Travel bot is off and collide with it the day it comes back.
+   */
+  BOTS_OFF: orDefault(""),
+  /**
    * LINGO, THE LANGUAGE BOT (src/lingo, docs/lingo.md): learning a language by talking rather than tapping. Off unless LINGO=true, and then it is
    * among the bots like any other. It needs no service of its own: the words come from the model, the voice from the server's own speech, and the
    * screens from node kinds the apps already draw, so turning it on needs no release. No language is built in; a course is a pair of tags.
@@ -866,16 +897,27 @@ const EnvSchema = z.object({
    * ear either way.
    */
   /**
-   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema.md): a scene as data, checked, written out as a Blender script, rendered
+   * THE CINEMA BOT'S 3D (src/cinema, docs/cinema-3d.md): a scene as data, checked, written out as a Blender script, rendered
    * where there is a Blender to run it, and looked at by a model that fixes what it sees. Off by default and WIRED TO
    * NOTHING yet: the loop is complete on its own, and the bot's own stages, progress and cards come after.
    *
    * CINEMA_BLENDER: the binary on this machine ("blender" on the path by default); none, and this machine renders nothing.
    * CINEMA_WORK: where a render's folder goes (the system's temporary place by default; a disk with room is better).
    * CINEMA_CAP_PAISE: the most the models may spend on one creation, over all its rounds.
+   *
+   * THE FILM HALF (src/cinema, docs/cinema.md): films made shot by shot — a director's script and shot list, a storyboard of stills, each
+   * shot animated by the video model that suits it, checked by eye and retaken, cut with voice-over, music and subtitles — and pictures.
+   * Every model is reached through OPENROUTER_API_KEY (its image and video APIs): nothing else to set up. ONE CINEMA SWITCH SERVES BOTH
+   * HALVES, because the 3D is a part of this bot and not a bot of its own. CINEMA_MEDIA_SECRET (SECRET: .env only) signs the links the
+   * apps open stills and films by; when not set a secret is made at each start (links are made fresh each time a screen is drawn, so
+   * nothing breaks). CINEMA_FILM_MAX_PAISE is the most one film may be agreed at, and CINEMA_DAILY_PAISE what one person may spend on
+   * films and pictures in a day (both on top of their plan's allowance). R2 keeps the films; needs BOTS=true to appear among the bots.
    */
   CINEMA: bool(false),
   CINEMA_USERS: orDefault(""),
+  CINEMA_MEDIA_SECRET: z.string().optional(),
+  CINEMA_FILM_MAX_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(150_000),
+  CINEMA_DAILY_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(300_000),
   CINEMA_BLENDER: orDefault("blender"),
   CINEMA_WORK: orDefault(""),
   CINEMA_CAP_PAISE: z.coerce.number().int().min(10).max(20_000).default(400),
@@ -1096,12 +1138,17 @@ const EnvSchema = z.object({
    * number of them times these (docs/front-door.md says how to size it).
    *
    * GUARD_GLOBAL_CONCURRENCY all people together (64). GUARD_USER_CONCURRENCY one person (3); GUARD_USER_CONCURRENCY_FREE one person on the
-   * free plan (1). A request over a limit waits in a queue: GUARD_QUEUE_MAX waiting in all (256), GUARD_QUEUE_PER_USER for one person (4),
-   * GUARD_QUEUE_WAIT_MS at most this long before it is answered 429 with Retry-After and its place in the queue (8,000).
+   * free plan, now THE SAME (3). A request over a limit waits in a queue: GUARD_QUEUE_MAX waiting in all (256), GUARD_QUEUE_PER_USER for one
+   * person (4), GUARD_QUEUE_WAIT_MS at most this long before it is answered 429 with Retry-After and its place in the queue (8,000).
+   *
+   * Why the free one is no longer tighter: while FREE_FOR_ALL is on, almost everybody is "free", and one request at a time made the app feel
+   * broken for them — a second tap while an answer was coming back was turned away. Paying still buys a place in the queue ahead of a free
+   * request (the limiter's priority, which is a separate thing), and abuse prevention still drops one account to a single slot on its own
+   * (src/guard/limiter.ts `perUserSlowed`). The setting stays so a loaded server can tighten the free plan again without a release.
    */
   GUARD_GLOBAL_CONCURRENCY: z.coerce.number().int().min(1).max(100_000).default(64),
   GUARD_USER_CONCURRENCY: z.coerce.number().int().min(1).max(1_000).default(3),
-  GUARD_USER_CONCURRENCY_FREE: z.coerce.number().int().min(1).max(1_000).default(1),
+  GUARD_USER_CONCURRENCY_FREE: z.coerce.number().int().min(1).max(1_000).default(3),
   GUARD_QUEUE_MAX: z.coerce.number().int().min(0).max(100_000).default(256),
   GUARD_QUEUE_PER_USER: z.coerce.number().int().min(0).max(1_000).default(4),
   GUARD_QUEUE_WAIT_MS: z.coerce.number().int().min(0).max(120_000).default(8000),
@@ -1124,22 +1171,35 @@ const EnvSchema = z.object({
   CODE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   /**
    * THE USAGE METER (src/you/usage.ts, limits.ts): what each plan may use, set by us, in US DOLLARS of what the use really costs us. The person
-   * never sees an amount: only how much of this stretch (or, on the free plan, this month) is used, and when it resets. Counted from the real
-   * records (Xode's jobs, every bot's answers, Keylessbord's dictations and rewrites: src/usage/cost.ts), which keep paise as they always
-   * have; dollars become paise at CODE_USD_INR, the same rate the brain's gateway turns OpenRouter's dollars into paise with, so the rate
-   * cancels out and a $4 stretch is $4 of what OpenRouter (and the speech engines) charged.
+   * never sees an amount: only how much of this month is used, and when it starts again. Counted from the real records (Xode's jobs, every
+   * bot's answers, Keylessbord's dictations and rewrites: src/usage/cost.ts), which keep paise as they always have; dollars become paise at
+   * CODE_USD_INR, the same rate the brain's gateway turns OpenRouter's dollars into paise with, so the rate cancels out and a $35 month is $35
+   * of what OpenRouter (and the speech engines) charged.
+   *
+   * ONE MONTH, ONE ALLOWANCE, SPENT WHENEVER. Every plan's month is the SUM of the amounts listed below, and it may be used on any day of the
+   * month in any order. The month was once cut into five windows ("stretches") that each had their own amount; that was a brake on runaway
+   * spending dressed up as a plan rule, and people who did a week's work in two days hit a wall they had paid nothing to deserve. The brake is
+   * now its own thing and is not a plan rule (USAGE_BURN_TIMES below).
    *
    *   USAGE_LIMITS               false: the meter is shown and nothing is refused
-   *   USAGE_FREE_MONTH_USD       the free plan's month, one allowance with no stretches ($3)
-   *   USAGE_LITE_STRETCHES_USD   Lite's month as its five stretches, in order ("4,8,6,10,7": $35); everyone's while FREE_FOR_ALL is on
-   *   USAGE_ELITE_STRETCHES_USD  Elite's five stretches ("50,70,80,100,150": $450)
+   *   USAGE_FREE_MONTH_USD       the free plan's month ($3)
+   *   USAGE_LITE_STRETCHES_USD   the amounts Lite's month is the sum of ("4,8,6,10,7": $35); everyone's while FREE_FOR_ALL is on
+   *   USAGE_ELITE_STRETCHES_USD  the amounts Elite's month is the sum of ("50,70,80,100,150": $450)
    *   PLAN_ELITE_PRODUCTS        the products that are Elite: the store product, and "elite" for Razorpay
-   *   USAGE_TIERS                a paid tier's own five stretches, by entitlement id: {"pro": "4,8,6,10,7"}; a tier not named is Lite's
-   *   USAGE_CARRY_OVER           what a stretch did not use carries into the next (off)
-   *   USAGE_NEAR                 from here "You've used most of this stretch" (0.8)
+   *   USAGE_TIERS                a paid tier's own amounts, by entitlement id: {"pro": "4,8,6,10,7"}; a tier not named is Lite's
+   *   USAGE_STRETCHES            bring the five windows back (off). The amounts above are then one window each, in order, as they were
+   *   USAGE_CARRY_OVER           with the windows on, what one did not use carries into the next (off); nothing to carry with one month
+   *   USAGE_NEAR                 from here "You've used most of this month" (0.8)
+   *   USAGE_BURN_TIMES           the burn brake: how many of the month's average hours one hour may spend (48); 0 switches it off
    *
-   * A plan's month is the sum of its stretches. The stretches keep their days (4, 5, 6 and 7 days, then the rest of the month); each may use
-   * its own amount, whatever its length. A list that is not five positive amounts stops the server at boot, with the setting named.
+   * The amounts keep their _STRETCHES_ names so that nothing has to be re-entered on a server that has them set, and so the way back is one
+   * setting and not a re-typing. A list that is not five positive amounts stops the server at boot, with the setting named.
+   *
+   * THE BURN BRAKE (USAGE_BURN_TIMES) is not a plan feature and is never advertised, drawn or sold: it is a ceiling on what ONE PERSON may
+   * spend in ONE HOUR, so that a loop with a bug cannot eat somebody's month in an afternoon. A month is about 720 hours, so the ceiling is
+   * `USAGE_BURN_TIMES / 720` of the month: at 48, a Lite hour may spend $2.33 and an Elite hour $30, which is roughly ten times what a heavy
+   * real hour costs, so no person working normally will ever meet it. Someone who does is told the server is busy, in the overload guard's own
+   * words — not that they have run out, which would be untrue, and with nothing to buy.
    *
    * What the speech engines and the voice cost us, which no engine reports per request (OpenRouter does: usage.cost), at their list prices:
    *   USAGE_STT_USD_PER_MINUTE   a minute of audio heard, per engine, merged over the defaults (src/usage/cost.ts STT_USD_PER_MINUTE):
@@ -1152,10 +1212,49 @@ const EnvSchema = z.object({
   USAGE_ELITE_STRETCHES_USD: stretchesUsd("50,70,80,100,150"),
   PLAN_ELITE_PRODUCTS: z.string().default("x0_elite_monthly,elite"),
   USAGE_TIERS: z.string().optional(),
+  USAGE_STRETCHES: bool(false),
   USAGE_CARRY_OVER: bool(false),
   USAGE_NEAR: z.coerce.number().min(0.1).max(1).default(0.8),
+  USAGE_BURN_TIMES: z.coerce.number().min(0).max(100_000).default(48),
   USAGE_STT_USD_PER_MINUTE: z.string().optional(),
   USAGE_TTS_USD_PER_1M_CHARS: z.coerce.number().min(0).max(10_000).default(15),
+  /**
+   * SHARING A PLAN WITH FRIENDS AND FAMILY (src/billing/planShare.ts, docs/plan-share.md). Launch dark: **off**.
+   *
+   * A plan is a month's allowance on one account, and sharing it means other accounts draw on that SAME allowance: one shared pot,
+   * no per-seat price and no seat count, because the allowance itself is the ceiling. Sharing with thirty people cannot cost more
+   * than sharing with one; it only empties sooner. Someone's own live plan always wins — only a person with none draws on another's.
+   *
+   *   PLAN_SHARE        the switch. Off: `payerFor` always answers "themselves", every share route refuses politely, and nothing
+   *                     anywhere changes for anyone
+   *   PLAN_SHARE_USERS  a comma-separated list of account ids. Set, only those accounts may share, be shared with or ask, even with
+   *                     PLAN_SHARE on. Empty (the default) means the switch alone decides
+   *
+   * Nothing here is a price or a product: no seat is sold, so this is not a plan tier and nothing about it belongs on a plans screen.
+   */
+  PLAN_SHARE: bool(false),
+  PLAN_SHARE_USERS: orDefault(""),
+  /**
+   * A BROWSER THAT BELONGS TO THE PERSON (src/sites, docs/sites.md): signed in once, kept signed in, and read to
+   * answer "where is my order" for a site that has no API and never will.
+   *
+   *   CLOUD_BROWSER        off by default. With it off there is no new screen, no new row, and nothing is kept
+   *   CLOUD_BROWSER_USERS  a comma-separated list of account ids; set, only those accounts may use it
+   *   CLOUD_BROWSER_SITES  the sites it may be used on at all, comma-separated hosts. EMPTY MEANS NONE: a browser
+   *                        that holds somebody's signed-in session is not something to point at the whole web on a
+   *                        default, so a site is named here before anyone can add it
+   *   CLOUD_BROWSER_WATCHES  how many things one person may have being watched at once (6)
+   *   CLOUD_BROWSER_EVERY_MIN  the least minutes between two looks at the same thing (20). A site that sees one look
+   *                        while a delivery is live reads as a person; the same site seeing a heartbeat all day
+   *                        reads as a robot, so this is a floor and the job may always wait longer
+   *
+   * It needs CONNECTOR_TOKEN_KEY: the session is kept the way a connector's token is, or it is not kept at all.
+   */
+  CLOUD_BROWSER: bool(false),
+  CLOUD_BROWSER_USERS: orDefault(""),
+  CLOUD_BROWSER_SITES: orDefault(""),
+  CLOUD_BROWSER_WATCHES: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(1).max(50).default(6)),
+  CLOUD_BROWSER_EVERY_MIN: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(5).max(1440).default(20)),
   /**
    * LEAD AND HELPERS (src/code/team, docs/code-team.md). A goal that is big (a plan over 12 files or 3 features, or one over several projects, or one the
    * person asked a team for) is split into parts with clear file ownership; helpers build the parts in parallel on their own branches, a model of
@@ -1571,8 +1670,10 @@ const EnvSchema = z.object({
    *                                answer is good, so turning THAT off to spare Android would take it from iPhone people too
    *   PERM_ARRIVAL_ANDROID         "Remind me when I get there" on Android. STAYS OFF until Play has approved the
    *                                background-location declaration AND an Android build carries TULMI_ANDROID_ARRIVAL
-   *   PERM_ARRIVAL_ANDROID_USERS   the account list for the stage between that build and the approval propagating: empty
-   *                                (the default) means the switch alone decides
+   *   PERM_ARRIVAL_ANDROID_USERS   an account list for a private test only; empty in production (the default), which means
+   *                                the switch alone decides. Play approves background location for the whole app at once,
+   *                                so there is no stage to hold back, and a list left in it hides the row from everyone
+   *                                not on it — the Play reviewer included
    */
   PERM_CALENDAR_READ_ANDROID: bool(false),
   PERM_MOTION_ANDROID: bool(false),
@@ -2185,6 +2286,26 @@ export function getConfig(): AppConfig {
   }
   if (env.CUSTOM_CONNECTORS && !env.CONNECTORS) {
     console.warn("[config] CUSTOM_CONNECTORS=true does nothing while CONNECTORS is off: nobody can add an app by link.");
+  }
+
+  /**
+   * THE REVIEW PAIR HAS TO BE TYPEABLE, and nothing used to check that.
+   *
+   * The code screen is the same one every person types an emailed code into: it takes a number pad, strips every
+   * character that is not a digit, and stops at auth.codeLength (6). So a REVIEW_CODE that is longer than six, or
+   * has a letter in it, cannot be entered at all — the reviewer types it, the app keeps nothing, and the screen sits
+   * there looking broken.
+   *
+   * That is exactly how an App Review rejection reads: "the app reverted to Enter the code page after entering demo
+   * code." It cost a submission once. The shape is checked here so it is caught in a deploy log instead.
+   */
+  const reviewPairSet = !!(env.REVIEW_EMAIL ?? "").trim() && !!(env.REVIEW_CODE ?? "").trim();
+  if (reviewPairSet && !/^\d{6}$/.test((env.REVIEW_CODE ?? "").trim())) {
+    console.warn("[config] REVIEW_CODE must be EXACTLY SIX DIGITS: the sign-in screen is a number pad that keeps six digits"
+      + " and nothing else, so App Review cannot type anything longer or with a letter in it, and sign-in silently fails.");
+  }
+  if (!reviewPairSet && ((env.REVIEW_EMAIL ?? "").trim() || (env.REVIEW_CODE ?? "").trim())) {
+    console.warn("[config] REVIEW_EMAIL and REVIEW_CODE must BOTH be set or neither: one alone does nothing and review cannot sign in.");
   }
 
   // A SearXNG address that is not an https address was dropped by the schema; say so, since it is a setting someone typed.

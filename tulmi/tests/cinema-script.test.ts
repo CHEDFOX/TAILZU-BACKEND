@@ -1,5 +1,5 @@
 /**
- * A SCENE AS THE SCRIPT THAT BUILDS IT (src/cinema/script.ts, docs/cinema.md):
+ * A SCENE AS THE SCRIPT THAT BUILDS IT (src/cinema/script.ts, docs/cinema-3d.md):
  *
  *   - the same scene is the same text, byte for byte, so a render can be cached and a change reads as a diff
  *   - nothing from the scene becomes a path, a flag or a line of its own: text is escaped, assets are looked up by name
@@ -13,8 +13,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-const { checkScene } = await import("../src/cinema/check.js");
-const { scriptFor } = await import("../src/cinema/script.js");
+const { checkScene } = await import("../src/cinema/scene/check.js");
+const { scriptFor } = await import("../src/cinema/scene/script.js");
 
 const SCENE = checkScene({
   look: { engine: "cycles", samples: 128, width: 1280, height: 960, sky: "studio" },
@@ -124,8 +124,8 @@ describe("a preview, and the real thing", () => {
 
 describe("a machine with no graphics card", () => {
   it("falls from Eevee to Cycles at run time, because only the machine knows what it has", async () => {
-    const { checkScene: check } = await import("../src/cinema/check.js");
-    const { scriptFor: write } = await import("../src/cinema/script.js");
+    const { checkScene: check } = await import("../src/cinema/scene/check.js");
+    const { scriptFor: write } = await import("../src/cinema/scene/script.js");
     const s = write(check({ look: { engine: "eevee", samples: 64 }, objects: [{ shape: "cube", size: 1 }] }).scene);
     expect(s).toContain("backend_type_get");
     expect(s).toContain('S.render.engine = "CYCLES"');

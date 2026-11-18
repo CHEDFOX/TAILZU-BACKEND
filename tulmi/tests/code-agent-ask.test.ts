@@ -137,11 +137,11 @@ describe("locating where a change belongs", () => {
 describe("a plan that needs a yes", () => {
   const risky = "In src/util.ts make slug() trim dashes, before the password reset link is built from it";
 
-  it("is sent to the person when the risk is high, and goes on only after they say yes through the approval book", async () => {
+  it("is sent to the person when they asked to see the plan, and goes on only after they say yes through the approval book", async () => {
     const r = await agentRig();
     r.json.on("work.plan", UTIL_PLAN);
     r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
-    const { job, branch } = await r.start(risky);
+    const { job, branch } = await r.start(risky, { planFirst: true });
     await r.orch.idle();
 
     let j = await r.jobNow(job.id);
@@ -178,7 +178,7 @@ describe("a plan that needs a yes", () => {
     const r = await agentRig();
     r.json.on("work.plan", UTIL_PLAN);
     r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
-    const { job } = await r.start(risky);
+    const { job } = await r.start(risky, { planFirst: true });
     await r.orch.idle();
     await expect(r.orch.deny("bob", job.id)).rejects.toMatchObject({ code: "not_found" });
     const denied = await r.orch.deny("alice", job.id);
@@ -194,7 +194,7 @@ describe("a plan that needs a yes", () => {
     const r = await agentRig();
     r.json.on("work.plan", UTIL_PLAN);
     r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
-    const { job } = await r.start(risky);
+    const { job } = await r.start(risky, { planFirst: true });
     await r.orch.idle();
     const first = (await r.orch.approve("alice", job.id)) as { approvalId: string };
     r.fake.clock.t += 11 * 60_000;

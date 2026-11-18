@@ -40,9 +40,12 @@ import { clockOf, dayKeyOf, dayWords, link, payRow, plural, taskRow } from "./sp
 type ShareBotSlug = (typeof SHARE_BOTS)[number];
 export interface FeedMessage {
   id: string; at: number;
-  from: { userId: string | null; name: string; you: boolean };
-  /** A message to one person: who. Shown as "To <name>" to its sender and to the admin; the recipient sees a normal message. */
-  to: { userId: string; name: string; you: boolean } | null;
+  /** `gone`: the sender is no longer here (their account was deleted, or they share no space with the viewer any more). The
+   *  message stays; the name is drawn faded, with a hint, and nothing about them opens. */
+  from: { userId: string | null; name: string; you: boolean; gone?: boolean };
+  /** A message to one person: who. Shown as "To <name>" to its sender and to the admin; the recipient sees a normal message.
+   *  `gone`: they are no longer here, so the line is faded, as their name over a message of their own is. */
+  to: { userId: string; name: string; you: boolean; gone?: boolean } | null;
   text: string;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>;
   /** `ownerName`: whose thing it is when the space's admin shared a member's ("" or absent: its sender's own). */
@@ -97,6 +100,22 @@ export const LINE = { width: 2, gap: 10 } as const;
 export const INDENT = LINE.width + LINE.gap;
 /** The small grey line over a message: who wrote it, or who it went to. Geist SemiBold 12/16, #8a8a8a. */
 export const overLine = (words: string): Node => text(words, { size: 12, weight: 600, lineHeight: 16, color: C.idle });
+/**
+ * SOMEONE NO LONGER HERE, over their message: the name faded (the same grey, the weight of plain words, so it reads as quieter than
+ * every other name) and one short hint beside it. The message itself stays exactly as it was.
+ *
+ * The same words for both cases the server reports as `gone` — an account that was deleted, and someone no longer connected to the
+ * viewer — because only one of them is a deletion and the app must never say an account went when it did not.
+ */
+export const GONE_HINT = "No longer here";
+/** How far a gone name is faded: the kit's own dimmed look (the share page dims a row you cannot pick the same way). */
+export const GONE_FADE = 0.55;
+export const goneLine = (name: string): Node => row([
+  text(name, { size: 12, weight: 600, lineHeight: 16, color: C.idle }),
+  text(`\u00b7 ${GONE_HINT}`, { size: 11, weight: 400, lineHeight: 16, color: C.idle }),
+], { gap: 4, alignItems: "center", opacity: GONE_FADE });
+/** The line's colour for someone no longer here: the same neutral grey their look goes to (personLook.ts goneLook). */
+export const GONE_COLOR = C.idle;
 /** Something over or under a message, set in to sit over its words: from the left for theirs, from the right for yours. */
 export const setIn = (n: Node, mine: boolean, onPress?: ActionRef): Node =>
   row([n], { ...(mine ? { paddingRight: INDENT, justifyContent: "flex-end" } : { paddingLeft: INDENT }), minHeight: 16 }, onPress);
@@ -132,7 +151,8 @@ const stopSharing = (f: FeedRead, t: NonNullable<FeedMessage["thing"]>): Node =>
 function thingParts(f: FeedRead, m: FeedMessage, t: NonNullable<FeedMessage["thing"]>): Node[] {
   const who = m.from.you ? "You" : m.from.name;
   return [
-    meta(`${who} shared${t.ownerName ? ` ${t.ownerName}'s` : ""}`, { size: 12 }),
+    // Who shared it. Someone no longer here is named faded here too, as over their message.
+    meta(`${who} shared${t.ownerName ? ` ${t.ownerName}'s` : ""}`, { size: 12, ...(m.from.gone ? { color: C.idle } : {}) }),
     text(t.title, { size: 15, weight: 600, lineHeight: 20 }),
     meta(`from ${t.botName}${t.line ? ` · ${t.line}` : ""}`, { size: 12 }),
     row([
@@ -150,9 +170,10 @@ function feedRow(ctx: BotsCtx, f: FeedRead, m: FeedMessage): Node {
   const mine = m.from.you;
   const desk = isDesk(ctx);
   const over: Node[] = [];
-  if (!mine) over.push(setIn(overLine(m.from.name), false));
+  // Someone no longer here: faded, with the hint, and nothing here opens them (nothing in the feed ever did).
+  if (!mine) over.push(setIn(m.from.gone ? goneLine(m.from.name) : overLine(m.from.name), false));
   // Only its sender and the space's admin are shown who it went to; to the one it went to, it is a message like any other.
-  if (m.to && (mine || f.space.admin) && !m.to.you) over.push(setIn(toLine(m.to.name), mine));
+  if (m.to && (mine || f.space.admin) && !m.to.you) over.push(setIn(m.to.gone ? goneLine(`To ${m.to.name}`) : toLine(m.to.name), mine));
   const parts: Node[] = [];
   if (m.thing) parts.push(...thingParts(f, m, m.thing));
   for (const x of m.files) parts.push(fileNode(x, desk, true));
@@ -163,7 +184,7 @@ function feedRow(ctx: BotsCtx, f: FeedRead, m: FeedMessage): Node {
     meta(clockOf(ctx, m.at), { size: 11 }),
     row([meta("Report", { size: 11 })], { minHeight: 20, paddingHorizontal: 4 }, open(SCREENS.report, { kind: "message", id: m.id, thread: f.space.threadId })),
   ], { gap: 6 }), mine);
-  const message = col([...over, lined(parts, mine, mine ? C.ink : colourOf(f.people, m.from.userId)), under], {
+  const message = col([...over, lined(parts, mine, mine ? C.ink : m.from.gone ? GONE_COLOR : colourOf(f.people, m.from.userId)), under], {
     gap: 4, maxWidth: desk ? "72%" : "84%", alignItems: mine ? "flex-end" : "flex-start", minWidth: 0,
   });
   return row([message], { justifyContent: mine ? "flex-end" : "flex-start" });

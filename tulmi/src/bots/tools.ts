@@ -39,6 +39,9 @@ import type { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
 import type { BotDef, PendingApproval } from "./types.js";
 import { EVERYDAY_TOOLS, everydayKindsFor, runEveryday } from "../everyday/tools.js";
+import { LINGO_TOOL, runLingoNote } from "../lingo/tool.js";
+import { LINGO_SLUG } from "./builtin.js";
+import { DISCOVER_TOOLS, discoverFor, runDiscover } from "../discover/tools.js";
 import type { Card } from "../everyday/index.js";
 
 /** Everything the tools of one request write down, for the answer. */
@@ -171,6 +174,15 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
     }
   }
 
+  // ---- Lingo: writing down a word they reached for, which is the only thing its chat can do that talking cannot.
+  // Its own bot and nobody else's: another bot handed this would be filing words into a course it knows nothing
+  // about. src/lingo/tool.ts says why it matters that this exists at all.
+  if (ports.lingo && bot.id === LINGO_SLUG) {
+    const port = ports.lingo;
+    defs.push(LINGO_TOOL);
+    handlers.set(LINGO_TOOL.name, (a) => runLingoNote(port, userId, a, Date.now()));
+  }
+
   // ---- the everyday tools: flights, hotels, currency, weather (src/everyday/tools.ts says who gets which)
   if (ports.everyday) {
     const e = ports.everyday;
@@ -179,6 +191,15 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
       const def = EVERYDAY_TOOLS[kind];
       defs.push({ ...def });
       handlers.set(def.name, (a) => runEveryday(e, userId, kind, a, (card) => { if (env.record.cards.length < 6) env.record.cards.push(card); }));
+    }
+  }
+
+  // ---- places worth keeping: our own catalogue (src/discover/tools.ts says who gets it)
+  if (ports.discover && discoverFor(bot)) {
+    const d = ports.discover;
+    for (const def of DISCOVER_TOOLS) {
+      defs.push({ ...def });
+      handlers.set(def.name, async (a) => runDiscover(d, userId, def.name, a, (card) => { if (env.record.cards.length < 6) env.record.cards.push(card); }));
     }
   }
 

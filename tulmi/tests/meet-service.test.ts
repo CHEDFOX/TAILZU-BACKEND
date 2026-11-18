@@ -42,6 +42,8 @@ function rig(o: {
   connected?: boolean; recall?: boolean; ai?: boolean; flushMs?: number; notesEveryMs?: number; owner?: string;
   /** Each person's first name, and whether each said yes to AI (in a space, the admin and the member are two people). */
   names?: Record<string, string>; aiFor?: (userId: string) => boolean; people?: MeetPeople;
+  /** false: no brief writer, as a server with MEETING_BRIEF off has none. */
+  brief?: boolean;
 } = {}) {
   const clock = { t: T0 };
   const store = new MemoryMeetStore();
@@ -85,11 +87,24 @@ function rig(o: {
       return { points: ["The budget stays at forty thousand"], actions: [{ who: "Ravi", what: "Send the deck" }] };
     },
   };
+  // The brief's writer (src/brief): what it was shown, and what it answers.
+  const briefs: Array<{ live: boolean; lines: number; parts: number }> = [];
+  const brief = {
+    reply: {
+      parts: [{ id: "overview", kind: "overview", title: "Budget", blocks: [{ type: "text", text: "They kept the budget.", style: "body" }] }],
+      say: "I've started the document.",
+    } as Record<string, unknown> | null,
+    async write(i: { live: boolean; lines: readonly unknown[]; brief: { parts: unknown[] } }) {
+      briefs.push({ live: i.live, lines: i.lines.length, parts: i.brief.parts.length });
+      return brief.reply;
+    },
+  };
   const spoken: string[] = [];
   const pushes: Array<{ userId: string; kind: string; key: string; vars: Record<string, string>; data: Record<string, string> }> = [];
   const organised: string[] = [];
   const deps: Deps = {
     store, recall: o.recall === false ? null : recall, brain, stage,
+    ...(o.brief === false ? {} : { brief }),
     tts: async (text) => { spoken.push(text); return { audio: Buffer.from("mp3 bytes"), contentType: "audio/mpeg" }; },
     notify: async (userId, msg) => { pushes.push({ userId, ...msg }); },
     ownerName: async (userId) => o.names?.[userId] ?? o.owner ?? "Aanya",
@@ -105,7 +120,7 @@ function rig(o: {
     ...(o.people ? { people: o.people } : {}),
   };
   const svc = new MeetService(deps);
-  return { svc, again: () => new MeetService(deps), deps, store, calls, rc, st, asked, noted, br, spoken, pushes, organised, clock };
+  return { svc, again: () => new MeetService(deps), deps, store, calls, rc, st, asked, noted, br, brief, briefs, spoken, pushes, organised, clock };
 }
 type Rig = ReturnType<typeof rig>;
 
@@ -113,7 +128,7 @@ type Rig = ReturnType<typeof rig>;
 const row = (o: Partial<Meeting> = {}): Meeting => ({
   id: randomUUID(), userId: USER, botId: null, tokenHash: randomUUID(), url: "https://meet.google.com/xyz-abcd-xyz", platform: "google_meet",
   title: "Earlier", status: "done", voice: false, source: "link", eventKey: null, joinAt: null, startedAt: null, endedAt: null, noteId: null,
-  liveNotes: null, participants: [], error: null, createdAt: T0, updatedAt: T0, spaceId: null, byId: null, ...o,
+  liveNotes: null, brief: null, participants: [], error: null, createdAt: T0, updatedAt: T0, spaceId: null, byId: null, ...o,
 });
 
 const tokenOf = (i: BotInput): string => /\/v1\/meet\/live\/([A-Za-z0-9_-]+)\/$/.exec(i.liveUrl)![1]!;
@@ -604,6 +619,58 @@ describe("the notes so far", () => {
       points: ["The budget stays at forty thousand"], actions: [{ who: "Ravi", what: "Send the deck" }], at: T0,
     });
     expect(r.noted).toEqual([{ lines: 8, title: "Budget review" }]);
+  });
+});
+
+describe("the brief: the document the bot makes while the meeting runs", () => {
+  it("is written beside the notes, kept on the row, and its one line goes to the call's chat", async () => {
+    const r = rig({ notesEveryMs: 15 });
+    const { id, token } = await inCall(r);
+    for (let i = 0; i < 8; i++) await r.svc.onLive(token, line(ASHA, `point number ${i}`));
+    await vi.waitFor(async () => expect((await r.store.get(id))!.brief).not.toBeNull());
+    await r.svc.idle();
+    const brief = (await r.store.get(id))!.brief!;
+    expect(brief.v).toBe(1);
+    expect(brief.parts.map((p) => p.id)).toEqual(["overview"]);
+    expect(brief.parts[0]!.blocks).toEqual([{ type: "text", text: "They kept the budget.", style: "body" }]);
+    // It was shown the meeting so far and the document as it stood (empty, the first time).
+    expect(r.briefs[0]).toEqual({ live: true, lines: 8, parts: 0 });
+    // And it said its one line in the call, where the people are.
+    expect(r.calls.chat.map((c) => c.message)).toContain("I've started the document.");
+  });
+
+  it("has a last pass once the meeting is over, told the meeting has ended", async () => {
+    const r = rig({ notesEveryMs: 3_600_000 });
+    const { id, token } = await inCall(r);
+    await r.svc.onLive(token, line(ASHA, "we are done here"));
+    await r.svc.onStatus(status("bot.call_ended", "bot-1", id));
+    await r.svc.idle();
+    expect(r.briefs.at(-1)).toMatchObject({ live: false });
+    expect((await r.store.get(id))!.brief!.parts).toHaveLength(1);
+    // Nothing it says on the last pass goes to a call nobody is in.
+    expect(r.calls.chat.map((c) => c.message)).not.toContain("I've started the document.");
+  });
+
+  it("a pass that fails leaves the document as it was, and the meeting carries on", async () => {
+    const r = rig({ notesEveryMs: 15 });
+    const { id, token } = await inCall(r);
+    r.brief.write = async () => { throw new Error("the model is down"); };
+    for (let i = 0; i < 8; i++) await r.svc.onLive(token, line(ASHA, `point ${i}`));
+    await new Promise((res) => setTimeout(res, 60));
+    await r.svc.idle();
+    expect((await r.store.get(id))!.brief).toBeNull();
+    // The notes, which do not depend on it, were still written.
+    expect((await r.store.get(id))!.liveNotes).not.toBeNull();
+  });
+
+  it("a server with it switched off writes none, and nothing else changes", async () => {
+    const r = rig({ notesEveryMs: 15, brief: false });
+    const { id, token } = await inCall(r);
+    for (let i = 0; i < 8; i++) await r.svc.onLive(token, line(ASHA, `point ${i}`));
+    await vi.waitFor(async () => expect((await r.store.get(id))!.liveNotes).not.toBeNull());
+    await r.svc.idle();
+    expect((await r.store.get(id))!.brief).toBeNull();
+    expect(r.briefs).toEqual([]);
   });
 });
 

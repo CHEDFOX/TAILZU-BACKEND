@@ -1,5 +1,5 @@
 /**
- * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE, THE MAIL BOT AND THE MEETING BOT WHERE THEIR SERVICES ARE SET UP), IN THE SAME FORMAT AS A
+ * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE, THE MAIL BOT, THE MEETING BOT AND THE CINEMA BOT WHERE THEY ARE SET UP), IN THE SAME FORMAT AS A
  * BOT A PERSON MAKES.
  *
  * Everything is a bot. These four are defined in code (ownerId null, nobody can change or delete them) and every person has them. The
@@ -18,6 +18,10 @@
  * and out loud; its chat here runs the usual loop with their meetings as its knowledge (meet/digest.ts). Its name is a placeholder too. It is
  * listed only where RECALL_API_KEY is set.
  *
+ * The cinema bot (src/cinema, docs/cinema.md) makes films shot by shot and pictures, with every model reached through OpenRouter; its page is
+ * where films are made, and its chat runs the usual loop with their films and pictures as its knowledge (cinema/digest.ts). It is listed only
+ * where CINEMA=true.
+ *
  * ONE COLOUR EACH, from the natural palette, and this file is where a bot's colour is decided. experience/bots/palette.ts
  * turns the name into a hex and used to carry its own copy of these four, which disagreed with this file for as long as both
  * existed; it now reads them from here, so there is one answer to what colour a bot is.
@@ -26,6 +30,7 @@
  * looks like any bot somebody made. `ash` is the neutral for a built-in that wants one.
  */
 import { getConfig } from "../config.js";
+import { CINEMA_SLUG } from "../cinema/types.js";
 import { MEET_SLUG } from "../meet/types.js";
 import { PALETTE, type BotDef, type BotSkills } from "./types.js";
 
@@ -38,6 +43,7 @@ export const CODE_SLUG = "code";
 
 /** What each is for, in a line: the front door picks a bot by it. */
 const PURPOSE = {
+  talk: "Just talk to it: questions, ideas, writing, working something out, and it looks things up when the answer has to be current.",
   code: "Reads your projects, answers questions about the code, and changes it through pull requests.",
   keybot: "Writes, rewrites and replies in your own voice, in any language you mix.",
   plan: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.",
@@ -46,6 +52,7 @@ const PURPOSE = {
   mail: "Keeps your business's email: sorts what arrives, drafts the replies in your voice, and tells you what needs you.",
   meet: "Joins your video calls: takes the notes, answers what people ask in the chat and out loud, and turns what was agreed into your to-dos.",
   lingo: "Teaches you a language by talking with you, and brings each word back exactly when you are about to forget it.",
+  cinema: "Makes films and videos shot by shot from your idea, and pictures: posters, product shots, portraits and logos.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -100,6 +107,37 @@ const DEFS: readonly BotDef[] = [
     skills: skills({ web: true, research: true, artifacts: true, connectors: ["maps", "booking"] }),
     knowledge: [], tone: "warm and concrete", visibility: "private", budgets: { perRequestPaise: 300, dailyPaise: 1000 },
   },
+  {
+    // THE ONE THAT IS NOT A SPECIALIST. Every other built-in is for a job — code, a trip, a calendar, a film — and a
+    // person who just wants to ask something had nowhere to go. This is that place, and it is deliberately the
+    // plainest bot here: no service of its own, no store, no tick, no migration. It is the chat loop
+    // (botsBots/chat.ts) and the role bot_run, which is all a conversation needs.
+    //
+    // Slate, a neutral of its own: the bot that is not about one thing should not borrow a specialist's colour, and
+    // the other two neutrals were taken (stone may not ship, ash is Lingo's).
+    //
+    // NOT `tailzu`: that slug is X0 ITSELF, the product speaking in its own name — palette.ts gives it the app's ink
+    // and its own mark, and live.ts reads it back as "X0" on an approval that came from no bot. Taking it for a bot
+    // would have put a bot's face on the app's own voice. Not `chat` either: that is a live route segment under the
+    // bots area, the very thing RESERVED_SLUGS exists to keep clear.
+    //
+    // `talk` is free of both, and the NAME is a working one: the bots are to be named together, and until BOTS is
+    // switched on there is no history keyed to this slug, so renaming it costs nothing. After that it does.
+    id: "talk", ownerId: null, slug: "talk", name: "Talk", colour: "slate",
+    purpose: PURPOSE.talk,
+    principles: [
+      "Answer what was actually asked, in the language it was asked in.",
+      "Short by default. Go long only where the length is the answer.",
+      "Say when you do not know, and say which part you looked up rather than knew.",
+      "Never claim to have done a thing you cannot do here: you talk, you search, and you read what they attach.",
+      "No preamble and no summary of what you are about to say. Begin with the answer.",
+    ],
+    // The web, so an answer can be current, and files, so a thing they attach can be read. Nothing else: artifacts,
+    // Xode and the researched answer are other bots' work, and a general chat that quietly did all of it would be
+    // slower and dearer at every message for the few that need it.
+    skills: skills({ web: true, files: true }),
+    knowledge: [], tone: "plain and warm", visibility: "private", budgets: { perRequestPaise: 200, dailyPaise: 1000 },
+  },
 ];
 
 const ORACLE: BotDef = {
@@ -144,7 +182,8 @@ const LINGO: BotDef = {
     "Never say a word is learned until they have said it out loud.",
     "Their own words, the ones they reached for, come before anything off a list.",
   ],
-  // Its words, its scheduling and its marking are its own (src/lingo): no tools here. Its chat reads their course.
+  // Its scheduling and its marking are its own (src/lingo) and no tool touches them. Its chat READS the course
+  // (lingo/digest.ts) and has exactly one thing it can do to it: write down a word they reached for (lingo/tool.ts).
   skills: skills({}),
   knowledge: [], tone: "patient, warm, and never sarcastic about a mistake", visibility: "private",
   budgets: { perRequestPaise: 200, dailyPaise: 2000 },
@@ -170,6 +209,34 @@ const MEET: BotDef = {
 export function lingoOn(): boolean {
   try {
     return Boolean(getConfig().LINGO);
+  } catch {
+    return false;
+  }
+}
+
+export { CINEMA_SLUG };
+
+const CINEMA: BotDef = {
+  // Plum: the one natural tone no other built-in wears, and the right one for a cinema - the velvet of the hall, not the grey every
+  // bot wears when nobody has chosen for it (palette.ts PALETTE_HEX; stone is the fallback).
+  id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Cinema", colour: "plum",
+  purpose: PURPOSE.cinema,
+  principles: [
+    "Answer from their own films and pictures; never invent a shot or a detail.",
+    "Say first what is waiting for them: a script, a storyboard, a shot.",
+    "Never say a film was made or approved: that is done on the cinema page, by them.",
+    "To make or change a film or a picture, point them to the cinema page.",
+    "Never name the AI models or services behind a film or a picture, nor what anything costs.",
+  ],
+  // Its films are its own service's (src/cinema): no tools here; the chat reads their films and pictures (cinema/digest.ts).
+  skills: skills({}),
+  knowledge: [], tone: "warm and concrete", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
+};
+
+/** The cinema bot is listed only where it is switched on. */
+export function cinemaOn(): boolean {
+  try {
+    return getConfig().CINEMA;
   } catch {
     return false;
   }
@@ -204,14 +271,38 @@ export function oracleOn(): boolean {
   }
 }
 
-const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : [])];
+/**
+ * A SWITCH PER BOT (config BOTS_OFF): the slugs not to list. The LAST word, after each bot's own availability —
+ * a bot has to be set up before this can hide it, and hiding one does not free its name (isBuiltinSlug below is
+ * deliberately not filtered, so nobody can take "travel" while the Travel bot is off).
+ *
+ * Read here, in the ONE place every listing goes through, so a built-in added later is covered by it without
+ * anybody having to remember. Config can throw where there is none; an unreadable switch hides nothing.
+ */
+function hidden(): ReadonlySet<string> {
+  try {
+    return new Set(getConfig().BOTS_OFF.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean));
+  } catch {
+    return new Set();
+  }
+}
+
+const defs = (): readonly BotDef[] => {
+  const off = hidden();
+  return [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [CINEMA] : [])]
+    .filter((d) => !off.has(d.slug));
+};
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
   return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
 }
 
-export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || slug === LINGO.slug || DEFS.some((d) => d.slug === slug);
+/**
+ * NOT filtered by BOTS_OFF, on purpose: this is what reserves the NAME, and a bot that is switched off must keep its
+ * name or somebody takes it and collides with it the day it is switched back on.
+ */
+export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || slug === LINGO.slug || slug === CINEMA.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
   return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;

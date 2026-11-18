@@ -20,12 +20,14 @@
  */
 import { getConfig } from "../../config.js";
 import { BrowserEngine, rendererFrom, type Renderer } from "./engine.js";
+import type { RenderOptions, VisitOptions, VisitedPage } from "./types.js";
 import { findChrome } from "./chrome.js";
 import { cloudflareRendererFromConfig } from "./cloudflare.js";
 
 export { BrowserEngine, BrowserError, rendererFrom } from "./engine.js";
 export type { RenderedPage, RenderOptions, Renderer } from "./engine.js";
 export type { ShotOptions, Screenshotter } from "./types.js";
+export type { SiteState, VisitOptions, VisitedPage } from "./types.js";
 export { findChrome } from "./chrome.js";
 
 let engine: BrowserEngine | null = null;
@@ -54,3 +56,43 @@ export function getRenderer(): Renderer | null {
   return rendererFrom(engine);
 }
 
+/**
+ * THE VISITOR: opens a page AS SOMEBODY and hands the session back (src/sites, docs/sites.md). Null when this server has
+ * no Chrome of its own.
+ *
+ * Only the local engine can do this. Cloudflare's Browser Rendering renders a page and gives back HTML; it cannot be
+ * handed a person's cookies and asked for the ones that came back, which is the whole of what a signed-in visit is. So a
+ * server on WEB_BROWSER=cloudflare has no cloud browser, and says so rather than quietly reading pages as a stranger —
+ * which would answer "please sign in" for every watch and look like a bug.
+ */
+/**
+ * THE HOLDER: a page kept open while a person looks at it (src/sites/panel.ts). Local Chrome only, for the same
+ * reason the visitor is — a rendering service hands back HTML and cannot be tapped on.
+ */
+export function getHolder(): BrowserEngine["hold"] | null {
+  const cfg = getConfig();
+  if (cfg.WEB_BROWSER !== "local") return null;
+  if (!getRenderer()) return null;
+  const e = engine;
+  return e ? (o: Parameters<BrowserEngine["hold"]>[0]) => e.hold(o) : null;
+}
+
+export function getVisitor(): ((o: VisitOptions) => Promise<VisitedPage>) | null {
+  const cfg = getConfig();
+  if (cfg.WEB_BROWSER !== "local") return null;
+  // Share the one engine with the reader: same Chrome, same three places, same queue.
+  if (!getRenderer()) return null;
+  const e = engine;
+  return e ? (o: VisitOptions) => e.visit(o) : null;
+}
+
+/**
+ * The server's own browser as a MEASURER (code/agent/probe.ts): it draws a page at a given size, can tell it the person has asked for less motion,
+ * and runs one expression in it. Only the real Chrome can do this — Cloudflare's content endpoint returns HTML and runs nothing of ours — so this
+ * is null wherever WEB_BROWSER is not "local", and the round that wanted it simply keeps its pictures and the free floor.
+ */
+export function getMeasurer(): ((url: string, o: RenderOptions) => Promise<{ value?: unknown }>) | null {
+  if (getConfig().WEB_BROWSER !== "local") return null;
+  const render = getRenderer();
+  return render ? (url, o) => render(url, o) : null;
+}

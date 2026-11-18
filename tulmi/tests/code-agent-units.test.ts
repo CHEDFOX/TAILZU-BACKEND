@@ -23,7 +23,7 @@ vi.hoisted(() => {
 });
 noNetwork();
 
-const { Changeset, Refused, checkedText, editablePath, replaceOnce, secretKinds } = await import("../src/code/agent/changeset.js");
+const { Changeset, Refused, checkedText, editablePath, replaceEvery, replaceOnce, secretKinds } = await import("../src/code/agent/changeset.js");
 const { CHECK_MARK, checkCommands, failingNames, parseMarkers, resultsOf, wrapCheck } = await import("../src/code/agent/checks.js");
 const { buildContext, capWrapped, dataBlock, digestOf, fold, projectContext, renderResult } = await import("../src/code/agent/context.js");
 const { stableBlock } = await import("../src/principles/index.js");
@@ -96,6 +96,14 @@ describe("replacing text exactly once", () => {
     expect(() => replaceOnce("f.ts", text, "", "x")).toThrow(/old is needed/);
     expect(() => replaceOnce("f.ts", text, "line one", undefined)).toThrow(/new is needed/);
     expect(() => replaceOnce("f.ts", text, "line one", "line one")).toThrow(/nothing would change/);
+  });
+
+  it("points a model that meant every copy at replace_all, which changes them all and says how many", () => {
+    expect(() => replaceOnce("f.ts", text, "return a + b;", "x")).toThrow(/or say replace_all to change every one/);
+    expect(replaceEvery("f.ts", text, "a + b", "a - b")).toEqual({ text: "line one\nreturn a - b;\nline three\nreturn a - b;\n", count: 2 });
+    expect(replaceEvery("f.ts", "one\n", "one", "two")).toEqual({ text: "two\n", count: 1 });
+    expect(() => replaceEvery("f.ts", text, "return a - b;", "x")).toThrow(/That text is not in f\.ts/);
+    expect(() => replaceEvery("f.ts", text, "", "x")).toThrow(/old is needed/);
   });
 });
 
@@ -388,6 +396,28 @@ describe("the last six results", () => {
     expect(task).toMatch(/The checks FAILED on your last attempt \(fix round 0 of 3\)[\s\S]*<tool_data tool="checks">\nFAIL src\/util\.test\.ts > slug/);
     expect(ctx.messages[2]).toMatchObject({ role: "assistant", content: null, tool_calls: [{ id: "call_1", name: "read_file" }] });
     expect(ctx.messages[3]).toMatchObject({ role: "tool", tool_call_id: "call_1" });
+  });
+
+  it("carry the floor only for work on a page people look at, and never a word of it otherwise (floor.ts)", () => {
+    const plain = state();
+    plain.plan = { steps: [{ n: 1, do: "Trim the dashes", files: [{ path: "src/util.ts", action: "edit" }] }] } as never;
+    const task = (x: AgentState, staged: string[] = []) => String(buildContext({ state: x, project: "", tools: AGENT_TOOLS, stagedLines: staged, checks: [] }).messages[1]!.content);
+    expect(task(plain)).not.toContain("clear the floor");
+
+    // The plan names a page: the floor rides with the task from the first turn.
+    const page = state();
+    page.plan = { steps: [{ n: 1, do: "Show the price", files: [{ path: "src/components/PricingCard.tsx", action: "edit" }] }] } as never;
+    expect(task(page)).toContain("clear the floor");
+
+    // A free-form job with no plan: where the index points is enough.
+    const free = state();
+    free.mode = "freeform";
+    free.work.hints = "src/pages/Pricing.tsx: the pricing page\nsrc/util.ts: string helpers";
+    expect(task(free)).toContain("clear the floor");
+
+    // AND IT DOES NOT MOVE WITH WHAT IS STAGED: a block that appeared halfway through would cost the job its cached prefix.
+    expect(task(plain, ["src/components/Card.tsx (added)"])).not.toContain("clear the floor");
+    expect(task(page, [])).toBe(task(page, ["src/components/PricingCard.tsx (changed)"]).replace("\n\nStaged so far (not committed): src/components/PricingCard.tsx (changed)", ""));
   });
 });
 
@@ -829,8 +859,11 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     const { budgetShortfall } = await import("../src/code/agent/loop.js");
     const spent = budgetShortfall({ spent: 250, budget: 250 }, 0);
     expect(spent).toMatchObject({ kind: "spent" });
-    expect(spent.words).toBe("This job used what it was given of this stretch before the work was finished.");
-    expect(spent.ask).toBe("This job has used a lot of this stretch.");
+    // One month, one allowance: "this month" is what every plan hears now (src/you/span.ts), and the five windows are the
+    // caller's to name when USAGE_STRETCHES puts them back.
+    expect(spent.words).toBe("This job used what it was given of this month before the work was finished.");
+    expect(spent.ask).toBe("This job has used a lot of this month.");
+    expect(budgetShortfall({ spent: 250, budget: 250 }, 0, "this stretch").ask).toBe("This job has used a lot of this stretch.");
     expect(budgetShortfall({ spent: 300, budget: 250 }, 120).kind).toBe("spent");
   });
 
@@ -840,7 +873,7 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     expect(r).toMatchObject({ kind: "short", needPaise: 330, leftPaise: 247 });
     expect(r.words).toBe("The next step needs more than this job has left, so I stopped before the work was finished.");
     expect(r.words).not.toContain("used what it was given");
-    expect(r.ask).toBe("This job's next step needs more of this stretch.");
+    expect(r.ask).toBe("This job's next step needs more of this month.");
   });
 
   it("does not invent a number it does not have", async () => {

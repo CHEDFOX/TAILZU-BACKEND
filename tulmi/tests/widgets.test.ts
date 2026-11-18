@@ -47,6 +47,8 @@ const AREA = "/v1/botsapp/bots";
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const JOB = "job-1111";
 const CT = "ctask-1";
+/** One ask to be put on someone's plan (plan_share_asks.id is a uuid). */
+const ASK = "aaaaaaaa-1111-4111-8111-111111111111";
 
 type Flags = Record<string, unknown>;
 
@@ -401,8 +403,11 @@ describe("item ids", () => {
     for (const i of [
       { kind: "job", jobId: "j-1", q: "0123abcd" }, { kind: "task", taskId: "t1", approvalId: null }, { kind: "task", taskId: "t1", approvalId: "a1" },
       { kind: "stask", spaceId: "s1", taskId: "t1" }, { kind: "thread", threadId: "th1" }, { kind: "item", itemId: "i1" }, { kind: "msg", threadId: "th", messageId: "m" },
+      // One ask to be put on someone's plan: its id can only be an ask's, and can only mean that one ask (billing/planShareActs.ts).
+      { kind: "psa", askId: ASK },
     ] as const) expect(parseItem(itemId(i))).toEqual(i);
-    for (const bad of ["", "job:j1", "job:j1:XYZ", "stask:s1", "thread:a:b", "x:y", "task:a/b", "task:a:b:c", 42, "task:" + "a".repeat(300)]) expect(parseItem(bad)).toBeNull();
+    for (const bad of ["", "job:j1", "job:j1:XYZ", "stask:s1", "thread:a:b", "x:y", "task:a/b", "task:a:b:c", 42, "task:" + "a".repeat(300),
+      "psa:", "psa:not-a-uuid", `psa:${ASK}:1`, `psa:${ASK.toUpperCase()}`]) expect(parseItem(bad)).toBeNull();
   });
   it("a push carries the item its buttons answer", () => {
     expect(pushItemOf("space_task", { spaceId: "s1", taskId: "t1" })).toBe("stask:s1:t1");
@@ -410,6 +415,13 @@ describe("item ids", () => {
     expect(pushItemOf("approval", { taskId: "t9" })).toBe("task:t9");
     expect(pushItemOf("streak", {})).toBeNull();
     expect(pushItemOf("space_message", { threadId: "../x" })).toBeNull();
+    // A plan ask's buttons answer that one ask, whether the sender names the item or only the ask it is about.
+    expect(pushItemOf("plan_share_ask", { ask: ASK, item: `psa:${ASK}` })).toBe(`psa:${ASK}`);
+    expect(pushItemOf("plan_share_ask", { ask: ASK })).toBe(`psa:${ASK}`);
+    expect(pushItemOf("plan_share_ask", { ask: "not-a-uuid" })).toBeNull();
+    expect(pushItemOf("plan_share_ask", { item: `pt:${ASK}`, ask: ASK })).toBeNull();
+    // Being put on a plan is a plain notification: nothing to answer.
+    expect(pushItemOf("plan_share_on", { ask: ASK })).toBeNull();
   });
 });
 
@@ -451,6 +463,13 @@ describe("a notification's buttons", async () => {
     ]);
     // The words never ride along with a message's push.
     expect(sent[1]!.body).toBe("Sam sent a message");
+  });
+
+  it("give the plan ask its two buttons and the one ask they answer, and leave the plain one plain", async () => {
+    const { sent, engine } = setup();
+    await engine.notify("user-a", { kind: "plan_share_ask", key: `psask:${ASK}`, vars: { name: "Mom", about: "" }, data: { ask: ASK, item: `psa:${ASK}` } });
+    await engine.notify("user-a", { kind: "plan_share_on", key: "pson:1", vars: {}, data: {} });
+    expect(sent.map((m) => [m.categoryId ?? null, m.data.item ?? null])).toEqual([["x0_plan_share", `psa:${ASK}`], [null, null]]);
   });
 
   it("follow the server: a new category for a kind, none for another, and nothing that is not a category id", async () => {

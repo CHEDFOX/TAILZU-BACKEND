@@ -249,6 +249,9 @@ covered here, but no test in this repo opens a microphone.
 1. **The mail bot puts calls in emails**: the AI sees when a customer wants to talk and its reply carries the link and a calendar invite
    from the business's address; Add a call when writing. And **our join page** at `x0bot.com/m/<code>` for people without X0 Bot (the
    website sends `/m/*` to this server), using the link's routes above.
-2. **AI notes from a call**: a WebSocket adapter on the SFU sends the call's audio to us as PCM, which is what the Notes pipeline needs. The
-   meeting bot pays Recall.ai $0.65–0.75 an hour for the same thing (`docs/meet.md`).
+2. ~~**AI notes from a call**~~ — **done, and more than notes** (`docs/brief.md`): the SFU's WebSocket adapter sends each
+   person's sound to us as PCM, one adapter a seat, so who said what is never guessed. The bot sits in every call, writes the
+   note, makes the **document** as the call goes (the overview, the flow they described drawn, the numbers charted, the
+   decisions, who does what), answers when asked, and leaves the document with everyone who was in the call. Recall costs
+   $0.65–0.75 an hour for the words alone; this is ordinary SFU egress.
 3. Later: joining by phone number, recordings, and a space's admin seeing their people's calls.

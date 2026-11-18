@@ -911,6 +911,7 @@ export class AgentOrchestrator {
       w.doneSummary = undefined;
       w.feedback = undefined;
       w.designFeedback = undefined;
+      w.pageFeedback = undefined;
       w.nudged = false;
       state.verified = undefined;
       state.verify = undefined;

@@ -1,5 +1,5 @@
 /**
- * The You tab's day (routes/bots/botsYou.ts): 64% of this stretch used (40% of October), Pro paid by UPI autopay, the MacBook helping, three apps
+ * The You tab's day (routes/bots/botsYou.ts): 64% of this month used, Pro paid by UPI autopay, the MacBook helping, three apps
  * connected. No screen draws an amount; the routes' own still carry some (ours), so the screens are seen not to.
  */
 import { FIXED_NOW, IST } from "../../../src/experience/bots/fixtures.js";
@@ -19,11 +19,11 @@ const settings = {
 };
 const byBot = [{ bot: "code", paise: 14_200 }, { bot: "keybot", paise: 1800 }, { bot: "plan", paise: 1500 }, { bot: "gym-bot", paise: 900 }];
 
-/** The usage meter: stretch 5 of 5 (23 to 31 Oct), resetting Sun 1 Nov. */
+/** The usage meter: one month, one allowance, 64% of it used, starting again Sun 1 Nov. `stretch` IS the month (src/you/usage.ts). */
 const usage = {
-  plan: { id: "paid", name: "Pro", paid: true, windows: true, carryOver: false, upgrade: false },
-  stretch: { used: 0.64, startsAt: utc(2026, 10, 23) - IST * MIN, resetsAt: RESETS, n: 5, of: 5, days: 9 },
-  month: { used: 0.4, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
+  plan: { id: "paid", name: "Pro", paid: true, windows: false, carryOver: false, upgrade: false },
+  stretch: { used: 0.64, startsAt: MONTH_START, resetsAt: RESETS, n: 1, of: 1, days: 31 },
+  month: { used: 0.64, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
   state: "ok",
 };
 
@@ -93,7 +93,7 @@ export const YOU_API: Record<string, unknown> = {
   ...SPACE_API,
   [`GET /v1/you?tz=${IST}`]: you,
   [`GET /v1/you/spend?tz=${IST}`]: { report, settings },
-  [`GET /v1/you/usage?tz=${IST}`]: { usage, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." },
+  [`GET /v1/you/usage?tz=${IST}`]: { usage, near: null, out: null, how: "Your plan's use is counted by the month, and starts again when the month does. Use it whenever you like." },
   [`GET /v1/you/billing?tz=${IST}`]: billing,
   [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you.", name: "Zara", calls: true },
   "GET /v1/you/account": account,

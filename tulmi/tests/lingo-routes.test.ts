@@ -28,16 +28,25 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { MemoryLingoStore } = await import("../src/lingo/store.js");
+const { MemorySentenceBank } = await import("../src/lingo/sentences.js");
 const { registerLingoRoutes } = await import("../src/routes/bots/lingo.js");
 const { refOf } = await import("../src/lingo/session.js");
+const { EXERCISE_KINDS } = await import("../src/lingo/types.js");
 
 const T0 = Date.UTC(2026, 0, 1);
 
-async function server(store = new MemoryLingoStore(), now = () => T0): Promise<FastifyInstance> {
+async function server(store = new MemoryLingoStore(), now = () => T0, bank?: unknown): Promise<FastifyInstance> {
   const app = Fastify();
-  registerLingoRoutes(app, { rateLimit: {}, bots: {}, store, now });
+  registerLingoRoutes(app, { rateLimit: {}, bots: {}, store, now, ...(bank ? { bank: bank as never } : {}) });
   await app.ready();
   return app;
+}
+
+/** A bank with a handful of real short sentences in it, for the spine to draw on. */
+async function bankOf(...texts: Array<[string, string]>) {
+  const bank = new MemorySentenceBank();
+  await bank.put("es", "en", texts.map(([text, gloss]) => ({ text, gloss, words: 0, licence: "CC0-1.0", author: "", source: "t" })), T0);
+  return bank;
 }
 
 const AUTH = { authorization: "Bearer u1" };
@@ -78,8 +87,40 @@ describe("a course is a pair of tags, and no language is built in", () => {
   it("refuses nonsense, and refuses learning a language from itself", async () => {
     const app = await server();
     expect((await call(app, "PUT", "/v1/lingo/course", { target: "", from: "en" })).statusCode).toBe(400);
+    expect((await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "not a tag!" })).statusCode).toBe(400);
     expect((await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "es" })).statusCode).toBe(400);
     expect((await call(app, "PUT", "/v1/lingo/course", { target: "not a tag!", from: "en" })).statusCode).toBe(400);
+  });
+
+  it("starts a language without being told which one they already speak", async () => {
+    // The screen that adds the FIRST language is the one place nobody knows yet what they speak, so the route has to
+    // work it out. This used to be a 400 and every first language was refused.
+    let tick = 0;
+    const app = await server(new MemoryLingoStore(), () => T0 + tick++);
+    const r = await call(app, "PUT", "/v1/lingo/course", { target: "es" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().course).toMatchObject({ target: "es", from: "en" });
+    // Whatever their other courses are taught in, not English again by accident.
+    await call(app, "PUT", "/v1/lingo/course", { target: "pt", from: "fr" });
+    const third = await call(app, "PUT", "/v1/lingo/course", { target: "ja" });
+    expect(third.json().course.from).toBe("fr");
+  });
+
+  it("keeps what the language is for, and treats skipping as a complete answer", async () => {
+    const app = await server(new MemoryLingoStore());
+    const skipped = await call(app, "PUT", "/v1/lingo/course", { target: "es", why: "", whyNote: "" });
+    expect(skipped.statusCode).toBe(200);
+    expect(skipped.json().course.why ?? "").toBe("");
+
+    const said = await call(app, "PUT", "/v1/lingo/course", { target: "ja", why: "family", whyNote: "My grandmother speaks it and I never learned." });
+    expect(said.json().course).toMatchObject({ why: "family", whyNote: "My grandmother speaks it and I never learned." });
+    // A later write that says nothing about it does not wipe what they told us.
+    const again = await call(app, "PUT", "/v1/lingo/course", { target: "ja", goalMin: 20 });
+    expect(again.json().course).toMatchObject({ why: "family", goalMin: 20 });
+    // A code that is not one of ours is not stored.
+    const junk = await call(app, "PUT", "/v1/lingo/course", { target: "de", why: "because-i-said-so" });
+    expect(junk.statusCode).toBe(200);
+    expect(junk.json().course.why ?? "").toBe("");
   });
 
   it("keeps the streak and the words when the course is changed", async () => {
@@ -142,6 +183,120 @@ describe("a session and an answer", () => {
       // Deliberately not sent: a test cannot read which answer is right either, which is the whole point.
       expect(e.correct).toBeUndefined();
       expect(e.item).toBeUndefined();
+    }
+  });
+
+  it("fills an empty course from the spine, so a new language is never an empty lesson", async () => {
+    const store = new MemoryLingoStore();
+    const bank = await bankOf(["hola", "hello"], ["buenos días", "good morning"], ["gracias", "thank you"], ["me gustaría un café", "I would like a coffee"]);
+    const app = await server(store, () => T0, bank);
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+
+    const r = await call(app, "POST", "/v1/lingo/session", { target: "es" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().exercises.length, "a brand new course still has a real set").toBeGreaterThan(0);
+    const kept = await store.items("u1", "es");
+    expect(kept.length).toBeGreaterThan(0);
+    // The spine goes in as `seed`, and as whole utterances, because that is what the bank holds.
+    expect(kept.every((i) => i.source === "seed")).toBe(true);
+    expect(kept.every((i) => i.kind === "phrase")).toBe(true);
+  });
+
+  it("puts what they reached for themselves ahead of the spine, always", async () => {
+    const store = new MemoryLingoStore();
+    // Far more spine than one set can hold, so being in the set means it BEAT the spine rather than fitting beside it.
+    const bank = await bankOf(...Array.from({ length: 60 }, (_, i) => [`frase ${i}`, `phrase ${i}`] as [string, string]));
+    const app = await server(store, () => T0, bank);
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    await call(app, "POST", "/v1/lingo/session", { target: "es" });          // the spine goes in
+    await call(app, "POST", "/v1/lingo/words", { target: "es", items: [{ item: "terco", gloss: "stubborn", source: "asked" }] });
+
+    const { exercises } = (await call(app, "POST", "/v1/lingo/session", { target: "es" })).json();
+    const mine = refOf("u1", "es", "terco");
+    expect(exercises.some((e: { ref: string }) => e.ref === mine), "the word they went looking for beat the spine into the set").toBe(true);
+  });
+
+  it("does not fall over when the bank is empty, which is how every language starts", async () => {
+    const store = new MemoryLingoStore();
+    const app = await server(store, () => T0, await bankOf());
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    const r = await call(app, "POST", "/v1/lingo/session", { target: "es" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().exercises).toEqual([]);
+  });
+
+  it("stops topping up once there is enough to be getting on with", async () => {
+    const store = new MemoryLingoStore();
+    const bank = await bankOf(...Array.from({ length: 40 }, (_, i) => [`frase ${i}`, `phrase ${i}`] as [string, string]));
+    const app = await server(store, () => T0, bank);
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    await call(app, "POST", "/v1/lingo/session", { target: "es" });
+    const first = (await store.items("u1", "es")).length;
+    await call(app, "POST", "/v1/lingo/session", { target: "es" });
+    expect((await store.items("u1", "es")).length, "a second look does not pour the bank in again").toBe(first);
+  });
+
+  it("times how long they thought, from the gap between answers, and counts how each kind goes", async () => {
+    const store = new MemoryLingoStore();
+    let clock = T0;
+    const app = await server(store, () => clock);
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    await call(app, "POST", "/v1/lingo/words", { target: "es", items: [{ item: "hola", gloss: "hello" }, { item: "adiós", gloss: "bye" }] });
+    const ref = refOf("u1", "es", "hola");
+
+    // The first answer has nothing to be measured from, so nothing is claimed about it.
+    await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "choose", picked: 0 });
+    expect((await store.items("u1", "es")).find((i) => i.item === "hola")!.memory.thinkMs ?? 0).toBe(0);
+
+    // Four seconds later, on the other word: that gap IS the time they spent on this one.
+    clock += 4_000;
+    const ref2 = refOf("u1", "es", "adiós");
+    await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: ref2, kind: "choose", picked: 0 });
+    expect((await store.items("u1", "es")).find((i) => i.item === "adiós")!.memory.thinkMs).toBe(4_000);
+
+    // Then they put the phone down for ten minutes. That is not thinking, and it is thrown away, not capped.
+    clock += 600_000;
+    await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "choose", picked: 0 });
+    expect((await store.items("u1", "es")).find((i) => i.item === "hola")!.memory.thinkMs ?? 0).toBe(0);
+
+    const course = (await store.course("u1", "es"))!;
+    expect(course.tally?.["choose"]?.asked).toBe(3);
+    expect(course.lastAnswerMs).toBe(clock);
+  });
+
+  it("marks a turn of talk on whether the word came out, not on saying it back", async () => {
+    const { app, store } = await start();
+    const ref = refOf("u1", "es", "hola");
+    // Said inside something of their own: right, and it counts as out loud.
+    const good = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "talk", said: "pues hola a todos, qué tal" });
+    expect(good.statusCode).toBe(200);
+    expect(good.json().mark).toMatchObject({ verdict: "right" });
+    expect(good.json().spoken).toBe(1);
+    // Talked, but never used the word: wrong, and nothing was said out loud.
+    const ref2 = refOf("u1", "es", "perro");
+    const miss = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: ref2, kind: "talk", said: "hoy hace mucho calor" });
+    expect(miss.json().mark).toMatchObject({ verdict: "wrong" });
+    expect(miss.json().spoken).toBe(0);
+    expect((await store.items("u1", "es")).find((i) => i.item === "perro")!.spoken).toBe(0);
+  });
+
+  it("marks a reply by which one was picked, and the answer is not in what it sent", async () => {
+    const { app } = await start();
+    const ref = refOf("u1", "es", "hola");
+    const wrong = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "reply", picked: -1 });
+    expect(wrong.statusCode).toBe(200);
+    expect(wrong.json().mark).toMatchObject({ verdict: "wrong" });
+    // Nothing in a marked answer tells the app which option it should have been.
+    expect(JSON.stringify(wrong.json())).not.toContain("correct");
+  });
+
+  it("takes every kind it says it takes", async () => {
+    const { app } = await start();
+    const ref = refOf("u1", "es", "hola");
+    for (const kind of EXERCISE_KINDS) {
+      const r = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind, said: "hola", picked: 0, chips: ["hola"] });
+      expect(r.statusCode, kind).toBe(200);
+      expect(r.json().mark.verdict, kind).toBeTruthy();
     }
   });
 

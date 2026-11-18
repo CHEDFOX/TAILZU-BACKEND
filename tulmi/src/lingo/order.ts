@@ -29,7 +29,7 @@
  * Pure: exercises and their odds in, an order out. No clock, no store, no model.
  */
 import type { Exercise } from "./session.js";
-import type { ExerciseKind, Verdict } from "./types.js";
+import { SPOKEN_KINDS, type ExerciseKind, type Verdict } from "./types.js";
 
 /** One exercise and how likely this person is to get it right, 0 (gone) to 1 (certain). */
 export interface Entry {
@@ -42,7 +42,7 @@ export interface Entry {
  * The kinds that need a voice. Two of them back to back is a lot to ask: the microphone has to open and close, the
  * room has to be quiet twice, and a person who is somewhere they cannot speak is stopped dead. They are kept apart.
  */
-const LOUD: readonly ExerciseKind[] = ["say", "talk"];
+const LOUD: readonly ExerciseKind[] = SPOKEN_KINDS;
 const isLoud = (k: ExerciseKind): boolean => LOUD.includes(k);
 
 /** How many other exercises come between a missed word and its second chance. */

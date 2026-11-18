@@ -167,7 +167,7 @@ All in memory, **per process**. Nothing in `src/guard/` reads a store; the confi
 | --- | ---: | --- |
 | permits out at once, everyone | 64 | `GUARD_GLOBAL_CONCURRENCY` |
 | permits for one person | 3 | `GUARD_USER_CONCURRENCY` |
-| permits for one person on the free plan | 1 | `GUARD_USER_CONCURRENCY_FREE` |
+| permits for one person, free or paid | 3 | `GUARD_USER_CONCURRENCY_FREE`, `GUARD_USER_CONCURRENCY` |
 | waiting in the queue, in all | 256 | `GUARD_QUEUE_MAX` |
 | waiting in the queue, one person | 4 | `GUARD_QUEUE_PER_USER` |
 | the longest one request waits | 8,000 ms | `GUARD_QUEUE_WAIT_MS` |
@@ -247,7 +247,7 @@ Plus, when the rules are under 0.7 sure, **at most 100 paise** for `front_decide
 | `FRONT_DAILY_PAISE` | `1500` | what the front door may spend on one person's messages in a day |
 | `GUARD_GLOBAL_CONCURRENCY` | `64` | permits out at once, everyone |
 | `GUARD_USER_CONCURRENCY` | `3` | permits for one person |
-| `GUARD_USER_CONCURRENCY_FREE` | `1` | permits for one person on the free plan |
+| `GUARD_USER_CONCURRENCY_FREE` | `3` | permits for one person on the free plan — the same as paid since the monthly-only limit landed. An account slowed by signals gets `perUserSlowed`, one, whatever this says |
 | `GUARD_QUEUE_MAX` | `256` | requests waiting, in all |
 | `GUARD_QUEUE_PER_USER` | `4` | requests waiting, one person |
 | `GUARD_QUEUE_WAIT_MS` | `8000` | the longest one request waits before `429` |

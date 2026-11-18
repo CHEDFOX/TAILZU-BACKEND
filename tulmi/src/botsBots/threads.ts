@@ -23,6 +23,12 @@
  * A chat's last line (last_text, and last_public_ms, the time lists show) is only ever a message to everyone, so a message to one
  * person never moves anyone else's chat or line.
  *
+ * SOMEONE NO LONGER HERE (`from.gone` on a message, `gone` on a chat's person): their account was deleted (sender_id is null) or
+ * they are no longer connected to the viewer (they share no space any more, which is what connects two people here: contacts()).
+ * The message STAYS, words and files and all. The server says `gone` and the screens draw the name faded, with a short honest hint
+ * beside it, and nothing about them opens: no page, no mention, no profile (App Review: nothing claims an account was deleted when
+ * it was not, which is why one word covers both). Their look goes neutral too (personLook.ts goneLook).
+ *
  * A MEMBER'S THING THE ADMIN SHARED (spaceFeed.ts, grants.ts: a grant card whose owner isn't its sender): its owner is not told, so
  * sees() never shows them its card (nor counts it unread, pings them or tells them live), and anyone with a block with the owner
  * doesn't see it either, as with a card the owner sent. It is never a chat's last line, so no list or Home card says it to them.
@@ -32,7 +38,7 @@ import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
 import { Blocks } from "./blocks.js";
-import { lookOf, looksIn, selfLook, shownLook, type PersonLook } from "./personLook.js";
+import { goneLook, lookOf, looksIn, selfLook, shownLook, type PersonLook } from "./personLook.js";
 import { signQuery } from "./spaceLinks.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { pickedIds } from "./spacePerms.js";
@@ -60,10 +66,12 @@ export interface MessageRow {
 }
 
 export interface MessageView {
-  id: string; from: { userId: string | null; name: string; you: boolean }; text: string; at: number;
+  /** `from.gone`: the sender is no longer here (their account was deleted, or they and the viewer share no space any more). */
+  id: string; from: { userId: string | null; name: string; you: boolean; gone?: boolean }; text: string; at: number;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>; item: ItemCard | null;
-  /** A message to one person: who (an old build says "To Rohan"). Null: for everyone. */
-  to: { userId: string; name: string; you: boolean } | null;
+  /** A message to one person: who (an old build says "To Rohan"). Null: for everyone. `gone`: they are no longer here, so
+   *  the "To Mom" line is drawn faded too. */
+  to: { userId: string; name: string; you: boolean; gone?: boolean } | null;
 }
 export interface ThreadView {
   id: string; kind: ThreadRow["kind"]; name: string; spaceId: string | null; spaceName: string;
@@ -72,7 +80,8 @@ export interface ThreadView {
    * Read one chat at a time (read), a group's or a space chat's people carry it too, as their space has them (each message's line is
    * in its sender's colour); the list never works them out.
    */
-  people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLook }>;
+  /** `gone`: no longer connected to the viewer, so their name is drawn faded here too and nothing about them opens. */
+  people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLook; gone?: boolean }>;
   last: { text: string; at: number } | null; unread: number; muted: boolean;
   /** Can write here now; when not, `why` says why in a line. */
   canPost: boolean; why: string;
@@ -263,14 +272,35 @@ export class Threads {
     const spaceName = t.space_id ? await this.spaces.nameOf(t.space_id) : "";
     const others = members.filter((m) => m.user_id !== userId);
     const post = await this.mayPost(userId, t, all);
-    const name = t.kind === "space" ? spaceName : t.kind === "direct" ? (others[0]?.name ?? (await this.people.select({ thread_id: t.id }, { limit: 4 })).find((m) => m.user_id !== userId)?.name ?? "Someone") : (t.name || names(others.map((m) => m.name)));
+    // A ONE-TO-ONE CHAT WHOSE OTHER PERSON LEFT, OR DELETED THEIR ACCOUNT. A row that is only left (left_ms) is still there to
+    // read the name from; a deleted account's is not, because thread_members.user_id follows auth.users ON DELETE CASCADE
+    // (migration 0051) — the one case being removed from a space never reaches. Their name IS this chat's name, so it is read
+    // back off their own messages, whose sender_name the same migration keeps ("Someone" only if they never wrote anything).
+    const stayed = t.kind === "direct" && !others.length
+      ? (await this.people.select({ thread_id: t.id }, { limit: 4 })).find((m) => m.user_id !== userId)
+      : undefined;
+    const deleted = t.kind === "direct" && !others.length && !stayed;
+    const deletedName = deleted
+      ? (await this.messages.before({ thread_id: t.id }, "at_ms", null, 50)).find((m) => !m.sender_id)?.sender_name || "Someone"
+      : "";
+    const name = t.kind === "space" ? spaceName : t.kind === "direct" ? (others[0]?.name ?? stayed?.name ?? deletedName) : (t.name || names(others.map((m) => m.name)));
     const last = await this.lastLine(t, hidden);
     // One to one: the other person as the same tiny bot their page and the contacts show (a chat with no space has none of its own).
     const known = t.kind === "direct" ? await looks() : null;
-    const botOf = (id: string): PersonLook => (id === userId ? selfLook(userId) : known?.get(id) ?? lookOf(id));
+    // No longer connected to the viewer: in a one-to-one chat with someone they share no space with any more. In a group or a
+    // space's chat everyone there is in that space with them, so nobody is (leaving a space leaves its chats).
+    const goneIn = (id: string): boolean => !!known && id !== userId && !known.has(id);
+    const botOf = (id: string): PersonLook => (id === userId ? selfLook(userId) : goneIn(id) ? goneLook(id) : known?.get(id) ?? lookOf(id));
     return {
       id: t.id, kind: t.kind, name, spaceId: t.space_id, spaceName,
-      people: members.map((m) => ({ userId: m.user_id, name: m.name, you: m.user_id === userId, ...(known ? { bot: botOf(m.user_id) } : {}) })),
+      people: [
+        ...members.map((m) => ({
+          userId: m.user_id, name: m.name, you: m.user_id === userId, ...(known ? { bot: botOf(m.user_id) } : {}), ...(goneIn(m.user_id) ? { gone: true } : {}),
+        })),
+        // The deleted account, kept in `people` so the head and the chats list fade their name the same way as everyone
+        // else's. Their id comes from the chat's key, which outlives their membership; nothing opens them (`gone`).
+        ...(deleted ? [{ userId: this.otherOf(userId, t), name: deletedName, you: false, bot: goneLook(this.otherOf(userId, t) || t.id), gone: true }] : []),
+      ],
       last, unread: Math.max(0, Number(me.unread) || 0), muted: me.muted === true, canPost: post.ok, why: post.why,
     };
   }
@@ -450,12 +480,29 @@ export class Threads {
 
   // ------------------------------------------------------------------ reading and writing
 
-  private viewMessage(userId: string, r: MessageRow): MessageView {
+  /**
+   * The sender is no longer here: their account was deleted (no sender_id at all), or they and the viewer share no space any more.
+   * `connected` is everyone the viewer still shares a space with (looksKnown's keys), which is what connects two people here —
+   * contacts() reads the same spaces. The viewer themself is never in it, so they are checked for first.
+   */
+  private gone(userId: string, senderId: string | null, connected: ReadonlySet<string>): boolean {
+    return !senderId || (senderId !== userId && !connected.has(senderId));
+  }
+
+  /**
+   * `connected`: who is still here for this viewer (looksKnown's keys). Left out where the sender can only be the viewer and
+   * nothing has been read about who is still here (post): a message just written is never anybody's "no longer here".
+   */
+  private viewMessage(userId: string, r: MessageRow, connected?: ReadonlySet<string>): MessageView {
+    const gone = this.gone(userId, r.sender_id, connected ?? new Set());
+    // "To Mom" for someone no longer here is faded too, as her name over a message of her own is: to_id has no foreign key
+    // (migration 0068), by design, so a message addressed to her stays for its sender and the admin after she goes.
+    const toGone = !!connected && !!r.to_id && r.to_id !== userId && !connected.has(r.to_id);
     return {
-      id: r.id, from: { userId: r.sender_id, name: r.sender_name, you: r.sender_id === userId }, text: r.text, at: Number(r.at_ms),
+      id: r.id, from: { userId: r.sender_id, name: r.sender_name, you: r.sender_id === userId, ...(gone ? { gone: true } : {}) }, text: r.text, at: Number(r.at_ms),
       files: (r.files ?? []).map((f) => ({ id: f.id, name: f.name, mime: f.mime, bytes: f.bytes, kind: f.kind, url: `${this.filePath(r.thread_id, r.id, f.id)}?${signQuery(userId, [r.thread_id, r.id, f.id], this.now())}` })),
       item: r.item ?? null,
-      to: r.to_id ? { userId: r.to_id, name: r.to_name ?? "", you: r.to_id === userId } : null,
+      to: r.to_id ? { userId: r.to_id, name: r.to_name ?? "", you: r.to_id === userId, ...(toGone ? { gone: true } : {}) } : null,
     };
   }
 
@@ -469,7 +516,17 @@ export class Threads {
       await this.people.update({ thread_id: threadId, user_id: userId }, { unread: 0, last_read_ms: this.now() });
       if (Number(me.unread) > 0) this.publish([userId], "threads");
     }
-    const view = await this.viewOf(userId, threadId);
+    // WHO IS STILL HERE FOR THIS VIEWER, which is what `gone` is read from. Everyone still in this chat's own space is
+    // connected to them by definition (sharing a space is what connects two people here: contacts()), so the walk of all of
+    // the viewer's spaces — Spaces.mine plus a membersOf each, up to about 30 reads — is only needed for a one-to-one chat,
+    // whose person's look comes from there, or for a page that holds somebody from outside this space. A space's feed opens
+    // through here, so this is the most read surface there is.
+    const inSpace = t.space_id ? new Set(await this.spaces.memberIds(t.space_id)) : null;
+    const outsider = (id: string | null | undefined): boolean => !!id && id !== userId && !inSpace!.has(id);
+    const walk = t.kind === "direct" || !inSpace || page.some((r) => outsider(r.sender_id) || outsider(r.to_id));
+    const knownLooks = walk ? await this.looksKnown(userId) : null;
+    const connected: ReadonlySet<string> = knownLooks ? new Set(knownLooks.keys()) : inSpace!;
+    const view = await this.viewOf(userId, threadId, knownLooks ? () => Promise.resolve(knownLooks) : undefined);
     // A group's or a space chat's people as their space has them (the rules on ThreadView.people).
     const looks = t.space_id && t.kind !== "direct" ? looksIn((await this.spaces.memberRows(t.space_id)).map((r) => r.user_id)) : null;
     const thread = looks ? { ...view, people: view.people.map((p) => ({ ...p, bot: shownLook(looks, p.userId, userId) })) } : view;
@@ -478,7 +535,7 @@ export class Threads {
     const owner = await this.ownerOf(t);
     const shown = page.filter((r) => !hiddenIn(hidden, r) && this.sees(userId, r, owner));
     // `page` is newest first: the next page is before its oldest.
-    return { thread: { ...thread, unread: 0 }, messages: shown.reverse().map((r) => this.viewMessage(userId, r)), more: rows.length > limit, before: page.length ? Number(page[page.length - 1]!.at_ms) : null };
+    return { thread: { ...thread, unread: 0 }, messages: shown.reverse().map((r) => this.viewMessage(userId, r, connected)), more: rows.length > limit, before: page.length ? Number(page[page.length - 1]!.at_ms) : null };
   }
 
   /** One message, for someone who may read the chat and see it (a report of it): the row and its chat. 404 otherwise. */

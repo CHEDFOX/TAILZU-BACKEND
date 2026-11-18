@@ -1,5 +1,5 @@
 /**
- * THE LOOP (src/cinema/make.ts, docs/cinema.md): build, look, fix, and only then render the real thing.
+ * THE LOOP (src/cinema/scene/make.ts, docs/cinema-3d.md): build, look, fix, and only then render the real thing.
  *
  *   - the eye is what ends it: happy, and it goes straight to the full render
  *   - unhappy, and the NEXT build is told what was wrong, in the eye's own words
@@ -10,10 +10,10 @@
  */
 import { describe, expect, it } from "vitest";
 
-const { make, sceneUser } = await import("../src/cinema/make.js");
+const { make, sceneUser } = await import("../src/cinema/scene/make.js");
 const { MemoryBlobStore } = await import("../src/media/blob.js");
-const { checkScene } = await import("../src/cinema/check.js");
-import type { Render, RenderJob } from "../src/cinema/ports.js";
+const { checkScene } = await import("../src/cinema/scene/check.js");
+import type { Render, RenderJob } from "../src/cinema/scene/ports.js";
 
 const ME = "00000000-0000-4000-8000-00000000aaaa";
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
@@ -197,7 +197,7 @@ describe("the edges", () => {
 
 describe("the machine this backend is", () => {
   it("renders one at a time, so two jobs do not fight over the same cores", async () => {
-    const { blenderRunner } = await import("../src/cinema/blender.js");
+    const { blenderRunner } = await import("../src/cinema/scene/blender.js");
     // No blender here, so each run fails fast — what is being checked is that they go through in turn, not at once.
     const render = blenderRunner({ bin: "definitely-not-blender" });
     const started = Date.now();
@@ -208,7 +208,7 @@ describe("the machine this backend is", () => {
   });
 
   it("says whether there is a Blender here at all, rather than failing a job to find out", async () => {
-    const { renderHere } = await import("../src/cinema/blender.js");
+    const { renderHere } = await import("../src/cinema/scene/blender.js");
     const here = renderHere({ bin: "definitely-not-blender" });
     expect(await here.ready()).toEqual({ ok: false, version: null });
   });

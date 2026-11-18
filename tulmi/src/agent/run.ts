@@ -151,6 +151,10 @@ export interface StepResult {
    *  screen, at a picture place on a step with no picture, past the cap). */
   draws?: number;
   drawsDropped?: number;
+  /** FIELD and ALSO lines of a sign-in card dropped (an id not on this screen or not a control,
+   *  a repeat, past the cap, or a card the handover may not carry). A planner that keeps missing
+   *  is seen here, and nowhere else. */
+  cardDropped?: number;
 }
 
 const countWords = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
@@ -503,10 +507,11 @@ async function follow(
 
 const drawMax = (ctx: StepContext) => ctx.drawMax ?? getConfig().AGENT_DRAW_MAX;
 
-/** The step's marks, counted for its log line when there were any. */
+/** The step's marks and its sign-in card, counted for its log line when there were any. */
 function withDraws(result: StepResult, reader: LineReader): StepResult {
   if (reader.draws) result.draws = reader.draws;
   if (reader.drawsDropped) result.drawsDropped = reader.drawsDropped;
+  if (reader.cardDropped) result.cardDropped = reader.cardDropped;
   return result;
 }
 

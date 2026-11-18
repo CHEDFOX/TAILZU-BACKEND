@@ -17,6 +17,8 @@
  * put in a commit or a pull request, which are written to the person's repo. These functions are
  * pure: the same state gives the same words.
  */
+import { scopeLine } from "./scope.js";
+import { reviewLines } from "./review.js";
 import { redactText } from "../work/index.js";
 import { cut, oneLine } from "../work/model.js";
 import { ANSWER_MAX_CHARS, type AgentState, type CheckSummary } from "./types.js";
@@ -93,7 +95,15 @@ export function prBody(state: AgentState, o: { worklog: string; jobId: string; s
   if (v?.alreadyBroken.length) {
     out.push("## Already broken before X0 Bot", "", "These were failing before this change, so they are not caused by it and were not fixed here:", ...list(v.alreadyBroken.map((n) => `\`${cut(n, 140)}\``)), "");
   }
+  const outside = scopeLine(state.work.outside ?? []);
+  if (outside) out.push("## Beyond what the task asked for", "", safe(outside, 600), "");
+  if (v?.lost?.length) {
+    out.push("## Gone from this branch, and no test covers it", "", "The checks pass, but these were in the files this change touched and are not there now. Nothing in the task asked for that, so look before merging:",
+      ...list(v.lost.map((n) => `\`${cut(n, 140)}\``)), "");
+  }
   if (state.baseline?.status === "unknown" && state.baseline.note) out.push(`> Heads up: ${safe(state.baseline.note, 300)}`, "");
+  const read = reviewLines(state.review);
+  if (read.length) out.push("## Read by another model", "", ...read.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (o.design?.length) out.push("## Design check", "", ...o.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (o.worklog.trim()) out.push(o.worklog.trim(), "");
   out.push("---", `Made by X0 Bot (job \`${o.jobId.slice(0, 8)}\`). It is a draft until the checks are green and you say it is ready.`);
@@ -154,12 +164,24 @@ export function reportText(i: ReportInput): string {
     out.push("");
     if (v.broke.length) out.push("Broken by this change", ...list(v.broke.map((n) => cut(n, 140))), "");
     if (v.alreadyBroken.length) out.push("Already broken before X0 Bot (not caused by this change)", ...list(v.alreadyBroken.map((n) => cut(n, 140))), "");
+    if (v.lost?.length) out.push("Gone, and no test covers it (look before merging)", ...list(v.lost.map((n) => cut(n, 140))), "");
   }
+  const outside = scopeLine(s.work.outside ?? []);
+  if (outside) out.push(safe(outside, 600), "");
   if (s.baseline?.status === "unknown" && s.baseline.note) out.push(`Note: ${safe(s.baseline.note, 300)}`, "");
+  const read = reviewLines(s.review);
+  if (read.length) out.push("Read by another model", ...read.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (i.design?.length) out.push("The design", ...i.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (i.screens?.length) out.push("The screens", ...i.screens.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (i.team?.length) out.push("The team", ...i.team.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
-  if (s.findings.length) out.push("Findings", ...list(s.findings.map((f) => `${f.severity}: ${f.path}${f.line ? `:${f.line}` : ""} ${cut(f.text, 160)}`), 10), "");
+  if (s.findings.length) {
+    const line = (f: typeof s.findings[number]) => `${f.severity}: ${f.path}${f.line ? `:${f.line}` : ""} ${cut(f.text, 160)}${f.how ? ` — how: ${cut(f.how, 160)}` : ""}`;
+    const checking = s.findings.filter((f) => f.verdict === "needs_checking");
+    const rest = s.findings.filter((f) => f.verdict !== "needs_checking");
+    if (rest.length) out.push("Findings", ...list(rest.map(line), 10), "");
+    // A risk claimed without an account of how it happens is not reported as one.
+    if (checking.length) out.push("Worth checking (I could not show how these happen)", ...list(checking.map(line), 10), "");
+  }
   for (const n of s.notes.slice(0, 6)) out.push(`Note: ${safe(n, 300)}`);
   if (s.notes.length) out.push("");
   const next = nextSteps(i);
@@ -185,9 +207,12 @@ function nextSteps(i: ReportInput): string[] {
   }
   if (s.verify && !s.verify.ran) next.push("Run the project's checks yourself before merging: they could not be run here.");
   if (s.verify?.alreadyBroken.length) next.push("The checks listed as already broken were failing before this change; they are worth a job of their own.");
+  if (s.verify?.lost?.length) next.push("Look at what is listed as gone: if any of it is still wanted, say so and I will put it back.");
+  if (s.review?.blocking) next.push("Another model found something bad enough to keep the pull request a draft: read it above, and tell me to fix it or to mark it ready anyway.");
   const untested = s.plan?.impact.untested ?? [];
   if (untested.length) next.push(`Add tests for ${untested.slice(0, 2).join(" and ")}: nothing covers ${untested.length === 1 ? "it" : "them"}.`);
   if (s.findings.some((f) => f.severity !== "info")) next.push("Look at the findings above: I noticed them but left them alone.");
+  if (s.findings.some((f) => f.verdict === "needs_checking")) next.push("The ones under \"worth checking\" are guesses I could not trace; treat them as questions, not as problems.");
   for (const m of s.newProject?.nextMilestones ?? []) next.push(`Next milestone: ${safe(m, 120)}`);
   return next;
 }

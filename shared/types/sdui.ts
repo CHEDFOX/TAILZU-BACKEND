@@ -1080,6 +1080,60 @@ export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think" 
  */
 export const BOT_BUDDY_CARRY = "BotBuddyCarry";
 
+/**
+ * THE PEEK (component "BotPeek", BOT_PEEK_CAPABILITY): the bot rises from BEHIND an edge of the screen, holds, and ducks
+ * back. The window's Blip has done this for a long time (TAILZU-DESKTOP src/shared/blip.js `rise`, src/agent/guide/peek.js:
+ * 280 ms up, 300 ms down, a hop when the words have landed, then the duck), and this is that gesture on a phone.
+ *
+ * WHAT MAKES IT A PEEK AND NOT A SPRITE. He is drawn in a pocket at the edge that CLIPS him, so he is only ever half
+ * there, and he NEVER CROSSES THE SCREEN: a new spot is taken while he is below the edge, at rise 0, where nobody can
+ * see him move. A bot that slides across a person's page is in the way; one that is half behind the frame is peeking.
+ *
+ * `notch` is the odd one and the nicest: he hangs UPSIDE DOWN from it, head first, and the notch cuts off his antenna
+ * and crown, so he reads as hiding behind the hardware. He never covers the status bar's own words.
+ *
+ * THE ANTENNA IS THE MICROPHONE, as it is on the computer: lit while `liveWhen` holds, plain otherwise. One bot, one
+ * meaning, on both machines.
+ *
+ * A build that does not declare the capability is sent no peek and draws none; the ask bar and his walk along the
+ * bottom of Home are what it keeps. (This name existed once before and was taken out on 16 Nov for needing "a store
+ * build": that was wrong — an OTA carries every bit of this, because none of it is native.)
+ */
+export const BOT_PEEK_CAPABILITY = "BotPeek";
+
+/** The edge a peek is clipped against. `notch` hangs him upside down from the top centre. */
+export type PeekEdge = "left" | "right" | "bottom" | "notch";
+
+export interface PeekSpot {
+  edge: PeekEdge;
+  /** How far along that edge, 0 to 1 of the length left after the safe area. Ignored for `notch`, which is centred. */
+  along: number;
+}
+
+export interface BotPeekProps {
+  /** Who peeks: the same figure a buddy draws, so he keeps his lid, his hands and his kind's play. */
+  bot: Pick<BotBuddyProps, "kind" | "color" | "life" | "state"> & { avatar?: BotAvatarRef };
+  /** Where he may rise, tried in this order. Empty: he never appears. */
+  spots: PeekSpot[];
+  /** Seconds up, then seconds hidden: a random value in each range, so he is never on a beat. */
+  up: [number, number];
+  every: [number, number];
+  /** His own height, as a buddy's `size`. */
+  size?: number;
+  /** While this holds he stays up and his ANTENNA IS LIT: the microphone is live. */
+  liveWhen?: Condition;
+  /**
+   * The moment he plays while `liveWhen` holds — which is where the antenna's glow lives. It is a moment in the
+   * catalog and not a flag in the renderer on purpose: what a bot LOOKS like has always been data, and a glow written
+   * into the app could never be changed without shipping one.
+   */
+  liveMoment?: string;
+  /** Where he comes when he is called: an index into `spots`. None: he stays wherever he was. */
+  home?: number;
+  /** While this holds he hops once and then ducks: the answer has landed. */
+  doneWhen?: Condition;
+}
+
 export interface BotBuddyProps {
   kind: BotTileKind;
   color: string;
@@ -1373,12 +1427,12 @@ export const VOICE_LIVE_CAPABILITY = "VoiceLive";
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
-/** NOT A COMPONENT: BotThoughtSpec.restMark — the mark he carries at rest, drawn as a soft blob of ink dots on his own
- *  canvas instead of a box of words. A build without it is sent `restText` and draws the box it draws today. */
-export const BOT_MARK_CAPABILITY = "BotMark";
-/** NOT A COMPONENT: BotStageProps.stand "peek" — he lives behind the bar at the foot of the page, only his head over the
- *  line, and jumps the ledge now and then to stand in full view. A build without it gets a stage he stands on. */
-export const BOT_PEEK_CAPABILITY = "BotPeek";
+// THERE IS NO BotPeek OR BotMark. Both were built — a bot clipped by the bar with only his head over the line, and a mark
+// of sprung ink dots — and both wanted new drawing machinery in every app: two classes in the motion engine, and a stage
+// whose floor sits below its own bottom edge. That is renderer geometry and renderer physics; no server data expresses it,
+// and it would have ridden a store build to reach anybody. They were taken out. What the server CAN change any day is the
+// looks catalog (shared/bots/looks.json): every app fetches it and the server's version wins, so a new MOMENT — a jump, a
+// burst, dots orbiting his crown — is data, not an app release. Reach for a moment before reaching for a capability.
 /** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
  *  callEndpoint.stay; a dotted border with a radius drawn dotted on every platform; a failed call's { code, message } kept at
  *  state `lastError` (the window too, as the phone already does), so a toast can say the server's reason. */
@@ -1438,15 +1492,6 @@ export interface BotThoughtSpec {
   style: "home" | "space";
   /** The words in the small box riding over him at rest (a tap on it opens it). None: no box at rest. */
   restText?: string;
-  /** A MARK INSTEAD OF WORDS (BOT_MARK_CAPABILITY, the apps' botTiles core `Mark`): a soft blob of ink dots riding over him,
-   *  holding one dot for each thing that wants them (`dots`, 1..3). It is matter, not a shape — a ring of sprung points tied
-   *  to their neighbours, so a knock runs round the edge as a wave and dies out, and his own turns and landings knock it.
-   *  `urgent`: the dots are full and a ring of dots leaves it now and then, thinning as it spreads; otherwise they are small
-   *  and quiet. It takes `restText`'s place entirely, so nothing is written over him at rest; send `restText` as well for the
-   *  builds that cannot draw it, which simply show the words.
-   *  `says`: the few words the mark announces itself with — shown beside it when it appears or changes, then faded out, so a
-   *  dot is never the first thing a person has to work out. Four or five words at most. */
-  restMark?: { dots: number; urgent?: boolean; says?: string };
   /** A state path holding true while it is open. The app writes true when the resting box is tapped and false when the veil is
    *  tapped, Escape is pressed or (phone) back is pressed; the server's actions may write it too. */
   openPath: string;
@@ -1474,11 +1519,6 @@ export interface BotStageProps {
   /** What a tap opens: "bot" (default) only his body, the rest of the stage passing touches to the page; "stage" the whole stage
    *  (a top area that is all his). A double tap is always on his body. */
   hit?: "bot" | "stage";
-  /** Where he lives. "floor" (default): he stands on his stage, whole. "peek": he lives behind the bar under the stage — his
-   *  ground is below the stage's own bottom edge, so only his head clears the line, he wanders along it, and every so often he
-   *  jumps the ledge and stands in full view for a few moments before dropping back (BotStage, botTiles/core.ts Peek). Only for
-   *  a build that declares BOT_PEEK_CAPABILITY; every other build is sent a stage he stands on, exactly as before. */
-  stand?: "floor" | "peek";
   /** false: he never plays with props (the person's own bot). */
   toys?: boolean;
   roam?: BotRoam;
@@ -1637,6 +1677,54 @@ export interface PersonBotProps {
 }
 // MentionFieldProps.people items may carry `bot: { seed, avatar, color }`: a build that declares PersonBot draws that bot in the
 // person's row of the "@" list (size 28), in place of anything else.
+
+// ---------------------------------------------------------------------------
+// 3k. The sign-in panel: their own browser, drawn in a page the server wrote (docs/sites.md, "The panel")
+// ---------------------------------------------------------------------------
+//
+// THERE IS NO SitePanel NODE, and that is the design rather than a shortcut. The panel is a PAGE the server writes
+// (src/sites/panelHost.ts), shown in the LiveView node the apps already have. So the frame clock, the tap
+// arithmetic and the keyboard all ship when the server deploys: how signing in works can change without a phone
+// being updated, and a phone that has never heard of sites can draw one today.
+//
+// The page is given a ticket of its own — one panel, nothing else, dead when the panel is — because a LiveView
+// cannot see the app's token and must not be handed one. The types below are what the page and the routes agree
+// on; nothing in the apps reads them.
+
+/** The one touch a call carries (routes/bots/botsSites.ts takes exactly these and nothing else). */
+export type SitePanelTouch =
+  /** In the PAGE's own pixels, never the drawn frame's: the page scales a finger back through `width`/`height`. */
+  | { tap: { x: number; y: number } }
+  /** What was typed. The page sends it a character at a time and keeps none of it. */
+  | { type: string }
+  | { key: "Enter" | "Backspace" | "Tab" }
+  /** How far down the page to go, in its pixels; negative is up. */
+  | { scroll: number };
+
+/** Why the panel is over, and the words that go with it (the server's END_WORDS). */
+export type SitePanelEnd = "said_done" | "cancelled" | "went_quiet" | "ran_long" | "lost";
+
+/** One answer from any of the panel's four calls. */
+export interface SitePanelView {
+  id: string;
+  site: string;
+  /** The newest frame, base64 JPEG with no data: prefix. Absent when there is no newer one than the page has. */
+  frame?: string;
+  width: number;
+  height: number;
+  ended?: SitePanelEnd;
+  message?: string;
+  /** Only on the answer to `done`: whether the page really is signed in now. */
+  signedIn?: boolean;
+}
+
+/** What the page posts UP to the app when it is over, through LiveView's message path. */
+export interface SitePanelMessage {
+  t: "panel";
+  ended: SitePanelEnd;
+  signedIn: boolean;
+  message: string;
+}
 
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [

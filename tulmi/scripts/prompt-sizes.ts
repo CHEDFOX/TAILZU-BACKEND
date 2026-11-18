@@ -23,6 +23,12 @@ import { tokensOfChars } from "../src/code/brain/money.js";
 import { ROLE_IDS, stableBlock, type RoleId } from "../src/principles/index.js";
 
 export const BEFORE: Readonly<Record<RoleId, number>> = {
+  // A role that replaced nothing (NEW_ROLES): its first measured size is its own "before".
+  code_review: 1377,
+  code_name: 571,
+  // A new role replaces nothing, so its first measured size is its own "before".
+  code_referent: 1073,
+  code_which: 723,
   classify: 1645,
   locate_terms: 538,
   locate_pick: 740,
@@ -85,8 +91,20 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   bot_show: 2420,
   cinema_scene: 2494,
   cinema_eye: 1231,
+  // The film half's seven replaced real constants in src/cinema, so each has a true "before": the length of the system
+  // message that call site sent, plus the 60 the gateway adds for a JSON answer. cinema_still and cinema_take had no
+  // constant at all - qc.ts built their prompt per shot, the shot's own facts inside it - so theirs is one representative
+  // shot's brief. Those two are the only ones that got smaller, and by a third, because the facts are a message now.
+  cinema_propose: 1471,
+  cinema_direct: 6004,
+  cinema_revise: 6259,
+  cinema_picture_read: 2506,
+  cinema_picture_check: 789,
+  cinema_still: 1719,
+  cinema_take: 2172,
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".
   widget_digest: 776,
+  site_read: 1392,
   // The main assistant (agent/, pipeline/): what each builder sent at 61edee2, the commit before they became roles. The writer is buildAssistSystem with
   // no optional line on (5,645 with every one on), the planner AGENT_SYSTEM on a computer (11,895 with the connected apps' addendum), the picture
   // reader AGENT_VISION_SYSTEM (7,195 in Gemini's order), and the portrait writers' with no rhythms and no voice named (3,762 with rhythms).
@@ -99,10 +117,12 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   portrait_update: 3248,
   portrait_transcript: 3178,
   portrait_usage: 3285,
+  // A role that replaced nothing: its first measured size is its own "before".
+  lingo_unit: 1916,
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "cinema_scene", "cinema_eye", "widget_digest", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "lingo_unit"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

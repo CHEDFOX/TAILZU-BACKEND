@@ -159,6 +159,13 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_accepted.screenId": "bots.spaces",
     "push.space_feed.enabled": true,
     "push.space_feed.screenId": "bots.spaces",
+    // Sharing a plan (src/billing/planShare.ts, docs/plan-share.md; PLAN_SHARE, off). Someone asked you to share yours: it opens
+    // Plan and billing, where the ask is waiting with its two buttons. You were put on someone's plan: the same screen, which
+    // leads with whose it is. Neither push ever says anything about money.
+    "push.plan_share_ask.enabled": true,
+    "push.plan_share_ask.screenId": "bots.billing",
+    "push.plan_share_on.enabled": true,
+    "push.plan_share_on.screenId": "bots.billing",
 
     // THE BUTTONS ON A NOTIFICATION (docs/widgets.md): the category each kind carries, one the phone registered from the bootstrap's
     // push.categories (its buttons, their words, icons, text field, foreground or not, and what each calls). "" or absent: none.
@@ -170,6 +177,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     // even when it answers a message to one person. It opens the space, where the reply goes where it should.
     "push.space_feed.category": "",
     "push.approval.category": "x0_yesno",
+    // Someone asking for your plan (billing/planShareActs.ts): Share and Not now, answered from the notification itself. The
+    // category is registered with the phone only while PLAN_SHARE is on (experience/appKnobs.ts withPlanShare), and while the
+    // switch is off no push of this kind is ever raised, so naming it here costs a phone nothing.
+    "push.plan_share_ask.category": "x0_plan_share",
+    // You were put on someone's plan: a plain notification, with nothing to answer.
+    "push.plan_share_on.category": "",
 
     // A reminder the person set on their own calendar or a to-do (src/calendar): the Plan, on that day (data.day).
     "push.plan_reminder.enabled": true,
@@ -203,6 +216,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.meet_waiting.screenId": "bots.meet.meeting",
     "push.meet_failed.enabled": true,
     "push.meet_failed.screenId": "bots.meet.meeting",
+    "push.cinema_board.enabled": true,
+    "push.cinema_board.screenId": "bots.cinema.film",
+    "push.cinema_hold.enabled": true,
+    "push.cinema_hold.screenId": "bots.cinema.film",
+    "push.cinema_ready.enabled": true,
+    "push.cinema_ready.screenId": "bots.cinema.film",
     // The meeting bot in a space (docs/spaces.md): a member took the bot to a meeting (to the space's admin, who sees their meetings), or
     // the admin sent the bot to a member's meeting (to that member). Both open the meeting (data.m); never a word of what was said.
     "push.space_meet.enabled": true,
@@ -269,6 +288,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_accepted.body": "{admin} let you in.",
     "push.space_feed.title": "{chat}",
     "push.space_feed.body": "{name} sent a message",
+    "push.plan_share_ask.title": "{name} is asking for your plan",
+    "push.plan_share_ask.body": "They would use the same month as you.",
+    "push.plan_share_on.title": "You're on a shared plan",
+    "push.plan_share_on.body": "Open Plan and billing to see it.",
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
     ...planPushLabels(),
@@ -293,6 +316,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.meet_waiting.body": "{name} is waiting to be let in.",
     "push.meet_failed.title": "{title}",
     "push.meet_failed.body": "{name} couldn't join: {why}",
+    "push.cinema_board.title": "{title}",
+    "push.cinema_board.body": "Your storyboard is ready. Look it over and say go.",
+    "push.cinema_hold.title": "{title}",
+    "push.cinema_hold.body": "Your film is waiting for you.",
+    "push.cinema_ready.title": "{title}",
+    "push.cinema_ready.body": "Your film is ready to watch.",
     "push.space_meet.title": "{name}",
     "push.space_meet.body": "took the meeting bot to {title}.",
     "push.space_meet_sent.title": "{name}",
@@ -318,10 +347,12 @@ export const EVENT_PUSH_KINDS = [
   "bot_ask", "bot_reply",
   "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
   "space_mail", "space_mail_handle",
+  "plan_share_ask", "plan_share_on",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
   "mail_needs_you", "mail_urgent", "mail_paused", "room_waiting",
   "meet_ready", "meet_waiting", "meet_failed",
+  "cinema_board", "cinema_hold", "cinema_ready",
   "ops_alert",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

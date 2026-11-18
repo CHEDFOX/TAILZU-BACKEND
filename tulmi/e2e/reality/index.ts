@@ -26,6 +26,10 @@ import { commandList, missingRepos, missingTools } from "./installs.js";
 import { writeReport, type PlanEstimate } from "./report.js";
 import { SimExecutor, type SimScenario } from "./sim.js";
 import { newState, replaySweep, runStages, type RunState } from "./stages.js";
+import { append as appendTrend, lineOf, movement, read as readTrend } from "./trend.js";
+import { DEFAULT_RESULTS_DIR } from "./store.js";
+import { summaryFingerprint } from "./fingerprint.js";
+import { analyze } from "./analysis.js";
 import { codeFingerprint } from "./fingerprint.js";
 import type { Mode, PlanName, StageId } from "./types.js";
 
@@ -58,11 +62,12 @@ export const REALITY_SPEC: CliSpec = {
     judge: { kind: "bool", about: "judge rubric criteria with a real model (a little dearer) instead of the keyword stub that never decides" },
     prove: { kind: "bool", about: "no key: stage 0 for real, the rest from cassettes and simulations; writes e2e/REALITY.md" },
     summary: { kind: "bool", about: "write the committed summary e2e/REALITY.md from this run" },
+    trend: { kind: "bool", about: "keep this run's line in e2e/results/trend.jsonl, and show how it moved (free with --stages 0)" },
     commands: { kind: "bool", about: "print the commands for a session where installs are allowed, and stop" },
     "results-dir": { kind: "string", value: "<dir>", about: "the results store (default e2e/results)" },
     out: { kind: "string", value: "<dir>", about: "where this run's report is written (default e2e/out/reality/<time>)" },
   },
-  examples: ["npm run reality -- --plan quick --estimate", "npm run reality -- --plan quick --budget-inr 60", "npm run reality -- --stages 0", "npm run reality -- --prove", "npm run reality -- --plan standard --stages 4 --groups agents --install --budget-inr 150"],
+  examples: ["npm run reality -- --plan quick --estimate", "npm run reality -- --plan quick --budget-inr 60", "npm run reality -- --stages 0", "npm run reality -- --prove --trend", "npm run reality -- --prove", "npm run reality -- --plan standard --stages 4 --groups agents --install --budget-inr 150"],
   notes: ["Stage 0 is free and always first. A paid run (mode real, any of stages 1 to 5) needs --budget-inr and an estimate made for its plan in the last 24 hours.", "Exit: 0 done, 2 a mistake in the command, 4 a stage was aborted (30% over its estimate)."],
 };
 
@@ -82,7 +87,7 @@ async function planEstimates(base: RealityOptions): Promise<PlanEstimate[]> {
   return out;
 }
 
-export interface Parsed { opts: RealityOptions; estimateOnly: boolean; allPlans: boolean; prove: boolean; summary: boolean; commands: boolean }
+export interface Parsed { opts: RealityOptions; estimateOnly: boolean; allPlans: boolean; prove: boolean; summary: boolean; commands: boolean; trend: boolean }
 
 export function optionsFrom(argv: readonly string[]): Parsed {
   const p = parseCli(REALITY_SPEC, argv);
@@ -112,7 +117,7 @@ export function optionsFrom(argv: readonly string[]): Parsed {
     ...(p.str("agent-model") ? { agentModel: p.str("agent-model")! } : {}), ...(p.str("tasks") ? { taskGlob: p.str("tasks")! } : {}), ...(p.num("task-limit") !== undefined ? { taskLimit: p.num("task-limit")! } : {}), ...(p.str("results-dir") ? { resultsDir: path.resolve(p.str("results-dir")!) } : {}), outDir, seed: p.num("seed") ?? 1, confidence, ...(p.num("max-repeats") !== undefined ? { maxRepeats: p.num("max-repeats")! } : {}),
     install: p.has("install"), skipSuite: p.has("no-suite"), skipTypecheck: p.has("no-typecheck"), freeParts: !p.has("no-free-parts"), judge: p.has("judge"), sim, persona, log: (s) => console.log(s),
   };
-  return { opts, estimateOnly: p.has("estimate"), allPlans: p.has("all-plans"), prove: p.has("prove"), summary: p.has("summary"), commands: p.has("commands") };
+  return { opts, estimateOnly: p.has("estimate"), allPlans: p.has("all-plans"), prove: p.has("prove"), summary: p.has("summary"), commands: p.has("commands"), trend: p.has("trend") };
 }
 
 /** Narrows a plan to a few tasks for a quick look or a proof. */
@@ -173,10 +178,10 @@ export async function runReality(argv: readonly string[] = process.argv.slice(2)
   const st = newState(ctx, exec);
   try { await runStages(st); } finally { await exec.close(); }
   st.spentInr = opts.mode === "real" ? exec.spentInr() : st.spentInr;
-  return finish(st, estimates, [], parsed.summary);
+  return finish(st, estimates, [], parsed.summary, false, parsed.trend);
 }
 
-async function finish(st: RunState, estimates: ReturnType<typeof estimateStages>, demos: Array<{ title: string; state: RunState }>, summary: boolean, prove = false): Promise<number> {
+async function finish(st: RunState, estimates: ReturnType<typeof estimateStages>, demos: Array<{ title: string; state: RunState }>, summary: boolean, prove = false, trend = false): Promise<number> {
   const plans = await planEstimates({ ...st.ctx, estimateOnly: true, catalog: st.ctx.catalog });
   writeJson(path.join(st.ctx.outDir, "reality.json"), {
     runId: st.runId, startedAt: st.startedAt, finishedAt: st.finishedAt, plan: st.ctx.plan, mode: st.ctx.mode, budgetInr: st.ctx.budgetInr, spentInr: st.spentInr, stages: st.stages, comparisons: st.comparisons,
@@ -185,7 +190,21 @@ async function finish(st: RunState, estimates: ReturnType<typeof estimateStages>
   // The commands and the "cheapest next run" table must agree with the plan table: all three come from the store as it is NOW (this run's replays already count),
   // not from the start of the run.
   const fresh = plans.find((p) => p.plan === st.ctx.plan)?.stages;
-  const out = writeReport({ main: st, prove, demos, plans, estimates: fresh ?? (estimates.length ? estimates : estimateStages({ ...st.ctx, stages: ALL_STAGES })) }, { summary });
+  // The trend (trend.ts): one line a run, so "is it getting better?" has an answer. Read before this run's line is added, so
+  // the comparison is against what came before. Written only when asked, and a trend that cannot be kept never fails a run.
+  const wantTrend = trend;
+  const earlier = wantTrend ? readTrend(DEFAULT_RESULTS_DIR) : [];
+  const trendLine = wantTrend
+    ? lineOf(st, analyze(st, estimates), { mode: prove ? "prove" : "real", spendInr: st.spentInr, code: summaryFingerprint().product })
+    : undefined;
+  const out = writeReport({
+    main: st, prove, demos, plans, estimates: fresh ?? (estimates.length ? estimates : estimateStages({ ...st.ctx, stages: ALL_STAGES })),
+    ...(wantTrend ? { trend: earlier, trendLine: trendLine! } : {}),
+  }, { summary });
+  if (wantTrend && trendLine) {
+    appendTrend(DEFAULT_RESULTS_DIR, trendLine, (m) => console.warn(`reality: ${m}`));
+    for (const m of movement(earlier, trendLine)) if (m.direction === "better" || m.direction === "worse") console.log(`  ${m.words}`);
+  }
   console.log(`\nreality run ${st.runId}: ${st.stages.map((s) => `${s.stage}:${s.status}`).join(" ")}; spent ${st.ctx.mode === "real" ? `₹${st.spentInr.toFixed(2)}` : "nothing (no model was paid)"}`);
   for (const c of st.comparisons) console.log(`  ${c.title}: ${c.ended}${c.winner ? ` -> ${c.winner}` : ""} (${c.final.reason})`);
   console.log(`report: ${path.relative(process.cwd(), out.latest)}${out.md ? `\nsummary: ${path.relative(process.cwd(), out.md)}` : ""}`);
@@ -225,7 +244,8 @@ async function prove(parsed: Parsed): Promise<number> {
   const sState = newState(scripted, sx);
   try { await runStages(sState); } finally { await sx.close(); }
   demos.push({ title: `Tailzu's real flow, scripted: a right arm against a wrong one (agents), then two identical right arms (models); ${scripted.sample.ordered.length} task(s)`, state: sState });
-  return finish(main, estimates, demos, true, true);
+  // The no-key proof keeps its line too: it is free, so it is the one a nightly run makes.
+  return finish(main, estimates, demos, true, true, parsed.trend);
 }
 
 if (process.argv[1] && /e2e\/reality\/index\.[tj]s$/.test(process.argv[1])) {

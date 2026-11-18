@@ -18,7 +18,7 @@
  * Pure: marks and items in, a judgement out. No clock of its own, no store, no model.
  */
 import { learned, recall } from "./schedule.js";
-import type { ExerciseKind, LingoItem, Verdict } from "./types.js";
+import { SPOKEN_KINDS, type ExerciseKind, type LingoItem, type Verdict } from "./types.js";
 
 /** How long one set is. Short enough to finish in a queue, long enough to tell you something. */
 export const SET_SIZE = 12;
@@ -51,7 +51,7 @@ export function readSet(answers: readonly Answered[]): SetResult {
     if (a.verdict === "right") r.right++;
     else if (a.verdict === "close") r.close++;
     else r.wrong++;
-    if (a.verdict === "right" && (a.kind === "say" || a.kind === "talk")) r.spoken++;
+    if (a.verdict === "right" && SPOKEN_KINDS.includes(a.kind)) r.spoken++;
     if (a.learnedNow && !r.learned.includes(a.item)) r.learned.push(a.item);
     if (a.verdict === "wrong" && !r.slipped.includes(a.item)) r.slipped.push(a.item);
   }
@@ -65,14 +65,25 @@ export function readSet(answers: readonly Answered[]): SetResult {
  */
 export type Performance = "flying" | "solid" | "shaky" | "struggling";
 
+/**
+ * Below this, a set says nothing about the person. One wrong answer out of two is noise, and reading it as
+ * "struggling" — no new words, nothing above listening — is the app inventing a bad day and then acting on it.
+ */
+export const JUDGEABLE = 5;
+
 export function performanceOf(r: SetResult): Performance {
   if (!r.asked) return "solid";
+  // Too few to judge: it may say the set went fine, it may say they wobbled, and it may not send them down a rung.
+  if (r.asked < JUDGEABLE) return r.wrong === 0 ? "solid" : "shaky";
   const right = r.right / r.asked;
   const wrong = r.wrong / r.asked;
   // Nearly everything right, and some of it out loud. Saying things is what "flying" has to mean here.
   if (right >= 0.9 && r.spoken >= 2) return "flying";
   if (wrong >= 0.4) return "struggling";
-  if (right >= 0.7 && wrong <= 0.15) return "solid";
+  // Most of it right and not much of it wrong. At a quarter wrong somebody is still having a good day: eight out of
+  // ten used to read as "shaky", which held them below the rung where a word is finished, so a person doing well
+  // could never finish one.
+  if (right >= 0.7 && wrong <= 0.25) return "solid";
   return "shaky";
 }
 
@@ -131,15 +142,21 @@ export function shapeNext(p: Performance, last: SetResult, o: { size?: number } 
     return { size, newRoom: Math.round(size * 0.25), rungCap: null, pushSpoken: false, revisit: last.slipped };
   }
   if (p === "shaky") {
-    // Fewer new words, and nothing harder than putting a word back into a sentence.
-    return { size, newRoom: Math.round(size * 0.1), rungCap: "blank", pushSpoken: false, revisit: last.slipped };
+    // Fewer new words, and no open conversation — but a word they hold can still be SAID. Capping a wobbly day
+    // below speaking stopped anything ever being finished, because a word is not learned until it has been said:
+    // the cap is there to keep somebody off what is hard, and saying a word they already hold is not that.
+    return { size, newRoom: Math.round(size * 0.1), rungCap: "say", pushSpoken: false, revisit: last.slipped };
   }
   // struggling: no new words at all, a shorter set, and only recognising and hearing.
   return { size: Math.max(6, Math.round(size * 0.7)), newRoom: 0, rungCap: "listen", pushSpoken: false, revisit: last.slipped };
 }
 
-/** The rungs of the ladder, weakest first, so a cap can be compared against a kind. */
-const RUNGS: readonly ExerciseKind[] = ["choose", "listen", "blank", "chips", "write", "say", "talk"];
+/**
+ * The rungs of the ladder, weakest first, so a cap can be compared against a kind. Recognising comes before
+ * producing and producing on paper before producing out loud, so the order runs: pick a meaning, hear it, pick what
+ * you would say, put a word back, assemble it, write it, say it, say the whole thing, use it in conversation.
+ */
+const RUNGS: readonly ExerciseKind[] = ["choose", "listen", "reply", "blank", "chips", "write", "say", "speak", "talk"];
 
 /** The kind to ask, held under a cap. A cap never makes an exercise HARDER, only gentler. */
 export function underCap(kind: ExerciseKind, cap: ExerciseKind | null): ExerciseKind {

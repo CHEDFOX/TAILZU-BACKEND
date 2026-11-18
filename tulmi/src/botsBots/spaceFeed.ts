@@ -38,9 +38,11 @@ export interface FeedPost { text?: unknown; to?: unknown; thing?: unknown; files
 export interface SpokenConfirm { toId: string; toName: string; text: string; whole: string; line: string }
 export interface FeedMessage {
   id: string; at: number;
-  from: { userId: string | null; name: string; you: boolean };
+  /** `gone`: the sender is no longer here — their account was deleted, or they and the viewer share no space any more
+   *  (threads.ts). The message stays; the name is drawn faded and nothing about them opens. */
+  from: { userId: string | null; name: string; you: boolean; gone?: boolean };
   /** A message to one person: who. Shown as "To <name>" to its sender and to the admin; the recipient sees a normal message. */
-  to: { userId: string; name: string; you: boolean } | null;
+  to: { userId: string; name: string; you: boolean; gone?: boolean } | null;
   text: string;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>;
   /** `ownerName`: whose thing it is, when it isn't its sender's (the space's admin shared it); "" for a thing its owner shared. */

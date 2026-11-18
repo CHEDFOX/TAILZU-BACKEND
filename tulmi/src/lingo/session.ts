@@ -22,7 +22,7 @@ import { fold } from "./grade.js";
 import { createHash } from "node:crypto";
 import type { Sentence } from "./sentences.js";
 import { underCap, type SetShape } from "./set.js";
-import type { ExerciseKind, Learner, LingoItem, Mark, Verdict } from "./types.js";
+import { MODE_OF, SPOKEN_KINDS, type ExerciseKind, type ItemMarks, type Learner, type LingoItem, type Mark, type Verdict } from "./types.js";
 
 /**
  * What a sentence with a hole in it shows where the word was taken out. One marker everywhere, so the screens never
@@ -78,6 +78,12 @@ export const sizeFor = (goalMin: number): number => Math.max(5, Math.min(60, Mat
 /** At most this much of a session is things never seen before, so revision is never crowded out. */
 const NEW_SHARE = 0.3;
 
+/** How many of their OWN never-seen words come in whatever the shape says, because they asked for them. */
+const OWN_ALWAYS = 2;
+
+/** How long a set of early practice is. Shorter than a real one: they are ahead, and it should feel like a top-up. */
+const EARLY_MAX = 8;
+
 /**
  * WHICH SHAPE AN ITEM GETS, by how well it is held and whether it has ever been said.
  *
@@ -91,18 +97,28 @@ export function shapeFor(item: LingoItem, now: number): ExerciseKind {
   if (m.state === "new") return "choose";
   if (m.state === "relearning") return "choose";
   const held = recall(m, now);
+  // Out loud is the thing being taught, and a whole utterance is SAID, not spelled: a phrase speaks, a word says.
+  const aloud: ExerciseKind = item.kind === "phrase" ? "speak" : "say";
   // Held well enough to produce, but not yet said enough times to count: it is time to say it.
-  if (m.state === "review" && item.spoken < SPOKEN_TO_LEARN) return "say";
-  if (m.state === "review" && held < 0.6) return "say";
+  if (m.state === "review" && item.spoken < SPOKEN_TO_LEARN) return aloud;
+  if (m.state === "review" && held < 0.6) return aloud;
   if (m.reps <= 1) return "listen";
   // A word put back into a real sentence. It comes before writing the word on its own, because a word is not
   // learned as a translation pair: it is learned where it is used. It needs a sentence, so a caller that has no
-  // bank to look in simply never gets this kind, and the ladder closes over the gap.
-  if (m.reps === 2) return "blank";
+  // bank to look in simply never gets this kind, and the ladder closes over the gap. A whole utterance has no
+  // single word to take out, so what it gets at this rung is the same question one level up: of these, what would
+  // you actually say here.
+  if (m.reps === 2) return item.kind === "phrase" ? "reply" : "blank";
   if (m.reps === 3) return "chips";
   if (item.kind === "phrase") return "chips";
+  // THE TOP OF THE LADDER, and the only rung that is the real thing: held, and said out loud enough times to count,
+  // so the thing left is to use it in something of their own. Every rung below exists to get an item to here.
+  if (held >= TALK_AT && item.spoken >= SPOKEN_TO_LEARN) return "talk";
   return "write";
 }
+
+/** How well a word must be held before it is asked for in open conversation rather than on its own. */
+const TALK_AT = 0.85;
 
 /** A stable shuffle: the same item on the same day is offered the same way, so a reload is not a different question. */
 function shuffle<T>(xs: readonly T[], seed: string): T[] {
@@ -164,7 +180,7 @@ function distractors(item: LingoItem, pool: readonly LingoItem[], seed: string):
 export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: number, kind?: ExerciseKind, sentences?: SentenceLookup): Exercise {
   let k = kind ?? shapeFor(item, now);
   const seed = `${item.item}|${Math.floor(now / 86_400_000)}`;
-  const base: Exercise = { kind: k, item: item.item, ref: "", prompt: item.item, accepted: [item.item], options: [], correct: 0, chips: [], spoken: k === "say" || k === "talk", sentence: "" };
+  const base: Exercise = { kind: k, item: item.item, ref: "", prompt: item.item, accepted: [item.item], options: [], correct: 0, chips: [], spoken: SPOKEN_KINDS.includes(k), sentence: "" };
 
   if (k === "blank") {
     // A real sentence that uses the word, with the word taken out. The shortest one is used: a beginner should not
@@ -193,6 +209,12 @@ export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: nu
     const options = shuffle([item.gloss, ...distractors(item, pool, seed)], `${seed}|opts`);
     return { ...base, prompt: item.item, accepted: [item.gloss], options, correct: Math.max(0, options.indexOf(item.gloss)) };
   }
+  if (k === "reply") {
+    // What would you actually SAY here, out of a few. The wrong ones are other things this person has met, so the
+    // choice is between real options rather than between the answer and some filler.
+    const options = shuffle([item.item, ...others(item, pool, seed)], `${seed}|reply`);
+    return { ...base, prompt: item.gloss, options, correct: Math.max(0, options.indexOf(item.item)) };
+  }
   if (k === "chips") {
     const words = item.item.split(" ").filter(Boolean);
     return { ...base, prompt: item.gloss, chips: shuffle(words, `${seed}|chips`) };
@@ -201,7 +223,8 @@ export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: nu
     // The item is spoken aloud and they write what they heard, so the prompt is the item itself, for the voice.
     return { ...base, prompt: item.item };
   }
-  // write, say and talk all ask them to produce the item from its meaning.
+  // write, say, speak and talk all ask them to produce the item from its meaning, and nothing on the screen says
+  // what it is: that is the difference between producing a thing and reading it aloud.
   return { ...base, prompt: item.gloss };
 }
 
@@ -227,7 +250,29 @@ export function pick(items: readonly LingoItem[], learner: Learner, now: number,
   // made entirely of words they have never seen is the exact failure this is meant to prevent.
   const want = Math.max(0, Math.min(room, size - Math.min(revision.length, size - room)));
   const fresh = want > 0 ? unseen(items, want) : [];
-  return [...revision.slice(0, size - fresh.length), ...fresh];
+  // EVEN A SET WITH NO ROOM takes what they went looking for themselves. "No new words" is there to stop a person
+  // who is losing their grip being piled on with material off a list — it was never meant to hold back a word they
+  // asked for ten seconds ago. Being told it was written down and then not being asked it is a promise broken in
+  // the one place they were watching, and a bad set before it is no reason at all.
+  const held = new Set(fresh.map((i) => i.item));
+  const theirs = fresh.length < OWN_ALWAYS
+    ? unseen(items.filter((i) => (i.source === "asked" || i.source === "said") && !held.has(i.item)), OWN_ALWAYS - fresh.length)
+    : [];
+  const bring = [...fresh, ...theirs];
+  const out = [...revision.slice(0, Math.max(0, size - bring.length)), ...bring];
+  if (out.length) return out;
+
+  // NOTHING IS DUE AND THERE IS NOTHING NEW — and they have just pressed Continue. Giving them an empty screen
+  // because a scheduler says they do not NEED practice yet is the whole difference between a course somebody walks
+  // and a pile they dip into. So they practise what is closest to due, early.
+  //
+  // It costs a little: an item reviewed before its time teaches less than one reviewed on it. It buys the thing
+  // the app is otherwise worst at — somebody who turns up every day always has something to do, and never loses a
+  // streak to the scheduler being satisfied with them.
+  return [...items]
+    .filter((i) => i.memory.state !== "new")
+    .sort((a, b) => a.memory.dueMs - b.memory.dueMs)
+    .slice(0, Math.max(1, Math.min(size, EARLY_MAX)));
 }
 
 /**
@@ -254,9 +299,26 @@ export function plan(items: readonly LingoItem[], learner: Learner, now: number,
 }
 
 /** The item after an answer: the scheduler moved on, and a time said out loud counted if that is what it was. */
-export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number): LingoItem {
-  const outLoud = kind === "say" || kind === "talk";
-  return review(item, mark.verdict, outLoud, now);
+/**
+ * The item after an answer: the scheduler moved on, a time out loud counted if that is what it was, and WHAT THEY
+ * DID is written down — which of the three ways they were asked, whether it went in, and how it went wrong.
+ *
+ * The last part is the bit nothing kept before. The grader has always said why something was wrong — a dropped
+ * accent is not the wrong word — and it was thrown away the moment it had been shown once, so the same mistake
+ * five times read as five mistakes with nothing in common.
+ */
+export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number, slow = false): LingoItem {
+  const outLoud = SPOKEN_KINDS.includes(kind);
+  const mode = MODE_OF[kind];
+  const was = item.marks?.[mode] ?? { asked: 0, right: 0 };
+  const marks: ItemMarks = {
+    ...item.marks,
+    [mode]: { asked: was.asked + 1, right: was.right + (mark.verdict === "right" ? 1 : 0) },
+    ...(mark.verdict !== "right" && mark.why
+      ? { why: { ...item.marks?.why, [mark.why]: (item.marks?.why?.[mark.why] ?? 0) + 1 } }
+      : {}),
+  };
+  return { ...review(item, mark.verdict, outLoud, now, slow), marks };
 }
 
 /** How a course is going, for the page and for the chat. Counts only, nothing invented. */

@@ -79,6 +79,36 @@ export interface UsageResponse { usage: UsageMeter; near: string | null; out: st
 export interface UsageRefusalBody { code: "quota_exceeded"; reason: "usage_limit"; message: string; resetsAt: number; upgrade: boolean }
 
 /**
+ * A person's tiny bot, as Spaces draws them (src/botsBots/personLook.ts): the catalog's avatar id and one of the group colours,
+ * both picked from their account id, so someone looks the same on a plan-sharing row as in the space they share.
+ */
+export interface PersonLookView { seed: string; avatar: string; color: string }
+
+/**
+ * GET /v1/botsapp/bots/plan/share — everything the sharing screens draw, from one read (src/billing/planShare.ts,
+ * docs/plan-share.md). Nothing here is money and nothing here is somebody else's money: `hasPlan` is the only thing ever said
+ * about another person's billing, and it is said only so the right row can be drawn. Whose plan a person is on is never told to
+ * anyone but them.
+ */
+export interface PlanShareView {
+  /** I have a live plan of my own, so I have something to share. */
+  canShare: boolean;
+  /** People on my plan, with how much of this month each of them has used (0–1 as a percentage, 0–100, rounded). */
+  members: Array<{ userId: string; name: string; usedPct: number; look?: PersonLookView }>;
+  /** Set when I am on someone else's plan: whose, since when, how much of the month everyone on it has used, and how much is mine. */
+  on?: {
+    ownerId: string; name: string; planName: string; since: number;
+    monthUsedPct: number; myUsedPct: number; look?: PersonLookView;
+  };
+  /** Everyone I share a space with: the only people a plan may ever be shared with or asked from. */
+  people: Array<{ userId: string; name: string; hasPlan: boolean; onMyPlan: boolean; look?: PersonLookView }>;
+  /** Asks waiting for my answer. */
+  asks: Array<{ id: string; askerId: string; name: string; about?: string; at: number; look?: PersonLookView }>;
+  /** My own ask, still waiting on them (`waiting`, or `promised` once they said yes and have yet to buy). */
+  asked?: { id: string; ownerId: string; name: string; at: number; look?: PersonLookView };
+}
+
+/**
  * Three continuous style dials (0–100). Continuous instead of enum so the
  * keyboard can offer a slider that Actually Feels Like a slider, and so we can
  * A/B different midpoints without a shape change.
@@ -196,12 +226,12 @@ export interface Personality {
 
   /**
    * The About you card (name and gender, on Home after a few visits; routes/bots/botsFirstRun.ts, GET/PUT
-   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), the visit
-   * from which it may come again after a "Not now", and how many times it was put off.
+   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), and whether
+   * the card is done with. The card asks for nothing (App Review 5.1.1(v), (x)): "Not now" on either of its steps, and
+   * finishing it however much was filled in, set `botsAboutSkipped`, and it is never due again.
    */
   botsVisits?: number;
-  botsAboutFrom?: number;
-  botsAboutPutOff?: number;
+  botsAboutSkipped?: boolean;
 
   /**
    * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:
@@ -851,6 +881,112 @@ export interface AgentStepRequest {
 
 export type AgentHandoverWhy = "login" | "code" | "captcha" | "payment" | "other";
 
+/* ------------------------------------------------------------------ a site watched for someone (src/sites, docs/sites.md) */
+
+/** One stage of a thing's progress, as the SITE names it ("Food ready", "Shipped"). Never our own words for it. */
+export interface SiteStage {
+  name: string;
+  /** What the page said about when, exactly as written ("9:14 pm", "Tue"). Absent when it did not say. */
+  when?: string;
+  /** This stage has happened. */
+  done: boolean;
+}
+
+/**
+ * WHAT A PAGE SAID ABOUT ONE THING, READ AND NOTHING ELSE (docs/sites.md).
+ *
+ * Built by a model from the page the person is signed in to, so every field is DATA THE SITE WROTE: never a promise
+ * of ours, never instructions, and never shown without saying where it came from and when. A card with no `title`
+ * and no `stages` is not a card: the read failed and the old one stands.
+ */
+export interface SiteCard {
+  /** What the thing is, in the site's words: "Behrouz Biryani", "Sony WH-1000XM6". ≤ 80. */
+  title: string;
+  /** Where it has got to, one line: "Out for delivery · arriving 9:42". ≤ 120. */
+  line: string;
+  /** The stages the page shows, in order, 0-8. Empty when the page has no such thing. */
+  stages: SiteStage[];
+  /** One more fact worth the room: "Rahul is 1.2 km away". ≤ 160. */
+  detail?: string;
+  /** The page says this is finished, so it stops being watched. */
+  done?: boolean;
+  /** Something is owed, and how much, as the page wrote it: "₹1,340 due in 2 days". ≤ 80. Never a button on its own:
+   *  paying is the person's, through the hand-off, as everywhere else. */
+  owed?: string;
+}
+
+/** A thing being watched, as a screen draws it. */
+export interface SiteWatchView {
+  id: string;
+  /** The host it is read from, shown to the person: "swiggy.com". */
+  site: string;
+  label: string;
+  state: "open" | "done" | "stopped" | "lost";
+  card?: SiteCard;
+  /** When it was last read, so a stale card never looks live. Epoch ms. */
+  readAt?: number;
+}
+
+/** A site the person is signed in to, as a screen draws it. */
+export interface SiteLoginView {
+  site: string;
+  /** What the site calls them, when the page said so. */
+  who?: string;
+  /** Epoch ms of the last time it was used. */
+  usedAt?: number;
+  /** The site has started turning us away: they are asked to sign in again. */
+  needsSignIn?: boolean;
+}
+
+/** Everything the sites screens draw, from one read. */
+export interface SitesView {
+  logins: SiteLoginView[];
+  watches: SiteWatchView[];
+  /** The hosts this server allows at all (CLOUD_BROWSER_SITES). Empty means none, and the screen says so. */
+  canAdd: string[];
+  /** How many things one person may have being watched at once. */
+  most: number;
+}
+
+
+/**
+ * WHAT ONE BOX OF A SIGN-IN CARD ASKS FOR. `secret` is a password: the app hides it as it is typed, and it is
+ * never written to the history, the ledger or a log — it goes to the page and nowhere else. `code` is the
+ * one-time code a site texts or mails; it is short-lived but still theirs, so it is kept the same way.
+ */
+export type AgentFieldKind = "text" | "phone" | "email" | "secret" | "code";
+
+/** One box of a sign-in card, and the field on the page it fills. */
+export interface AgentField {
+  /** The element on THIS screen the answer is typed into. */
+  id: string;
+  kind: AgentFieldKind;
+  /** What to call it, in the person's own language, ≤ 48 chars. */
+  label: string;
+}
+
+/** Another way in the page itself offers: "Continue with Google", "Use email instead". */
+export interface AgentWayIn {
+  /** The control on THIS screen that starts it. */
+  id: string;
+  label: string;
+}
+
+/**
+ * A SIGN-IN CARD THE PLANNER BUILT FROM THE PAGE IN FRONT OF IT (docs/sign-in.md).
+ *
+ * Nothing here is written per site: the planner reads the real fields off <screen> and names them, so a shop it
+ * has never seen works the same as one it has. The card is only ever an improvement on showing the page itself —
+ * when the planner cannot build one it is confident in, it sends no card and the person signs in on the page, which
+ * always works. Carried only on a `login` or `code` handover: a card is never drawn for a payment or a CAPTCHA.
+ */
+export interface AgentHandoverCard {
+  /** In the order they are filled, 1-6. */
+  fields: AgentField[];
+  /** Other ways in, 0-4. */
+  also?: AgentWayIn[];
+}
+
 export interface AgentJob {
   /** What they asked for, ≤ 1000. */
   goal: string;
@@ -1073,8 +1209,13 @@ export type AgentEvent =
   | { t: "progress"; done?: number[]; note?: string }
   /** TERMINAL: the next step is the person's own: a password, a one-time code, a CAPTCHA, card details, or a choice only
    *  they can make. Ask never types those. The device shows `text` with Continue and Stop; Continue is the next step, with a
-   *  history turn { did: "HANDOVER", result: "ok" }. */
-  | { t: "handover"; why: AgentHandoverWhy; text: string }
+   *  history turn { did: "HANDOVER", result: "ok" } — and nothing they typed, ever.
+   *
+   *  With `card` (a `login` or `code` handover only), the device may draw the boxes the card names instead of only the
+   *  sentence: each answer is typed into that field's own `id` on this same screen, then the card's own button is pressed.
+   *  A device that does not know `card` ignores it and shows `text`, which is why the card is an extra and never the only
+   *  way through. Showing the page itself is always offered beside it. */
+  | { t: "handover"; why: AgentHandoverWhy; text: string; card?: AgentHandoverCard }
   /** TERMINAL: a question for the user; their answer is the next step. */
   | { t: "ask"; text: string }
   /** TERMINAL, only on a step without a picture: the answer needs to see

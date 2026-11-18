@@ -228,3 +228,73 @@ export function gradeChips(picked: readonly string[], accepted: readonly (readon
   }
   return mark("wrong", null, "word");
 }
+
+/**
+ * Is `want` in `heard` as a thing in its own right — a whole word, or a run of whole words? A script that puts no
+ * spaces between its words has no word edges to hold to, so there it is a plain substring.
+ */
+function inThere(heard: string, want: string): boolean {
+  if (spaceless(want) || spaceless(heard)) return heard.includes(want);
+  const hs = heard.split(/\s+/).filter(Boolean);
+  const ws = want.split(/\s+/).filter(Boolean);
+  if (!ws.length || ws.length > hs.length) return false;
+  for (let i = 0; i + ws.length <= hs.length; i++) {
+    if (ws.every((w, j) => hs[i + j] === w)) return true;
+  }
+  return false;
+}
+
+/** The stretches of `heard` that are the right size to be `want`, so a near miss can be measured against them. */
+function windows(heard: string, want: string): string[] {
+  if (spaceless(want) || spaceless(heard)) {
+    const n = want.length;
+    const out: string[] = [];
+    for (let i = 0; i + n <= heard.length && out.length < WINDOWS_MAX; i++) out.push(heard.slice(i, i + n));
+    return out;
+  }
+  const hs = heard.split(/\s+/).filter(Boolean);
+  const n = Math.max(1, want.split(/\s+/).filter(Boolean).length);
+  const out: string[] = [];
+  for (let i = 0; i + n <= hs.length && out.length < WINDOWS_MAX; i++) out.push(hs.slice(i, i + n).join(" "));
+  return out;
+}
+
+/** How many stretches of a long answer are worth measuring. A turn of talk is not a novel; this is only a guard. */
+const WINDOWS_MAX = 200;
+
+/**
+ * A TURN OF REAL CONVERSATION (`talk`): the word is expected SOMEWHERE in what they said, not handed back on its own.
+ *
+ * Nothing here judges whether what they said was good, or true, or interesting — no grader can do that, and one that
+ * pretended to would be lying to them. What it can tell is whether the word they were due came out of their mouth
+ * inside a sentence they made up themselves, which is the only thing the scheduler needs and a far higher bar than
+ * repeating it back.
+ *
+ * A near miss is `close` on the same slip budget as everywhere else, because the machine in the middle makes its own
+ * mistakes and being marked wrong for a transcriber's slip is how a learning app loses somebody. Saying nothing is
+ * `silence`, which has its own gesture: the bot cups a hand to its ear rather than marking them down.
+ */
+export function gradeUsed(transcript: string, accepted: readonly string[]): Mark {
+  const heard = fold(transcript);
+  if (!heard) return mark("wrong", null, "silence");
+  const list = accepted.filter((x) => x.trim());
+  if (!list.length) return mark("wrong", null, "word");
+
+  for (const acc of list) {
+    const want = fold(acc);
+    if (want && inThere(heard, want)) return mark("right", acc, "");
+  }
+  let best: { acc: string; d: number } | null = null;
+  for (const acc of list) {
+    const want = fold(acc);
+    if (!want) continue;
+    const cap = slipBudget(want);
+    if (cap === 0) continue;
+    for (const win of windows(heard, want)) {
+      const d = distance(win, want, cap);
+      if (d <= cap && (!best || d < best.d)) best = { acc, d };
+    }
+  }
+  if (best) return mark("close", best.acc, "spelling");
+  return mark("wrong", null, "word");
+}

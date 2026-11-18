@@ -25,6 +25,10 @@ services:
       # given as a build secret (never kept in the image), as the nightly backup does.
       args:
         DEPLOY_MIGRATIONS: "1"
+        # Blender, for the cinema bot's 3D (docs/cinema-3d.md). A deploy renders here; CI builds without it, because it is
+        # the largest thing in the image. This box has no graphics card, so Cycles renders on cores: a small preview is
+        # seconds, a full frame is minutes, and an animation is 24 frames a second of those. Stills, in other words.
+        WITH_BLENDER: "1"
       secrets:
         - app_env
     env_file:

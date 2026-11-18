@@ -117,11 +117,31 @@ describe("the next set follows the person", () => {
     expect(s.pushSpoken).toBe(false);
   });
 
-  it("holds a shaky person back from producing, without stopping new words entirely", () => {
+  it("holds a shaky person back from open conversation, but never from saying a word they hold", () => {
     const s = shapeNext("shaky", last);
-    expect(s.rungCap).toBe("blank");
+    // "say", not "blank": a word is not learned until it has been said, so a cap below speaking means a wobbly
+    // day stops anything from ever being finished. Three weeks of 80%-right days finished nothing at all.
+    expect(s.rungCap).toBe("say");
     expect(s.newRoom).toBeGreaterThan(0);
     expect(s.newRoom).toBeLessThan(shapeNext("solid", last).newRoom);
+  });
+
+  it("calls eight right out of ten a good day, because it is one", () => {
+    // A quarter wrong used to read as "shaky", which held somebody doing well below the rung where a word finishes.
+    expect(performanceOf({ asked: 10, right: 8, close: 0, wrong: 2, spoken: 0, learned: [], slipped: [] })).toBe("solid");
+    expect(performanceOf({ asked: 12, right: 9, close: 0, wrong: 3, spoken: 0, learned: [], slipped: [] })).toBe("solid");
+    // A third wrong is not a good day, and nearly half wrong is a bad one.
+    expect(performanceOf({ asked: 12, right: 8, close: 0, wrong: 4, spoken: 0, learned: [], slipped: [] })).toBe("shaky");
+    expect(performanceOf({ asked: 12, right: 7, close: 0, wrong: 5, spoken: 0, learned: [], slipped: [] })).toBe("struggling");
+  });
+
+  it("does not read a bad day into a set too short to say anything", () => {
+    // One wrong out of two is noise. Reading it as "struggling" drops them a rung on nothing at all.
+    expect(performanceOf({ asked: 2, right: 1, close: 0, wrong: 1, spoken: 0, learned: [], slipped: [] })).toBe("shaky");
+    expect(performanceOf({ asked: 1, right: 0, close: 0, wrong: 1, spoken: 0, learned: [], slipped: [] })).toBe("shaky");
+    expect(performanceOf({ asked: 3, right: 3, close: 0, wrong: 0, spoken: 0, learned: [], slipped: [] })).toBe("solid");
+    // Once there are enough answers to mean something, a bad set is a bad set again.
+    expect(performanceOf({ asked: 5, right: 1, close: 0, wrong: 4, spoken: 0, learned: [], slipped: [] })).toBe("struggling");
   });
 
   it("opens up for somebody flying: more new words, and push for speaking", () => {

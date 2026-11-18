@@ -66,6 +66,11 @@ export const ICONS = {
   sun: circ(12, 12, 4) + "M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4",
   swap: "M4 8h15l-3.5-3.5M20 16H5l3.5 3.5",
   spark: "M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z",
+  // Three balloons tied to one thread, for the bot you just talk to. The balloons are kept APART rather than
+  // bunched: at the 18 and 24 pixels a list actually draws them, overlapping strokes close up into a blob.
+  balloons: circ(6.4, 7.1, 2.7) + circ(17.6, 7.1, 2.7) + circ(12, 4.8, 2.7)
+    + "M6.4 9.8C7.6 13.4 10.6 15.6 12 18.6M17.6 9.8C16.4 13.4 13.4 15.6 12 18.6M12 7.5C12.5 11.8 11.6 15.4 12 18.6"
+    + "M10.6 20.4c1-1.4 1.8-1.4 2.8 0",
 } as const;
 export type IconName = keyof typeof ICONS;
 
@@ -243,7 +248,6 @@ export interface TabLive {
   used: number;
 }
 
-const RING = 2 * Math.PI * 9; // 56.55, the You ring's length
 const DOT_AT: Array<[number, number]> = [[7.5, 7.5], [16.5, 7.5], [7.5, 16.5], [16.5, 16.5]];
 
 /** Bots: your bots as four dots. Open, they pop in 60 ms apart; at rest a working bot's dot breathes in its colour, the rest are grey rings. */
@@ -270,22 +274,28 @@ function activityGlyph(active: boolean, live: TabLive): SvgShape[] {
 }
 
 /** You: you at the centre, ringed by how much of this stretch is used. Open, the ring draws to it. */
-function youGlyph(active: boolean, live: TabLive): SvgShape[] {
-  const arc = Math.round(Math.max(0, Math.min(1, live.used)) * RING * 10) / 10;
+
+// You is NOT a tab: it is the person button in Home's header (screens/shell/home.ts), which is where a profile
+// belongs and where it already was. The page itself is unchanged and still warmed at launch.
+export type TabId = "bots" | "talk" | "activity";
+
+/**
+ * THE TALK TAB: three balloons on one thread, and they FILL on the tab you are on. Nothing here reads `live`,
+ * unlike the other three: a conversation has no count to show, no ring to fill and nothing working in the
+ * background, and a dot invented to match the others would be saying something untrue.
+ */
+function talkGlyph(active: boolean): SvgShape[] {
+  const line = active ? INK : IDLE;
   return [
-    { circle: [12, 12, 9], stroke: active ? "#e6e6e6" : "#ededed", strokeWidth: 2.2 },
-    ...(arc > 0 ? [{
-      circle: [12, 12, 9] as [number, number, number], stroke: active ? INK : IDLE, strokeWidth: 2.2, linecap: "round" as const,
-      dash: `${arc} ${Math.round(RING * 100) / 100}`, rotate: -90, ...(active ? { motion: "draw" as const } : {}),
-    }] : []),
-    { circle: [12, 12, 3.4], fill: active ? INK : IDLE },
+    { d: "M6.4 9.8C7.6 13.4 10.6 15.6 12 18.6M17.6 9.8C16.4 13.4 13.4 15.6 12 18.6M12 7.5C12.5 11.8 11.6 15.4 12 18.6M10.6 20.4c1-1.4 1.8-1.4 2.8 0", stroke: line, strokeWidth: 1.5, linecap: "round", linejoin: "round" },
+    ...([[6.4, 7.1], [17.6, 7.1], [12, 4.8]] as Array<[number, number]>).map(([x, y]) => ({
+      circle: [x, y, 2.7] as [number, number, number], stroke: line, strokeWidth: 1.6, ...(active ? { fill: INK } : {}),
+    })),
   ];
 }
 
-export type TabId = "bots" | "activity" | "you";
-
 /** A living tab icon: 26 on the phone's bar, 22 in the window's sidebar. */
 export function tabGlyph(tab: TabId, active: boolean, live: TabLive, size = 26): Node {
-  const list = tab === "bots" ? botsGlyph(active, live) : tab === "activity" ? activityGlyph(active, live) : youGlyph(active, live);
+  const list = tab === "bots" ? botsGlyph(active, live) : tab === "talk" ? talkGlyph(active) : activityGlyph(active, live);
   return shapes(list, { size });
 }

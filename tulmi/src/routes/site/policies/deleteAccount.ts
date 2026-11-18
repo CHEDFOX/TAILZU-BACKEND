@@ -46,7 +46,7 @@ const DELETED = [
   "The busy times read from your phone's calendars, the links to your X0 Bot Reminders list, and whether a Focus was on",
 ];
 const KEPT = [
-  "Messages you sent in chats with other people stay in those chats for them, under the name you had then. Things you shared in other people's spaces are deleted.",
+  "Messages you sent in chats with other people stay in those chats for them. Your name beside them is drawn faded and cannot be tapped: it opens nothing, because there is no longer an account behind it. Things you shared in other people's spaces are deleted.",
   "Reports you made, and reports about things you sent, are kept as a safety record, without your account.",
   "Apple, Google and Razorpay keep their own records of what you bought, as the law asks them to. Deleting your account doesn't cancel a subscription: cancel it in the App Store, Google Play or the app first.",
   "Crash reports and diagnostic logs, which can hold your account's ID, are kept for up to 90 days.",

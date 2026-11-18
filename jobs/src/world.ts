@@ -101,6 +101,10 @@ export function buildDesign(env: Env): DesignDeps | undefined {
  * The screens round (code/agent/screens.ts): shots by Cloudflare's Browser Rendering of the job's preview, the pictures kept in the SHOTS bucket
  * under the owner's key, and 7-day links to them signed for the owner, which this Worker answers (http.ts). Off with CODE_SCREENS=false, or without
  * a browser or the bucket.
+ *
+ * `read` is the same browser's content endpoint (web/browser/cloudflare.ts), for the floor (code/agent/floor.ts): the page as it was drawn, so the
+ * things a page needs whatever its design says can be checked on it. It is the preview's own address, which the shots already open, so it needs
+ * nothing new; absent, and the floor is simply not checked.
  */
 export function buildScreens(env: Env): ScreensDeps | undefined {
   const cfg = getConfig();
@@ -109,9 +113,11 @@ export function buildScreens(env: Env): ScreensDeps | undefined {
   if (!cfg.CODE_SCREENS || !blobs || shootProblem(shoot)) return undefined;
   const secret = cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || "";
   const origin = String(env.CODE_JOBS_URL ?? "").replace(/\/+$/, "");
+  const render = cloudflareRendererFromConfig();
   return {
     shoot: (url, viewport) => shootUrl(url, { viewport }, shoot),
     store: new BlobJobShots(blobs),
+    ...(render ? { read: async (url: string) => (await render(url)).html } : {}),
     ...(secret && /^https?:\/\//.test(origin) ? { link: ({ userId, jobId, shotId }) => `${origin}${signJobShotPath({ secret, userId, jobId, shotId })}` } : {}),
   };
 }
@@ -171,9 +177,11 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   const built = liveOn ? buildLive(env, { d: dProjects, jobs, store, fallback: classic, settings }) : null;
   const design = buildDesign(env);
   const screens = buildScreens(env);
+  // What the project already looks like (artifacts/kit.ts), for a job on files people see: read with no model and cached against the brain's head.
+  const kit = artifactStore();
   const orchestrator = createAgent({
     code, jobs, notify, log, passive: true, leaseMs: WORKER_LEASE_MS, ...(render ? { web: { render } } : {}),
-    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}), ...(screens ? { screens } : {}),
+    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}), ...(screens ? { screens } : {}), kit,
     // Lead and helpers (code/team): a helper is a job with a Workflow of its own, and a helper that ends or needs the person sends its lead's Workflow a "wake" event.
     team: teamPorts(env, () => orchestrator),
   });

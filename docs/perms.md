@@ -165,10 +165,20 @@ days after approval, for Health Connect and for Play's background-location revie
 the row the declaration is for, and nobody else should. Seed that account's space and bot with
 `npx tsx scripts/seed-review-account.ts <account id>`.
 
-**The Android halves are a second switch, not a replacement.** `PERM_CALENDAR_READ_ANDROID` can go on as soon as an Android
-build carries `TULMI_ANDROID_CALENDAR` (no store declaration at all). `PERM_MOTION_ANDROID` needs `TULMI_ANDROID_MOTION`, and
-`PERM_MOTION_DRIVE_ANDROID` is separate from it on purpose: Android's "in a car?" answer is often neither word, so shipping the
-steps and leaving the driving check off is an honest move — and `PERM_MOTION_DRIVE` must not be the thing turned off instead,
-because it is shared with the iPhone, where the answer is good. `PERM_ARRIVAL_ANDROID` waits for Play to approve the
-background-location declaration AND for a build carrying `TULMI_ANDROID_ARRIVAL`; `PERM_ARRIVAL_ANDROID_USERS` covers the stage
-in between.
+**THE ANDROID HALVES SHIP IN THIS BUILD (8.9.1).** `TULMI_ANDROID_CALENDAR`, `TULMI_ANDROID_MOTION` and
+`TULMI_ANDROID_ARRIVAL` are all **on** in the `preview`, `production` and `n0` profiles (`app/eas.json`), so the store build
+carries calendar busy times, steps with the driving check, and arrival reminders. All four server switches go on at
+submission, with the iPhone's (the owner's checklist 7A). Health Connect is NOT part of this release:
+`TULMI_ANDROID_HEALTH` and `TULMI_ANDROID_HEALTH_SLEEP` stay off, and so do `PERM_HEALTH_ANDROID` and
+`PERM_HEALTH_SLEEP_ANDROID`.
+
+**The Android halves are still a second switch, not a replacement.** A row shows on an Android phone only when the shared
+switch and the Android one are both on and the binary carries the build switch, so any half can be withdrawn from the server
+in seconds. `PERM_CALENDAR_READ_ANDROID` needs no store declaration at all. `PERM_MOTION_DRIVE_ANDROID` is separate from
+`PERM_MOTION_ANDROID` on purpose: Android's "in a car?" answer is often neither word, so turning the driving check off and
+keeping the steps is an honest move — and `PERM_MOTION_DRIVE` must not be the thing turned off instead, because it is shared
+with the iPhone, where the answer is good. `PERM_ARRIVAL_ANDROID` draws the row, but the **permission is in the uploaded
+binary either way**, so Play's background-location declaration has to be filed and approved BEFORE the Android release is
+sent for review — Play can hold the whole update until it is. `PERM_ARRIVAL_ANDROID_USERS` is for a private test only, and is
+empty in production: Play's approval covers the whole app at once, so there is no stage to hold back, and a list left in it
+hides the row from everyone not on it.

@@ -8,7 +8,13 @@
  *   - a check this change broke: fix rounds with the failure in front of the model, then a pass; three failing rounds stop
  *     the job with a report and commit nothing; a check that was already failing is flagged and does not block;
  *   - the baseline: recorded on a runner, reused when it is fresh, unknown (and said so) when no computer can run it;
- *   - what the loop does on its own account: it reads nothing it should not, the route's record of each round is kept.
+ *   - what the loop does on its own account: it reads nothing it should not, the route's record of each round is kept;
+ *   - a turn's looks answered side by side, in the order asked, with one checkpoint write for them;
+ *   - an export the change dropped though the checks pass: one round to put it back, then reported, never a block;
+ *   - the tests covering what was just edited, run mid-work when a session is open, and the failure in the next turn;
+ *   - a file the task never pointed at, said once and reported; a risk that must show how it happens to stay a risk;
+ *   - what the job learned about the project, kept for the next one and shown to it;
+ *   - another model reading the change before the pull request is ready: a blocker holds it a draft, a skip never does.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -24,6 +30,7 @@ noNetwork();
 
 const { agentRig, call, done, checkLine, UTIL_TASK, UTIL_PLAN, UTIL_EDIT } = await import("./agent-rig.js");
 type Rig = Awaited<ReturnType<typeof agentRig>>;
+type Turn = import("./agent-rig.js").Turn;
 
 const BUG = { path: "src/util.ts", old: UTIL_EDIT.old, new: '  return s.toLowerCase().replace(/\\s+/g, "-").trim(); // BUG\n' };
 
@@ -252,6 +259,335 @@ describe("the baseline", () => {
   });
 });
 
+describe("the tests covering what was just edited, run mid-work (spotCheck)", () => {
+  const BROKEN = 'export function slug(s: string): string {\n  return "BROKEN";\n}\n';
+  const FIXED = 'export function slug(s: string): string {\n  return s.toLowerCase().replace(/\\s+/g, "-").replace(/^-+|-+$/g, "");\n}\n';
+  /** The project's tests fail while the broken edit is staged, and pass once it is fixed. */
+  const byStaged = (kind: string, run: { overlay: Array<{ path: string; content: string | null }> }) => {
+    const util = run.overlay.find((f) => f.path === "src/util.ts")?.content ?? "";
+    return kind === "test" && util.includes("BROKEN") ? { exit: 1, text: "1 failing: slug trims the dashes" } : { exit: 0, text: "ok" };
+  };
+
+  it("runs them after a round that changed code, puts the failure in the next turn, and lets the model fix it there and then", async () => {
+    const r = await agentRig({ live: { progress: () => undefined } });
+    r.runner.checkResult = byStaged;
+    r.model.push(
+      // The first run opens the job's session, so a check afterwards is about a second.
+      call("run", { cmd: "npm test", why: "see where this starts" }),
+      call("write_file", { path: "src/util.ts", content: BROKEN }),
+      call("write_file", { path: "src/util.ts", content: FIXED }),
+      done("Trimmed the dashes."),
+    );
+    const { job, branch } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    // The turn after the broken edit was told, in its own words, that this was not the final check.
+    const afterBad = r.model.seen[2]!.messages;
+    expect(afterBad).toContain("were run on your staged edits, and they FAILED");
+    expect(afterBad).toContain("while you are still in it");
+    expect(afterBad).toContain("1 failing: slug trims the dashes");
+    // It ran as its own step, and the narrowed test command is what it ran.
+    const spot = r.runner.runs.filter((x) => x.wrapped && x.commands.join(" ").includes("util.test"));
+    expect(spot.length).toBeGreaterThan(0);
+    // Fixed, the next round's run passes and nothing of it is left for verify to repeat.
+    const s = await r.stateNow(job.id);
+    expect(s.work.spotChecks).toBe(2);
+    expect(s.work.spotFeedback).toBeUndefined();
+    expect(s.verify?.ok).toBe(true);
+    expect(r.fake.files(r.repo, branch)["src/util.ts"]).toBe(FIXED);
+  });
+
+  it("is not run at all without a live session, or before the model has run anything itself", async () => {
+    const noLive = await agentRig();
+    noLive.runner.checkResult = byStaged;
+    noLive.model.push(call("write_file", { path: "src/util.ts", content: FIXED }), done("Trimmed."));
+    const a = await run(noLive);
+    expect((await noLive.stateNow(a.job.id)).work.spotChecks).toBeUndefined();
+
+    // With a session, but the model edits without running anything first: nothing is open, so nothing is checked mid-work.
+    const noRun = await agentRig({ live: { progress: () => undefined } });
+    noRun.runner.checkResult = byStaged;
+    noRun.model.push(call("write_file", { path: "src/util.ts", content: FIXED }), done("Trimmed."));
+    const b = await run(noRun);
+    expect((await noRun.stateNow(b.job.id)).work.spotChecks).toBeUndefined();
+    expect((await noRun.jobNow(b.job.id)).state).toBe("done");
+  });
+
+  it("stops after two in a job, and never checks the same staged edits twice", async () => {
+    const r = await agentRig({ live: { progress: () => undefined } });
+    r.runner.checkResult = byStaged;
+    r.model.push(
+      call("run", { cmd: "npm test", why: "start" }),
+      call("write_file", { path: "src/util.ts", content: FIXED }),
+      // The same text again: nothing changed, so there is nothing new to check.
+      call("write_file", { path: "src/util.ts", content: FIXED }),
+      call("write_file", { path: "src/legacy.ts", content: "export const OLD = 2;\n" }),
+      call("write_file", { path: "src/legacy.ts", content: "export const OLD = 3;\n" }),
+      done("Done."),
+    );
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.work.spotChecks).toBe(2);
+    expect((await r.jobNow(job.id)).state).toBe("done");
+  });
+});
+
+describe("what the change took away (surface.ts)", () => {
+  const RENAMED = 'export function toSlug(s: string): string {\n  return s.toLowerCase().replace(/\\s+/g, "-");\n}\n';
+  const BOTH = `${RENAMED}\nexport const slug = toSlug;\n`;
+
+  it("asks, once, for an export the change dropped though the checks pass, and commits when it is back", async () => {
+    const r = await agentRig();
+    r.model.push(
+      call("write_file", { path: "src/util.ts", content: RENAMED }), done("Renamed slug to toSlug."),
+      call("write_file", { path: "src/util.ts", content: BOTH }), done("Kept slug as well."),
+    );
+    const { job, branch } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    // The round happened: the model was told what went, by name and file.
+    const told = r.model.seen.map((x) => x.messages).join("\n---\n");
+    expect(told).toContain("function slug, which src/util.ts had");
+    expect(told).toContain("Nothing in the task asked for that");
+    // And the name is back on the branch, so nothing is reported as gone.
+    expect(r.fake.files(r.repo, branch)["src/util.ts"]).toContain("export const slug = toSlug");
+    const s = await r.stateNow(job.id);
+    expect(s.verify?.ok).toBe(true);
+    expect(s.verify?.lost ?? []).toEqual([]);
+    expect(s.work.surfaceAsked).toBe(true);
+    expect(await r.worklog.list(job.id).then((l) => l.some((e) => /takes away/.test(e.text)))).toBe(true);
+  });
+
+  it("asks only once: it still commits, and says what is gone in the report and the pull request", async () => {
+    const r = await agentRig();
+    r.model.push(
+      call("write_file", { path: "src/util.ts", content: RENAMED }), done("Renamed slug to toSlug."),
+      // Asked, and it does not put the name back: the job goes on rather than stopping the person's work.
+      call("note", { text: "The rename is deliberate." }), done("Renamed; the old name is gone."),
+    );
+    const { job, branch } = await run(r);
+
+    const j = await r.jobNow(job.id);
+    expect(j.state).toBe("done");
+    expect(r.fake.files(r.repo, branch)["src/util.ts"]).toBe(RENAMED);
+    const s = await r.stateNow(job.id);
+    expect(s.verify?.lost).toEqual(["function slug (src/util.ts)"]);
+    expect(s.report?.text).toMatch(/Gone, and no test covers it/);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("Gone from this branch, and no test covers it");
+    expect(pr!.body).toContain("function slug (src/util.ts)");
+  });
+
+  it("says nothing when the task asked for the removal", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", UTIL_PLAN);
+    r.model.push(call("write_file", { path: "src/util.ts", content: RENAMED }), done("Renamed slug to toSlug."));
+    const { job } = await r.start("In src/util.ts rename slug to toSlug");
+    await r.orch.idle();
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    const s = await r.stateNow(job.id);
+    expect(s.work.surfaceAsked).toBeUndefined();
+    expect(s.verify?.lost ?? []).toEqual([]);
+    expect(r.model.seen.map((x) => x.messages).join("\n")).not.toContain("Nothing in the task asked for that");
+  });
+});
+
+describe("a file the task never pointed at (scope.ts)", () => {
+  it("is said to the model once, while it can still act, and goes in the report and the pull request", async () => {
+    const r = await agentRig();
+    r.model.push(
+      call("edit_file", UTIL_EDIT),
+      call("write_file", { path: "src/legacy.ts", content: "export const OLD = 2; // tidied\n" }),
+      done("Trimmed the dashes, and tidied legacy on the way."),
+    );
+    const { job } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    const told = r.model.seen.map((x) => x.messages).join("\n---\n");
+    expect(told).toContain("src/legacy.ts");
+    expect(told).toContain("the task did not point at");
+    expect(told).toContain("flag_finding");
+    // Said once only, however many turns follow.
+    expect(told.match(/the task did not point at/g)).toHaveLength(1);
+    const s = await r.stateNow(job.id);
+    expect(s.work.outside).toEqual(["src/legacy.ts"]);
+    expect(s.report?.text).toMatch(/Also changed, beyond what the task pointed at: src\/legacy\.ts/);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("Beyond what the task asked for");
+  });
+
+  it("says nothing when the change keeps to what the task and the index point at", async () => {
+    const r = await agentRig();
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.work.outside ?? []).toEqual([]);
+    expect(r.model.seen.map((x) => x.messages).join("\n")).not.toContain("the task did not point at");
+    expect(s.report?.text ?? "").not.toMatch(/Also changed, beyond/);
+  });
+});
+
+describe("a finding that claims to be a risk (work/findings.ts)", () => {
+  it("is kept as a risk when the model shows how it happens, and the pull request carries the how", async () => {
+    const r = await agentRig();
+    const how = "the id comes straight from the query string and the row is read without checking who owns it";
+    r.model.push(
+      call("flag_finding", { severity: "risk", path: "src/index.ts", line: 2, text: "any signed-in user can read another's row", how }),
+      call("edit_file", UTIL_EDIT), done("Trimmed the dashes."),
+    );
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.findings[0]).toMatchObject({ severity: "risk", verdict: "confirmed", how });
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("How it happens:");
+  });
+
+  it("is lowered to worth checking when it does not, and the model is told why in the tool's answer", async () => {
+    const r = await agentRig();
+    r.model.push(
+      call("flag_finding", { severity: "risk", path: "src/index.ts", text: "this looks insecure to me" }),
+      call("edit_file", UTIL_EDIT), done("Trimmed the dashes."),
+    );
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.findings[0]).toMatchObject({ severity: "warn", verdict: "needs_checking" });
+    expect(r.model.seen[1]!.messages).toContain("Recorded as worth checking, not as a risk");
+    expect(s.report?.text).toMatch(/Worth checking/);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("worth checking: how it happens was not shown");
+  });
+});
+
+describe("what the job learned about the project (project/learned.ts)", () => {
+  it("keeps the person's own answer as theirs, and shows it to the next job", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", UTIL_PLAN);
+    r.model.push(
+      call("ask_user", { question: "Which date library does this project use?", options: ["date-fns", "dayjs"] }),
+      call("edit_file", UTIL_EDIT), done("Trimmed the dashes."),
+    );
+    const { job } = await r.start(UTIL_TASK);
+    await r.orch.idle();
+    await r.orch.answer("alice", job.id, "dayjs, everywhere");
+    await r.orch.idle();
+    expect((await r.jobNow(job.id)).state).toBe("done");
+
+    // Kept as the owner's word, because they are the ones who said it.
+    const learned = await r.fixture.brain.learned();
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ status: "confirmed", chapter: "rules", job: job.id });
+    expect(learned[0]!.text).toContain("dayjs, everywhere");
+    expect(learned[0]!.text).toContain("Which date library");
+
+    // The next job on this project is shown it, marked as the owner's.
+    r.model.push(call("edit_file", BUG), done("Did the next thing."));
+    const second = await r.start("make slug() keep underscores");
+    await r.orch.idle();
+    const shown = r.model.seen.at(-1)!.messages;
+    expect(shown).toContain("What earlier work here learned");
+    expect(shown).toContain("(the owner) Asked");
+    expect(shown).toContain("dayjs, everywhere");
+    expect((await r.jobNow(second.job.id)).state).toBe("done");
+  });
+
+  it("keeps a check that was already failing on the branch, so the next job does not take it for its own doing", async () => {
+    const r = await agentRig();
+    // typecheck fails before this job touches anything, and goes on failing: already broken, not broken by this change.
+    r.runner.checkResult = (kind) => (kind === "typecheck" ? { exit: 1, text: "TS2345 somewhere old" } : { exit: 0, text: "ok" });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    const learned = await r.fixture.brain.learned();
+    expect(learned).toHaveLength(1);
+    expect(learned[0]).toMatchObject({ chapter: "state", status: "guessed" });
+    expect(learned[0]!.text).toMatch(/already failing on the default branch/);
+  });
+
+  it("keeps nothing from a job with nothing to learn, and a brain that cannot keep it does not fail the job", async () => {
+    const r = await agentRig();
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    await run(r);
+    expect(await r.fixture.brain.learned()).toEqual([]);
+
+    const broken = await agentRig();
+    broken.fixture.brain.learn = async () => { throw new Error("the store is down"); };
+    broken.json.on("work.plan", UTIL_PLAN);
+    broken.runner.checkResult = (kind) => (kind === "typecheck" ? { exit: 1, text: "old failure" } : { exit: 0, text: "ok" });
+    broken.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
+    const b = await run(broken);
+    expect((await broken.jobNow(b.job.id)).state).toBe("done");
+  });
+});
+
+describe("another model reading the change (agent/review.ts)", () => {
+  const HOW = "the id comes straight off the query string and the row is read without checking who owns it";
+
+  it("reads it before the pull request is ready, and a blocker it can account for keeps the pull request a draft", async () => {
+    const r = await agentRig({ jobReview: true });
+    // The writer must not be of the reviewer's family, or it is no review: the fixture answers as "fake/model".
+    r.model.slug = "writer/one";
+    r.json.on("code.review", { summary: "the trim is right, but it drops the empty case", findings: [{ severity: "blocker", path: "src/util.ts", text: "an empty string now throws", how: HOW }] });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+
+    const j = await r.jobNow(job.id);
+    expect(j.state).toBe("done");
+    const s = await r.stateNow(job.id);
+    expect(s.review).toMatchObject({ status: "read", model: "fake/model", writerFamily: "writer", blocking: true });
+    // Green checks are no longer enough on their own.
+    expect(s.verify?.ok).toBe(true);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr).toMatchObject({ draft: true });
+    expect(pr!.body).toContain("Read by another model");
+    expect(pr!.body).toContain("**blocker**");
+    expect(pr!.body).toContain("how it happens:");
+    expect(s.report?.text).toMatch(/Read by another model/);
+    expect(s.report?.text).toMatch(/keep the pull request a draft/);
+  });
+
+  it("marks it ready as before when the reader finds nothing that stops it", async () => {
+    const r = await agentRig({ jobReview: true });
+    r.model.slug = "writer/one";
+    r.json.on("code.review", { summary: "it does what the task asked", findings: [{ severity: "note", path: "src/util.ts", text: "the regular expression could be named" }] });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr).toMatchObject({ draft: false });
+    const s = await r.stateNow(job.id);
+    expect(s.review?.blocking).toBe(false);
+    expect(s.pr?.ready).toBe(true);
+  });
+
+  it("says a review it could not get was skipped, and a skip never holds the pull request", async () => {
+    const r = await agentRig({ jobReview: true });
+    // The writer is of the fixture's own family, so no reviewer of another family can answer.
+    r.json.on("code.review", { summary: "fine by me", findings: [] });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+
+    const s = await r.stateNow(job.id);
+    expect(s.review).toMatchObject({ status: "skipped", blocking: false });
+    expect(s.review?.note).toMatch(/family that wrote the code/);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr).toMatchObject({ draft: false });
+    expect(s.report?.text).toMatch(/Nobody read this change/);
+  });
+
+  it("is not run at all when it is switched off, and the job is exactly as it was", async () => {
+    const r = await agentRig({ jobReview: false });
+    r.model.slug = "writer/one";
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.review).toBeUndefined();
+    expect(r.json.of("code.review")).toHaveLength(0);
+    expect((await r.jobNow(job.id)).state).toBe("done");
+  });
+});
+
 describe("the tools", () => {
   it("run a command with the staged edits laid over the checkout and give back the exit code and the end of the output as data", async () => {
     const r = await agentRig();
@@ -269,6 +605,31 @@ describe("the tools", () => {
     expect(turn.messages).toMatch(/<tool_data tool="run" label="npm test">[\s\S]*boom: the thing failed[\s\S]*<\/tool_data>/);
     const log = await r.worklog.list(job.id);
     expect(log.find((e) => e.kind === "command" && e.text.startsWith("npm test"))!.data).toMatchObject({ exitCode: 1, callId: expect.any(String) });
+  });
+
+  it("answer a turn's looks side by side: every result in the order asked, and the state saved once for them", async () => {
+    const r = await agentRig();
+    const looks: Turn = { calls: [
+      { name: "read_file", args: { path: "src/util.ts" } }, { name: "grep", args: { pattern: "slug\\(" } }, { name: "read_file", args: { path: "src/index.ts" } },
+      { name: "list_dir", args: { path: "src" } },
+    ] };
+    r.model.push(looks, call("edit_file", UTIL_EDIT), done("Trimmed."));
+    // The checkpoint writes made while the looks are answered: from the end of the turn that asked for them to the start of the next.
+    let writes = 0;
+    let counting = false;
+    const cas = r.jobStore.casJob.bind(r.jobStore);
+    r.jobStore.casJob = (async (...a: Parameters<typeof cas>) => { if (counting && a[2]?.checkpoint) writes += 1; return cas(...a); }) as typeof cas;
+    r.model.afterTurn = (n) => { if (n === 1) counting = true; };
+    r.model.beforeTurn = (n) => { if (n === 2) counting = false; };
+    const { job } = await run(r);
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    // One write for the turn itself, one for its four looks (one a call, as before: five).
+    expect(writes).toBe(2);
+    const sent = r.model.seen[1]!.messages;
+    const at = (text: string) => sent.indexOf(text);
+    expect(at("src/util.ts, lines 1-")).toBeGreaterThan(-1);
+    expect(at("src/util.ts, lines 1-")).toBeLessThan(at("src/index.ts, lines 1-"));
+    expect(sent).toContain("index.ts\nlegacy.ts\nutil.test.ts\nutil.ts");
   });
 
   it("refuse an edit that is not exact or not unique, say so, and count a turn of only failures as a bad one", async () => {

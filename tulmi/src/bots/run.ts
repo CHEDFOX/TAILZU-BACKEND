@@ -44,8 +44,9 @@ import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
 import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
-import { LINGO_SLUG, MAIL_SLUG, MEET_SLUG } from "./builtin.js";
+import { CINEMA_SLUG, LINGO_SLUG, MAIL_SLUG, MEET_SLUG } from "./builtin.js";
 import { meetDigest } from "../meet/digest.js";
+import { cinemaDigest } from "../cinema/digest.js";
 import { mailDigest } from "../mail/digest.js";
 import { lingoDigest } from "../lingo/digest.js";
 import type { MailWorker } from "../mail/worker.js";
@@ -172,7 +173,9 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const lingo = bot.ownerId === null && bot.slug === LINGO_SLUG
     ? await lingoDigest(r.userId, { now: (d.now ?? Date.now)() }).catch(() => null)
     : null;
-  const knowledge = [know?.text, mail, meet, lingo].filter((x): x is string => !!x?.trim()).join("\n\n");
+  // The cinema bot reads their films and pictures (cinema/digest.ts).
+  const cinema = bot.ownerId === null && bot.slug === CINEMA_SLUG ? await cinemaDigest(r.userId).catch(() => null) : null;
+  const knowledge = [know?.text, mail, meet, lingo, cinema].filter((x): x is string => !!x?.trim()).join("\n\n");
   // The addresses this turn reads: the only ones a drawing may link to or show (show/links.ts). Every tool's result joins them below.
   const read = new Seen();
   read.add(r.message);

@@ -17,7 +17,7 @@ import { capSurroundings } from "../../pipeline/sensitive.js";
 import { recentDictations } from "../../pipeline/session.js";
 import { estimateDurationSeconds } from "../../pipeline/stt.js";
 import { effectiveLanguage } from "../../profile/language.js";
-import { enforceQuota, recordUsage } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders, recordUsage } from "../../usage/metering.js";
 import { unauthorized, reqTz, countWords, desktopDictated } from "../../http/helpers.js";
 
 export interface TranscribeRouteDeps {
@@ -131,7 +131,7 @@ export function registerTranscribeRoutes(app: FastifyInstance, deps: TranscribeR
     if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
 
     const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
 
     const t0 = Date.now();
     try {

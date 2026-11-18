@@ -157,7 +157,7 @@ describe("nothing is saved without approval", () => {
     const d = await r.bots.draft(ALICE, SENTENCE);
     expect(r.store.size).toBe(0);
     expect(await r.store.listBots(ALICE)).toEqual([]);
-    expect(await r.bots.list(ALICE)).toHaveLength(4);
+    expect(await r.bots.list(ALICE)).toHaveLength(5);
     await expect(r.bots.get(ALICE, d.definition.slug)).rejects.toMatchObject({ code: "not_found", status: 404 });
     // the maker left no trace anywhere else either
     expect((await r.bots.exportAll(ALICE))).toMatchObject({ bots: [], keys: [], commands: [], memory: [] });
@@ -171,7 +171,7 @@ describe("nothing is saved without approval", () => {
     expect(out.bot).toMatchObject({ name: "Gym coach", colour: "plum", slug: "workout-planner", ownerId: ALICE, builtin: false, publicCard: false });
     expect(out.bot.principles).toEqual(["Plan workouts around my calendar.", "Keep each plan to one week.", "Cheer me on."]);
     expect(r.store.size).toBe(1);
-    expect((await r.bots.list(ALICE)).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "workout-planner"]);
+    expect((await r.bots.list(ALICE)).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk", "workout-planner"]);
     expect(out.warnings).toContain("Not connected yet: Google Calendar. Connect it in X0 Bot to let this bot use it.");
   });
 

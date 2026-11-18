@@ -7,6 +7,9 @@
  *     .pull(session, want)                     someone else's tracks into their session -> an offer to answer (when the SFU sends one)
  *     .answer(session, sdp)                    the answer to that offer
  *     .closeTracks(session, mids)              tracks taken out again
+ *     .listen(session, trackName, endpoint)    that track's sound sent to us as PCM over a WebSocket -> the adapter's id
+ *     .unlisten(adapterId)                     and stopped
+ *     .speak(session, trackName, endpoint)     a track of OURS, fed from that WebSocket as PCM: the bot's own voice
  *
  * THE APP SECRET NEVER LEAVES THIS SERVER. A phone or a window never calls the SFU: it sends us its offer, we make the session and hand
  * back the answer (routes/bots/rooms.ts). That is the SFU's own rule — the secret is the only credential there is, and it has no scopes —
@@ -51,6 +54,24 @@ export interface PullAnswer {
 
 export interface Sfu {
   newSession(): Promise<string>;
+  /**
+   * ONE PERSON'S SOUND, TO US (the SFU's WebSocket adapter, docs/brief.md): Cloudflare decodes that track's Opus and dials OUR
+   * endpoint, sending 48 kHz stereo PCM. It is how the server hears a call without being a browser in it: no WebRTC here, no
+   * headless Chrome, and the sound of a room reaches the same pipeline the desktop's note-taker uses.
+   *
+   * `endpoint` must be a public wss:// address of ours (the SFU cannot reach localhost and does not follow redirects), and
+   * carries a one-time token of its own. Answers the adapter's id, which is how it is stopped.
+   */
+  listen(sessionId: string, trackName: string, endpoint: string): Promise<string>;
+  unlisten(adapterId: string): Promise<void>;
+  /**
+   * A TRACK OF OUR OWN IN THE CALL (the adapter the other way round): the SFU dials our endpoint, we write 48 kHz stereo
+   * PCM, and it publishes that as Opus on `trackName` in `sessionId`. Everyone in the call pulls it like anyone else's
+   * microphone, so a voice from the server needs nothing new in any app (docs/brief.md).
+   *
+   * Sound going INTO the SFU is not charged.
+   */
+  speak(sessionId: string, trackName: string, endpoint: string): Promise<string>;
   publish(sessionId: string, offer: Sdp, tracks: LocalTrack[]): Promise<Sdp>;
   pull(sessionId: string, want: RemoteTrack[]): Promise<PullAnswer>;
   answer(sessionId: string, sdp: string): Promise<void>;
@@ -142,6 +163,38 @@ export function sfu(o: { keys?: SfuKeys | null; fetchFn?: FetchFn } = {}): Sfu |
 
     async answer(sessionId, sdp) {
       await call("PUT", `/sessions/${encodeURIComponent(sessionId)}/renegotiate`, { sessionDescription: { type: "answer", sdp } });
+    },
+
+    async listen(sessionId, trackName, endpoint) {
+      const out = await call("POST", "/adapters/websocket/new", {
+        location: "remote",
+        sessionId,
+        trackName,
+        endpoint,
+        outputCodec: "pcm",
+      });
+      const id = typeof (out as { adapterId?: unknown }).adapterId === "string" ? (out as { adapterId: string }).adapterId : "";
+      if (!id) throw new RoomsError(502, "The call's sound could not be listened to.", "room_service");
+      return id;
+    },
+
+    async speak(sessionId, trackName, endpoint) {
+      const out = await call("POST", "/adapters/websocket/new", {
+        location: "local",
+        sessionId,
+        trackName,
+        endpoint,
+        inputCodec: "pcm",
+      });
+      const id = typeof (out as { adapterId?: unknown }).adapterId === "string" ? (out as { adapterId: string }).adapterId : "";
+      if (!id) throw new RoomsError(502, "The call's voice could not be set up.", "room_service");
+      return id;
+    },
+
+    async unlisten(adapterId) {
+      if (!adapterId) return;
+      // Closing one that is already gone is not a problem worth a person's attention.
+      try { await call("PUT", `/adapters/websocket/${encodeURIComponent(adapterId)}/close`, {}); } catch { /* it has stopped either way */ }
     },
 
     async closeTracks(sessionId, mids) {

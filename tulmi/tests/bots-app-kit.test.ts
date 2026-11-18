@@ -66,14 +66,6 @@ describe("the living tab icons", () => {
     expect(calm.slice(1, 4).every((s) => s.fill === "#ffffff")).toBe(true);
     expect(shapesOf(tabGlyph("activity", true, live))[1]!.motion).toBe("pop");
   });
-  it("You: the ring is how much of this stretch is used, drawn when the tab opens; at the limit it closes", () => {
-    const rest = shapesOf(tabGlyph("you", false, { ...live, used: 184 / 500 }));
-    expect(rest[1]).toMatchObject({ dash: "20.8 56.55", rotate: -90, stroke: "#8a8a8a" });
-    expect(rest[1]!.motion).toBeUndefined();
-    expect(shapesOf(tabGlyph("you", true, { ...live, used: 184 / 500 }))[1]).toMatchObject({ motion: "draw", stroke: C.ink });
-    expect(shapesOf(tabGlyph("you", false, { ...live, used: 3 }))[1]!.dash).toBe("56.5 56.55");
-    expect(shapesOf(tabGlyph("you", false, { ...live, used: 0 }))).toHaveLength(2);
-  });
 });
 
 describe("bots and controls", () => {
@@ -127,14 +119,15 @@ describe("bots and controls", () => {
 describe("the frames", () => {
   const live = sampleLive();
   it("a phone page: safe-area aware, dark status bar, a scrolling body, the tab bar last", () => {
-    const s = phonePage(ctxFor("bots.x", "phone", live), { tab: "you", body: [text("Hi")] });
+    const s = phonePage(ctxFor("bots.x", "phone", live), { tab: "activity", body: [text("Hi")] });
     expect(s).toMatchObject({ hideChrome: true, look: "bots", screenId: "bots.x", cacheTtlSeconds: 1 });
     expect(s.root).toMatchObject({ type: "SafeArea", props: { edges: ["top"], barStyle: "dark-content" } });
     const kids = s.root!.children!;
     expect(kids[0]!.type).toBe("Screen");
     expect(kids.at(-1)).toMatchObject({ type: "SafeArea", props: { edges: ["bottom"], inset: "max" } });
     const tabs = kids.at(-1)!.children!;
-    expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "bots" }, { kind: "switchTab", tabId: "activity" }, null]);
+    // The one you are on carries no action; the others switch.
+    expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "bots" }, { kind: "switchTab", tabId: "talk" }, null]);
     expect(checkTree(s.root!)).toEqual([]);
   });
   it("a phone page's footer (the ask bar, a composer) stays above the keyboard; the window has none to clear", () => {
