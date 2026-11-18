@@ -107,6 +107,43 @@ It wears `slate` (#4A535C), a cool graphite added to `SHIPPED_ONLY` so it is nev
 balloons on one thread (`glyphs.ts` `balloons`) rather than the sparkle every AI product uses — which is also X0's own
 mark and had to stay that way. 12,435 tests pass. `BOTS` is off, so none of it is reachable yet.
 
+## HOME'S PEEKER IS BUILT, SERVER AND APP (18 Nov)
+
+A small Blip rises from behind an edge of Home, looks out, and ducks back — the window's own gesture
+(`TAILZU-DESKTOP src/shared/blip.js` `rise`, `guide/peek.js`: 280 ms up, 300 ms down, a 560 ms hop), with one move the
+window cannot make: **he hangs upside down from the notch**, head first, so the hardware cuts off his crown.
+
+TWO RULES HOLD IT UP, both in `app/src/sdui/bots/peekCore.ts` where they are tested (19 tests):
+
+* **He is clipped.** He is drawn in a POCKET at the edge, `overflow: hidden`, and only three fifths of him is ever
+  past it. The first version clipped him against the screen's own edge instead, which works beside a wide notch and
+  draws him **over the clock** beside a narrow punch-hole. A pocket on the safe side of the edge cannot do that on
+  any phone, whatever its cutout.
+* **He never crosses the screen.** The next spot is taken at rise 0, with the animation off, below the edge where
+  nobody can see it. The only movement anybody watches is straight over an edge and straight back.
+
+**A bug worth remembering:** `placeOf` works in the WINDOW's coordinates, because that is the only frame the safe area
+is written in — but the node is mounted inside a `SafeArea` that has already taken the notch's height as padding, and
+an absolutely placed child is placed against its parent. A pocket at `top: 59` was drawn at 118: a bot standing
+halfway down the page. The component measures its host (`measureInWindow`) and `pocketIn` takes that off. A host at the
+window's own origin changes nothing, which is why it was easy to miss.
+
+**THE ANTENNA IS THE MICROPHONE, and nothing had to be built for it.** The motion core already lights it from the
+voice's own level in the `listen` act (`botTiles/core.ts`: `glowTo = level * 1.2`) — the same light the window's Blip
+shows. The one thing missing was that `BotBuddy` only fed the level while a scene was playing; it feeds it while he
+listens now. No new catalog moment: `blip` already wears two ball-tipped antennae in `shared/bots/looks.json`.
+
+Server side: `canPeek` / `botPeek` in the kit, `homePeek` in `homeThought.ts`, in Home's `pinned` layer (over the page,
+outside its scroll), `BotPeek` in `lint.ts`. He takes the right edge, the notch, the left edge and the right again —
+**never the bottom**, because the bot with the thought walks there. Called by voice (`voice`, which `homeVoice`
+already writes) he comes to the notch and holds, listening; when the answer lands (`asked.shell.text`) he hops once
+and ducks away. 21 server tests.
+
+**What he is not, yet.** Home's ask is still the bot walking the bottom with his thought: that one takes words,
+streams an answer back and blurs Home behind it, and the peeker cannot answer anything at all. Swapping the bottom bot
+out waits on the peeker being able to hold the whole conversation — the blur, the routing, the card or the text it
+draws by itself. Until then both are there, out of each other's way.
+
 ## AN OTA CARRIES RENDERER WORK. A STORE BUILD IS FOR NATIVE CODE ONLY (17 Nov)
 
 **Correcting something this file got wrong twice**, because it was costing real decisions. "The apps would have to learn

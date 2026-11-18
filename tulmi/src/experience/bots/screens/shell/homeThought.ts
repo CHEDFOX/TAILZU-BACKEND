@@ -10,8 +10,8 @@
 
 import type { ActionRef, ActionSpec, Node, TalkTo } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, ASK_PATH, C, SCREENS, answerParams, botStage, box, canVoice, col, grow, keptOffline, labelled, liveWords, meta, roamFor,
-  roundButton, row, sectionLabel, seq, statusMark, text, voiceLive, voiceStop, when, FACE, icon,
+  type BotsCtx, ASK_PATH, C, SCREENS, answerParams, botPeek, botStage, box, canPeek, canVoice, col, grow, keptOffline, labelled, liveWords,
+  meta, roamFor, roundButton, row, sectionLabel, seq, statusMark, text, voiceLive, voiceStop, when, FACE, icon,
 } from "../../kit.js";
 import { failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "../../askMoment.js";
 
@@ -132,4 +132,50 @@ export function homeThought(ctx: BotsCtx): Node {
     ...(voice ? { onDoubleTap: seq(setState("askBot", "any"), homeVoice(ctx, "chat")) } : {}),
     onDismiss: reset,
   });
+}
+
+// ---------------------------------------------------------------- the peek (BotPeek, kit canPeek)
+
+/**
+ * HOME'S PEEKER: a small Blip who rises from behind an edge of the screen every few seconds, looks out, and ducks
+ * back. The window's Blip has done exactly this for a long time (TAILZU-DESKTOP blip.js `rise`, guide/peek.js), and
+ * this is that gesture on the phone — including the one he does not do there: he HANGS UPSIDE DOWN FROM THE NOTCH,
+ * head first, so the hardware cuts off his crown.
+ *
+ * HE IS THE EAR. The moment a voice turn starts (`voice`, written by homeVoice) he stops wandering, comes to the
+ * notch and stays there listening, and the motion core lights his antenna from the voice's own level. When the answer
+ * has landed (`asked.shell.text`) he hops once and ducks away. So the thing on screen while you talk is a bot
+ * leaning in, not a spinner.
+ *
+ * WHAT HE IS NOT, YET. Home's ask is still the bot walking the bottom with his thought (homeThought): that one can
+ * take words, stream an answer back and blur Home behind it, and this one cannot answer anything at all. He keeps off
+ * the bottom edge so the two are never in each other's way, and the bottom bot retires the day the peeker can hold
+ * the whole conversation himself.
+ *
+ * A build that cannot draw him (canPeek) gets nothing: an empty list, and Home is exactly as it was.
+ */
+export function homePeek(ctx: BotsCtx): Node[] {
+  if (!canPeek(ctx) || ctx.client === "desktop") return [];
+  return [botPeek({
+    // The same figure every other bot on Home is drawn from, in ink, wearing Blip's own look — which is where his
+    // two ball-tipped antennae come from (shared/bots/looks.json, avatar "blip"). Not a sprite of his own.
+    bot: { kind: "custom", color: C.ink, life: "home.peek", state: "idle", avatar: "blip" },
+    // Down the right, from the notch, down the left, and the right again lower. Never the bottom edge: the bot with
+    // the thought lives there. `along` is 0 at the top of the safe area and 1 at its foot.
+    spots: [
+      { edge: "right", along: 0.3 },
+      { edge: "notch", along: 0 },
+      { edge: "left", along: 0.52 },
+      { edge: "right", along: 0.76 },
+    ],
+    // A few seconds out, a longer while gone: often enough to be a surprise, rare enough not to be a pet.
+    up: [2.2, 4],
+    every: [14, 34],
+    size: 54,
+    // Called: he comes to the notch (spots[1]) and holds there, antenna lit, while the voice turn runs.
+    liveWhen: { truthy: "voice" },
+    home: 1,
+    // The answer is here: one hop, then away.
+    doneWhen: { truthy: "asked.shell.text" },
+  })];
 }

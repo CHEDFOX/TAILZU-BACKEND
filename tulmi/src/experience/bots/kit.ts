@@ -28,6 +28,7 @@ import {
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
 import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
+import { BOT_PEEK_CAPABILITY, type BotPeekProps } from "../../../../shared/types/sdui.js";
 import {
   ARRIVAL_CAPABILITY, CALENDAR_ADD_CAPABILITY, CALENDAR_READ_CAPABILITY, CONTACT_PICK_CAPABILITY, FOCUS_CAPABILITY,
   HEALTH_CAPABILITY, HEALTH_SLEEP_CAPABILITY, LOCATION_CAPABILITY, MOTION_CAPABILITY, REMINDERS_CAPABILITY,
@@ -430,6 +431,29 @@ export const canBuddy = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(B
 /** A bot's own tiny bot on a stage of his own (BotBuddy): only for a build that draws it (canBuddy). */
 export function botBuddy(o: BotBuddyProps): Node {
   return { type: "BotBuddy", props: { ...o } };
+}
+
+/**
+ * A build that draws THE PEEK (BotPeek, with BotsMotion): the bot rising from behind an edge of the screen. It needs
+ * the bots' looks too, because a peeker wearing his kind's default face is not the one the catalog describes.
+ */
+export const canPeek = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.can.has(BOT_PEEK_CAPABILITY);
+
+/**
+ * THE PEEK (BotPeek): he rises from behind one of `spots`, holds for a while, ducks back, and takes his next place
+ * while he is down where nobody can see him. Only for a build that draws it (canPeek) — every other gets nothing at
+ * all, so a page that wants him must still hold together without him.
+ *
+ * It goes in a page's `pinned`, not its body: he is drawn in a pocket at the edge of the whole screen, outside
+ * whatever scrolls.
+ *
+ * THE ANTENNA IS THE MICROPHONE. While `liveWhen` holds he is `listen`ing, and the motion core lights his antenna
+ * from the voice's own level (botTiles/core.ts: `glowTo = level * 1.2` in that act) — the same light the window's
+ * Blip shows. Nothing here has to ask for the glow, and `liveMoment` is only for a page that wants something MORE
+ * than the light while he listens.
+ */
+export function botPeek(o: BotPeekProps): Node {
+  return { type: "BotPeek", props: { ...o } };
 }
 
 /**

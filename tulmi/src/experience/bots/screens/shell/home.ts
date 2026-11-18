@@ -13,7 +13,7 @@ import {
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, C, headBar, type PageOpts, hasOutbox,
   needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
-import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
+import { HOME_THOUGHT_STATE, homePeek, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import { HOME_UPDATES_STATE, homeUpdatesBot, homeUpdatesOn } from "./homeUpdates.js";
 import type { FeedRow } from "../../../../shell/feed.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
@@ -264,7 +264,10 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   return page(ctx, {
     tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}) },
     ...(thought ? { talkTo: homeTalkTo(ctx) } : {}),
-    pinned: intro ? pinned.map((x) => when(gone, x)) : pinned,
+    // THE PEEKER goes in `pinned`, over the top of the page and outside its scroll, because his pocket is at the edge
+    // of the whole screen and must not move with the list. He waits out the welcome: a bot peeking in while another
+    // one is waving hello and walking off is two bots talking over each other.
+    pinned: [...(intro ? pinned.map((x) => when(gone, x)) : pinned), ...(intro ? homePeek(ctx).map((x) => when(gone, x)) : homePeek(ctx))],
     ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
     body: intro
       ? [
