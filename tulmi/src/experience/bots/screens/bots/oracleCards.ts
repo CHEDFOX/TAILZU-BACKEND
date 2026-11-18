@@ -37,7 +37,9 @@ const WIDTH = { phone: 330, desktop: 360 };
 
 /** What the cards read: the Oracle's store (GET /v1/oracle/sky) and the profile (GET /v1/bots/first-run/about). */
 export interface OracleCardsData {
-  sky?: { sky: unknown; when?: { date: string; time: string } | null } | undefined;
+  /** `sky` is the whole one (null while anything the engine needs is owed); `place` is the place card's own answer, kept
+   *  whether or not the rest is, so the cards ask only for what is missing. */
+  sky?: { sky: unknown; place?: string | null; when?: { date: string; time: string } | null } | undefined;
   about?: About | undefined;
 }
 
@@ -60,8 +62,10 @@ export function cardsState(ctx: BotsCtx, d: OracleCardsData): Record<string, unk
   const when = d.sky?.when ?? null;
   const gender = GENDERS.some((g) => g.value === d.about?.gender) ? d.about!.gender! : "";
   return {
-    [OC.date]: when?.date ?? "", [OC.time]: when?.time ?? "", [OC.when]: !!when && !edit,
-    [OC.q]: "", [OC.found]: { q: "", places: [] }, [OC.place]: !!d.sky?.sky && !edit,
+    // The when is answered only once the TIME is there: a date on its own leaves the engine an hour nobody gave (oracle/birth.ts
+    // isComplete). The place is answered as soon as it was kept, whether or not the time was — nobody is asked for it twice.
+    [OC.date]: when?.date ?? "", [OC.time]: when?.time ?? "", [OC.when]: !!when?.time && !edit,
+    [OC.q]: "", [OC.found]: { q: "", places: [] }, [OC.place]: !!d.sky?.place && !edit,
     [OC.name]: d.about?.name ?? "", [OC.gender]: gender, [OC.you]: !needsYou(d.about),
     [OC.closed]: false, [OC.session]: randomUUID(),
   };

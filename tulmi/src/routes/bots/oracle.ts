@@ -18,7 +18,7 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { oracleOn } from "../../bots/builtin.js";
 import { places as defaultPlaces } from "../../places/index.js";
 import type { Place } from "../../places/types.js";
-import { dateWords, isComplete, readBirth, skyLine, timeWords, whenLine, whenOf, type BirthWhen, type Sky, type SkyDraft } from "../../oracle/birth.js";
+import { dateWords, hasPlace, isComplete, readBirth, skyLine, timeWords, whenLine, whenOf, type BirthWhen, type Sky, type SkyDraft } from "../../oracle/birth.js";
 import { birthPlaces, oracleBirthPlaces, type BirthPlaces } from "../../oracle/places.js";
 import { skyFromWords } from "../../oracle/run.js";
 import { oracleStore, type OracleStore } from "../../oracle/store.js";
@@ -48,10 +48,14 @@ const MISSING: Record<string, string> = {
 };
 
 /** What the page reads: the whole sky once it is whole, and the when as soon as it is kept (to fill the first card in again). */
-export function skyView(sky: SkyDraft | null | undefined): { sky: Sky | null; line: string | null; when: { date: string; time: string; line: string } | null } {
-  if (!sky) return { sky: null, line: null, when: null };
+export function skyView(sky: SkyDraft | null | undefined): { sky: Sky | null; line: string | null; place: string | null; when: { date: string; time: string; line: string } | null } {
+  if (!sky) return { sky: null, line: null, place: null, when: null };
   const whole = isComplete(sky) ? sky : null;
-  return { sky: whole, line: whole ? skyLine(whole) : null, when: { date: dateWords(sky), time: timeWords(sky), line: whenLine(sky) } };
+  // `place` is the place card's own answer, kept even while the sky is not whole, so the cards ask only for what is still owed.
+  return {
+    sky: whole, line: whole ? skyLine(whole) : null, place: hasPlace(sky) ? sky.place : null,
+    when: { date: dateWords(sky), time: timeWords(sky), line: whenLine(sky) },
+  };
 }
 
 export function registerOracleRoutes(app: FastifyInstance, deps: OracleRouteDeps): void {
@@ -100,7 +104,7 @@ export function registerOracleRoutes(app: FastifyInstance, deps: OracleRouteDeps
     } else if (part("time")) {
       return bad(reply, "date");
     }
-    let at: Pick<Sky, "lat" | "lng" | "place"> | null = isComplete(kept) ? { lat: kept.lat, lng: kept.lng, place: kept.place } : null;
+    let at: Pick<Sky, "lat" | "lng" | "place"> | null = hasPlace(kept) ? { lat: kept.lat, lng: kept.lng, place: kept.place } : null;
     if (part("placeId") || part("place")) {
       if (!when) return bad(reply, "when");
       const found = await search().resolve({ id: part("placeId"), label: part("place"), session: part("session") }).catch(() => null);

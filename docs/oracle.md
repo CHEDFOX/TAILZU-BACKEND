@@ -68,7 +68,10 @@ The Oracle needs the date, the time and the place of birth — **all three**, si
 * **The chat**: "13 July 1994, 9:30 am, Mumbai" or "13/07/1994 subah 9 baje Delhi" in a message is read, kept, and said back in the notes.
 
 Both are read by the same rules (`oracle/birth.ts`, no model). A date is day before month (05/07/1994 is the 5th of July) unless the first number
-cannot be a month. A time not given is noon, marked as not known, and the reading is gentler about the hour — which is what a sky saved before the time was asked for still gets. A sky is read only once it is whole
+cannot be a month. **A sky with no time is not read at all** (`birth.ts isComplete`): the worker takes an hour and a minute and
+nothing that says they were guessed at, so a sky without a time could only be sent as noon — a chart whose ascendant and houses are
+confidently wrong, built on an hour nobody gave. `timeKnown: false` survives on a draft and on the skies saved before the time was
+asked for; those are not read until the time is given, and the cards ask for it alone, keeping the place. A sky is read only once it is whole
 (the cards keep the when first). The name and gender go to the engine with the birth details: several of its systems read a woman's chart as a
 man's without the gender ("Other" is not sent: the engine reads only male and female).
 
