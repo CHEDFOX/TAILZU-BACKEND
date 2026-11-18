@@ -34,6 +34,8 @@ const { MemorySentenceBank } = await import("../src/lingo/sentences.js");
 const { registerLingoRoutes } = await import("../src/routes/bots/lingo.js");
 const { lingoWords, runLingoNote } = await import("../src/lingo/tool.js");
 const { lingoDigest } = await import("../src/lingo/digest.js");
+const { MemoryLessonBank } = await import("../src/lingo/lessons.js");
+const { UNITS } = await import("../src/lingo/course.js");
 import type { LingoItem } from "../src/lingo/types.js";
 
 const DAY = 86_400_000;
@@ -71,8 +73,19 @@ describe("three weeks of somebody actually using it", () => {
     const bank = new MemorySentenceBank();
     await bank.put("es", "en", SPANISH.map(([text, gloss]) => ({ text, gloss, words: 0, licence: "CC0-1.0", author: "", source: "walkthrough" })), clock);
 
+    // The course itself: a stand-in for the model that writes a unit for a pair, so the path can be walked without
+    // a real call. What it gives back is the shape a real one gives back, and nothing here depends on the words.
+    const lessons = new MemoryLessonBank();
+    const written: string[] = [];
+    const call = (async (input: { messages: Array<{ content: unknown }> }) => {
+      const brief = String(input.messages[input.messages.length - 1]?.content ?? "");
+      const key = UNITS.find((u) => brief.includes(u.goal))?.key ?? "?";
+      written.push(key);
+      return { json: { items: Array.from({ length: 10 }, (_, i) => ({ text: `${key}-${i}`, meaning: `${key} thing ${i}`, kind: "phrase" as const })) }, paise: 1, model: "stub" };
+    }) as never;
+
     const app: FastifyInstance = Fastify();
-    registerLingoRoutes(app, { rateLimit: {}, bots: {}, store, bank, now: () => clock });
+    registerLingoRoutes(app, { rateLimit: {}, bots: {}, store, bank, lessons, call, now: () => clock });
     await app.ready();
     const ME = { authorization: "Bearer maria" };
     const go = async (method: "GET" | "PUT" | "POST" | "DELETE", url: string, payload?: unknown) => {
@@ -131,7 +144,7 @@ describe("three weeks of somebody actually using it", () => {
       expect(r.code).toBe(200);
       answers.push({ item: it!.item, kind: e.kind, verdict: r.body.mark.verdict, ...(r.body.learned ? { learnedNow: true } : {}) });
       n++;
-      clock += 20_000;
+      clock += picked === right ? 4_000 : 11_000;
     }
     const got = answers.filter((a) => a.verdict === "right").length;
     say(`  she got ${got} of ${answers.length} right`);
@@ -166,6 +179,9 @@ describe("three weeks of somebody actually using it", () => {
       clock = START + (day - 1) * DAY + 9 * 3_600_000;
       const s = await go("POST", "/v1/lingo/session", { target: "es", shape });
       expect(s.code, `day ${day}`).toBe(200);
+      // She turned up and pressed Continue. There is always something: a scheduler being satisfied with somebody is
+      // not a reason to hand them an empty screen and take their streak.
+      noticed(s.body.exercises.length > 0, `Day ${day}: she turned up and was given nothing to do.`);
       if (!s.body.exercises.length) { say(`  day ${day}: nothing due`); continue; }
       sets++;
       const todays: typeof answers = [];
@@ -185,7 +201,10 @@ describe("three weeks of somebody actually using it", () => {
         todays.push({ item: it.item, kind: e.kind, verdict: r.body.mark.verdict, ...(r.body.learned ? { learnedNow: true } : {}) });
         if (r.body.mark.verdict === "right") rightAll++;
         asked++;
-        clock += 25_000;
+        // A real person is quick on a word they own and slow on one they are working out, and the gap between two
+        // answers is the only thing that can tell them apart. A fixed gap hides the whole signal.
+        const owned = (it.memory.stability ?? 0) > 20 && it.spoken > 0;
+        clock += knows ? (owned ? 2_200 : 9_000) : 14_000;
       }
       const done = await go("POST", "/v1/lingo/set", { target: "es", answers: todays });
       say(`    day ${String(day).padStart(2)}: ${todays.filter((a) => a.verdict === "right").length}/${todays.length} right -> ${done.body.performance.padEnd(11)} cap "${done.body.next.rungCap ?? "none"}" new ${done.body.next.newRoom}`);
@@ -211,10 +230,18 @@ describe("three weeks of somebody actually using it", () => {
     for (const i of (await mine()).slice(0, 6)) {
       say(`    ${i.item.padEnd(26)} state ${i.memory.state.padEnd(11)} reps ${String(i.memory.reps).padStart(2)} lapses ${String(i.memory.lapses).padStart(2)} steps ${i.memory.steps} stability ${i.memory.stability.toFixed(1)} spoken ${i.spoken}`);
     }
+    say("\n=== THE PATH ===");
+    const where = (await store.course("maria", "es"))!;
+    say(`  units written for this pair: ${[...new Set(written)].join(", ") || "none"}`);
+    say(`  she is on: ${where.unit ?? UNITS[0]!.key}`);
+    const perUnit = new Map<string, number>();
+    for (const i of await mine()) perUnit.set(i.unit ?? "(asked for)", (perUnit.get(i.unit ?? "(asked for)") ?? 0) + 1);
+    say(`  her words by unit: ${[...perUnit.entries()].map(([k, v]) => `${k} ${v}`).join(", ")}`);
+
     const end = (await go("GET", "/v1/lingo/courses")).body.courses[0];
     say(`\n  after three weeks: ${end.progress.items} words, ${end.progress.learned} learned, ${end.mastery.spoken} ever said out loud, streak ${end.streakDays}`);
     const digest = await lingoDigest("maria", { store, now: clock });
-    say(`\n=== WHAT LINGO KNOWS ABOUT HER ===\n${digest?.split("\n").slice(0, 10).map((l) => `  ${l}`).join("\n")}`);
+    say(`\n=== WHAT LINGO KNOWS ABOUT HER ===\n${digest?.split("\n").slice(0, 40).map((l) => `  ${l}`).join("\n")}`);
 
     // What has to be true at the end of all that.
     noticed(sets > 15, `She only got a set on ${sets} of the 20 days.`);
@@ -223,7 +250,9 @@ describe("three weeks of somebody actually using it", () => {
     noticed(!!(await mine()).find((i) => i.item === "terco"), "The word she asked for is gone from her course.");
     noticed(end.progress.learned > 0, `After three weeks nothing had crossed into learned (${end.progress.learned}).`);
     noticed(end.mastery.spoken > end.progress.items / 2, `Only ${end.mastery.spoken} of her ${end.progress.items} words had ever been said out loud.`);
-    noticed(end.progress.items > 25, `The spine stopped feeding her: ${end.progress.items} words after three weeks.`);
+    noticed(where.unit !== UNITS[0]!.key, "After three weeks she had not moved off the first unit of the path.");
+    noticed(new Set(written).size >= 2, `Only ${new Set(written).size} unit(s) were ever written for this pair.`);
+    noticed((await mine()).some((i) => i.unit), "Nothing she has came from the path: the course never reached her.");
 
     say("\n=== WHAT A PERSON WOULD NOTICE ===");
     if (!FOUND.length) say("  nothing");

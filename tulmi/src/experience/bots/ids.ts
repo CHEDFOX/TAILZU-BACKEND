@@ -154,6 +154,7 @@ export const SCREENS = {
   lingo: "bots.lingo",               // the territory: a card per language, Continue on each, Add a language
   lingoSet: "bots.lingo.set",        // a set: one exercise at a time (params: target)
   lingoAdd: "bots.lingo.add",        // the picker: search at the top, the suggested few, then all of them (params: q)
+  lingoSaid: "bots.lingo.said",    // the answer to "how do I say...", with a way back (params: say, means, note, back, target)
   lingoWhy: "bots.lingo.why",        // what the language is for, asked once as it is added (params: target, name)
   lingoLeave: "bots.lingo.leave",    // stop learning one: a box for why, and Just clean up (params: target, name)
 } as const;

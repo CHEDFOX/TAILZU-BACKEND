@@ -22,7 +22,7 @@ import { fold } from "./grade.js";
 import { createHash } from "node:crypto";
 import type { Sentence } from "./sentences.js";
 import { underCap, type SetShape } from "./set.js";
-import { SPOKEN_KINDS, type ExerciseKind, type Learner, type LingoItem, type Mark, type Verdict } from "./types.js";
+import { MODE_OF, SPOKEN_KINDS, type ExerciseKind, type ItemMarks, type Learner, type LingoItem, type Mark, type Verdict } from "./types.js";
 
 /**
  * What a sentence with a hole in it shows where the word was taken out. One marker everywhere, so the screens never
@@ -80,6 +80,9 @@ const NEW_SHARE = 0.3;
 
 /** How many of their OWN never-seen words come in whatever the shape says, because they asked for them. */
 const OWN_ALWAYS = 2;
+
+/** How long a set of early practice is. Shorter than a real one: they are ahead, and it should feel like a top-up. */
+const EARLY_MAX = 8;
 
 /**
  * WHICH SHAPE AN ITEM GETS, by how well it is held and whether it has ever been said.
@@ -256,7 +259,20 @@ export function pick(items: readonly LingoItem[], learner: Learner, now: number,
     ? unseen(items.filter((i) => (i.source === "asked" || i.source === "said") && !held.has(i.item)), OWN_ALWAYS - fresh.length)
     : [];
   const bring = [...fresh, ...theirs];
-  return [...revision.slice(0, Math.max(0, size - bring.length)), ...bring];
+  const out = [...revision.slice(0, Math.max(0, size - bring.length)), ...bring];
+  if (out.length) return out;
+
+  // NOTHING IS DUE AND THERE IS NOTHING NEW — and they have just pressed Continue. Giving them an empty screen
+  // because a scheduler says they do not NEED practice yet is the whole difference between a course somebody walks
+  // and a pile they dip into. So they practise what is closest to due, early.
+  //
+  // It costs a little: an item reviewed before its time teaches less than one reviewed on it. It buys the thing
+  // the app is otherwise worst at — somebody who turns up every day always has something to do, and never loses a
+  // streak to the scheduler being satisfied with them.
+  return [...items]
+    .filter((i) => i.memory.state !== "new")
+    .sort((a, b) => a.memory.dueMs - b.memory.dueMs)
+    .slice(0, Math.max(1, Math.min(size, EARLY_MAX)));
 }
 
 /**
@@ -283,9 +299,26 @@ export function plan(items: readonly LingoItem[], learner: Learner, now: number,
 }
 
 /** The item after an answer: the scheduler moved on, and a time said out loud counted if that is what it was. */
-export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number): LingoItem {
+/**
+ * The item after an answer: the scheduler moved on, a time out loud counted if that is what it was, and WHAT THEY
+ * DID is written down — which of the three ways they were asked, whether it went in, and how it went wrong.
+ *
+ * The last part is the bit nothing kept before. The grader has always said why something was wrong — a dropped
+ * accent is not the wrong word — and it was thrown away the moment it had been shown once, so the same mistake
+ * five times read as five mistakes with nothing in common.
+ */
+export function answered(item: LingoItem, kind: ExerciseKind, mark: Mark, now: number, slow = false): LingoItem {
   const outLoud = SPOKEN_KINDS.includes(kind);
-  return review(item, mark.verdict, outLoud, now);
+  const mode = MODE_OF[kind];
+  const was = item.marks?.[mode] ?? { asked: 0, right: 0 };
+  const marks: ItemMarks = {
+    ...item.marks,
+    [mode]: { asked: was.asked + 1, right: was.right + (mark.verdict === "right" ? 1 : 0) },
+    ...(mark.verdict !== "right" && mark.why
+      ? { why: { ...item.marks?.why, [mark.why]: (item.marks?.why?.[mark.why] ?? 0) + 1 } }
+      : {}),
+  };
+  return { ...review(item, mark.verdict, outLoud, now, slow), marks };
 }
 
 /** How a course is going, for the page and for the chat. Counts only, nothing invented. */

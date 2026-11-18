@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, "..", "src");
-const DIRS = ["code", "artifacts", "web", "front", "bots", "widgets", "askDecide", "talk", "show", "sites", "cinema"];
+const DIRS = ["code", "artifacts", "web", "front", "bots", "widgets", "askDecide", "talk", "show", "sites", "cinema", "lingo"];
 
 const { ROLE_IDS } = await import("../src/principles/roles.js");
 
@@ -141,7 +141,7 @@ describe("the sweep", () => {
       "cinema/pictures.ts", "cinema/plan.ts", "cinema/propose.ts", "cinema/scene/eye.ts", "cinema/scene/make.ts", "cinema/service.ts",
       "code/agent/context.ts", "code/agent/merge.ts", "code/agent/phases.ts", "code/agent/referent.ts", "code/agent/review.ts", "code/brain/classify.ts", "code/chat/answer.ts", "code/chat/look.ts", "code/chat/naming.ts", "code/flow/plan.ts", "code/flow/triage.ts", "code/newproject/spec.ts",
       "code/prcare/review.ts", "code/project/summarize.ts", "code/resources/brief.ts", "code/team/review.ts", "code/team/split.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
-      "front/attachments.ts", "front/complete.ts", "front/decide.ts", "front/handlers.ts", "show/design.ts", "sites/read.ts", "talk/answer.ts", "talk/look.ts", "web/research.ts", "web/search/plan.ts",
+      "front/attachments.ts", "front/complete.ts", "front/decide.ts", "front/handlers.ts", "lingo/ask.ts", "lingo/lessons.ts", "show/design.ts", "sites/read.ts", "talk/answer.ts", "talk/look.ts", "web/research.ts", "web/search/plan.ts",
       "widgets/digest.ts",
     ]);
     for (const s of sites) {

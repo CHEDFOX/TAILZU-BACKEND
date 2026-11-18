@@ -50,7 +50,7 @@ export async function profilePerson(userId: string): Promise<OraclePerson | null
 }
 
 /** What it says instead of a reading while it has no whole chart (no model is asked for these). */
-export const NEEDS_SKY = "To read this, I need to know when and where you were born: the date, the time if you know it, and the town. The Oracle's cards ask for them. Then ask me again.";
+export const NEEDS_SKY = "To read this, I need to know when and where you were born: the date, the time and the town. The Oracle's cards ask for them. Then ask me again.";
 export const NEEDS_PLACE = "I have the day you were born, but not the town yet. Add it on the Oracle's card, then ask me again.";
 export const FOUND_NOT = "I couldn't find that birthplace on the map. Try the nearest city, or pick it on the Oracle's card.";
 

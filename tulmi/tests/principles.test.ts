@@ -24,6 +24,8 @@ const { GROUPS, PRINCIPLES, PRINCIPLE_MAX, groupOf, orderOf, principleText } = a
 const { ROLES, ROLE_IDS, compose, isRoleId, stableBlock } = await import("../src/principles/roles.js");
 const { ModelClassification } = await import("../src/code/brain/classify.js");
 const { REQUEST_TYPES, LEVELS, LANGUAGES } = await import("../src/code/brain/types.js");
+const { UnitDraft } = await import("../src/lingo/lessons.js");
+const { SaidDraft } = await import("../src/lingo/ask.js");
 const { PlanReply } = await import("../src/code/work/plan.js");
 const { SynonymReply, PickReply } = await import("../src/code/work/locate.js");
 const { SpecReply } = await import("../src/code/newproject/spec.js");
@@ -331,7 +333,9 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   converse: 867, // 788 measured
   portrait_update: 3667, // 3333 measured
   portrait_transcript: 3647, // 3315 measured
-  portrait_usage: 3945, // 3586 measured
+  portrait_usage: 3945,
+  lingo_unit: 2100,
+  lingo_say: 1700, // 3586 measured
 };
 
 describe("the size of a role", () => {
@@ -383,6 +387,8 @@ describe("the contracts say what the parsers read", () => {
   };
 
   const SCHEMAS: Array<[(typeof ROLE_IDS)[number], unknown]> = [
+    ["lingo_unit", UnitDraft],
+    ["lingo_say", SaidDraft],
     ["classify", ModelClassification],
     ["locate_terms", SynonymReply],
     ["locate_pick", PickReply],

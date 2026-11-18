@@ -3,6 +3,9 @@
  * one card over the Oracle's page (a BotCard overlay, the page blurred behind it) with the day's character on its stage, and one step after the
  * other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
+ *   back        the card is a modal over the page, so the page's own back is behind it and the phone's edge swipe never reaches it:
+ *                it carries its own way out (`onLeave`, the card draws a Back and takes a swipe to the right and the phone's back).
+ *                It leaves the Oracle; it does not put the cards off, and what was answered is kept for next time
  *   1. when      the date of birth, and the time if they know it: PUT /v1/oracle/sky { date, time }. There is no putting the cards off: the
  *                Oracle reads nothing without a chart (oracle/run.ts refuses too). Opened by Change, with a sky kept, Cancel leaves it as it was
  *   2. where     the town or city, with suggestions as they type (GET /v1/oracle/places: Google's with GOOGLE_PLACES_API_KEY, else the
@@ -17,7 +20,7 @@
  */
 import { randomUUID } from "node:crypto";
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, seq, text, when } from "../../kit.js";
+import { type BotsCtx, back, botCard, box, C, call, canMove, col, FACE, icon, labelled, row, seq, text, when } from "../../kit.js";
 import { SCREENS } from "../../ids.js";
 import { genderChips } from "../firstRun/aboutCard.js";
 import { type About, GENDERS, line, nameField, permitStep, setState, toast } from "../firstRun/parts.js";
@@ -85,8 +88,9 @@ function cardField(path: string, placeholder: string, desk: boolean, o: { label:
   };
   return row([
     input,
-    labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-      seq(setState(path, ""), ...(o.onChange ? [o.onChange] : []))), `Clear ${o.label}`),
+    // Only once there is something to clear: an x on an empty field does nothing, and on a card like this it reads as a way out.
+    when({ truthy: path }, labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+      seq(setState(path, ""), ...(o.onChange ? [o.onChange] : []))), `Clear ${o.label}`)),
   ], { height: desk ? 54 : 56, borderWidth: 1.5, borderColor: C.ink, borderRadius: desk ? 14 : 16, paddingLeft: 16, paddingRight: desk ? 6 : 4 });
 }
 
@@ -108,16 +112,21 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
   // 1. When.
   const saveWhen: ActionSpec = {
     kind: "condition", if: { truthy: OC.date },
-    then: call("PUT", SKY, { date: `$state.${OC.date}`, time: `$state.${OC.time}` }, {
-      ok: kept(OC.when), fail: toast("Couldn't read that. Try a date like 13 July 1994, and a time like 9:30 am."),
-    }),
+    then: {
+      kind: "condition", if: { truthy: OC.time },
+      then: call("PUT", SKY, { date: `$state.${OC.date}`, time: `$state.${OC.time}` }, {
+        ok: kept(OC.when), fail: toast("Couldn't read that. Try a date like 13 July 1994, and a time like 9:30 am."),
+      }),
+      // The time is what fixes the sky to a place and a moment, so it is asked for rather than guessed at.
+      else: toast("Add the time you were born. Someone at home will know it, or it is on your birth certificate."),
+    } as ActionSpec,
     else: toast("Add the date you were born."),
   } as ActionSpec;
   const editing = ctx.params.edit === "1" && !!d.sky?.sky;
   const whenStep = permitStep({
     when: { falsy: OC.when },
     title: "When were you born?",
-    lines: [line("The date, and the time if you know it: the time makes the reading sharper. Leave it empty if you don't.")],
+    lines: [line("The date and the time you were born. The time is what fixes the sky to that moment, so the Oracle asks for both.")],
     extra: [
       cardField(OC.date, "Date, like 13 July 1994", desk, { label: "the date" }),
       cardField(OC.time, "Time, like 9:30 am", desk, { label: "the time", onSubmit: saveWhen }),
@@ -182,6 +191,10 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
       kind: "custom", color: look.color, stageHeight: 96, overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "The Oracle",
       ...(look.avatar ? { avatar: look.avatar } : {}), ...(look.moment ?? {}),
       doneWhen: allKept, doneDelayMs: 1800, onComplete: seq(setState(OC.closed, true), again()), closeWhen: { truthy: OC.closed },
+      // A way off the screen. The card is a modal over the page, so without this there is no back and no swipe on either phone.
+      // It does not put the cards off — there is nothing to read without a sky — it leaves the Oracle, and they are here again
+      // next time, filled in as far as they got.
+      onLeave: back(),
     })];
   }
   return [when({ all: [{ falsy: OC.closed }, { not: allKept }] }, col(steps, {

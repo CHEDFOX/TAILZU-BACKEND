@@ -19,6 +19,39 @@ export type ItemKind = "word" | "phrase";
  */
 export type ItemSource = "seed" | "said" | "asked" | "heard";
 
+/**
+ * THE THREE WAYS A THING CAN BE KNOWN, and they are not the same knowledge.
+ *
+ * Picking it out of three is not writing it, and writing it is not saying it with somebody waiting. Everything
+ * until now kept ONE number for an item, so a word somebody could recognise and a word they could say were the
+ * same word to the scheduler. These are what the exercise kinds mean when you stop looking at the screen and ask
+ * what the person actually did.
+ */
+export const MODES = ["pick", "write", "say"] as const;
+export type Mode = (typeof MODES)[number];
+
+export const MODE_OF: Readonly<Record<ExerciseKind, Mode>> = {
+  choose: "pick", reply: "pick", blank: "pick",
+  write: "write", chips: "write", listen: "write",
+  say: "say", speak: "say", talk: "say",
+};
+
+/** Asked, and right, in one mode. Two numbers, because a rate without its count is a number that lies. */
+export type Count = { asked: number; right: number };
+
+/**
+ * WHAT IS KNOWN ABOUT ONE ITEM, kept on the item itself: how it goes in each of the three ways it can be known,
+ * and how it goes wrong when it does. The grader already says WHY something was wrong (a dropped accent is not the
+ * same as the wrong word); until now nothing kept that, so the same mistake five times looked like five mistakes.
+ */
+export interface ItemMarks {
+  pick?: Count;
+  write?: Count;
+  say?: Count;
+  /** How it goes wrong, by the grader's own reason, counted. */
+  why?: Partial<Record<Exclude<MarkReason, "">, number>>;
+}
+
 /** Where the scheduler has got to with one item (src/lingo/schedule.ts). */
 export type MemoryState = "new" | "learning" | "review" | "relearning";
 
@@ -36,6 +69,13 @@ export interface Memory {
   dueMs: number;
   /** When it was last answered; null while it has never been asked. */
   lastMs: number | null;
+  /**
+   * HOW LONG THEY THINK ABOUT THIS ONE, in ms, as a running middle (portrait.ts blendMs); 0 until it is timed.
+   * Taken from the gap between one answer and the next, so no clock in the app and no message can say otherwise.
+   * It is the difference between a word somebody HAS and one they can work out, which nothing else here can see:
+   * both are marked right.
+   */
+  thinkMs?: number;
 }
 
 export interface LingoItem {
@@ -45,12 +85,16 @@ export interface LingoItem {
   /** What it means, in the language they are taught in. */
   gloss: string;
   source: ItemSource;
+  /** Which unit of the path it came from (course.ts), when it came from one. A word they reached for has none. */
+  unit?: string;
   /**
    * Times they got it right OUT LOUD. The whole point is talking, so a word that has only ever been read or tapped is
    * not counted as learned however well the scheduler thinks it is held.
    */
   spoken: number;
   memory: Memory;
+  /** How it goes in each of the three ways it can be known, and how it goes wrong (ItemMarks). */
+  marks?: ItemMarks;
 }
 
 /** One person, one language they are learning. Somebody may be learning several at once. */
@@ -82,6 +126,12 @@ export interface Learner {
   lastDay: string | null;
   usedMs: number;
   updatedMs: number;
+  /** Where they are on the path (course.ts UNITS). Empty until they start; the first unit is assumed. */
+  unit?: string;
+  /** When they last answered anything on this course: what the next answer's thinking time is measured from. */
+  lastAnswerMs?: number;
+  /** Per kind of exercise: asked, right, and the middle time. What the portrait's rates are built from. */
+  tally?: { [kind: string]: { asked: number; right: number; ms: number } };
   /** What the language is for, one of WHY_CODES; "" when they skipped the question or the course predates it. */
   why?: Why;
   /** The same thing in their own words, which is worth more than the code: who they will speak it with, and when. */

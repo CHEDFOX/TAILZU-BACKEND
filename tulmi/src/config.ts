@@ -853,6 +853,24 @@ const EnvSchema = z.object({
    */
   BOTS: bool(false),
   /**
+   * A SWITCH PER BOT: the slugs NOT to list, comma separated ("travel,talk"). Empty (the default) lists every bot
+   * that is otherwise available, which is what the server does today.
+   *
+   * WHY A DENY LIST AND NOT AN ALLOW LIST. The connectors' own list (CONNECTORS_ENABLED_IDS) is the other way round
+   * because every app there ships disabled. Bots do not: Xode, Keylessbord, Plan Ease, Travel and Talk are listed the
+   * moment BOTS is on. An allow list would mean that naming one bot to switch it on silently switched off the four
+   * that were already there — the footgun being avoided here is a person turning the cinema on and losing Xode.
+   *
+   * It is the LAST word, not the only one. A bot still has to be available before this can hide it: the meeting bot
+   * needs RECALL_API_KEY, the mail bot its worker, the Oracle its own, and Lingo and the cinema their own switches.
+   * Those say "this is set up"; this says "and I want it listed". Naming a bot that is not available does nothing,
+   * and an unknown slug does nothing.
+   *
+   * HIDING A BOT DOES NOT FREE ITS NAME. A hidden slug is still reserved (RESERVED_SLUGS, isBuiltinSlug), so nobody
+   * can take "travel" while the Travel bot is off and collide with it the day it comes back.
+   */
+  BOTS_OFF: orDefault(""),
+  /**
    * LINGO, THE LANGUAGE BOT (src/lingo, docs/lingo.md): learning a language by talking rather than tapping. Off unless LINGO=true, and then it is
    * among the bots like any other. It needs no service of its own: the words come from the model, the voice from the server's own speech, and the
    * screens from node kinds the apps already draw, so turning it on needs no release. No language is built in; a course is a pair of tags.

@@ -1041,6 +1041,9 @@ export interface BotCardProps {
   closeWhen?: Condition;
   /** Once closed on this device, never drawn again (a key). */
   once?: string;
+  /** A WAY OUT, overlay only: with `on.onDismiss` the card draws a Back in its own corner and answers a swipe to the right over
+   *  it or the blur behind it, and the phone's own back. An overlay card is a modal — it covers the page's back and sits over the
+   *  navigator, so without this there is no way off the screen on either phone. A card that must be answered sends none. */
   label?: string;
   /** The bot's look, and a moment he plays once the card is open (BOT_MOMENTS_CAPABILITY). */
   avatar?: BotAvatarRef;
@@ -1076,6 +1079,60 @@ export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think" 
  * still holding the bag, with `label` written beside him. A build without it is sent "Asking…" instead.
  */
 export const BOT_BUDDY_CARRY = "BotBuddyCarry";
+
+/**
+ * THE PEEK (component "BotPeek", BOT_PEEK_CAPABILITY): the bot rises from BEHIND an edge of the screen, holds, and ducks
+ * back. The window's Blip has done this for a long time (TAILZU-DESKTOP src/shared/blip.js `rise`, src/agent/guide/peek.js:
+ * 280 ms up, 300 ms down, a hop when the words have landed, then the duck), and this is that gesture on a phone.
+ *
+ * WHAT MAKES IT A PEEK AND NOT A SPRITE. He is drawn in a pocket at the edge that CLIPS him, so he is only ever half
+ * there, and he NEVER CROSSES THE SCREEN: a new spot is taken while he is below the edge, at rise 0, where nobody can
+ * see him move. A bot that slides across a person's page is in the way; one that is half behind the frame is peeking.
+ *
+ * `notch` is the odd one and the nicest: he hangs UPSIDE DOWN from it, head first, and the notch cuts off his antenna
+ * and crown, so he reads as hiding behind the hardware. He never covers the status bar's own words.
+ *
+ * THE ANTENNA IS THE MICROPHONE, as it is on the computer: lit while `liveWhen` holds, plain otherwise. One bot, one
+ * meaning, on both machines.
+ *
+ * A build that does not declare the capability is sent no peek and draws none; the ask bar and his walk along the
+ * bottom of Home are what it keeps. (This name existed once before and was taken out on 16 Nov for needing "a store
+ * build": that was wrong — an OTA carries every bit of this, because none of it is native.)
+ */
+export const BOT_PEEK_CAPABILITY = "BotPeek";
+
+/** The edge a peek is clipped against. `notch` hangs him upside down from the top centre. */
+export type PeekEdge = "left" | "right" | "bottom" | "notch";
+
+export interface PeekSpot {
+  edge: PeekEdge;
+  /** How far along that edge, 0 to 1 of the length left after the safe area. Ignored for `notch`, which is centred. */
+  along: number;
+}
+
+export interface BotPeekProps {
+  /** Who peeks: the same figure a buddy draws, so he keeps his lid, his hands and his kind's play. */
+  bot: Pick<BotBuddyProps, "kind" | "color" | "life" | "state"> & { avatar?: BotAvatarRef };
+  /** Where he may rise, tried in this order. Empty: he never appears. */
+  spots: PeekSpot[];
+  /** Seconds up, then seconds hidden: a random value in each range, so he is never on a beat. */
+  up: [number, number];
+  every: [number, number];
+  /** His own height, as a buddy's `size`. */
+  size?: number;
+  /** While this holds he stays up and his ANTENNA IS LIT: the microphone is live. */
+  liveWhen?: Condition;
+  /**
+   * The moment he plays while `liveWhen` holds — which is where the antenna's glow lives. It is a moment in the
+   * catalog and not a flag in the renderer on purpose: what a bot LOOKS like has always been data, and a glow written
+   * into the app could never be changed without shipping one.
+   */
+  liveMoment?: string;
+  /** Where he comes when he is called: an index into `spots`. None: he stays wherever he was. */
+  home?: number;
+  /** While this holds he hops once and then ducks: the answer has landed. */
+  doneWhen?: Condition;
+}
 
 export interface BotBuddyProps {
   kind: BotTileKind;

@@ -27,6 +27,21 @@ what is numbered above `LIVE_MIGRATION` — a colliding number does not fail, it
 - **The site's phone screen** (`claude/loving-goldberg-wvp95p`, TAILZU-WEB) and **the Blip structure sheet**
   (`claude/jolly-brown-p8nhu2`, brand assets only).
 
+**A SWITCH PER BOT: `BOTS_OFF`** (17 Nov). The slugs not to list, comma separated. Until now the control was uneven —
+Xode, Keylessbord, Plan Ease, Travel and Talk were listed the moment `BOTS` was on with no switch at all, Lingo and
+the cinema had their own, and the Oracle, the mail bot and the meeting bot were gated by whether their service was
+set up. This reaches all of them.
+
+* **A deny list, not an allow list**, unlike `CONNECTORS_ENABLED_IDS`, and for a reason: every connector ships
+  disabled, but five bots ship listed. An allow list would mean that naming one bot to switch it on silently
+  switched off the ones already there — turning the cinema on and losing Xode.
+* **The last word, not the only one.** A bot must be available before this can hide it; naming one that is not does
+  nothing. Those switches say "this is set up", this says "and I want it listed".
+* **Hiding a bot does NOT free its name.** `isBuiltinSlug` is deliberately not filtered, so nobody can take "travel"
+  while the Travel bot is off and collide with it the day it comes back. There is a test for exactly that.
+* Read in `defs()`, the one place every listing goes through, so a built-in added later is covered without anybody
+  remembering to.
+
 **HOME IS ONE BOT A ROW ON THE PHONE** (17 Nov). `tiles(ctx, 1, 104, 16, …)` — two columns of 132 gave the phone FOUR
 slots, three bots and "Make a bot", so with five built-ins alone most bots were chips under a "More bots" label. One
 column is full-width rows and everything fits.
@@ -91,6 +106,26 @@ Three things found while adding it, each a trap somebody else would have hit:
 It wears `slate` (#4A535C), a cool graphite added to `SHIPPED_ONLY` so it is never offered in the picker, and three
 balloons on one thread (`glyphs.ts` `balloons`) rather than the sparkle every AI product uses — which is also X0's own
 mark and had to stay that way. 12,435 tests pass. `BOTS` is off, so none of it is reachable yet.
+
+## AN OTA CARRIES RENDERER WORK. A STORE BUILD IS FOR NATIVE CODE ONLY (17 Nov)
+
+**Correcting something this file got wrong twice**, because it was costing real decisions. "The apps would have to learn
+to draw it, so it needs a store build" was the reason given on 16 Nov for taking the bot's peek and the dotted mark out,
+and the reason nearly given today for not letting the Home bot peek around the screen. **It is wrong.**
+
+`eas-release.yml` publishes an OTA on any push to main touching `app/**`, and an OTA carries **all of the JavaScript**,
+new SDUI components and renderer behaviour included. `BotStage.tsx` imports React, react-native primitives and
+safe-area-context — nothing native; Skia is already in the binary. So a new way of drawing a bot ships the same day.
+
+THE REAL LINE:
+
+* **Store build** — native code only: a new native module, a permission, the app icon, anything in the Android or iOS
+  project. Those cannot go over the air at any price.
+* **OTA** — everything else, including a new component and a new capability, as long as the runtime version still
+  matches (`tailzu-2026-11-x0-blip`, fixed). The capability handshake then does its job: the updated build declares the
+  new component, and a phone still on an older runtime simply never gets sent it.
+
+What this changes: a thing that "needs an app change" is not thereby weeks away. It is one OTA away unless it is native.
 
 ## WHAT IS OFF, AND WHICH KIND OF OFF IT IS (16 Nov)
 

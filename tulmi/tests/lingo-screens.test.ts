@@ -17,7 +17,7 @@ import { lintTree } from "../src/experience/bots/lint.js";
 import { SCREENS } from "../src/experience/bots/ids.js";
 import { botRoute } from "../src/experience/bots/ids.js";
 import {
-  LINGO_SCREENS, leaving, picker, setScreen, territory, whyScreen, whyWords,
+  LINGO_SCREENS, leaving, picker, saidScreen, setScreen, territory, whyScreen, whyWords,
   type CourseView, type PickerData, type SetData,
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
@@ -88,8 +88,8 @@ describe("every tree the kit would draw", () => {
     }
   });
 
-  it("is five screens, and Lingo's tile in the bots list opens the first of them", () => {
-    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoLeave]);
+  it("is six screens, and Lingo's tile in the bots list opens the first of them", () => {
+    expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoSaid, SCREENS.lingoLeave]);
     expect(botRoute("lingo")).toMatchObject({ kind: "navigate", screenId: SCREENS.lingo });
     // A bot with no page of its own still goes to the shared one.
     expect(botRoute("gym-bot")).toMatchObject({ kind: "navigate", screenId: SCREENS.bot, params: { slug: "gym-bot" } });
@@ -227,6 +227,119 @@ describe("what the language is for", () => {
     const s = json(picker(ctx(), { from: "en", fromName: "English", suggested: [{ tag: "es", name: "Español", en: "Spanish" }], languages: [] }));
     expect(s).toContain(SCREENS.lingoWhy);
     expect(s).not.toContain(SCREENS.lingoSet);
+  });
+});
+
+describe("which language it is taught in", () => {
+  it("lets them pick the language they speak, instead of handing them English", () => {
+    // Every meaning in every exercise is written in this language. Deciding it for somebody because nobody asked is
+    // the one assumption this app does not make.
+    const n = whyScreen(ctxFor(SCREENS.lingoWhy, "phone", live, { params: { target: "es", name: "Español" } }), "es", "Español");
+    const s = json(n);
+    expect(s).toContain("Taught in");
+    expect(s).toContain(SCREENS.lingoAdd);
+    expect(s).toContain('"pick":"from"');
+  });
+
+  it("sends the one they picked, and shows it by name", () => {
+    const ctxWith = ctxFor(SCREENS.lingoWhy, "phone", live, { params: { target: "es", name: "Español", from: "hi", fromName: "हिन्दी" } });
+    const s = json(whyScreen(ctxWith, "es", "Español"));
+    expect(s).toContain("हिन्दी");
+    expect(s).toContain('"from":"hi"');
+  });
+
+  it("asks the picker the other way round, and picking goes back with the answer", () => {
+    const asking = ctxFor(SCREENS.lingoAdd, "phone", live, { params: { pick: "from", target: "es", name: "Español" } });
+    const s = json(picker(asking, { from: null, fromName: null, suggested: [], languages: [{ tag: "hi", name: "हिन्दी", en: "Hindi" }] }));
+    expect(s).toContain("Which language do you speak?");
+    // It must not start a course: it carries the answer back to the question that does.
+    expect(s).toContain(SCREENS.lingoWhy);
+    expect(s).toContain('"from":"hi"');
+    expect(s).toContain('"target":"es"');
+  });
+});
+
+describe("a course with nothing in it", () => {
+  const bare = { items: 0, learned: 0, due: 0, unseen: 0, held: 0 };
+
+  it("does not tell somebody they are up to date on a language they cannot speak", () => {
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: bare, mastery: course().mastery }));
+    expect(s).not.toContain("Nothing due");
+    expect(s).toContain("Nothing to learn yet");
+    // The way out is the one thing that always works, whatever the shared bank has in it.
+    expect(s).toContain(SCREENS.chat);
+  });
+
+  it("still says nothing is due when they have met things and are holding them", () => {
+    const held = { items: 20, learned: 3, due: 0, unseen: 0, held: 0.9 };
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: held, mastery: course().mastery }));
+    expect(s).toContain("Nothing due");
+    expect(s).not.toContain("Nothing to learn yet");
+  });
+
+  it("offers talking rather than a lesson that has nothing to ask", () => {
+    const s = json(territory(ctx(), { courses: [course({ progress: bare })] }));
+    expect(s).toContain("Start by talking");
+    expect(s).toContain("no words yet");
+    // "0% of what you've met" is a measurement of nothing, drawn as though it were a fact about them.
+    expect(s).not.toContain("you'd still have now");
+    expect(s).not.toContain("Practise anyway");
+    expect(s).not.toContain("nothing due");
+  });
+});
+
+describe("asking from anywhere, without losing your place", () => {
+  const built = (id: string, params: Record<string, string>) => {
+    const screen = LINGO_SCREENS.find((x) => x.id === id)!;
+    return JSON.stringify(screen.build(ctxFor(id, "phone", live, { params }), undefined as never));
+  };
+
+  it("puts the ask box on every screen where there is a language to ask about", () => {
+    // The moment somebody wants a word is the moment they are using the language — including mid-set.
+    for (const [id, params] of [
+      [SCREENS.lingo, {}],
+      [SCREENS.lingoSet, { target: "es" }],
+      [SCREENS.lingoSaid, { target: "es", say: "x", means: "y" }],
+    ] as Array<[string, Record<string, string>]>) {
+      expect(built(id, params), id).toContain("How do you say");
+      expect(built(id, params), id).toContain("/v1/lingo/ask");
+    }
+  });
+
+  it("does not offer it before the course exists, where it could only fail", () => {
+    // Setting a language up, or choosing one: there is nothing yet to ask a question against, and an ask box that
+    // answers "that course has not been started" is worse than no ask box.
+    for (const [id, params] of [
+      [SCREENS.lingoWhy, { target: "es", name: "Español" }],
+      [SCREENS.lingoAdd, {}],
+    ] as Array<[string, Record<string, string>]>) {
+      expect(built(id, params), id).not.toContain("/v1/lingo/ask");
+    }
+  });
+
+  it("sends them back to the set they asked from, not to the front", () => {
+    const s = built(SCREENS.lingoSet, { target: "es" });
+    expect(s).toContain(SCREENS.lingoSaid);
+    expect(s).toContain(`"back":"${SCREENS.lingoSet}"`);
+  });
+
+  it("leads with the thing to say, and says it is already theirs", () => {
+    const n = saidScreen(ctx(), { say: "estoy lleno", means: "I'm full", note: "After a meal.", target: "es", back: SCREENS.lingoSet });
+    const s = json(n);
+    expect(s).toContain("estoy lleno");
+    expect(s).toContain("I'm full");
+    expect(s).toContain("After a meal.");
+    // They should not be left wondering whether to write it down themselves.
+    expect(s).toContain("Added to your words");
+    // Continue goes back to the set, carrying which language, so a word looked up mid-lesson costs nothing.
+    expect(s).toContain(SCREENS.lingoSet);
+    expect(s).toContain('"target":"es"');
+  });
+
+  it("leaves the note out rather than filling it", () => {
+    const s = json(saidScreen(ctx(), { say: "hola", means: "hello", note: "", target: "es", back: SCREENS.lingo }));
+    expect(s).toContain("hola");
+    expect(s).not.toContain("Notice");
   });
 });
 

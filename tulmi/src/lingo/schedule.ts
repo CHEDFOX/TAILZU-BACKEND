@@ -78,9 +78,16 @@ function fromCard(c: Card): Memory {
  * `right` out loud is Easy: saying it unprompted is the strongest evidence there is that it is theirs, and it is the
  * thing we are actually teaching. Right by tapping is only Good.
  */
-export function ratingFor(verdict: Verdict, spoken: boolean): FsrsGrade {
+/**
+ * `slow` is the thing marking cannot see: they got it right, and it took them twice as long as they usually take
+ * (portrait.ts workedForIt). FSRS has a word for exactly that and it is "Hard" — recalled, with difficulty — so it
+ * is told that rather than the recall curve being fudged behind it. A word somebody reconstructs is not a word
+ * they have, and scheduling it as though it were is how an app convinces somebody they know things they do not.
+ */
+export function ratingFor(verdict: Verdict, spoken: boolean, slow = false): FsrsGrade {
   if (verdict === "wrong") return Rating.Again;
   if (verdict === "close") return Rating.Hard;
+  if (slow) return spoken ? Rating.Good : Rating.Hard;
   return spoken ? Rating.Easy : Rating.Good;
 }
 
@@ -98,8 +105,8 @@ function sane(m: Memory, now: number): Memory {
 }
 
 /** An item after it has been answered. Pure: the same item, mark and clock always give the same result. */
-export function review(item: LingoItem, verdict: Verdict, spoken: boolean, now: number): LingoItem {
-  const next = engine.next(toCard(sane(item.memory, now)), new Date(now), ratingFor(verdict, spoken));
+export function review(item: LingoItem, verdict: Verdict, spoken: boolean, now: number, slow = false): LingoItem {
+  const next = engine.next(toCard(sane(item.memory, now)), new Date(now), ratingFor(verdict, spoken, slow));
   return {
     ...item,
     spoken: item.spoken + (spoken && verdict === "right" ? 1 : 0),
