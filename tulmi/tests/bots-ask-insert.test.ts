@@ -67,7 +67,14 @@ describe("the card", () => {
     expect(texts(bar("desktop"))).not.toContain("Camera");
     expect(texts(bar("desktop"))).toEqual(expect.arrayContaining(["Photo", "File", "Screenshot", "Paste"]));
   });
-  it("HAS A WAY OUT, which is what draws its × and takes a swipe away", () => {
+  it("HAS A VISIBLE WAY OUT, drawn by the server: the apps draw none, and an iPhone has no hardware back", () => {
+    const card = bar().find((n) => n.type === "BotCard")!;
+    const back = (card.children ?? [])[0]!;
+    const press = JSON.stringify(back.on?.onPress ?? walk(back).find((n) => n.on?.onPress)?.on?.onPress);
+    expect(press).toContain('"path":"insert"');
+    expect(walk(back).some((n) => n.type === "SVG" && n.props?.d === ICONS.back)).toBe(true);
+  });
+  it("and the gestures too, which is all onDismiss is for now", () => {
     const card = bar().find((n) => n.type === "BotCard")!;
     expect(card.on?.onDismiss).toEqual({ kind: "setState", path: "insert", value: false });  // botCard maps onLeave to it
   });

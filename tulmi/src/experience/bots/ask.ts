@@ -32,6 +32,7 @@ import {
   grow, row, SCREENS, sectionLabel, seq, statusMark, text, when, type BotsCtx,
 } from "./kit.js";
 import { askMoment } from "./askMoment.js";
+import { cardBack } from "./screens/firstRun/parts.js";
 import { canUpload, uploadAdd, uploadChip } from "./media.js";
 
 /** Where the insert card's open/closed lives, and where a picked file's ref goes. */
@@ -120,7 +121,10 @@ function insertCard(ctx: BotsCtx, path: string): Node[] {
     ], { minHeight: 30 }, seq({ kind: "clearState", path: ATTACH }, { kind: "clearState", path: SHOTS })), "Take them all off")], { gap: 8 }),
     row(Array.from({ length: MOST }, (_, i) => chosen(i)), { gap: 8, flexWrap: "wrap" }),
   ], { gap: 8, paddingBottom: 6 }));
-  const card = botCard([col([strip, sectionLabel("Insert"), ...ways], { gap: 2, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 16 })], {
+  // THE WAY OUT IS THE SERVER'S (firstRun/parts.ts cardBack). The apps draw nothing: an overlay card is a modal, so
+  // they answer only what markup cannot — a swipe to the right, and the phone's own back. An iPhone has neither a
+  // hardware back nor an edge swipe that reaches a modal, so without this the card is a trap.
+  const card = botCard([cardBack(shut, "Close"), col([strip, sectionLabel("Insert"), ...ways], { gap: 2, paddingHorizontal: 18, paddingTop: 10, paddingBottom: 16 })], {
     kind: "custom", color: C.ink, stageHeight: 72, overlay: true, width: desk ? 360 : 330,
     label: "Insert a photo or a file", onLeave: shut,
   });
