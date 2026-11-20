@@ -79,7 +79,7 @@ export function offline(ctx: BotsCtx) {
       ...(b.working ? [statusMark("working", { color: b.color })] : []),
     ], { gap: 10, paddingVertical: 12, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0, minWidth: 0 })), { borderRadius: 18, borderWidth: 1, borderColor: C.line });
     return page(ctx, {
-      tab: "bots", title: "Offline", gap: 18, maxWidth: 1100, state: kept ? { later: "" } : { queued: [], later: "" },
+      tab: "talk", title: "Offline", gap: 18, maxWidth: 1100, state: kept ? { later: "" } : { queued: [], later: "" },
       body: [
         row([col([text(firstName(ctx) ? `${live.greeting}, ${firstName(ctx)}` : live.greeting, { size: 14, color: C.meta, lineHeight: 18 }), title("Your bots")], { gap: 4 }), grow(), pill], { gap: 16 }),
         banner,
@@ -92,7 +92,7 @@ export function offline(ctx: BotsCtx) {
     });
   }
   return page(ctx, {
-    tab: "bots", title: "Offline", gap: 18, state: kept ? { later: "" } : { queued: [], later: "" },
+    tab: "talk", title: "Offline", gap: 18, state: kept ? { later: "" } : { queued: [], later: "" },
     body: [
       row([tailzuMark(34), col([text(live.greeting, { size: 13, color: C.meta, lineHeight: 17 }), text("Your bots", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 })], { gap: 2 }), grow(), pill], { gap: 10 }),
       banner,

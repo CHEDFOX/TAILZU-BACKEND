@@ -12,7 +12,7 @@
 import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
 import { withoutAmounts } from "../../../shell/parse.js";
 import {
-  type BotsCtx, page, emptyState, toTab, row, labelled, box, icon, back, botAvatar, col, text, grow, open, SCREENS, listRow, meta, mono,
+  type BotsCtx, page, emptyState, row, labelled, box, icon, back, botAvatar, col, text, grow, open, SCREENS, listRow, meta, mono,
   headerBuddy, quietButton, body, C, chip, listCard, title, sectionLabel, notice, primaryButton, call, card, grid, divider, seq, button,
   infoChip, when, chips, statusMark, meter, roundButton, needsCard, type LiveBot, secondaryButton, blip, hasSpaces, canPersonBot,
 } from "../kit.js";
@@ -125,7 +125,7 @@ const isCinema = (d: BotPageData): boolean => d.bot?.slug === "cinema" && d.bot.
 function noBot(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
     back: true, title: "Bot", nav: "bots",
-    body: [emptyState({ pose: "think", title: "Couldn't open this bot", body: "It may have been deleted, or the connection dropped.", action: { label: "Back to your bots", onPress: toTab("bots") } })],
+    body: [emptyState({ pose: "think", title: "Couldn't open this bot", body: "It may have been deleted, or the connection dropped.", action: { label: "Back to your bots", onPress: open(SCREENS.start) } })],
   });
 }
 
@@ -398,7 +398,7 @@ function storeDesk(ctx: BotsCtx, d: Shop | undefined) {
   return page(ctx, {
     title: "Find a bot", nav: "bots", maxWidth: 1120, state: { filter: "all", q },
     body: [
-      row([col([row([text("Your bots", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("bots")), title("Find a bot", { size: 26 })], { gap: 4 }), grow(), box([search], { width: 340 })], { alignItems: "flex-end", gap: 16 }),
+      row([col([row([text("Your bots", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, open(SCREENS.start)), title("Find a bot", { size: 26 })], { gap: 4 }), grow(), box([search], { width: 340 })], { alignItems: "flex-end", gap: 16 }),
       row([chips(FILTERS, "filter"), grow(), meta("Every bot asks before it uses an app or spends money.", { size: 12 })], { gap: 12 }),
       ...(d ? [row([
         col([

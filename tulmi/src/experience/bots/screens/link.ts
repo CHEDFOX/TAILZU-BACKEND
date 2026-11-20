@@ -68,7 +68,7 @@ const step = (n: number, words: string): Node => row([
 ], { gap: 12 });
 
 /** Where to go once it is answered: a link may have opened this page alone, so Home rather than back. */
-const finish: ActionRef = toTab("bots");
+const finish: ActionRef = toTab("talk");
 
 // ----------------------------------------------------------------- You › Link a computer
 

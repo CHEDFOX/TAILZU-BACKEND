@@ -8,7 +8,21 @@
  *   work that did not come from Talk still shows, as one bot each, and is never counted twice
  *   `ask` and `words` rows are not activities: an answer given and words spoken are not work set going
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.hoisted(() => {
+  process.env.OPENROUTER_API_KEY = "k";
+  process.env.GROQ_API_KEY = "k";
+  process.env.DEV_SKIP_AUTH = "true";
+  process.env.NODE_ENV = "test";
+});
+
+vi.mock("../src/auth/supabase.js", async (orig) => {
+  const real = await orig<typeof import("../src/auth/supabase.js")>();
+  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id ? { id } : null; } };
+});
+
+const U = "u-aanya";
 import { activitiesFrom, type ActivityInput, type RoutineLite } from "../src/botsBots/activities.js";
 import type { ChatTurn } from "../src/botsBots/chat.js";
 import type { Session } from "../src/botsBots/sessions.js";
@@ -150,5 +164,69 @@ describe("schedules", () => {
     expect(s!.next).toBe("");
     expect(s!.paused).toBe(true);
     expect(s!.bot.slug).toBe("tailzu");
+  });
+});
+
+// ===================================================================== the route
+
+describe("GET /v1/botsapp/activities", () => {
+  it("joins the feed, Talk's threads and the routines, and decides nothing itself", async () => {
+    const { default: Fastify } = await import("fastify");
+    const { registerActivitiesRoutes } = await import("../src/routes/bots/botsActivities.js");
+    const { botsAreaParts, resetAreaTablesForTests } = await import("../src/botsBots/index.js");
+    resetAreaTablesForTests();
+
+    const app = Fastify();
+    // The feed, as the ledger's own route gives it: the route must read THAT, so a row cleared there is gone here.
+    app.get("/v1/shell/activity", async () => ({
+      now: N, week: { done: 1, paise: 0, minutesSaved: 0 },
+      rows: [{ id: "job:j1", type: "job", bot: "code", title: "Fix the rounding", sub: "3 of 7 done", at: N, mark: "working" }],
+    }));
+    const bots = {
+      list: async () => [{ slug: "code", name: "Xode", colour: "moss" }],
+      resolve: async () => null,
+    } as never;
+    const routines = { list: async () => [{ id: "r1", bot: { slug: "tailzu", name: "X0" }, task: "Sum up my week", when: "Every Friday at 5 pm", status: "on", next: { at: N, words: "Fri at 5 pm" } }] } as never;
+    const parts = botsAreaParts({ bots, connectors: null });
+    registerActivitiesRoutes(app, { rateLimit: { rateLimit: { max: 1000, timeWindow: 60_000 } }, bots, code: null, jobs: null, connectors: null, media: null, artifacts: null, routines }, { chat: parts.chat, sessions: parts.sessions });
+    await app.ready();
+
+    // A thread that set a job going: the activity is the thread, and the job's own row says where it got to.
+    await parts.chat!.keepDoor(U, "talk", { said: "the cart rounds 99.5 down", text: "", by: { slug: "code", name: "Xode", color: "#5f7d4f" }, did: { job: "j1" } });
+
+    const r = await app.inject({ method: "GET", url: "/v1/botsapp/activities?tz=330", headers: { authorization: `Bearer ${U}` } });
+    expect(r.statusCode).toBe(200);
+    const j = r.json() as { schedules: unknown[]; now: Array<Record<string, unknown>>; done: unknown[] };
+    expect(j.schedules).toHaveLength(1);
+    expect(j.schedules[0]).toMatchObject({ task: "Sum up my week", when: "Every Friday at 5 pm" });
+    // One activity, not two: the job's feed row is spoken for by the thread that started it.
+    expect(j.now).toHaveLength(1);
+    expect(j.now[0]).toMatchObject({ title: "the cart rounds 99.5 down", line: "3 of 7 done", state: "working" });
+    // THE HEAD WEARS THE BOT'S COLOUR AS IT IS NOW (#4F7A3A, from "moss" on the live list), not the one frozen on
+    // the turn (#5f7d4f): an activity card is a thing happening now, so a bot recoloured since shows its new colour.
+    expect(j.now[0]!.bots).toEqual([{ slug: "code", name: "Xode", color: "#4F7A3A" }]);
+    expect(j.now[0]!.open).toEqual({ screenId: "bots.code.job", params: { id: "j1" } });
+  });
+
+  it("is 401 without a session and 404 with the bots platform off", async () => {
+    const { default: Fastify } = await import("fastify");
+    const { registerActivitiesRoutes } = await import("../src/routes/bots/botsActivities.js");
+    const { botsAreaParts } = await import("../src/botsBots/index.js");
+    const RL = { rateLimit: { max: 1000, timeWindow: 60_000 } };
+    const bots = { list: async () => [] } as never;
+
+    const on = Fastify();
+    on.get("/v1/shell/activity", async () => ({ rows: [] }));
+    const parts = botsAreaParts({ bots, connectors: null });
+    registerActivitiesRoutes(on, { rateLimit: RL, bots, code: null, jobs: null, connectors: null, media: null, artifacts: null }, { chat: parts.chat, sessions: parts.sessions });
+    await on.ready();
+    expect((await on.inject({ method: "GET", url: "/v1/botsapp/activities" })).statusCode).toBe(401);
+
+    const off = Fastify();
+    registerActivitiesRoutes(off, { rateLimit: RL, bots: null, code: null, jobs: null, connectors: null, media: null, artifacts: null }, { chat: null, sessions: parts.sessions });
+    await off.ready();
+    const r = await off.inject({ method: "GET", url: "/v1/botsapp/activities", headers: { authorization: `Bearer ${U}` } });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().code).toBe("bots_off");
   });
 });

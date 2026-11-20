@@ -45,7 +45,7 @@ import { botRoute, SCREENS } from "./ids.js";
 import { failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
-export { icon, peekKey, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
+export { icon, peekKey, shapes, statusMark, tabGlyph, botsMark, botsGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
 export { blipUrl, headUrl, BLIP_POSES, type BlipPose } from "./art.js";
 export { SCREENS, botRoute } from "./ids.js";
 export { percent, whenWords } from "../../you/usage.js";
@@ -1275,7 +1275,7 @@ export function seq(...actions: Array<ActionRef | undefined>): ActionRef {
  * where you are, and the first tap on the tab you appear to be on does nothing.
  */
 const TABS: Array<{ id: TabId; title: string }> = [
-  { id: "talk", title: "Talk" }, { id: "bots", title: "Bots" }, { id: "activity", title: "Activity" },
+  { id: "talk", title: "Talk" }, { id: "activity", title: "Activities" },
 ];
 
 /** The phone's tab bar: three living icons with their words, live state from ctx.live. Last child of a top-level page. */

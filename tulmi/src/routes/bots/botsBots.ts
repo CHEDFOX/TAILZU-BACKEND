@@ -6,6 +6,7 @@
  *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
  *   /v1/botsapp/talk...                                 TALK, the one screen's one thread, where every bot answers: routes/bots/botsTalk.ts
+ *   GET    /v1/botsapp/activities?tz=                  -> { schedules, now, done }        what the work turned into: routes/bots/botsActivities.ts
  *   GET    /v1/botsapp/bots/sessions/:slug             -> { sessions }                    the bot's thread, newest first
  *   POST   /v1/botsapp/bots/sessions/:slug             -> { session }                     the + : a new session, whatever is open
  *   GET    /v1/botsapp/bots/session/:id                -> { session, turns, proposal?, made? }  one session, oldest first; with the
@@ -78,6 +79,7 @@ import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
 import { registerTalkRoutes } from "./botsTalk.js";
+import { registerActivitiesRoutes } from "./botsActivities.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
 import { registerPlanCallJudge } from "./planCallJudge.js";
@@ -183,6 +185,9 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // TALK: the one screen's one thread (routes/bots/botsTalk.ts, docs/talk-door.md). It answers nothing itself: every message
   // goes through POST /v1/shell/ask, and this keeps the pair of turns so the thread reads as one conversation.
   registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads });
+  // ACTIVITIES: what the work turned into, derived on every read from the feed, Talk's threads and the routines
+  // (routes/bots/botsActivities.ts over botsBots/activities.ts). Nothing stored, nothing decided here.
+  registerActivitiesRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions });
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
   // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).

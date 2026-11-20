@@ -4,7 +4,7 @@
 
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, call, seq, col, row, text, grow, roundButton, listCard, listRow, switchRow, quietButton, card, meta, toTab, sectionLabel,
+  type BotsCtx, call, seq, col, row, text, grow, roundButton, listCard, listRow, switchRow, quietButton, card, meta, sectionLabel,
   box, C, botAvatar, button, open, SCREENS, notice, page, back, title,
 } from "../../kit.js";
 import {
@@ -81,7 +81,7 @@ export function editParts(_ctx: BotsCtx, d: EditData) {
     sub: d.listed ? "Listed · people can add a copy of it" : "People could add a copy: its name, rules and apps. Never your memory, files or keys.",
     onChange: write(d.listed ? "DELETE" : "PUT", `${A}/listing/${enc(slug)}`, undefined, { ok: d.listed ? "Taken off Find a bot" : "Listed in Find a bot" }),
   });
-  const del = quietButton("Delete this bot", call("DELETE", `/v1/bots/${enc(slug)}`, undefined, { ok: seq(toast(`${bot.name} deleted`), toTab("bots")), fail: toast("Couldn't delete it. Try again.", true) }), { size: "md" });
+  const del = quietButton("Delete this bot", call("DELETE", `/v1/bots/${enc(slug)}`, undefined, { ok: seq(toast(`${bot.name} deleted`), open(SCREENS.start)), fail: toast("Couldn't delete it. Try again.", true) }), { size: "md" });
   return { saveName, nameField, colours, takenLine, rules, toolRows, memory, listing, del, state, facts };
 }
 

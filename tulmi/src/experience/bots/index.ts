@@ -96,31 +96,22 @@ const STILL: Record<string, TabGlyph> = {
 };
 
 /**
- * The Bots app's tabs. One tab id per living icon; the screens are bots.home, bots.talk and bots.activity.
+ * THE BOTS APP'S TABS: TWO. You either SAY something or you LOOK at something — Talk and Activities
+ * (docs/talk-door.md).
  *
- * YOU IS NOT ONE OF THEM. It is the person button in Home's header, which is where it already was and where a
- * profile belongs; a tab as well was the same page twice. The page is unchanged, still warmed at launch, and
- * reached by a push instead of a tab switch (screens/shell/home.ts, screens/spaces.ts).
+ * THERE IS NO BOTS TAB. A list of bots had one job left once nobody has to pick one to get an answer, which is
+ * showing what you can start — and that is the "+" on Activities (bots.start), not a room you live in. The bots are
+ * still everywhere they matter: "/" in Talk, the "+", the hands drawn on every activity, and each with its own page.
+ *
+ * YOU IS NOT ONE EITHER. It is the person button in the header, which is where a profile belongs; a tab as well was
+ * the same page twice.
  */
 export function botsNav(): NavigationShell {
   return {
     kind: "tabs",
     tabs: [
-      /**
-       * TALK IS FIRST NOW, AND IT IS WHAT THE APP OPENS ON (docs/talk-door.md).
-       *
-       * It used to be second, and the note here said the grid "is what this app IS and what it opens on". That was true
-       * of the app and false of the phone: eight living tiles, one to a row, then the chips for the rest, then the
-       * routines and the notes strip — on a phone the first thing anybody saw was a list to read, and every job began
-       * with deciding whose job it was. Nobody should have to know which bot owns a thing in order to ask for it.
-       *
-       * So the thread is first: you say what you need and whichever bot it belongs to answers in it. The grid keeps its
-       * tab, because a bot's own PAGE is still the place for its own work — a trip, a day's plan, a mailbox — and those
-       * are pages, not messages.
-       */
       { id: "talk", title: "Talk", screenId: "bots.talk", glyph: STILL.talk },
-      { id: "bots", title: "Bots", screenId: "bots.home", glyph: STILL.bots },
-      { id: "activity", title: "Activity", screenId: "bots.activity", glyph: STILL.activity },
+      { id: "activity", title: "Activities", screenId: "bots.activities", glyph: STILL.activity },
     ],
     rail: false,
     initialTabId: "talk",
@@ -135,7 +126,7 @@ export function botsNav(): NavigationShell {
  * params and are kept (never a decision, a job in flight or the first run).
  */
 export const BOTS_WARM_SCREEN_IDS = [
-  "bots.talk", "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
+  "bots.talk", "bots.activities", "bots.start", "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
   "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
   "bots.usage", "bots.billing", "bots.notify", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
   "bots.keybot.style", "bots.keybot.tone", "bots.keybot.words", "bots.keybot.voices", "bots.keybot.settings", "bots.keybot.haptics", "bots.keybot.name",
@@ -171,10 +162,11 @@ export interface BotsRequest {
 export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise<ScreenResponse> {
   const tz = req.tzOffsetMinutes ?? 0;
   const live = await loadLive(deps, tz, req.user?.id);
-  // Spaces switched off: a link, a widget row or a notification into one of its screens opens Home, with none of its params.
+  // Spaces switched off: a link, a widget row or a notification into one of its screens opens the app's landing
+  // (Talk), with none of its params. It used to open Home, which is no longer a tab.
   const spaces = req.spaces ?? spacesOn();
   const away = !spaces && isSpacesScreen(req.screenId);
-  const screenId = away ? "bots.home" : req.screenId;
+  const screenId = away ? "bots.talk" : req.screenId;
   const ctx: BotsCtx = {
     screenId, client: req.client, params: away ? {} : req.params ?? {}, live, user: req.user, can: req.can,
     ...(req.blocks?.size ? { blocks: req.blocks } : {}), desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }),

@@ -25,6 +25,7 @@ import {
   type BotsCtx, type LiveBot, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, botAvatar, icon,
   canScrollX, grid, scrollRow, labelled, title as pageTitle, botRoute, RADIUS, back,
 } from "../../kit.js";
+import { botsMark } from "../../glyphs.js";
 import { idleLine } from "../shell/parts.js";
 
 /**
@@ -103,7 +104,9 @@ export function botsStartPage(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
     back: true, title: "Start something", nav: "bots",
     body: [
-      col([pageTitle("Start something"), meta("Or just say it in Talk — whichever bot it belongs to answers.", { size: 13, lineHeight: 18 })], { gap: 6 }),
+      // The mark is the one the Bots tab used to wear: four dots, a working bot's breathing in its colour. It still
+      // means "your bots", which is what this page is.
+      row([botsMark(ctx.live.tab, 30), col([pageTitle("Start something"), meta("Or just say it in Talk — whichever bot it belongs to answers.", { size: 13, lineHeight: 18 })], { gap: 6, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" }),
       ...BOT_GROUPS.flatMap((g) => groupBlock(ctx, g, have)),
       col([
         col([sectionLabel("Yours"), meta(mine.length ? "The ones you made" : "Nothing yet — one sentence is enough", { size: 12, lineHeight: 16 })], { gap: 2 }),

@@ -253,7 +253,7 @@ export interface TabLive {
 const DOT_AT: Array<[number, number]> = [[7.5, 7.5], [16.5, 7.5], [7.5, 16.5], [16.5, 16.5]];
 
 /** Bots: your bots as four dots. Open, they pop in 60 ms apart; at rest a working bot's dot breathes in its colour, the rest are grey rings. */
-function botsGlyph(active: boolean, live: TabLive): SvgShape[] {
+export function botsGlyph(active: boolean, live: TabLive): SvgShape[] {
   return DOT_AT.map(([x, y], i) => {
     const d = live.dots[i];
     if (active) return { circle: [x, y, 3.9], fill: d?.color ?? IDLE, motion: "pop", ...(i ? { delayMs: i * 60 } : {}) };
@@ -279,7 +279,13 @@ function activityGlyph(active: boolean, live: TabLive): SvgShape[] {
 
 // You is NOT a tab: it is the person button in Home's header (screens/shell/home.ts), which is where a profile
 // belongs and where it already was. The page itself is unchanged and still warmed at launch.
-export type TabId = "bots" | "talk" | "activity";
+/**
+ * THE TABS. Two: you SAY something (Talk) or you LOOK at something (Activities). "bots" is gone from here on purpose —
+ * the bots are not a place you live, they are reached by the "+" that starts something, by "/" in Talk, and as the
+ * hands on every activity (docs/talk-door.md). Leaving the name in would let a `toTab("bots")` compile and then do
+ * nothing at run time.
+ */
+export type TabId = "talk" | "activity";
 
 /**
  * THE TALK TAB: three balloons on one thread, and they FILL on the tab you are on. Nothing here reads `live`,
@@ -296,8 +302,19 @@ function talkGlyph(active: boolean): SvgShape[] {
   ];
 }
 
-/** A living tab icon: 26 on the phone's bar, 22 in the window's sidebar. */
+/**
+ * A living tab icon: 26 on the phone's bar, 22 in the window's sidebar.
+ *
+ * `botsGlyph` is still here and still drawn — by the "+" that starts something and by the window's sidebar — it just
+ * is not a tab's icon any more (docs/talk-door.md).
+ */
 export function tabGlyph(tab: TabId, active: boolean, live: TabLive, size = 26): Node {
-  const list = tab === "bots" ? botsGlyph(active, live) : tab === "talk" ? talkGlyph(active) : activityGlyph(active, live);
-  return shapes(list, { size });
+  return shapes(tab === "talk" ? talkGlyph(active) : activityGlyph(active, live), { size });
 }
+
+/**
+ * YOUR BOTS, AS A MARK: the four dots, with a working one breathing in its colour. It was the Bots tab's icon until
+ * that tab went (docs/talk-door.md); it still means exactly what it meant, so it heads the page the "+" opens —
+ * which is the one place that is about your bots as a set.
+ */
+export const botsMark = (live: TabLive, size = 26): Node => shapes(botsGlyph(false, live), { size });

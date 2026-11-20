@@ -277,7 +277,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const gone: Condition = { truthy: "helloGone" };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought || peeks ? HOME_THOUGHT_STATE : {}), ...(updates || thought ? {} : ASK_BAR_STATE) },
+    back: true, title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(updates ? HOME_UPDATES_STATE : thought || peeks ? HOME_THOUGHT_STATE : {}), ...(updates || thought ? {} : ASK_BAR_STATE) },
     ...(thought ? { talkTo: homeTalkTo(ctx) } : {}),
     // THE PEEKER goes in `pinned`, over the top of the page and outside its scroll, because his pocket is at the edge
     // of the whole screen and must not move with the list. He waits out the welcome: a bot peeking in while another
