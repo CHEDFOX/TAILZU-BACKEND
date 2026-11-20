@@ -124,8 +124,10 @@ function findBlock(): Node[] {
         // The host, so what they are about to sign in to is never a surprise — not for them to judge.
         text("", { size: 12, color: C.meta, lineHeight: 16, bind: `${at}.host` }),
       ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
-      { ...button("Sign in", signIn, { kind: "secondary", size: "md" }), visibleIf: { falsy: `${at}.connected` } },
-      { ...meta("Signed in", { size: 12 }), visibleIf: { truthy: `${at}.connected` } },
+      // "Connect", not "Sign in": this is the same act as connecting an app, and the word people meet it by in
+      // Connected apps. Signing in is what happens inside it, and the line under the card says so.
+      { ...button("Connect", signIn, { kind: "secondary", size: "md" }), visibleIf: { falsy: `${at}.connected` } },
+      { ...meta("Connected", { size: 12 }), visibleIf: { truthy: `${at}.connected` } },
     ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 48 });
     return { ...(i ? col([divider(), line]) : line), visibleIf: { truthy: `${at}.id` } } as Node;
   };
@@ -137,7 +139,7 @@ function findBlock(): Node[] {
     visibleIf: { truthy: "found.results.0.id" },
   };
   return [
-    sectionLabel("Add a site"),
+    sectionLabel("Connect a site"),
     row([
       inputBox([field("q", "q", "Search for a site, like Swiggy", { onSubmit: search })]),
       button("Find", search, { kind: "secondary", size: "md" }),
@@ -147,7 +149,7 @@ function findBlock(): Node[] {
       ...meta("Nothing by that name. The sites you can sign in to here are the ones we have checked.", { size: 13, color: C.idle, lines: 2 }),
       visibleIf: { all: [{ truthy: "found.q" }, { falsy: "found.results.0.id" }] },
     } as Node,
-    meta("You sign in on the site's own page, in a browser that is yours. Only the slip that keeps you signed in is kept — never your password.", { size: 12, color: C.idle, lines: 3 }),
+    meta("Connecting opens the site's own page in a browser that is yours, and you sign in there. Only the slip that keeps you signed in is kept — never your password.", { size: 12, color: C.idle, lines: 3 }),
   ];
 }
 

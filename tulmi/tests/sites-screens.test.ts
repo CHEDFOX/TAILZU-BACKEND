@@ -342,7 +342,8 @@ describe("bots.sites: the way in to a sign-in", () => {
     const fresh = { ...VIEW, canAdd: ["swiggy.com", "zomato.com"], logins: [{ site: "swiggy.com", who: "Rahul" }] };
     const on = await drawWith(PANEL_CAN, { "GET /v1/botsapp/bots/sites": fresh });
     expect(lintTree(on.s.root!)).toEqual([]);
-    expect(on.labels).toContain("Add a site");
+    expect(on.labels).toContain("Connect a site");
+    expect(on.labels).toContain("Connect");
     // A field, not a list of hosts: the name picks the site, and the answer fills the rows.
     const nodes = walk(on.s.root!);
     expect(nodes.some((n) => n.type === "TextField" && (n.bind as { value?: string })?.value === "q")).toBe(true);
@@ -354,6 +355,6 @@ describe("bots.sites: the way in to a sign-in", () => {
     expect((on.s as { state?: Record<string, unknown> }).state).toMatchObject({ q: "" });
 
     const off = await drawWith(PHONE, { "GET /v1/botsapp/bots/sites": fresh });
-    expect(off.labels).not.toContain("Add a site");
+    expect(off.labels).not.toContain("Connect a site");
   });
 });
