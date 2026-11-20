@@ -141,65 +141,6 @@ const READ_PAGE = `function () {
   return { title: (document.title || "").slice(0, 200), url: location.href, text: text, elements: els };
 }`;
 
-/**
- * FOCUS ONE ELEMENT BY THE ID READ_PAGE GAVE IT (HeldPage.focus, src/sites/panel.ts). Those ids are positions in
- * READ_PAGE's own walk — "e12" is the twelfth visible element with a role — and nothing is written on the page to
- * remember them, so the only way back to one is to walk again by exactly the same rules. The two walks are the
- * same loop on purpose: change one and change the other, or a card fills the wrong box.
- *
- * It answers the role it actually focused, never a promise that it was the right one. The caller checks: typing a
- * password into whatever happens to be twelfth now is the worst thing this file could do, and a page that moved
- * under the card is the ordinary case, not the strange one.
- */
-const FOCUS_EL = `function (want) {
-  function clean(s) { return (s || "").replace(/\\s+/g, " ").trim().slice(0, 120); }
-  function visible(el) {
-    try { if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false; } catch (e) {}
-    var s = getComputedStyle(el); if (!s) return false;
-    if (s.display === "none" || s.visibility === "hidden" || Number(s.opacity) === 0) return false;
-    var r = el.getBoundingClientRect();
-    return (r.width > 1 && r.height > 1) || el.tagName === "OPTION";
-  }
-  function roleOf(el) {
-    var tag = el.tagName;
-    if (tag === "INPUT") {
-      var ty = (el.getAttribute("type") || "text").toLowerCase();
-      if (ty === "hidden") return "";
-      if (ty === "password") return "secret";
-      if (ty === "checkbox") return "check";
-      if (ty === "radio") return "radio";
-      if (ty === "submit" || ty === "button") return "button";
-      return "field";
-    }
-    if (tag === "TEXTAREA") return "area";
-    if (tag === "SELECT") return "combo";
-    if (tag === "BUTTON") return "button";
-    if (tag === "A" && el.getAttribute("href")) return "link";
-    var r = (el.getAttribute("role") || "").toLowerCase();
-    if (r === "button" || r === "link" || r === "tab" || r === "menuitem" || r === "checkbox" || r === "radio") return r === "checkbox" ? "check" : r;
-    return "";
-  }
-  var seen = 0;
-  var walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT, null);
-  var el = walker.currentNode;
-  while (el && seen < 400) {
-    if (el.nodeType === 1 && visible(el)) {
-      var role = roleOf(el);
-      if (role) {
-        seen++;
-        if ("e" + seen === want) {
-          try { el.scrollIntoView({ block: "center" }); } catch (e) {}
-          try { el.focus({ preventScroll: true }); } catch (e) {}
-          var ok = document.activeElement === el;
-          return { role: role, focused: ok, label: clean(el.getAttribute("aria-label") || el.getAttribute("placeholder") || "") };
-        }
-      }
-    }
-    el = walker.nextNode();
-  }
-  return null;
-}`;
-
 export interface EngineOptions {
   chromePath: string;
   /** Sent as the User-Agent instead of "HeadlessChrome". */
@@ -660,13 +601,6 @@ export class BrowserEngine {
         },
         async scroll(dy) {
           await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: view.width / 2, y: view.height / 2, deltaX: 0, deltaY: dy }, 5_000).catch(() => {});
-        },
-        async focus(elementId) {
-          const want = JSON.stringify(String(elementId));
-          const r = await page.send<{ result?: { value?: { role: string; focused: boolean } | null } }>(
-            "Runtime.evaluate", { expression: `(${FOCUS_EL})(${want})`, returnByValue: true }, 10_000).catch(() => null);
-          const v = r?.result?.value;
-          return v && v.focused ? v.role : null;
         },
         async look() {
           const r = await page.send<{ result?: { value?: { title: string; url: string; elements: VisitElement[] } } }>(

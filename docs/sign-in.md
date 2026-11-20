@@ -91,15 +91,14 @@ and was not.
 The whole of the above is the server's half, and it is done: the protocol, the rules, the reader, the event,
 and `tests/agent-signin.test.ts`.
 
-The desktop draws it (17 Nov), and so does the sign-in panel of a person's own browser — `src/sites/card.ts`
-reads the boxes off the page and `panelHost.ts` draws them, with the page still above. That card is not the
-planner's: a panel has no run and no model in its path, so it reads the roles the page reader already assigned
-(`secret` is a password box) and names them from their own labels. Same shape, same kinds, no model.
+The desktop draws it (17 Nov). **The sign-in panel of a person's own browser does not, and deliberately.** One was
+built there and taken out again the same day: a panel already shows the real page and the person can touch it, so
+a card of named boxes under it was a second form over the first — and the whole reason a sign-in happens in that
+browser is that it happens on the site's own page. A card earns its place in the desktop, where the agent is
+driving an app the person is not looking at. It does not earn it where they are looking straight at the page.
 
-The rule that matters is the same in both: **a card is only ever an improvement on the page.** `cardFor` returns
-null for anything that does not plainly look like a sign-in, and the panel then draws the page, which always
-works. Filling checks the page has not moved first — the ids are positions in a walk, so a page that changed has
-something else under the same name, and a secret goes into a password box or nowhere.
+What that leaves for a browser surface: the page, drawn large, on a card of its own. If this is ever revisited,
+the thing to beat is not "no card" — it is "the page, legible".
 
 ## The session behind it
 
