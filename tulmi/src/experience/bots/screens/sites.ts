@@ -15,7 +15,7 @@
  */
 import type { ActionRef, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, C, back, box, button, call, canLive, card, col, divider, emptyState, listCard, listRow, liveView, meta,
+  type BotsCtx, C, RADIUS, back, box, button, call, canLive, card, col, divider, emptyState, listCard, listRow, liveView, meta,
   page, row, SCREENS, sectionLabel, seq, text,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
@@ -26,7 +26,7 @@ import {
 } from "../sites.js";
 import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
-import { field, refresh, toast } from "./bots/parts.js";
+import { field, inputBox, refresh, toast } from "./bots/parts.js";
 
 /** The pips: one dot a stage, the last done one filled, the rest of the track grey. Drawn only when the site gave stages. */
 function pips(stages: SiteCard["stages"]): Node[] {
@@ -113,29 +113,40 @@ function findBlock(): Node[] {
     assignTo: "found", fail: toast("Couldn't search just now."),
   });
   // One row a result, drawn like a list row and filled from the answer. A row with no result behind it is not there.
+  // A row a result. The line above it travels INSIDE the row's own condition: a divider is a sibling of the row it
+  // follows, so one left outside would draw for a slot that has nothing in it — a card of grey stripes.
   const slot = (i: number): Node => {
     const at = `found.results.${i}`;
     const signIn = { kind: "navigate", screenId: SCREENS.sitePanel, params: { url: `$state.${at}.signIn` } } as ActionRef;
-    return {
-      ...row([
-        col([
-          text("", { size: 15, weight: 600, lineHeight: 20, bind: `${at}.name` }),
-          // The host, so what they are about to sign in to is never a surprise — not for them to judge.
-          text("", { size: 12, color: C.meta, lineHeight: 16, bind: `${at}.host` }),
-        ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
-        { ...button("Sign in", signIn, { kind: "secondary", size: "md" }), visibleIf: { falsy: `${at}.connected` } },
-        { ...meta("Signed in", { size: 12 }), visibleIf: { truthy: `${at}.connected` } },
-      ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 48 }),
-      visibleIf: { truthy: `${at}.id` },
-    } as Node;
+    const line = row([
+      col([
+        text("", { size: 15, weight: 600, lineHeight: 20, bind: `${at}.name` }),
+        // The host, so what they are about to sign in to is never a surprise — not for them to judge.
+        text("", { size: 12, color: C.meta, lineHeight: 16, bind: `${at}.host` }),
+      ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
+      { ...button("Sign in", signIn, { kind: "secondary", size: "md" }), visibleIf: { falsy: `${at}.connected` } },
+      { ...meta("Signed in", { size: 12 }), visibleIf: { truthy: `${at}.connected` } },
+    ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 48 });
+    return { ...(i ? col([divider(), line]) : line), visibleIf: { truthy: `${at}.id` } } as Node;
+  };
+  const results: Node = {
+    type: "Stack",
+    style: { flexDirection: "column", borderRadius: RADIUS.list, borderWidth: 1, borderColor: C.line, overflow: "hidden", backgroundColor: C.paper },
+    children: Array.from({ length: FOUND }, (_, i) => slot(i)),
+    // Nothing found is no card at all, rather than an empty box with a border.
+    visibleIf: { truthy: "found.results.0.id" },
   };
   return [
     sectionLabel("Add a site"),
     row([
-      box([field("q", "q", "Search for a site, like Swiggy", { onSubmit: search })], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      inputBox([field("q", "q", "Search for a site, like Swiggy", { onSubmit: search })]),
       button("Find", search, { kind: "secondary", size: "md" }),
     ], { gap: 8, alignItems: "center" }),
-    listCard(Array.from({ length: FOUND }, (_, i) => slot(i))),
+    results,
+    {
+      ...meta("Nothing by that name. The sites you can sign in to here are the ones we have checked.", { size: 13, color: C.idle, lines: 2 }),
+      visibleIf: { all: [{ truthy: "found.q" }, { falsy: "found.results.0.id" }] },
+    } as Node,
     meta("You sign in on the site's own page, in a browser that is yours. Only the slip that keeps you signed in is kept — never your password.", { size: 12, color: C.idle, lines: 3 }),
   ];
 }

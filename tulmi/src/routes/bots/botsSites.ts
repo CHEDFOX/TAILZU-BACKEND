@@ -99,7 +99,8 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
   app.get(`${AREA}/sites/search`, RL, run(async (user, req) => {
     const q = str((req.query as Record<string, unknown> | undefined)?.q, 64);
     const signedIn = new Set((await o.sites.logins(user.id)).map((l) => l.site));
-    return { results: searchSites(q).map((e) => ({ id: e.id, name: e.name, host: e.host, signIn: e.signIn, category: e.category, connected: signedIn.has(e.host) })) };
+    // `q` comes back so the screen can tell a search that found nothing from one nobody has run yet.
+    return { q, results: searchSites(q).map((e) => ({ id: e.id, name: e.name, host: e.host, signIn: e.signIn, category: e.category, connected: signedIn.has(e.host) })) };
   }));
 
   app.post(`${AREA}/sites/watch`, RL, run(async (user, req) => {
