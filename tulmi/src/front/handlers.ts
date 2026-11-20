@@ -294,6 +294,10 @@ async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonN
   }
   if (c.decision.mode === "freeform") opts = { ...opts, mode: "freeform" };
   if (c.decision.team) opts = { ...opts, team: c.decision.team };
+  // A GOAL THAT SPANS SEVERAL of their projects: the router named them, this one leads, and the rest go to the
+  // split, which gives each its own branch, plan and pull request and waits for them all (code/team). The engine
+  // has been there since the teams landed; until now nothing but a direct API call could reach it.
+  if (c.ctx.alsoProjects?.length) opts = { ...opts, projects: [project.id, ...c.ctx.alsoProjects] };
   const { branch } = await createWorkBranch(pd, c.userId, project.id, c.said ?? c.message);
   const job = await d.jobs.createJob(c.userId, project.id, branch, task, c.maxPaise, { agent: true });
   const made = await d.agent.enqueue(job.id, task, opts);

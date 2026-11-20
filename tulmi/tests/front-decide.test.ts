@@ -405,6 +405,57 @@ describe("the small model", () => {
     expect(d.shape.visual?.kind).toBe("table");
   });
 
+  /**
+   * WHICH OF THEIR PROJECTS, when the message came from none. Every road that does something needs a project and
+   * refuses without one ("Pick a project first"), which is why Xode's front door could only ever answer. The
+   * router is shown the list and names one from the words; the id is what comes back.
+   */
+  describe("picking the project from the words", () => {
+    const MINE = [
+      { id: "11111111-1111-4111-8111-111111111111", name: "aanya/storefront", about: "A Next.js shop." },
+      { id: "22222222-2222-4222-8222-222222222222", name: "aanya/api-server", about: "The orders API." },
+    ];
+    const withProjects = (over = {}) => ctx({ projects: MINE, ...over });
+
+    it("is shown their projects, and only when they are standing in none", async () => {
+      const m = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: ["aanya/storefront"] }));
+      await decide("the cart total is wrong", withProjects(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      const sent = JSON.stringify(m.sent);
+      expect(sent).toContain("aanya/storefront");
+      expect(sent).toContain("A Next.js shop.");
+      // Inside a project there is nothing to pick: the list is not sent and the words cost nothing.
+      const m2 = model(() => decideJson({ intent: "code_task", confidence: 0.9 }));
+      await decide("the cart total is wrong", inProject({ projects: MINE }), { call: m2.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      expect(JSON.stringify(m2.sent)).not.toContain("Their code projects");
+    });
+
+    it("gives back the id, not the name it was shown", async () => {
+      const m = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: ["aanya/storefront"] }));
+      const d = await decide("the cart total is wrong", withProjects(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      expect(d.projects).toEqual([MINE[0]!.id]);
+    });
+
+    it("keeps the order for a goal that spans two, the one it leads with first", async () => {
+      const m = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: ["aanya/api-server", "aanya/storefront"] }));
+      const d = await decide("rename that field everywhere", withProjects(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      expect(d.projects).toEqual([MINE[1]!.id, MINE[0]!.id]);
+    });
+
+    /** A name it made up picks NOTHING: near enough is the wrong repo, and the wrong repo is a branch in it. */
+    it("picks nothing for a name it invented, and nothing when it named none", async () => {
+      const made = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: ["aanya/storefront-v2"] }));
+      expect((await decide("fix it", withProjects(), { call: made.call, tiers, fx: 88, jobBudgetPaise: 3000 })).projects).toBeUndefined();
+      const none = model(() => decideJson({ intent: "answer", confidence: 0.9, projects: [] }));
+      expect((await decide("what changed this week?", withProjects(), { call: none.call, tiers, fx: 88, jobBudgetPaise: 3000 })).projects).toBeUndefined();
+    });
+
+    it("says nothing about projects to somebody who has none", async () => {
+      const m = model(() => decideJson({ intent: "chat", confidence: 0.9 }));
+      await decide("hello", ctx(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      expect(JSON.stringify(m.sent)).not.toContain("Their code projects");
+    });
+  });
+
   it("cannot make a code task of a message with no project, or a file question of one with nothing attached", async () => {
     const m = model(() => decideJson({ intent: "code_task", confidence: 0.9 }));
     expect((await decide("I'm feeling tired today", ctx(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 })).intent).toBe("answer");

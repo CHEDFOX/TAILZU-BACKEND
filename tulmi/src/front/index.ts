@@ -41,6 +41,8 @@ export type { FrontStore, DecisionRow } from "./store.js";
 export { Learning } from "./learn.js";
 
 /** How long the front door keeps a project's name and line. */
+/** How many of their projects the router is told about. The picker adds at most ten at a time; this is a fair few more. */
+const PROJECTS_READ = 12;
 const NAMED_FRESH_MS = 10 * 60_000;
 
 /** The outcomes a person reports with a tap. */
@@ -112,9 +114,37 @@ export function createFront(o: FrontOptions = {}): Front | null {
     return got.name ? { ...ctx, projectName: got.name, ...(got.about ? { projectAbout: got.about } : {}) } : ctx;
   };
 
+  /**
+   * THEIR PROJECTS, for a message that came from none: the router cannot pick one it has not been shown. Kept for
+   * the same ten minutes as a project's own line, and only read when there is no project in hand, so a message
+   * sent from inside one costs nothing extra.
+   */
+  const lists = new Map<string, { projects: FrontCtx["projects"]; at: number }>();
+  const listed = async (ctx: FrontCtx): Promise<FrontCtx> => {
+    if (ctx.projectId || ctx.projects || !o.code) return ctx;
+    let got = lists.get(ctx.userId);
+    if (!got || now() - got.at > NAMED_FRESH_MS) {
+      const all = await o.code.store.listProjects(ctx.userId).catch(() => []);
+      const some = all.slice(0, PROJECTS_READ);
+      const abouts = await Promise.all(some.map((p) => (o.code?.brain
+        ? o.code.brain.open(ctx.userId, p.id).then((b) => b.status()).catch(() => null)
+        : Promise.resolve(null))));
+      got = {
+        projects: some.map((p, i) => {
+          const line = (abouts[i]?.welcome ?? "").split(/(?<=[.!?])\s+/)[0]?.slice(0, 240) ?? "";
+          return { id: p.id, name: p.fullName, ...(line ? { about: line } : {}) };
+        }),
+        at: now(),
+      };
+      if (lists.size > 2000) lists.clear();
+      lists.set(ctx.userId, got);
+    }
+    return got.projects?.length ? { ...ctx, projects: got.projects } : ctx;
+  };
+
   const front: Front = {
     store, learning, guard,
-    decide: async (message, ctx, opts = {}) => decide(message, await named(ctx), decideDeps(opts.signal)),
+    decide: async (message, ctx, opts = {}) => decide(message, await listed(await named(ctx)), decideDeps(opts.signal)),
     dispatch: (decision, message, ctx, opts = {}) => dispatch(decision, message, ctx, {
       handlers, attachments, store, learning, watch, daily: guard.daily, ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), now,
       ...(o.log ? { log: o.log } : {}),
@@ -123,7 +153,17 @@ export function createFront(o: FrontOptions = {}): Front | null {
     ask: (message, ctx, opts = {}) => inRequestSpend(async () => {
       if (guard.daily.leftPaise(ctx.userId) <= 0) throw new FrontError("daily_limit", "You've used what X0 Bot may spend on your messages today. It starts again tomorrow.", 429);
       const decision = await front.decide(message, ctx, opts.signal ? { signal: opts.signal } : {});
-      return { decision, ...(await front.dispatch(decision, message, ctx, opts)) };
+      // THE PROJECT THE ROUTER PICKED. Every road that DOES something needs one and refuses without it
+      // ("Pick a project first"), which is why Xode's front door could only ever answer. Now that the words have
+      // named one, it is simply put in hand, and the roads behind it are the ones that always worked.
+      //
+      // The first leads; any others are a goal that spans them, and go to the split (code/team) as the job's
+      // `projects`. Nothing is overridden: a message sent from inside a project keeps that project.
+      const [lead, ...also] = decision.projects ?? [];
+      const onward: FrontCtx = ctx.projectId || !lead
+        ? ctx
+        : { ...ctx, projectId: lead, ...(also.length ? { alsoProjects: also } : {}) };
+      return { decision, ...(await front.dispatch(decision, message, onward, opts)) };
     }),
     readFiles: (userId, refs, data, question, opts) => inRequestSpend(() => attachments.read(
       userId, refs.map((ref) => ({ ref, ...(data.get(ref.id) ? { data: data.get(ref.id)! } : {}) })),

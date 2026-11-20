@@ -72,6 +72,17 @@ export interface FrontCtx {
   projectName?: string;
   /** What the project is, in a line (its brain's welcome, looked up by the front door): the router reads a message in its light. */
   projectAbout?: string;
+  /**
+   * THEIR PROJECTS, for the router to pick from when the message was not sent from inside one.
+   *
+   * Xode's front door used to answer questions and nothing else, because the roads that DO something need a
+   * project and nobody had named one: `needCode` threw "Pick a project first". The work was never the problem —
+   * the branch, the job and the agent loop all existed — only knowing which repo the words were about. So the
+   * router is given the list, in the same shape the one project was given in: a name and a line about it.
+   */
+  projects?: ReadonlyArray<{ id: string; name: string; about?: string }>;
+  /** The OTHER projects one goal spans, once the router has picked (front/index.ts): the job's own `projects`. */
+  alsoProjects?: string[];
   /** The start of the chat's last answer: what "it", "that" and "do the same" point at, for the router. */
   lastAnswer?: string;
   /** The conversation about the project's code this message belongs to (a uuid the app makes): its short rolling summary is what a follow-up leans on (code/chat). */
@@ -135,6 +146,15 @@ export interface Decision {
   handoff?: boolean;
   /** A code task that is open-ended (debugging, investigating, exploring): worked in the free-form mode, where the model decides the order of explore, change and run (code/agent). */
   mode?: "freeform";
+  /**
+   * WHICH OF THEIR PROJECTS THIS IS ABOUT, as ids, the one it is mostly about first. Only set when the message
+   * came from no project and the router could tell from the words. Empty when it could not, or when the question
+   * is about none of them in particular ("what changed this week?"), which is answered across all as before.
+   *
+   * More than one means a goal that SPANS them: the first leads and the rest are handed to the split, which gives
+   * each its own branch, plan and pull request (code/team).
+   */
+  projects?: string[];
   /** A code task the person asked a team for ("on": a lead splits it and helpers build the parts in parallel) or asked not to have one ("off"): code/team, docs/code-team.md. Absent: the plan decides. */
   team?: "on" | "off";
   /** Short ids of why: the rules' hits, and the learning's adjustments. Never the message. */
