@@ -84,6 +84,18 @@ export function lintTree(root: Node, opts: LintOpts = {}): string[] {
     const block = BLOCK_OF_TYPE[n.type];
     if (block) { if (!needs.has(block)) bad.push(`type ${n.type} needs the ${block} block in the screen's needs`); }
     else if (!KIT_TYPES.has(n.type)) bad.push(`type ${n.type}`);
+    // A CONDITION'S PATH IS BARE, never "$state."-prefixed. Both clients put the prefix on themselves
+    // (`resolveValue(`$state.${cond.eq[0]}`)`), so a path that carries one is looked up as `$state.$state.i`,
+    // comes back undefined, and the node is hidden — silently, for ever. It blanked the whole of Lingo's set
+    // screen, every exercise hidden behind a condition that could never be true, and it had already been hiding
+    // that screen's three verdict lines since the day they were written. Nothing about it looks wrong in the
+    // code, and nothing says so at runtime, so it is said here.
+    for (const [key, v] of Object.entries((n.visibleIf ?? {}) as Record<string, unknown>)) {
+      const path = Array.isArray(v) ? v[0] : typeof v === "string" ? v : null;
+      if (typeof path === "string" && path.startsWith("$state.")) {
+        bad.push(`${n.type} has a ${key} condition on "${path}": a condition's path is bare, the client adds $state. itself`);
+      }
+    }
     const st = (n.style ?? {}) as Record<string, unknown>;
     if (n.type === "Text") {
       const what = `text "${String(n.props?.content ?? "").slice(0, 30)}"`;

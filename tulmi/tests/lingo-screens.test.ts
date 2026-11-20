@@ -368,7 +368,10 @@ describe("a set, from the first exercise to the last", () => {
   it("holds the whole set and draws the one they are on", () => {
     const s = json(setScreen(ctx(), "es", set()));
     // Each exercise is in the tree behind its own place in the set, so moving on is not a trip to the server.
-    for (const i of [0, 1, 2]) expect(s, `step ${i}`).toContain(`"eq":["$state.i",${i}]`);
+    // THE PATH IS BARE. Both clients prefix it themselves, so "$state.i" is looked up as "$state.$state.i",
+    // comes back undefined, and every step hides: the screen drew nothing at all. lint.ts says so now.
+    for (const i of [0, 1, 2]) expect(s, `step ${i}`).toContain(`"eq":["i",${i}]`);
+    expect(s, "and never the prefixed form").not.toContain('"eq":["$state.');
     expect(s).toContain("1 of 3");
     expect(s).toContain("3 of 3");
     expect(s).toContain('"incrementState","path":"i"');

@@ -130,6 +130,46 @@ be broken: a username is never given twice, and `to_id`'s visibility rule keeps 
 
 docs/username.md. Still to come: `person_names` (the name you give someone, resolved per reader), adding by username, and `@`
 taking either a username or the name you gave them.
+
+## 20 Nov: A CONDITION'S PATH IS BARE — the blank set screen, and the lint that now says so
+
+Lingo's set screen drew NOTHING. Not an empty state: a blank page with a header and the ask bar.
+
+Both clients prefix a condition's path themselves — `resolveValue(`$state.${cond.eq[0]}`, ctx)` — so a path that
+arrives already carrying `$state.` is looked up as **`$state.$state.i`**, comes back undefined, and the node
+hides. The set screen puts every exercise behind `eq: ["i", <n>]`, so with the prefix on, every one of them was
+hidden and the body was empty. Nothing throws, nothing logs, and the code reads perfectly.
+
+It was already doing damage before today: the three verdict lines in `markRow` ("right", and the two that word
+the grader's reason) have carried `eq: ["$state.mark.mark.verdict", …]` since they were written, so **nobody has
+ever seen the verdict line after answering**. Four conditions in that file, all wrong the same way; every other
+screen in the kit writes them bare.
+
+**`lint.ts` now refuses a condition path that starts with `$state.`**, so no screen can be written this way again
+— and since the kit's own check runs over every screen in the tests, it is caught before a build, not after a
+deploy. My own test had pinned the broken shape, which is how it passed CI: it now asserts the bare path and that
+the prefixed form appears nowhere.
+
+12,695 pass. No other screen tripped the new rule.
+
+## 20 Nov: LINGO HAD NO LESSONS BECAUSE THE DATABASE WAS THREE MIGRATIONS BEHIND
+
+Not the code. **0105, 0106 and 0107 had never run against the live database** — today's deploy log shows all three
+pending and passing. 0107 is the one that adds `lingo_items.unit` and creates `lingo_lessons`, so every unit ever
+written was filed by an insert naming a column that did not exist, inside a `.catch(() => 0)`. It failed, silently,
+every time, while the screen said there was nothing to learn. Nobody could have seen it from the app.
+
+**The catch says so now.** A unit that cannot be filed ends that course, so it is logged with the pair and the unit
+and nothing of anybody's words. The same for a unit that could not be MADE: `unitFor` returned a bare null whether
+the model was down, refused for budget, or came back too thin, and all three draw the same empty screen.
+
+**And the cheap tier writes it now, not the strong one.** A unit is eight to fourteen pairs of a word and what it
+means; deepseek-v4.1-flash or gemini-2.5-flash does that as well as sonnet and far faster, which is what matters
+when somebody is watching the first-lesson screen or a celebration holding back its Continue. It also had no
+business being expensive: the worst case was about 320 paise against a 400 cap — four fifths of the budget, with
+silence the moment it tipped over — and is now roughly 90.
+
+12,695 pass; the standing two fail as always.
 ## 20 Nov: PLAN EASE — THE WEEK STRIP IS SWIPED ON A PHONE (and `ScrollX`, a new ability)
 
 The strip was seven cells sharing the width and two arrows, and it could not be anything else from here: the kit's
