@@ -16,6 +16,7 @@
  * Nothing here is random: the same ask gives the same feed, so a person can go back and find a card again.
  */
 import { inSeason, type Tag } from "./taxonomy.js";
+import { because, match, type Taste } from "./taste.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
 const DEFAULT_LIMIT = 14;
@@ -42,12 +43,23 @@ function overlap(card: Card, tags: readonly Tag[]): Tag[] {
 }
 
 /**
- * 0..1. The tags asked for carry it; what is left separates the good from the merely matching.
- * A card matching every tag asked for cannot be beaten by a prettier card matching fewer.
+ * 0..1, blended.
+ *
+ * WHAT THEY ASKED FOR STAYS ON TOP. Somebody who types "desert" gets deserts, whatever their profile says: an
+ * explicit ask is a statement about right now, and a profile is a guess about them in general. The profile orders
+ * what is left, and decides between cards that match the ask equally well.
+ *
+ * The profile's share is damped by how sure we are of it, so a brand-new person is ranked almost entirely on the
+ * ask and on how good the place is — not on three taps' worth of guesswork.
  */
-function scoreOf(card: Card, matched: Tag[], asked: number): number {
+function scoreOf(card: Card, matched: Tag[], asked: number, taste?: Taste): number {
   const fit = asked === 0 ? 0 : matched.length / asked;
-  return fit * 0.6 + card.wow * 0.25 + card.rarity * 0.15;
+  if (!taste) return fit * 0.6 + card.wow * 0.25 + card.rarity * 0.15;
+
+  const m = match(taste, card.tags);
+  // -1..+1 into 0..1, then damped by confidence: no evidence means no opinion, not a middling one.
+  const liking = ((m.score + 1) / 2) * (0.3 + 0.7 * m.sure);
+  return fit * 0.4 + liking * 0.35 + card.wow * 0.15 + card.rarity * 0.1;
 }
 
 /** Deterministic: score first, then rarity, then the slug, so two runs never disagree. */
@@ -69,7 +81,7 @@ function spread(list: Chosen[]): Chosen[] {
   return [...out, ...held];
 }
 
-export function pick(cards: readonly Card[], ask: Ask = {}): Chosen[] {
+export function pick(cards: readonly Card[], ask: Ask = {}, taste?: Taste): Chosen[] {
   const limit = Math.min(Math.max(1, ask.limit ?? DEFAULT_LIMIT), MAX_LIMIT);
   const asked = ask.tags ?? [];
 
@@ -80,7 +92,13 @@ export function pick(cards: readonly Card[], ask: Ask = {}): Chosen[] {
   const rest: Chosen[] = [];
   for (const card of kept) {
     const matched = overlap(card, asked);
-    const chosen: Chosen = { card, score: scoreOf(card, matched, asked.length), matched, wildcard: false };
+    const chosen: Chosen = {
+      card,
+      score: scoreOf(card, matched, asked.length, taste),
+      matched,
+      wildcard: false,
+      ...(taste ? { reason: because(taste, card.tags) } : {}),
+    };
     if (asked.length === 0 || matched.length > 0) matching.push(chosen);
     else rest.push(chosen);
   }
@@ -90,6 +108,9 @@ export function pick(cards: readonly Card[], ask: Ask = {}): Chosen[] {
 
   // The wildcard: in season and allowed, but NOT what they asked for. Only when something was actually asked for,
   // and only when there is room — a feed of three has no space to be surprising.
+  //
+  // It is NOT chosen by the profile, and that is the point: a feed that only ever agrees with somebody stops
+  // being opened within a week. The rarest thing they did not ask for goes third, marked as such.
   if (asked.length > 0 && ordered.length >= WILDCARD_AT + 1 && rest.length > 0) {
     rest.sort((a, b) => b.card.rarity - a.card.rarity || b.card.wow - a.card.wow || a.card.slug.localeCompare(b.card.slug));
     const odd = rest[0]!;

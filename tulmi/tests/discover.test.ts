@@ -17,7 +17,7 @@ const { store } = await import("../src/discover/store.js");
 const { MemoryTable } = await import("../src/botsBots/rows.js");
 
 /** Rows in memory, so the catalogue tests read no config and reach no Supabase. */
-const memory = () => store({ cards: new MemoryTable(), asks: new MemoryTable() });
+const memory = () => store({ cards: new MemoryTable(), asks: new MemoryTable(), taste: new MemoryTable(), signals: new MemoryTable() });
 const { CURATED, curatedBySlug } = await import("../src/discover/catalog.js");
 const { judge, failures } = await import("../src/discover/bar.js");
 const { parseBuilt } = await import("../src/discover/build.js");

@@ -20,6 +20,9 @@ import { pick, countFor } from "./query.js";
 import type { Built } from "./build.js";
 import type { Fail } from "./builder.js";
 import { store as makeStore, type DiscoverStore } from "./store.js";
+import { decayAll, fold, known, likes, dislikes, type Taste, type TasteLine } from "./taste.js";
+import { weightOf, type Signal } from "./signals.js";
+import { FIRST_LOOK, checkRanking, foldRanking, firstLookImage } from "./onboarding.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
 export * from "./types.js";
@@ -32,6 +35,9 @@ export { CURATED, curatedBySlug, curatedCountries } from "./catalog.js";
 export { store, type DiscoverStore } from "./store.js";
 export { pick, countFor } from "./query.js";
 export { DISCOVER_TOOLS, runDiscover, discoverFor } from "./tools.js";
+export * from "./taste.js";
+export * from "./signals.js";
+export * from "./onboarding.js";
 export type { Fail } from "./builder.js";
 
 export interface DiscoverOptions {
@@ -94,8 +100,81 @@ export class Discover {
     return [...this.curated, ...mine];
   }
 
+  /**
+   * The feed. Their profile orders it when they have one; what they asked for still comes first (query.ts), and
+   * every card that goes out is counted as SHOWN, which is what lets the next fold divide out our own bias.
+   */
   async ask(ask: Ask = {}): Promise<Chosen[]> {
-    return pick(await this.all(ask.userId), ask);
+    const taste = ask.userId ? await this.load(ask.userId) : undefined;
+    const out = pick(await this.all(ask.userId), ask, taste);
+    if (ask.userId && taste) await this.counted(ask.userId, taste, out);
+    return out;
+  }
+
+  /** Their profile, faded up to now (taste.ts decayAll): a year away should not rank like yesterday. */
+  private async load(userId: string): Promise<Taste> {
+    return decayAll(await this.store.taste(userId), Date.now());
+  }
+
+  /** Everything in a feed was shown. No evidence of taste, only of our choices — see taste.ts. */
+  private async counted(userId: string, taste: Taste, shown: readonly Chosen[]): Promise<void> {
+    if (shown.length === 0) return;
+    const at = new Date().toISOString();
+    let next = taste;
+    for (const { card } of shown) next = fold(next, { tags: card.tags, weight: 0, at, onlyShown: true });
+    await this.store.saveTaste(userId, next);
+  }
+
+  /** Their profile, in their own words: what they like, what they turn down, and how much of them we know. */
+  async taste(userId: string): Promise<{ taste: Taste; likes: TasteLine[]; dislikes: TasteLine[]; known: number }> {
+    const taste = await this.load(userId);
+    return { taste, likes: likes(taste), dislikes: dislikes(taste), known: known(taste) };
+  }
+
+  /**
+   * One thing they did. Kept as a row and folded into the profile at once — a feed that learned overnight would
+   * feel broken, because a person who just said "not for me" expects the next screen to have heard it.
+   */
+  async did(userId: string, signal: Signal): Promise<Taste> {
+    const card = await this.open(signal.slug, userId);
+    const at = new Date();
+    await this.store.note(userId, signal, at);
+
+    const tags = card ? card.tags : firstLookImage(signal.slug)?.tags ?? [];
+    const taste = await this.load(userId);
+    if (tags.length === 0) return taste;
+
+    const next = fold(taste, {
+      tags,
+      weight: weightOf(signal),
+      at: at.toISOString(),
+      ...(signal.kind === "shown" ? { onlyShown: true } : {}),
+    });
+    await this.store.saveTaste(userId, next);
+    return next;
+  }
+
+  /** The six images, as the app draws them. */
+  firstLook(): typeof FIRST_LOOK {
+    return FIRST_LOOK;
+  }
+
+  /**
+   * Their order of the six. Folded into the same profile behaviour writes to, so onboarding gives it a shape and
+   * what they do afterwards moves it — there is no second model competing with the first.
+   */
+  async ranked(userId: string, order: readonly string[]): Promise<{ ok: boolean; why?: string; known: number }> {
+    const check = checkRanking(order);
+    if (!check.ok) return { ok: false, why: check.why, known: 0 };
+
+    const at = new Date();
+    const taste = await this.load(userId);
+    const out = foldRanking(taste, order, at.toISOString());
+    await this.store.saveTaste(userId, out.taste);
+    for (const [i, slug] of order.entries()) {
+      await this.store.note(userId, { kind: "ranked", slug, rank: i + 1, of: order.length }, at);
+    }
+    return { ok: true, known: known(out.taste) };
   }
 
   async count(ask: Ask = {}): Promise<number> {

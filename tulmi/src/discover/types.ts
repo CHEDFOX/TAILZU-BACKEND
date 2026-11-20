@@ -102,4 +102,6 @@ export interface Chosen {
   matched: Tag[];
   /** It was put in deliberately against the ask, to keep the feed from going stale. */
   wildcard: boolean;
+  /** "because you keep cold, quiet places" — null when the evidence is too thin to say it out loud. */
+  reason?: string | null;
 }

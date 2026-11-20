@@ -112,6 +112,8 @@ const AREA_TABLES = [
   "plan_prefs",
   // migration 0099: places worth keeping (src/discover) — cards built for one person, and who searched for what
   "discover_cards", "discover_asks",
+  // migration 0108: what a person likes, and what they did
+  "discover_taste", "discover_signals",
   // migration 0102: one conversation with one bot, and everything made in it (sessions.ts)
   "bot_sessions",
 ] as const;
