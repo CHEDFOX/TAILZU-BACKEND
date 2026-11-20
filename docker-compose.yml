@@ -29,6 +29,9 @@ services:
         # the largest thing in the image. This box has no graphics card, so Cycles renders on cores: a small preview is
         # seconds, a full frame is minutes, and an animation is 24 frames a second of those. Stills, in other words.
         WITH_BLENDER: "1"
+        # Chromium, for the browser that belongs to a person (docs/sites.md) and for reading a page that needs
+        # JavaScript. Both stay dark without it however the switches are set, so a deploy carries one.
+        WITH_BROWSER: "1"
       secrets:
         - app_env
     env_file:
