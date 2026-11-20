@@ -31,7 +31,7 @@ const OVERVIEW = (o: Record<string, unknown> = {}) => ({
 });
 
 type Client = "phone" | "desktop";
-async function build(o: { screen?: string; params?: Record<string, string>; client?: Client; overview?: unknown; detail?: unknown; down?: boolean; spaces?: boolean } = {}) {
+async function build(o: { screen?: string; params?: Record<string, string>; client?: Client; overview?: unknown; detail?: unknown; down?: boolean; spaces?: boolean; scrollX?: boolean } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
     bots: [...SAMPLE_BOTS, { slug: "meet", name: "Meetings", colour: "moss", purpose: PURPOSE, builtin: true }], calls,
@@ -44,7 +44,8 @@ async function build(o: { screen?: string; params?: Record<string, string>; clie
   });
   const s = await buildBotsScreen({
     screenId: o.screen ?? "bots.bot", client: o.client ?? "phone", params: o.screen ? (o.params ?? {}) : { slug: "meet", ...(o.params ?? {}) }, tzOffsetMinutes: IST,
-    user: { id: "u1", name: "Aanya" }, ...(o.spaces === false ? { spaces: false } : {}), can: new Set(DRAWS), desk: { pages: false, notes: false },
+    user: { id: "u1", name: "Aanya" }, ...(o.spaces === false ? { spaces: false } : {}),
+    can: new Set(o.scrollX ? [...DRAWS, "ScrollX"] : DRAWS), desk: { pages: false, notes: false },
   }, deps);
   const root = s.root as Node;
   const nodes = walk(root);
@@ -115,10 +116,11 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     // A build that cannot draw a row sideways gets the few days that fit instead of the fortnight.
     expect(days).toHaveLength(1 + STRIP_FIT);
     expect(days.slice(1).every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))).toBe(true);
-    // The times, and the field for one of their own.
+    // The times a build without a sideways row gets, and the field for one off the grid, which is always there.
     const times = p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === "mj_time").map((a) => (a as unknown as { value: string }).value);
     expect(times).toEqual(expect.arrayContaining(["09:00", "12:00", "16:00", "18:00", "20:00"]));
     expect(p.fields).toContain("mj_time");
+    expect(p.nodes.filter((n) => n.type === "TextField" && (n.bind as { value: string }).value === "mj_time")[0]?.visibleIf).toBeUndefined();
     // A day with no time is no moment: that is said here, not by the server.
     const guard = p.every().find((a) => a.kind === "condition" && JSON.stringify(a).includes("/v1/meet/join")) as { then: { if: unknown; then: { message: string } } };
     expect(guard.then.if).toEqual({ all: [{ truthy: "mj_day" }, { falsy: "mj_time" }] });
@@ -177,6 +179,18 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     // What it is in now is not behind anything.
     expect(p.texts).toContain("In a call now");
     expect(JSON.stringify(p.every())).not.toContain("mp_live");
+  });
+
+  it("swipes a fortnight of days where the build draws a row sideways", async () => {
+    const p = await build({ client, scrollX: true });
+    expect(p.lint).toEqual([]);
+    const value = (path: string) => p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === path).map((a) => (a as unknown as { value: string }).value);
+    // A fortnight, not the five that fit.
+    const days = [...new Set(value("mj_day"))];
+    expect(days).toHaveLength(1 + 14);
+    // The time is not swiped: the chips stay put, so what is picked is always in sight, and anything else is typed.
+    expect(p.texts).toEqual(expect.arrayContaining(["9 am", "12 pm", "4 pm", "6 pm", "8 pm"]));
+    expect(p.fields).toContain("mj_time");
   });
 
   it("sets whether it speaks on the meeting itself, before it joins as well as during", async () => {
