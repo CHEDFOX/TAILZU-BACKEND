@@ -12,7 +12,7 @@
 -- is only the name they are reached by.
 --
 -- Row-level security is on with no policy, as the neighbouring tables do: the service key reaches it and nothing else.
--- Run in your Supabase SQL editor after 0108. It can be run again.
+-- Run in your Supabase SQL editor after 0109. It can be run again.
 
 alter table public.profiles add column if not exists username    text;
 alter table public.profiles add column if not exists username_ms bigint;

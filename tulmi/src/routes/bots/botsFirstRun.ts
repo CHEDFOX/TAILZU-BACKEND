@@ -266,7 +266,11 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
     const visits = p?.botsVisits ?? 0;
     // The username step keeps its OWN flag. botsAboutSkipped was the old name-and-gender card's, and everyone who tapped "Not
     // now" on that one has it set: keying this card on it would mean they never saw their username at all (docs/username.md).
-    const due = !!profile?.onboarded && !!p && p.botsUsernameDone !== true && visits >= ABOUT_AFTER_VISITS;
+    // NEVER WITHOUT A USERNAME TO SHOW. A deploy and a migration are two separate acts, and the code can only reach main
+    // before 0110 has run there: until it has, usernameOf answers "" and the card would draw an empty field that Save cannot
+    // accept — with no "Not now" behind it. So the card simply does not come until there is a name in it, which is also the
+    // honest answer for any account that somehow has none (docs/username.md "Before the migration has run").
+    const due = !!profile?.onboarded && !!p && !!username && p.botsUsernameDone !== true && visits >= ABOUT_AFTER_VISITS;
     return reply.send({ due, username, ...startingName(user, profile?.fullName), via, gender, botName: nicknameOf(p) ?? "" });
   });
 

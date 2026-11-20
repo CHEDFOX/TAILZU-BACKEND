@@ -61,7 +61,10 @@ export function genderChips(desk: boolean, path: string = GENDER): Node {
 
 /** The card, while it is due; nothing otherwise. */
 export function aboutCard(ctx: BotsCtx, about: About | undefined): Node[] {
-  if (!about?.due) return [];
+  // No username, no card. The route says the same (botsFirstRun.ts), but this is the thing that would draw the empty field, and
+  // it can be handed a `due` from an older server or a payload the app kept: an empty field Save cannot accept, with no "Not
+  // now" behind it, is the one thing this card must never be (docs/username.md).
+  if (!about?.due || !about.username?.trim()) return [];
   const desk = ctx.client === "desktop";
   const saved = { ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(SAVED, true)), fail: toast("Couldn't save that. Try again.") };
   // The assistant's-name step was left, by its Not now or by finishing it with nothing typed. It does not decide whether the

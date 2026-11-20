@@ -5,7 +5,7 @@ and how they are put in a space, in place of knowing their email or passing a co
 that is theirs to give, person by person, the way a phone's contacts work.
 
 The rules the server keeps are in `tulmi/src/profile/username.ts`; the routes in `routes/account/profile.ts`; the card that shows
-it in `experience/bots/screens/firstRun/aboutCard.ts`. Table and trigger: migration 0109.
+it in `experience/bots/screens/firstRun/aboutCard.ts`. Table and trigger: migration 0110.
 
 | Piece | What it is |
 |---|---|
@@ -71,9 +71,15 @@ PUT /v1/profile/username { username }  -> { username } | 409 taken | 429 too_soo
 
 ## Before the migration has run
 
-A deploy and a migration are two separate acts, and not always in that order. Until 0109 has run there is no column and no
-ledger: reading answers "no username" rather than taking the bootstrap down with it. Claiming still throws, because a claim that
-quietly did nothing would be worse than an error.
+A deploy and a migration are two separate acts, and the code reaches the server FIRST here: pushing to main deploys it, and
+`migrate.sh 110` can only run once the file is on main. So that window is real, not theoretical.
+
+Until 0110 has run there is no column and no ledger: reading answers "no username" rather than taking the bootstrap down with
+it. Claiming still throws, because a claim that quietly did nothing would be worse than an error.
+
+**And the card does not come at all while there is no username to show** (`due` requires one). Without that it would draw an
+empty field, Save would refuse it, and there is no "Not now" behind it any more — the one thing the card must never do. Run the
+migration and it appears by itself on the next read; no release, no second deploy.
 
 ## Rolling back
 

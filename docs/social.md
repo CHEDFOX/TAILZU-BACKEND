@@ -23,7 +23,7 @@ follow may *offer* friendship. It never implies it.
 
 ## 1. The username — BUILT
 
-`docs/username.md`, migration 0109, `tulmi/src/profile/username.ts`.
+`docs/username.md`, migration 0110, `tulmi/src/profile/username.ts`.
 
 Given by the database trigger the moment the account row appears, so **no account is ever without one** and adding by username
 has no "they have not picked one yet" case. The `usernames` ledger is the only place uniqueness is decided. A name given up is

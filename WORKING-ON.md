@@ -6,7 +6,7 @@ The first step towards adding people one at a time. Today the only way two peopl
 (`threads.ts` `contacts`/`looksKnown`/`messageable` all just walk `spaces.mine`), and the only ways to reach a person at all
 are an email invite and a space's code. A username is the identity both of those were standing in for.
 
-**It is given, not asked for.** Migration 0109 extends 0003's `handle_new_user()` trigger, so the name is there the moment the
+**It is given, not asked for.** Migration 0110 extends 0003's `handle_new_user()` trigger, so the name is there the moment the
 account row is — no account is ever without one, and adding by username has no "they haven't picked one yet" case to design
 around. The name is a word pair and a number (`jolly-heron-646`), never a running number: one in order would say how many
 accounts there are and let anyone walk them. The migration backfills everyone who signed in before it.

@@ -205,6 +205,15 @@ describe("About you: a card on Home after a few visits, never in the first run",
       expect((await build("bots.home", "phone", { api: about({ gender: g }) })).state).toMatchObject({ aboutSaved: false });
     }
   });
+  it("no username to show, no card: the window between the deploy and the migration cannot leave an empty field up", async () => {
+    // Pushing to main deploys the code, and migrate.sh can only run once the file IS on main, so the server really does run
+    // this card before 0110 for a while. An empty field Save cannot accept, with no Not now behind it, is the one thing the
+    // card must never be (docs/username.md).
+    for (const u of ["", undefined] as const) {
+      const s = await build("bots.home", "phone", { api: about({ username: u }) });
+      expect(texts(s.root!)).not.toContain("Your username");
+    }
+  });
   it("not due: no card; and one ask at a time, so not while the first-arrival card is due", async () => {
     const none = await build("bots.home", "phone", { api: about({ due: false }) });
     expect(texts(none.root!)).not.toContain("Your username");
@@ -605,7 +614,10 @@ describe("the routes", () => {
       for (let i = 0; i < 2; i++) await visit();
       expect((await about()).due).toBe(false);
       await visit();
-      expect((await about()).due).toBe(true);
+      // Not until there is a username to show: in tests nothing has given this account one, as 0110's trigger would.
+      expect(await about()).toMatchObject({ due: false, username: "" });
+      expect((await server.inject({ method: "PUT", url: "/v1/profile/username", headers: auth, payload: { username: "jolly-heron-646" } })).statusCode).toBe(200);
+      expect(await about()).toMatchObject({ due: true, username: "jolly-heron-646" });
       // done or skip is the one thing the card writes here, and it must say so: nothing else is accepted.
       expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: {} })).statusCode).toBe(400);
       expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: { skip: "yes" } })).statusCode).toBe(400);

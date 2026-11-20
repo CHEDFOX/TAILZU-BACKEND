@@ -1,5 +1,5 @@
 /**
- * THE USERNAME: the one name a person is reached by (docs/username.md; migration 0109).
+ * THE USERNAME: the one name a person is reached by (docs/username.md; migration 0110).
  *
  *   cleanUsername(v)          what someone typed, as a username ("@Aanya " -> "aanya"); "" when it is not one
  *   checkShape(name)          the shape alone, with the line to show when it is wrong (no database, so a screen can say it at once)
@@ -8,7 +8,7 @@
  *   usernameOf(userId)        theirs
  *   idFor(name)               whose it is, for adding someone by username: the id alone, never anything about them
  *
- * EVERY ACCOUNT HAS ONE from the moment it is made (the trigger in 0109), so adding by username can rely on it. The one a person
+ * EVERY ACCOUNT HAS ONE from the moment it is made (the trigger in 0110), so adding by username can rely on it. The one a person
  * is given is a word pair and a number, never a running count: a number in order would say how many accounts there are and let
  * anyone walk them.
  *
@@ -24,7 +24,7 @@ import { screenPost } from "../botsBots/filter.js";
 import { supabase } from "../auth/supabase.js";
 
 /**
- * A deploy and a migration are two separate acts, and not always in that order (profile/store.ts does the same): until 0109 has
+ * A deploy and a migration are two separate acts, and not always in that order (profile/store.ts does the same): until 0110 has
  * run there is no username column and no ledger. Reading then says "no username" rather than taking the card, or the bootstrap
  * that draws it, down with it. Claiming still throws, because a claim that quietly did nothing would be worse.
  */
@@ -52,7 +52,7 @@ const lastPick = new Map<string, number>();
 /** Injectable, as the other brakes in here are (artifacts/limits.ts), so pacing can be tested without waiting a month. */
 let now: () => number = Date.now;
 export function setUsernameClockForTests(fn: () => number): void { now = fn; }
-/** The same list the database holds (migration 0109). Three characters at least, as the shape demands. */
+/** The same list the database holds (migration 0110). Three characters at least, as the shape demands. */
 const RESERVED = new Set([
   "x0bot", "tailzu", "tulmi", "blip", "keybot", "xode", "oracle",
   "admin", "support", "help", "root", "system", "staff", "team", "official",
