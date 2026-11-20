@@ -70,6 +70,28 @@ export async function registerStaticFileRoutes(app: FastifyInstance, deps: Stati
     });
   }
 
+  // --- The photographs of the places worth keeping ------------------------------
+  // One picture per written place (src/discover/catalog.ts), shipped in the image
+  // (tulmi/photos) the way the typefaces are. They are OURS to serve: each was
+  // taken from Wikimedia Commons under a free licence, graded to one look, and
+  // credited on the card it appears on — tulmi/photos/CREDITS.md lists every one
+  // with its photographer, its licence and the fact that it was altered.
+  //
+  // Served from the image rather than hotlinked: Commons asks not to be used as a
+  // CDN, the grade has to be baked in anyway, and a card must not break because
+  // somebody renamed a file on another website.
+  const PHOTOS_DIR = process.env.PHOTOS_DIR || path.join(process.cwd(), "photos");
+  if (fs.existsSync(PHOTOS_DIR)) {
+    await app.register(fastifyStatic, {
+      root: PHOTOS_DIR,
+      prefix: "/photos/",
+      decorateReply: false,
+      cacheControl: true,
+      maxAge: "365d",
+      immutable: true,
+    });
+  }
+
   // --- The connected apps' logos ---------------------------------------------
   // Each app in Connected apps, Tasks and the onboarding is shown with its own
   // logo, through the Image node every build already has. 128-point tiles cut
