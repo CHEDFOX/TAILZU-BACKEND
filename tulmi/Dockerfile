@@ -54,6 +54,13 @@ FROM node:22-slim AS runtime
 # needs CHROME_PATH. The fonts come with it for the same reason Blender's do: a bare container has none, and a
 # sign-in page rendered in boxes is a sign-in page nobody can read.
 #
+# chromium-sandbox is NOT optional, and --no-install-recommends is why it has to be named: Chromium only recommends
+# it, so without it Chrome starts and dies with "No usable sandbox!". It is the SUID helper that lets Chrome sandbox
+# itself WITHOUT unprivileged user namespaces, which the host's AppArmor policy denies on Ubuntu 23.10 and later.
+# The alternative going around is --no-sandbox, which is the wrong trade here: this browser opens pages nobody
+# vetted, and the sandbox is what stands between one of them and the container. The backend service grants no
+# capabilities and sets no no-new-privileges (docker-compose.yml), so the SUID helper does its job.
+#
 # Off by default and on for a deploy (docker-compose.yml), as Blender is. With it off the server says so at boot
 # ("CLOUD_BROWSER is on but there is no local browser") and every sites route answers 404; nothing else changes.
 ARG WITH_BLENDER=0
@@ -61,7 +68,7 @@ ARG WITH_BROWSER=0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ffmpeg \
  && if [ "$WITH_BLENDER" = "1" ]; then apt-get install -y --no-install-recommends blender fonts-dejavu-core; fi \
- && if [ "$WITH_BROWSER" = "1" ]; then apt-get install -y --no-install-recommends chromium fonts-liberation; fi \
+ && if [ "$WITH_BROWSER" = "1" ]; then apt-get install -y --no-install-recommends chromium chromium-sandbox fonts-liberation; fi \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
