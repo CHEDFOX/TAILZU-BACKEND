@@ -19,8 +19,8 @@
  */
 import type { FastifyInstance } from "fastify";
 import { resolveUser } from "../../auth/supabase.js";
-import { isBudget, isSignalKind, type Discover, type Tag } from "../../discover/index.js";
-import { TAGS } from "../../discover/taxonomy.js";
+import { isBudget, isSignalKind, type Card, type Discover, type Tag } from "../../discover/index.js";
+import { daysLeftInSeason, seasonWords, TAGS } from "../../discover/taxonomy.js";
 
 /** One batch of what the app saw. Enough for a long scroll, small enough to parse without thinking about it. */
 const SIGNALS_MAX = 40;
@@ -29,6 +29,35 @@ const DWELL_CAP_MS = 120_000;
 const SLUG = /^[a-z0-9][a-z0-9-]{0,79}$/;
 
 const TAG_SET: ReadonlySet<string> = new Set(TAGS);
+
+/**
+ * A card as the APP needs it, not as we hold it.
+ *
+ * `season` is a bitmask in here and a sentence out there: the screens do no arithmetic and no month maths, so a
+ * card leaves with "December to March" and with the days left of that window when the window is closing. Sending
+ * the mask raw is how a feed ends up saying "best 3585".
+ */
+function cardView(card: Card, now: Date): Record<string, unknown> {
+  const left = daysLeftInSeason(card.season, now);
+  return {
+    slug: card.slug,
+    title: card.title,
+    where: card.where,
+    hook: card.hook,
+    story: card.story,
+    moment: card.moment,
+    dated: card.dated,
+    tags: card.tags,
+    budget: card.budget,
+    effort: card.effort,
+    photos: card.photos,
+    origin: card.origin,
+    sources: card.sources,
+    at: card.at,
+    season: seasonWords(card.season),
+    daysLeft: left,
+  };
+}
 
 const tagsFrom = (raw: unknown): Tag[] => {
   const parts = typeof raw === "string" ? raw.split(",") : [];
@@ -127,10 +156,11 @@ export function registerDiscoverRoutes(
     };
 
     const [chosen, total] = await Promise.all([d.ask(ask), d.count(ask)]);
+    const now = new Date();
     return reply.send({
       total,
       cards: chosen.map((c) => ({
-        ...c.card,
+        ...cardView(c.card, now),
         score: Number(c.score.toFixed(4)),
         wildcard: c.wildcard,
         reason: c.reason ?? null,
@@ -148,7 +178,7 @@ export function registerDiscoverRoutes(
     if (!SLUG.test(slug)) return reply.code(400).send({ code: "bad_slug", message: "Not a place." });
     const card = await d.open(slug, userId);
     if (!card) return reply.code(404).send({ code: "not_found", message: "Nothing of ours by that name yet." });
-    return reply.send({ card });
+    return reply.send({ card: cardView(card, new Date()) });
   });
 
   app.post<{ Body: { place?: unknown } }>("/v1/discover/build", RL, async (req, reply) => {
@@ -164,7 +194,7 @@ export function registerDiscoverRoutes(
     const out = await d.build(place, userId);
     // A refusal is an ANSWER, not an error: the place may be real and simply not worth a card, and the app says so.
     if (!out.ok) return reply.send({ ok: false, why: out.why });
-    return reply.send({ ok: true, card: out.card });
+    return reply.send({ ok: true, card: cardView(out.card, new Date()) });
   });
 
   app.post<{ Body: { signals?: unknown } }>("/v1/discover/signals", RL, async (req, reply) => {
