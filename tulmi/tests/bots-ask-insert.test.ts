@@ -149,16 +149,29 @@ describe("the card grows with what you chose", () => {
     expect(ok.find((a: any) => a.path === "attach").value).toBe("$state.sent.attachment");
     expect(ok.find((a: any) => a.path === "shots").value).toBe("$state.sent.pic");
   });
+  /**
+   * A PICTURE PER FILE, IN BOTH PLACES: in the card where it was chosen, and above the bar where it is typed. The
+   * bar's set is the fix for a composer that looked empty the moment the card shut — the file was on the ask and
+   * on its way, and nothing outside the card said so.
+   */
   it("A PICTURE PER FILE, its source bound to the copy still on the phone", () => {
     const imgs = bar().filter((n) => n.type === "Image");
-    expect(imgs.length).toBe(8);
-    expect(imgs.map((n) => (n.bind as any).source)).toEqual(Array.from({ length: 8 }, (_, i) => `shots.${i}`));
+    expect(imgs.length, "eight in the card, eight above the bar").toBe(16);
+    expect(imgs.map((n) => (n.bind as any).source)).toEqual(Array.from({ length: 2 }, () => Array.from({ length: 8 }, (_, i) => `shots.${i}`)).flat());
     for (const n of imgs) expect(n.props!.contentFit).toBe("cover");
   });
-  it("each one is drawn only once there is a file in its place, so the card is only as tall as what is on the ask", () => {
+  it("each one is drawn only once there is a file in its place, so neither grows past what is on the ask", () => {
     const slots = bar().filter((n) => (n.children ?? []).some((c) => c.type === "Image"));
-    expect(slots.length).toBe(8);
-    expect(slots.map((n) => n.visibleIf)).toEqual(Array.from({ length: 8 }, (_, i) => ({ truthy: `attach.${i}` })));
+    expect(slots.length).toBe(16);
+    expect(slots.map((n) => n.visibleIf)).toEqual(Array.from({ length: 2 }, () => Array.from({ length: 8 }, (_, i) => ({ truthy: `attach.${i}` }))).flat());
+  });
+
+  /** And the strip above the bar is there at all, with its own way to take them off. */
+  it("shows what is on the ask above the bar, not only inside the card", () => {
+    const strip = bar().find((n) => JSON.stringify(n.visibleIf ?? {}) === JSON.stringify({ truthy: "attach.0" })
+      && JSON.stringify(n.on?.onPress ?? {}).includes('"clearState"'))!;
+    expect(strip, "a strip that clears the ask").toBeTruthy();
+    expect(JSON.stringify(strip.on!.onPress)).toContain('"shots"');
   });
   it("a file with no picture still shows something: its kind's glyph, under the image that draws nothing", () => {
     const box = bar().find((n) => n.visibleIf && JSON.stringify(n.visibleIf) === JSON.stringify({ truthy: "attach.0" }) && (n.children ?? []).some((c) => c.type === "Image"))!;
