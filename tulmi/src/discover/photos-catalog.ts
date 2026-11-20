@@ -17,6 +17,11 @@
  * now shows the whole catalogue at 160pt a tile — serving the full file sixty times over was a download,
  * not a feed.
  *
+ * WHAT A DRAWN PICTURE CANNOT DO IS CORROBORATE A COUNT. Ahu Tongariki has fifteen moai on it; four attempts
+ * could not get the model to put fifteen of anything in a frame, and the card used to be titled "Fifteen moai"
+ * over a picture of thirteen. So card copy does not state a number the picture is asked to back up, and a card
+ * whose point IS a number wants a photograph rather than an illustration.
+ *
  * Root-relative on purpose: catalog.ts is a data file and knows nothing about where the server lives; the
  * route makes these absolute (routes/bots/discover.ts).
  */
