@@ -43,6 +43,8 @@ const SPACE_TABLES = [
   "space_facts",
   // migration 0068: join requests the admin lets in (spaceJoin.ts), things shared from a bot (grants.ts), notes on them (work.ts)
   "space_join_requests", "space_grants", "space_work_notes",
+  // migration 0111: the name you give someone (personNames.ts)
+  "person_names",
 ] as const;
 export type SpaceTableName = (typeof SPACE_TABLES)[number];
 

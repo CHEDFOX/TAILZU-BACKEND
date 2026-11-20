@@ -28,6 +28,7 @@ import { screenPost } from "./filter.js";
 import { inviteMail, inviteSender, type InviteMailOut } from "./inviteMail.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { shownLook, looksIn, type PersonLook } from "./personLook.js";
+import { PersonNames, shownName } from "./personNames.js";
 import { table, type Table } from "./rows.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { ADMIN_LINE_THERE, ADMIN_ONLY, CONSENT_VERSION, hasConsent, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
@@ -154,6 +155,8 @@ function cant(perm: Perm, space: string): BotError {
 }
 
 export interface SpaceOpts {
+  /** The names the viewer gave people (personNames.ts); one is made if none is handed in. */
+  names?: PersonNames;
   publish?: Publish;
   outbox?: MailOutbox;
   mailer?: Mailer;
@@ -176,6 +179,8 @@ export class Spaces {
   readonly mailer: Mailer;
   private readonly origin: () => string;
   private readonly listeners: Array<(e: MemberEvent) => Promise<void>> = [];
+  /** What the viewer calls each member (personNames.ts): over the name their member row carries, never instead of it. */
+  private readonly names: PersonNames;
   private lastNote = 0;
 
   constructor(private readonly bots: Bots | null, private readonly now: () => number = Date.now, o: SpaceOpts = {}) {
@@ -189,6 +194,7 @@ export class Spaces {
     this.mailer = o.mailer ?? mailerFromEnv();
     // The host the apps claim for their links: the invite opens X0 Bot at joining (a browser gets a page that opens it).
     this.origin = o.origin ?? (() => INVITE_ORIGIN);
+    this.names = o.names ?? new PersonNames({ now });
   }
 
   /** Someone joined, left or was removed, or the space went: the chats follow (threads.ts). */
@@ -278,6 +284,7 @@ export class Spaces {
   private async view(userId: string, a: Access): Promise<SpaceView> {
     const { s } = a;
     const people = await this.members.select({ space_id: s.id }, { order: "joined_ms", limit: MEMBERS_MAX });
+    const mine = await this.names.known(userId);
     const bots = await this.shared.select({ space_id: s.id }, { order: "added_ms", limit: SPACE_BOTS_MAX });
     // Looks from every member, oldest first, before anyone is hidden from this viewer: Mom is the same bot to everyone in it.
     const looks = looksIn(people.map((p) => p.user_id));
@@ -286,7 +293,7 @@ export class Spaces {
       members: people.map((p) => {
         const admin = p.user_id === s.owner_id;
         return {
-          userId: p.user_id, name: p.name, you: p.user_id === userId, maker: admin, canApprove: true,
+          userId: p.user_id, name: shownName(mine, p.user_id, p.name), you: p.user_id === userId, maker: admin, canApprove: true,
           joinedAt: Number(p.joined_ms) || 0, perms: this.permsOfRow(p, s), role: admin ? "admin" : null, roleName: admin ? "Admin" : "Member",
           bot: shownLook(looks, p.user_id, userId),
         };

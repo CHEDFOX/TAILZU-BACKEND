@@ -62,6 +62,9 @@
  *   PUT    /v1/botsapp/bots/spaces/:id/tasks/:tid { status: done|todo|cant, note? }   (yours);  DELETE (who set it, or the admin)
  *
  *   GET    /v1/botsapp/bots/threads                     -> { threads, unread }
+ *   PUT    /v1/botsapp/bots/people/:id/name { name }    -> { name }   WHAT YOU CALL SOMEONE: yours alone, shown to nobody else
+ *                                                        (docs/social.md). An empty name takes it off and their row's own name shows
+ *   GET    /v1/botsapp/bots/people/names                -> { names: [{ userId, name, at }] }   the names you have given
  *   GET    /v1/botsapp/bots/threads/contacts            -> { people, groupSpaces }
  *   POST   /v1/botsapp/bots/threads/direct { person }   -> { id };   POST .../threads/group { space, name?, people: [ids] | "all" } -> { id }
  *   GET    /v1/botsapp/bots/threads/:id?before=&limit=  -> { thread, messages, more, before }   (the newest page marks it read)
@@ -101,6 +104,7 @@ import { SpaceShares, type ShareSources } from "../../botsBots/spaceShares.js";
 import { SpaceMemory } from "../../botsBots/spaceMemory.js";
 import { shareSources } from "../../botsBots/shareSources.js";
 import { Threads, type FileRef } from "../../botsBots/threads.js";
+import { PersonNames } from "../../botsBots/personNames.js";
 import { spacesGate, spacesOn } from "../../botsBots/spacesSwitch.js";
 import type { Trips } from "../../botsBots/trips.js";
 import { pushEngine } from "../../push/index.js";
@@ -160,6 +164,8 @@ export interface SpaceParts {
   spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety; shares: SpaceShares; memory: SpaceMemory;
   /** Invitations, codes and join requests; the feed; things shared from a bot; Work in space (routes/bots/work.ts). */
   join: SpaceJoin; feed: SpaceFeed; grants: Grants; work: Work;
+  /** The names this person gave people (personNames.ts): one for the area, so a name set shows at once everywhere. */
+  names: PersonNames;
 }
 
 type SpacePush = "space_task" | "space_plan" | "space_message" | "space_joined" | "space_feed" | "space_request" | "space_accepted";
@@ -189,7 +195,9 @@ export function spaceParts(spaces: Spaces, o: {
     return { id: i.id, name: i.name, mime: i.mime, bytes: i.bytes, kind: attachmentKindOf(i.kind) };
   };
   const blocks = new Blocks(now, { log: o.log });
-  const threads = new Threads(spaces, now, { files: { get: fileOf }, notify: push, blocks, filePath: (t, m, f) => `${origin}${AREA}/threads/${t}/files/${m}/${f}` });
+  // The names this person gave people (personNames.ts). One for the whole area, so a name set here shows at once everywhere.
+  const names = new PersonNames({ now });
+  const threads = new Threads(spaces, now, { files: { get: fileOf }, notify: push, blocks, names, filePath: (t, m, f) => `${origin}${AREA}/threads/${t}/files/${m}/${f}` });
   const items = new SharedItems(spaces, threads, now, {
     file: fileOf,
     trip: o.trips ? async (userId, id) => { const t = await o.trips!.current(userId); return t && t.id === id ? t : null; } : undefined,
@@ -215,7 +223,7 @@ export function spaceParts(spaces: Spaces, o: {
   const join = new SpaceJoin(spaces, now, { notify: push, blocks });
   const feed = new SpaceFeed(spaces, threads, grants, sources, blocks, { payments, tasks });
   const work = new Work(spaces, grants, shares, sources, undefined, now);
-  return { spaces, threads, items, payments, tasks, safety, shares, memory, join, feed, grants, work };
+  return { spaces, threads, items, payments, tasks, safety, shares, memory, join, feed, grants, work, names };
 }
 
 /** A space as one person sees it: nobody with a block between them in its members (blocks.ts). */
@@ -226,7 +234,7 @@ async function withoutHidden<S extends { members: Array<{ userId: string }> }>(t
 
 export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts; sources?: ShareSources }): SpaceParts {
   const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log, ...(o.sources ? { sources: o.sources } : {}) });
-  const { spaces, threads, items, payments, tasks, shares, memory, join, feed } = p;
+  const { spaces, threads, items, payments, tasks, shares, memory, join, feed, names } = p;
   // Every route here is Spaces': while SPACES_ENABLED is off each answers 404 spaces_off before the session (botsBots/spacesSwitch.ts).
   // The reporting and blocking routes registered below keep their own options and stay on: a bot's answer can be reported anyway.
   const RL = { config: deps.rateLimit, onRequest: spacesGate };
@@ -422,6 +430,10 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   // ------------------------------------------------------------------ messaging
 
   app.get(`${AREA}/threads`, RL, run(async (user) => threads.list(user.id)));
+  // What YOU call someone: yours alone, and shown to nobody else (docs/social.md §2). An empty name takes it off again, and the
+  // name their member row carries shows instead.
+  app.put(`${AREA}/people/:id/name`, RL, run(async (user, req) => names.set(user.id, param(req, "id"), bodyOf(req.body).name)));
+  app.get(`${AREA}/people/names`, RL, run(async (user) => ({ names: await names.mine(user.id) })));
   app.get(`${AREA}/threads/contacts`, RL, run(async (user) => threads.contacts(user.id)));
   app.post(`${AREA}/threads/direct`, RL, run(async (user, req) => threads.direct(user.id, shownName(user), String(bodyOf(req.body).person ?? ""))));
   app.post(`${AREA}/threads/group`, RL, run(async (user, req) => {

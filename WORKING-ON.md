@@ -1,5 +1,40 @@
 # Being built right now (read before you start)
 
+## 20 Nov: THE NAME YOU GIVE SOMEONE, WHICH IS NOT THE NAME THEY ARE REACHED BY
+
+Second step of docs/social.md. A username reaches a person; this is what they are **called**, and it is per reader, the way a
+phone's contacts are: you add `@aanya-r` and you call her Mom. The same account is Mom to one person and Aanya to another, and
+neither can read the other's name for her.
+
+`person_names(owner_id, subject_id, name)` (migration 0111), `botsBots/personNames.ts`. `known(viewer)` reads every name a
+person gave in ONE go and `shownName(known, id, fallback)` applies it per row — deliberately the same shape as `looksKnown` /
+`shownLook`, so a list of twenty people costs one read, not twenty, and the two resolve side by side in the same loops.
+
+**It resolves OVER the name a row carries, never instead of it.** Every name already stored is still written exactly as before,
+and one of them is load-bearing: a deleted account takes its `thread_members` row with it, so a one-to-one chat reads its name
+back off `sender_name` (migration 0051). `subject_id` cascades, so a deleted account takes these names with it and that
+fallback takes over by itself — which is why `gone` handling needed no change and `spaces-gone.test.ts` passes untouched.
+
+Where it reaches: a space's members, `contacts` (both the people and the groups, so one screen never shows two names for one
+person), a one-to-one chat's own name (that name IS the other person), a thread's people, the name over every message, "To Mom"
+under one, and the chats list's last line.
+
+**That last one needed a column, and was a real bug waiting.** `threads.last_text` is stored as "Mom: Dinner at 8?" — the
+sender's name baked in when it was written — so the list would have shown a row titled "Amma" over a line still reading "Mom:".
+`threads.last_by` (0111) says whose the line is; the stored text is never rewritten, so an older build reads it exactly as
+before, and the server swaps the part before the first ": " for the reader's own name only when it has one.
+
+Checked against a real Postgres 16: 0111 runs clean twice, two people hold two different names for one subject, one name per
+pair, naming yourself is refused by the table as well as the route, an empty name cannot be stored, and deleting the subject
+takes the names with it.
+
+12,711 pass. The one failure is `launch-motion`'s side-by-side case, which has been failing on its own for a while and fails
+with this work stashed too. `web-browser`'s "Chrome is not even started for it" passed this run — it counts the machine's Chrome
+processes and races the reaping of the ones the cases before it killed, so it comes and goes; stashed, it failed two runs in
+three.
+
+Next in docs/social.md's order: no automatic admin access (with the meeting bot, the mail bot and `to_id`'s admin clause).
+
 ## 20 Nov: EVERY ACCOUNT HAS A USERNAME NOW, AND THE ABOUT YOU CARD ASKS FOR IT INSTEAD OF A NAME
 
 The first step towards adding people one at a time. Today the only way two people are connected is a space they share
