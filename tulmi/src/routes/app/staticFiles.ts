@@ -72,14 +72,13 @@ export async function registerStaticFileRoutes(app: FastifyInstance, deps: Stati
 
   // --- The photographs of the places worth keeping ------------------------------
   // One picture per written place (src/discover/catalog.ts), shipped in the image
-  // (tulmi/photos) the way the typefaces are. They are OURS to serve: each was
-  // taken from Wikimedia Commons under a free licence, graded to one look, and
-  // credited on the card it appears on — tulmi/photos/CREDITS.md lists every one
-  // with its photographer, its licence and the fact that it was altered.
+  // (tulmi/photos) the way the typefaces are. All of them are illustrations made
+  // for this catalogue rather than photographs of the places, and every card says
+  // so on screen — tulmi/photos/CREDITS.md lists every one.
   //
-  // Served from the image rather than hotlinked: Commons asks not to be used as a
-  // CDN, the grade has to be baked in anyway, and a card must not break because
-  // somebody renamed a file on another website.
+  // Two sizes, and the subdirectory is served by the same registration: /photos/
+  // is 1280px for an opened place, /photos/tile/ is 520px for the feed, which
+  // draws the whole catalogue at about 160pt a tile.
   const PHOTOS_DIR = process.env.PHOTOS_DIR || path.join(process.cwd(), "photos");
   if (fs.existsSync(PHOTOS_DIR)) {
     await app.register(fastifyStatic, {
