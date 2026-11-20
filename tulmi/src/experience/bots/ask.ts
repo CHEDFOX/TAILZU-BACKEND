@@ -102,7 +102,7 @@ function chosen(i: number): Node {
  * a list (`appendState` adds, `clearState` empties — nothing removes an index), so "Clear" takes them all off. A
  * cross per picture needs a new action kind, which is a change to the contract both clients read.
  */
-function insertCard(ctx: BotsCtx, path: string): Node[] {
+export function insertCard(ctx: BotsCtx, path: string): Node[] {
   if (!canUpload(ctx) || !canMove(ctx)) return [];
   const desk = ctx.client === "desktop";
   const add = (kind: "photo" | "camera" | "file" | "screenshot"): ActionSpec => uploadAdd(kind, { list: ATTACH, shots: SHOTS, max: MOST });
@@ -132,6 +132,28 @@ function insertCard(ctx: BotsCtx, path: string): Node[] {
 }
 
 /**
+ * THE INSERT KEY: the round + outside the box, and what it opens. Talk's bar draws the same one (screens/bots/talkDoor.ts),
+ * because inserting a file is the same act wherever you are saying something — two keys that opened two different cards
+ * would be the same thing twice. `path` is the box the clipboard pastes into.
+ *
+ * Nothing where the build cannot upload at all: then there is no key, as there has never been.
+ */
+export function insertKey(ctx: BotsCtx, path: string): Node[] {
+  if (!canUpload(ctx)) return [];
+  // The card where a living one can be drawn, else the attach screen the Ask screen has always fallen back on.
+  const go: ActionRef = canMove(ctx)
+    ? { kind: "setState", path: INSERT, value: true }
+    : open(SCREENS.attach, { kind: "photo", from: "ask", message: `$state.${path}` });
+  return [labelled(box([icon("plus", { size: 21 })], {
+    width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper,
+    alignItems: "center", justifyContent: "center", flexShrink: 0,
+  }, go), "Insert a photo or a file")];
+}
+
+/** Where a file picked by the insert key lands, for a bar that sends it on itself (Talk's). */
+export const INSERT_PATHS = { attach: ATTACH, shots: SHOTS, open: INSERT, most: MOST } as const;
+
+/**
  * The ask bar: "Ask any bot…" with the mic, or send once something is typed. Enter / return sends. The phone's mic
  * opens the Ask screen listening; the window's starts dictation (hold Fn and speak). The insert key is on the left,
  * in its own circle, where the build can upload.
@@ -142,16 +164,7 @@ export function askBar(client: Client, o: { placeholder?: string; path?: string;
   const inserts = !!ctx && canUpload(ctx);
   const send = askAction(client, path, ctx, inserts ? { attachments: `$state.${ATTACH}` } : {});
   const mic: ActionRef = client === "desktop" ? { kind: "dictate" } : { kind: "navigate", screenId: SCREENS.ask, params: { voice: true } };
-  // The key: open the card where a living one can be drawn, else the attach screen the Ask screen has always used.
-  const insert: ActionRef = ctx && canMove(ctx)
-    ? { kind: "setState", path: INSERT, value: true }
-    : open(SCREENS.attach, { kind: "photo", from: "ask", message: `$state.${path}` });
-  const key = inserts
-    ? [labelled(box([icon("plus", { size: 21 })], {
-      width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper,
-      alignItems: "center", justifyContent: "center", flexShrink: 0,
-    }, insert), "Insert a photo or a file")]
-    : [];
+  const key = ctx ? insertKey(ctx, path) : [];
   const bar: Node = row([
     {
       type: "TextField", id: "ask", bind: { value: path },

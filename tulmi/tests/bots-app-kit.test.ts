@@ -126,8 +126,9 @@ describe("the frames", () => {
     expect(kids[0]!.type).toBe("Screen");
     expect(kids.at(-1)).toMatchObject({ type: "SafeArea", props: { edges: ["bottom"], inset: "max" } });
     const tabs = kids.at(-1)!.children!;
-    // The one you are on carries no action; the others switch.
-    expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "bots" }, { kind: "switchTab", tabId: "talk" }, null]);
+    // Talk, Bots, Activity — the same order the bootstrap sends (experience/bots/index.ts botsNav): a bar whose order
+    // differs from the shell's is a bar that lies about where you are. The one you are on carries no action.
+    expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "talk" }, { kind: "switchTab", tabId: "bots" }, null]);
     expect(checkTree(s.root!)).toEqual([]);
   });
   it("a phone page's footer (the ask bar, a composer) stays above the keyboard; the window has none to clear", () => {

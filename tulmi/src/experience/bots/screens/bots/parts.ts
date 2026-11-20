@@ -143,7 +143,7 @@ export function colourDot(name: string, o: { chosen: boolean; taken?: string; on
  * A bot's text as blocks: paragraphs, and runs of "- " lines as a card with the bot's colour on its edge (the boards' plan table).
  * `lists: false`: the lists are left out, because what the bot drew shows them (a choice, a table, the steps: show/types.ts lists).
  */
-function answerBlocks(textIn: string, color: string, size = 14, o: { lists?: boolean } = {}): Node[] {
+export function answerBlocks(textIn: string, color: string, size = 14, o: { lists?: boolean } = {}): Node[] {
   const out: Node[] = [];
   const lines = textIn.replace(/\r/g, "").split("\n");
   let para: string[] = [];
@@ -225,7 +225,7 @@ export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<ty
 const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, backgroundColor: C.divider }), meta(label, { size: 12 }), box([], { height: 1, flexGrow: 1, backgroundColor: C.divider })], { gap: 10 });
 
 /** "Share" under a bot's answer: to a space or a person, as a copy (screens/spaces.ts bots.share); only Report while Spaces is off. */
-function answerShare(ctx: BotsCtx, slug: string, t: Turn, botName = slug): Node {
+export function answerShare(ctx: BotsCtx, slug: string, t: Turn, botName = slug): Node {
   const first = t.text.replace(/[*#>`]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "Answer";
   // Report: App Review 1.2 and 4.7.1, what a bot makes can be reported (reportAction.ts).
   return row([

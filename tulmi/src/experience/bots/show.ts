@@ -53,6 +53,13 @@ export interface ShowOpts {
   budget?: { left: number };
   /** What the person said next, for an older turn: which options of a choice they picked. */
   picked?: string;
+  /**
+   * Where a tap and a Send go, instead of this bot's own chat. Talk's thread passes its door (`/v1/botsapp/talk`,
+   * docs/talk-door.md): the bot that DREW a choice is not the thread's bot and need not be the one that should answer
+   * what was picked, so the picked words go back through the door and are routed like anything typed. Absent
+   * everywhere else, so every bot's own chat sends exactly where it always did.
+   */
+  path?: string;
 }
 
 /** The screen's state for a live drawing's picks and fields, sent whole with Send. */
@@ -194,8 +201,8 @@ const thread = (): Node => col(Array.from({ length: 5 }, () => dot(2, { color: C
 const chatPath = (slug: string) => `/v1/botsapp/bots/chat/${encodeURIComponent(slug)}`;
 
 /** Sends `body` to the bot as the chat bar does: the bubble at once, the answer streamed, the chat refreshed. */
-function sendToChat(ctx: BotsCtx, slug: string, bubble: string, body: Record<string, unknown>, after: ActionSpec[] = []): ActionRef {
-  const go = call("POST", chatPath(slug), body, {
+function sendToChat(ctx: BotsCtx, slug: string, bubble: string, body: Record<string, unknown>, after: ActionSpec[] = [], path?: string): ActionRef {
+  const go = call("POST", path ?? chatPath(slug), body, {
     ok: seq({ kind: "setState", path: "sending", value: false }, ...after, { kind: "refresh" }, ...momentDone()),
     fail: failed({ busy: "sending", then: said("Couldn't send that. Try again.") }),
   });
@@ -203,11 +210,11 @@ function sendToChat(ctx: BotsCtx, slug: string, bubble: string, body: Record<str
 }
 
 /** One tap: these words, as if typed. */
-const sayThis = (ctx: BotsCtx, o: ShowOpts, words: string): ActionRef => sendToChat(ctx, o.slug, words, { message: words });
+const sayThis = (ctx: BotsCtx, o: ShowOpts, words: string): ActionRef => sendToChat(ctx, o.slug, words, { message: words }, [], o.path);
 
 /** Send: what the screen keeps for this drawing, with the turn it answers. */
 const sendPicks = (ctx: BotsCtx, o: ShowOpts, bubble: string): ActionRef =>
-  sendToChat(ctx, o.slug, bubble, { message: "", picks: { turn: o.turn, values: `$state.${SHOW_STATE}` } }, [{ kind: "clearState", path: SHOW_STATE }]);
+  sendToChat(ctx, o.slug, bubble, { message: "", picks: { turn: o.turn, values: `$state.${SHOW_STATE}` } }, [{ kind: "clearState", path: SHOW_STATE }], o.path);
 
 // ===================================================================== parts
 

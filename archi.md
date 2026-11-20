@@ -261,6 +261,7 @@ ads/               Meta and Google Tag Manager events
 | Prompts | `tulmi/src/principles/roles.ts` (docs/principles.md); evals in `tulmi/evals/<role>.jsonl` |
 | Model gateway | Xode and the bots: `tulmi/src/code/brain/gateway.ts`; the writer: `pipeline/writing/model.ts`; Ask: `agent/llm.ts`; client `pipeline/openrouter.ts` |
 | The bots platform | `tulmi/src/bots/` (docs/bots.md); the Bots app areas `botsBots/`, `botsCode/`, `shell/`, `keybot/`, `you/` (docs/bots-app.md) |
+| **Talk, the one screen the app opens on**: one thread every bot answers in, "/" a bot and "@" a person, the Talk/Xode pills. It answers nothing itself — every message goes through the front door, and this is the thread over it | `tulmi/src/botsBots/talkWords.ts` (the two marks, pure), `routes/bots/botsTalk.ts` (the door), `botsBots/chat.ts` (`keepDoor`, a turn's `by` and `did`), the screen `experience/bots/screens/bots/talkDoor.ts`, the cards it shares with Ask `screens/shell/doorCards.ts`, the field `TAILZU-FRONTEND app/src/sdui/components/MentionField.tsx` + `mentionCore.ts` and `TAILZU-DESKTOP src/app/sdui/mention.js` (capability `MentionCommands`) (docs/talk-door.md) |
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
@@ -361,9 +362,9 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/code-schedule.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/home-updates.md`, `docs/artifacts.md`, `docs/spaces.md`, `docs/username.md`, `docs/social.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/talk-door.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/home-updates.md`, `docs/artifacts.md`, `docs/spaces.md`, `docs/username.md`, `docs/social.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/cinema.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`, `docs/username.md`, `docs/social.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/talk-door.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/cinema.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`, `docs/username.md`, `docs/social.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers), `docs/perms.md`,
 `viewer/docs/artifact-viewer.md`.

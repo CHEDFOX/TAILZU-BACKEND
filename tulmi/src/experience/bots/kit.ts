@@ -201,6 +201,19 @@ export function text(content: string, o: TextOpts = {}): Node {
   };
 }
 
+/**
+ * TEXT THAT STARTS WITH "@", MEANT AS THE CHARACTER AND NOT A CATALOG KEY.
+ *
+ * Both renderers read a prop beginning with "@" as a key into the bootstrap's copy, and a key they do not have BLANKS
+ * the prop (TAILZU-FRONTEND Renderer.tsx, the window's theme.js label). So "@Mom", "@plan" or an email address written
+ * as a literal came out as nothing at all. They also both read a leading "\@" as the character itself, exactly as "$"
+ * is escaped in an action's text — this writes that backslash.
+ *
+ * Use it for any text the SERVER writes that may begin with "@". Text that comes from a person (a message, a name) is
+ * bound, not a literal, and the renderers never look up a bound value, so it needs nothing.
+ */
+export const atText = (s: string): string => (s.startsWith("@") ? `\\${s}` : s);
+
 /** Page title: 26/700, tracking -0.5 (the window's Home uses 32). */
 export const title = (content: string, o: TextOpts = {}): Node =>
   text(content, { size: 26, weight: 700, tracking: -0.5, lineHeight: 32, ...o });
@@ -952,6 +965,31 @@ export function segmented(options: Array<{ label: string; value: string }>, path
 }
 
 /**
+ * A PILL SWITCHER BETWEEN TWO SCREENS THAT ARE ONE SURFACE (Talk and Xode: docs/talk-door.md).
+ *
+ * Not `segmented`, and the difference is the point. A segmented control picks a VALUE on the page you are on, so the
+ * page stays and its state changes. These pills cross between two SCREENS: Talk's thread and Xode's projects are
+ * different pages, each with its own load, its own cache and its own state, and pretending otherwise — drawing both
+ * trees into one screen behind a `visibleIf` — would make every open of Talk fetch Xode's projects too.
+ *
+ * So the pill you are on is drawn filled and does nothing, and the other one navigates. It reads as one surface with a
+ * switch on it, which is what it is, and it costs one screen fetch, which a switcher should.
+ *
+ * `here` marks the pill you are on. A pill with no action and no `here` is drawn quiet and does nothing (a surface the
+ * build or the switches cannot reach).
+ */
+export function pillSwitch(items: Array<{ label: string; here?: boolean; onPress?: ActionRef; label2?: string }>): Node {
+  return row(items.map((it) => labelled(box([
+    text(it.label, { size: 13, weight: 500, lineHeight: 17, align: "center", color: it.here ? C.ink : it.onPress ? C.grey70 : C.idle }),
+  ], {
+    paddingVertical: 7, paddingHorizontal: 16, borderRadius: 10, flexShrink: 0,
+    ...(it.here ? { backgroundColor: C.paper } : {}),
+  }, it.here ? undefined : it.onPress), it.label2 ?? (it.here ? `${it.label}, where you are` : it.label))), {
+    padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2, alignSelf: "flex-start", flexShrink: 0,
+  });
+}
+
+/**
  * A switch's look (40 x 24, ink when on, #e0e0e0 when off), following a state path. Not pressable itself. `on`: when it shows on
  * (default: the path is truthy; "Plan something"'s Must not miss: { eq: ["d.imp", "must"] }).
  */
@@ -1231,8 +1269,13 @@ export function seq(...actions: Array<ActionRef | undefined>): ActionRef {
 
 // ===================================================================== frames
 
+/**
+ * THE SAME ORDER THE BOOTSTRAP SENDS (experience/bots/index.ts botsNav): Talk, Bots, Activity. A page draws its own tab
+ * bar, so this list and that one have to agree — a bar whose order differs from the shell's is a bar that lies about
+ * where you are, and the first tap on the tab you appear to be on does nothing.
+ */
 const TABS: Array<{ id: TabId; title: string }> = [
-  { id: "bots", title: "Bots" }, { id: "talk", title: "Talk" }, { id: "activity", title: "Activity" },
+  { id: "talk", title: "Talk" }, { id: "bots", title: "Bots" }, { id: "activity", title: "Activity" },
 ];
 
 /** The phone's tab bar: three living icons with their words, live state from ctx.live. Last child of a top-level page. */

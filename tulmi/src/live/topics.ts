@@ -77,6 +77,8 @@ export function topicsForWrite(method: string, route: string, params: Record<str
   if (p.startsWith(`${AREA}/spaces`)) return [];                     // Spaces and messaging publish their own
   if (p.startsWith("/v1/botsapp/calendar")) return [];                 // and so does the calendar (src/calendar/service.ts)
   if (p === "/v1/shell/ask" || p === "/v1/shell/receipts" || p === "/v1/ask") add(activity, home);
+  // Talk's door keeps a pair of turns on its thread, so another device looking at Talk reloads (routes/bots/botsTalk.ts).
+  else if (p === "/v1/botsapp/talk" || p === "/v1/botsapp/talk/new") add(botTopic("talk"), activity, home);
   else if (p === "/v1/shell/activity/clear") add(activity);
   else if (p.startsWith(`${AREA}/chat/`)) add(activity, home, botTopic(params.slug));
   else if (p.startsWith(`${AREA}/rules/`)) add(botTopic(params.slug));
@@ -125,6 +127,9 @@ export function topicsForScreen(screenId: string, params: Record<string, unknown
   const list = (...ts: string[]) => ts.filter(Boolean);
   switch (screenId) {
     case "bots.home": case "bots.empty-home": return [home, bots];
+    // TALK, the one screen (docs/talk-door.md): its own thread, and every bot — an answer can come from any of them,
+    // and a turn can land from somewhere else entirely (a routine's answer, a job finishing, another device).
+    case "bots.talk": return [botTopic("talk"), bots, activity];
     case "bots.activity": return [activity];
     case "bots.tasks": return [tasks, activity, TOPIC.calendar];
     case "bots.today": return [home, activity, notes, TOPIC.calendar, tasks];

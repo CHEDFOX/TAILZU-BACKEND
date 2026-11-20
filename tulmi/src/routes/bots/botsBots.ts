@@ -5,6 +5,7 @@
  *   POST   /v1/botsapp/bots/chat/:slug { message | picks } -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
  *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
+ *   /v1/botsapp/talk...                                 TALK, the one screen's one thread, where every bot answers: routes/bots/botsTalk.ts
  *   GET    /v1/botsapp/bots/sessions/:slug             -> { sessions }                    the bot's thread, newest first
  *   POST   /v1/botsapp/bots/sessions/:slug             -> { session }                     the + : a new session, whatever is open
  *   GET    /v1/botsapp/bots/session/:id                -> { session, turns, proposal?, made? }  one session, oldest first; with the
@@ -73,6 +74,7 @@ import { registerCalendarRoutes } from "./botsCalendar.js";
 import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
+import { registerTalkRoutes } from "./botsTalk.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
 import { registerPlanCallJudge } from "./planCallJudge.js";
@@ -137,6 +139,9 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // The widgets, a notification's buttons and its reply (routes/bots/widgets.ts): they read and answer through Spaces' parts.
   registerWidgetRoutes(app, deps, spacesArea, { plan: parts.ease });
   registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Plan Ease: the work calendar's link, captures, bills (routes/bots/planIn.ts)
+  // TALK: the one screen's one thread (routes/bots/botsTalk.ts, docs/talk-door.md). It answers nothing itself: every message
+  // goes through POST /v1/shell/ask, and this keeps the pair of turns so the thread reads as one conversation.
+  registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads });
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
   // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).

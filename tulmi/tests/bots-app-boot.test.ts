@@ -29,16 +29,19 @@ describe("the bootstrap", () => {
     expect(Object.keys(off.fonts ?? {})).not.toContain("Tailzu Geist");
     expect(off.initialScreenId).not.toMatch(/^bots\./);
   });
-  it("on: the three living tabs — Home, Talk, Activity — Home first, Geist, and the tabs warmed", () => {
+  it("on: the three living tabs — Talk, Bots, Activity — TALK FIRST, Geist, and the tabs warmed", () => {
     const on = buildBootstrap({ onboarded: true, landedBefore: true, botsApp: true });
     expect(on.navigation.kind === "tabs" && on.navigation.tabs.map((t) => [t.id, t.title, t.screenId])).toEqual([
-      // You is not a tab: it is the person button in Home's header, and the page is pushed from there.
-      ["bots", "Bots", "bots.home"], ["talk", "Talk", "bots.talk"], ["activity", "Activity", "bots.activity"],
+      // TALK IS FIRST, and it is what the app opens on (docs/talk-door.md): the grid was a list to read before anything
+      // could be asked for, and nobody should have to know which bot owns a thing to ask for it. The Bots tab stays,
+      // because a bot's own PAGE is still where its own work lives.
+      // You is not a tab: it is the person button in the header, and the page is pushed from there.
+      ["talk", "Talk", "bots.talk"], ["bots", "Bots", "bots.home"], ["activity", "Activity", "bots.activity"],
     ]);
-    expect(on.initialScreenId).toBe("bots.home");
+    expect(on.initialScreenId).toBe("bots.talk");
     expect(on.flags?.["bots.app"]).toBe(true);
     expect(Object.keys(on.fonts ?? {})).toEqual(expect.arrayContaining(["Tailzu Geist", "Tailzu Geist SemiBold", "Tailzu Geist Mono"]));
-    expect(on.warmScreenIds?.slice(0, 3)).toEqual(["bots.home", "bots.activity", "bots.you"]);
+    expect(on.warmScreenIds?.slice(0, 3)).toEqual(["bots.talk", "bots.home", "bots.activity"]);
   });
   it("on: every page warmed at launch is a real page that builds with no params and is kept (no tap waits the first time)", async () => {
     const { BOTS_SCREENS, BOTS_WARM_SCREEN_IDS, buildBotsScreen } = await import("../src/experience/bots/index.js");
@@ -56,6 +59,8 @@ describe("the bootstrap", () => {
     expect(await ttl("bots.keybot.style")).toBe(600);
     expect(await ttl("bots.activity")).toBe(1);
     expect(await ttl("bots.home")).toBe(1);
+    // Talk's thread goes stale at once too: it is a conversation, and a kept copy is drawn only while the fresh one comes.
+    expect(await ttl("bots.talk")).toBe(1);
   });
   it("on: no start-up setting points at the old app's screens (paywall, settings, profile, the languages prompt)", () => {
     const on = buildBootstrap({ onboarded: true, botsApp: true, launchCount: 3, languagesSet: false });
@@ -67,25 +72,25 @@ describe("the bootstrap", () => {
     const off = buildBootstrap({ onboarded: true, launchCount: 3, languagesSet: false });
     expect(off.flags?.["promptScreenId"]).toBe("languages");
   });
-  it("on: opens on Home, never on the old app's screens, even on a fresh install with nothing set up yet", () => {
+  it("on: opens on Talk, never on the old app's screens, even on a fresh install with nothing set up yet", () => {
     for (const o of [
       { launchCount: 1, micGranted: false, keyboardReady: false },
       { launchCount: 1, micGranted: true, keyboardReady: false, onboardV2: true },
       { launchCount: 5, micGranted: false },
     ]) {
-      expect(buildBootstrap({ onboarded: true, botsApp: true, ...o }).initialScreenId).toBe("bots.home");
+      expect(buildBootstrap({ onboarded: true, botsApp: true, ...o }).initialScreenId).toBe("bots.talk");
     }
-    expect(buildBootstrap({ onboarded: true, botsApp: true, isReviewer: true, launchCount: 1 }).initialScreenId).toBe("bots.home");
+    expect(buildBootstrap({ onboarded: true, botsApp: true, isReviewer: true, launchCount: 1 }).initialScreenId).toBe("bots.talk");
   });
-  it("on, in a window that has the desk: Home, not Today, and the desk's pages stay reachable", () => {
+  it("on, in a window that has the desk: Talk, not Today, and the desk's pages stay reachable", () => {
     const on = buildBootstrap({ onboarded: true, botsApp: true, desk: true, formFactor: "desktop" });
-    expect(on.initialScreenId).toBe("bots.home");
+    expect(on.initialScreenId).toBe("bots.talk");
     expect(on.flags?.["desktop.desk"]).toBe(true);
     expect(on.flags?.["desktop.desk.settingsScreenId"]).toBe("desk_settings");
   });
-  it("on, for someone not onboarded yet: Home, with nothing between sign-in and it (App Review 4)", () => {
+  it("on, for someone not onboarded yet: Talk, with nothing between sign-in and it (App Review 4)", () => {
     const on = buildBootstrap({ onboarded: false, botsApp: true, onboardV2: true, launchCount: 1 });
-    expect(on.initialScreenId).toBe("bots.home");
+    expect(on.initialScreenId).toBe("bots.talk");
     // The name and gender are the About you card's, on Home after a few visits: never the native card, never a prompt.
     expect(on.flags?.["profileGate.screenIds"]).toEqual([]);
     for (const o of [{ onboarded: true }, { onboarded: true, profileComplete: true }, { onboarded: true, isReviewer: true }]) {
@@ -109,7 +114,7 @@ describe("the screen route", () => {
   it("a build that draws the kit is booted into the Bots app", async () => {
     const r = await post("/v1/app/bootstrap", { capabilities: caps(["BotsKit"]) });
     expect(r.statusCode).toBe(200);
-    expect(r.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "talk", "activity"]);
+    expect(r.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["talk", "bots", "activity"]);
     const old = await post("/v1/app/bootstrap", { capabilities: caps([]) });
     expect(old.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["stats", "personality"]);
   });
@@ -139,7 +144,7 @@ describe("the screen route", () => {
     const flow = await post("/v1/app/screen", { screenId: "flow_arm", capabilities: only });
     expect(flow.json().screenId).toBe("flow_arm");
     const boot = await post("/v1/app/bootstrap", { capabilities: only });
-    expect(boot.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "talk", "activity"]);
+    expect(boot.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["talk", "bots", "activity"]);
   });
 });
 

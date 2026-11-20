@@ -30,6 +30,7 @@ import {
   SHARE_ASKED_NEWEST, SHARE_ASKED_NEWEST_FREE, SHARE_OWNER, SHARE_WAITING, person, share,
 } from "./planShare.js";
 import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_SESSION_AT } from "./cinema.js";
+import { TALK_API, TALK_EMPTY_API } from "./talk.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -71,6 +72,11 @@ export const SAMPLES: Sample[] = [
   { id: S.home, area: "shell", variant: "cinema", fake: { bots: [CINEMA_FAKE, ...SAMPLE_BOTS.slice(0, 2)], jobs: [], tasks: [] } },
   // The AI permission, due: signed in, not agreed, and not answered since the wording last changed (firstRun/aiConsentCard.ts).
   { id: S.home, area: "shell", variant: "ai", api: { "GET /v1/you/ai-consent": { agreed: false, asked: false } } },
+  // TALK, the tab the app opens on (docs/talk-door.md): one thread, every bot answering in it — Plan Ease with the day
+  // drawn under its words, the Travel bot with what it found, Xode with a job and no words at all, a routine to save,
+  // and a message that was for Mom with a choice to tap. And the empty thread a new account lands on.
+  { id: S.talk, area: "shell", api: TALK_API },
+  { id: S.talk, area: "shell", variant: "empty", api: TALK_EMPTY_API },
   { id: S.activity, area: "shell", board: "Activity", deskBoard: "DeskActivity" },
   { id: S.ask, area: "shell", board: "Ask", deskBoard: "DAsk", params: { message: ASK } },
   { id: S.search, area: "shell", board: "Search", deskBoard: "DSearch", params: { q: "salon" } },

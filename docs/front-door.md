@@ -62,6 +62,9 @@ The main assistant (`src/pipeline/`, `src/agent/`, `assistPrompt.ts`) is **not c
   recent?: [{ said, did? }],     the last three turns, summarised by the client
   visual?: "table"|"diagram"|"chart"|"component"|"page",   takes an offer a result made
   bot?: "any" | a bot's slug,      "Ask any bot": the front door picks the best of the person's bots, or goes to the one named (`docs/bots.md`). Off unless `BOTS=true`: 404 `bots_off`
+  draw?: boolean,                  the caller DRAWS the answer, so the bot is asked what to draw under its words (src/show, `docs/show.md` section 2).
+                                   Reaches a BOT's answer only; the roads below keep their own visual ladder (section 4). Talk's thread passes it
+                                   (`docs/talk-door.md`); an API caller, a routine and a voice call pass none and pay for none
   stream?: boolean }             or Accept: application/x-ndjson
 ```
 

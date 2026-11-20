@@ -49,6 +49,7 @@ import { followPhoneScreens } from "./bots/followPhone.js";
 import { homeOn, planOn } from "../../../botsBots/planSwitch.js";
 import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./bots/planHome.js";
 import { planMakeScreens } from "./bots/planMake.js";
+import { loadTalk, talkPage, type TalkData } from "./bots/talkDoor.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
@@ -736,12 +737,17 @@ export const botsScreens: BotsScreen[] = [
     load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : ["mail", "meet", "cinema"].includes(slugParam(ctx)) ? 1 : 6, { mail: true, meet: true, cinema: true }),
     build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isCinema(d) ? cinemaPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
-  // THE BOT YOU JUST TALK TO, as a tab. Its slug is fixed here because a tab root is fetched with no params, and its
-  // page is the plain chat — there is no other page for it to have.
-  screen<OraclePageData>({
+  /**
+   * TALK: THE ONE SCREEN, and the tab the app opens on (screens/bots/talkDoor.ts, docs/talk-door.md).
+   *
+   * It used to be the plain chat with the one generalist bot. It is now the thread every bot answers in: a message goes
+   * through the door (`POST /v1/botsapp/talk` -> the front door), and the answer lands here with whatever the bot drew
+   * under it. A tab root is fetched with no params, so there is nothing to read one from and nothing it needs.
+   */
+  screen<TalkData>({
     id: SCREENS.talk,
-    load: (ctx, deps) => loadBot(ctx, deps, 30, { slug: "talk" }),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : chatPage(ctx, d, { root: true })),
+    load: loadTalk,
+    build: (ctx, d) => talkPage(ctx, d),
   }),
   screen<OraclePageData>({
     id: SCREENS.chat,

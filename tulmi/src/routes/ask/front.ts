@@ -84,6 +84,13 @@ export interface AskInput {
   message: string;
   /** "any" (the front door picks the best of the person's bots), or a bot's slug: docs/bots.md. Absent: the front door as it always was. */
   bot?: string;
+  /**
+   * THE ANSWER IS DRAWN WHERE IT GOES, so ask the bot what to draw under its words (src/show, docs/show.md section 2).
+   * Only a caller that really draws it passes this: Talk's one thread does (docs/talk-door.md), and nothing else here, so
+   * an API caller, a routine and a voice call still pay for no drawing. It reaches a BOT's answer only — the front door's
+   * own roads have their own visual ladder (docs/front-door.md section 4) and are untouched by it.
+   */
+  draw?: boolean;
   ctx: Omit<FrontCtx, "userId" | "plan">;
   data: Map<string, Buffer>;
   stream: boolean;
@@ -109,6 +116,7 @@ export function readAsk(body: unknown): AskRead {
   if (b.stream !== undefined && typeof b.stream !== "boolean") return bad("stream is true or false.");
   if (b.bot !== undefined && (typeof b.bot !== "string" || b.bot.length > 40 || !/^(?:any|auto|[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(b.bot))) return bad('bot is "any" or a bot\'s slug.');
   if (b.streamId !== undefined && (typeof b.streamId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(b.streamId))) return bad("streamId is 16 to 64 letters, digits, - or _.");
+  if (b.draw !== undefined && typeof b.draw !== "boolean") return bad("draw is true or false.");
 
   const attachments: AttachmentRef[] = [];
   const data = new Map<string, Buffer>();
@@ -138,6 +146,7 @@ export function readAsk(body: unknown): AskRead {
     ok: true,
     input: {
       message: b.message, data, stream: b.stream === true, ...(typeof b.bot === "string" ? { bot: b.bot } : {}),
+      ...(b.draw === true ? { draw: true as const } : {}),
       ctx: {
         device: b.device as Device, mode: b.mode as Mode, visuals: (b.visuals as VisualPref | undefined) ?? "auto", recent, attachments,
         ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}), ...(typeof b.threadId === "string" ? { threadId: b.threadId } : {}),
@@ -278,6 +287,9 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
               emit: (e) => { if (e.t === "result") return; if (e.t === "text") words?.whole(e.text); else toWords(e); emitOut(e); },
               ...(words ? { onText: (piece: string) => words.text(piece), onReset: () => words.reset() } : {}),
               ...(attached.length ? { attached } : {}), ...(read?.paise ? { extraPaise: read.paise } : {}),
+              // Drawn under its words only where the caller really draws it (Talk's thread): the drawing's own cap comes
+              // off this request's meter, as it does in a bot's chat (docs/show.md section 9).
+              ...(input.draw === true ? { draw: true as const } : {}),
             });
             if (read?.notes.length) answer.notes.push(...read.notes.map((n) => n.note ?? "").filter(Boolean));
             daily?.add(user.id, target.paise + answer.paise);

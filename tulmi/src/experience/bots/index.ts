@@ -2,7 +2,7 @@
  * THE BOTS APP (docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot".
  *
  * BOTS_APP (config.ts) on, and a build that declares "BotsKit": the bootstrap gives it the Bots app's tabs (Bots,
- * Activity, You) and lands it on bots.home; every "bots.*" screen id is answered here, for the phone or the window by
+ * Activity, You) and lands it on bots.talk, the one screen (docs/talk-door.md); every "bots.*" screen id is answered here, for the phone or the window by
  * the client's own word (capabilities.device.formFactor). Off, or an older build: nothing here runs, and the app is
  * today's.
  *
@@ -106,14 +106,24 @@ export function botsNav(): NavigationShell {
   return {
     kind: "tabs",
     tabs: [
-      { id: "bots", title: "Bots", screenId: "bots.home", glyph: STILL.bots },
-      // SECOND, not first: the bots grid is what this app IS and what it opens on, and a tab is one tap wherever it
-      // sits. The point of putting the chat here is that it stops being a thing you go and find.
+      /**
+       * TALK IS FIRST NOW, AND IT IS WHAT THE APP OPENS ON (docs/talk-door.md).
+       *
+       * It used to be second, and the note here said the grid "is what this app IS and what it opens on". That was true
+       * of the app and false of the phone: eight living tiles, one to a row, then the chips for the rest, then the
+       * routines and the notes strip — on a phone the first thing anybody saw was a list to read, and every job began
+       * with deciding whose job it was. Nobody should have to know which bot owns a thing in order to ask for it.
+       *
+       * So the thread is first: you say what you need and whichever bot it belongs to answers in it. The grid keeps its
+       * tab, because a bot's own PAGE is still the place for its own work — a trip, a day's plan, a mailbox — and those
+       * are pages, not messages.
+       */
       { id: "talk", title: "Talk", screenId: "bots.talk", glyph: STILL.talk },
+      { id: "bots", title: "Bots", screenId: "bots.home", glyph: STILL.bots },
       { id: "activity", title: "Activity", screenId: "bots.activity", glyph: STILL.activity },
     ],
     rail: false,
-    initialTabId: "bots",
+    initialTabId: "talk",
   };
 }
 
@@ -125,8 +135,8 @@ export function botsNav(): NavigationShell {
  * params and are kept (never a decision, a job in flight or the first run).
  */
 export const BOTS_WARM_SCREEN_IDS = [
-  "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
-  "bots.talk", "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
+  "bots.talk", "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
+  "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
   "bots.usage", "bots.billing", "bots.notify", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
   "bots.keybot.style", "bots.keybot.tone", "bots.keybot.words", "bots.keybot.voices", "bots.keybot.settings", "bots.keybot.haptics", "bots.keybot.name",
   "bots.keybot.history", "bots.keybot.days", "bots.keybot.month", "bots.keybot.speak", "bots.keybot.apps",

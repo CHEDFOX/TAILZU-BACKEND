@@ -1439,6 +1439,10 @@ export const BOT_CROWD_COMPONENT = "BotCrowd";
 export const VANISH_COMPONENT = "Vanish";
 /** A message field: "@" picks a person (a chip), "/" picks one of the person's bots, then one of its things (a chip). */
 export const MENTION_FIELD_COMPONENT = "MentionField";
+/** NOT A COMPONENT: MentionField's `pick: "bot"` (a bot picked from "/" becomes the chip, and nothing is fetched) and its
+ *  `commands` rows — what Talk's one thread needs of that field (docs/talk-door.md). A build that does not declare it is
+ *  sent the plain message box for Talk instead, which sends through the same door. */
+export const MENTION_COMMANDS_CAPABILITY = "MentionCommands";
 /** The words of the voice session open on this screen, as they are heard: the newest light grey, settling to ink. Nothing else. */
 export const LIVE_WORDS_COMPONENT = "LiveWords";
 /** NOT A COMPONENT: actions voiceLive and voiceStop (live words over /v1/transcribe-stream, a turn ends on a pause). */
@@ -1614,6 +1618,24 @@ export interface MentionFieldProps {
   words: { people: string; bots: string; empty: string };
   maxLength?: number;
   autoFocus?: boolean;
+  /**
+   * WHAT PICKING A BOT FROM "/" DOES (capability MentionCommands; absent or "thing" is what every build has always done).
+   *
+   *   "thing"  the bot's things open, and one of them becomes the chip: "/" shares a thing FROM a bot (the space's feed).
+   *   "bot"    the bot itself becomes the chip, and nothing is fetched: "/" names the bot the message GOES TO (Talk's
+   *            thread, docs/talk-door.md). `thingsPath` is then unused and sent empty.
+   *
+   * One field, because it is one gesture — "/" then a bot — and the two uses differ only in what the pick means where
+   * it is used. A build that does not declare MentionCommands is never sent "bot": the server draws it the plain box
+   * instead (screens/bots/talkDoor.ts), rather than a "/" that would open things nobody asked for.
+   */
+  pick?: "thing" | "bot";
+  /**
+   * Rows under the bots in the "/" list: the names the SCREEN keeps for itself, which are not bots and not a bot's own
+   * saved commands ("/new"). Picking one puts "/name " in the words, so what is sent is exactly what the person could
+   * have typed — the screen's own door then reads it (botsBots/talkWords.ts TALK_COMMANDS).
+   */
+  commands?: Array<{ name: string; line?: string }>;
 }
 // on.onSubmit: Enter / the send button, with the draft in draftPath. Before it runs: text starting with "@word" and no person chip
 // is turned into that person's chip when exactly one person's first name is that word (case-insensitive, the "@word" taken out of
