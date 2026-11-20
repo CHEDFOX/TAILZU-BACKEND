@@ -239,7 +239,15 @@ export async function launch(o: LaunchOptions): Promise<LaunchedChrome> {
         const m = /DevTools listening on (ws:\/\/\S+)\r?\n/.exec(seen);
         if (m) { clearTimeout(timer); resolve(m[1]!); }
       });
-      proc.once("exit", (code) => { clearTimeout(timer); reject(new Error(`Chrome exited before it was ready (${code})`)); });
+      // What Chrome said on its way out, which is the whole of why. Without it every failure — no sandbox, a missing
+      // library, a profile it cannot write — arrives as the same sentence, and the one line that would have said
+      // which has already been read and dropped. Trimmed, and only ever Chrome's own startup noise: nothing has
+      // been navigated to at this point, so no page can have written here.
+      proc.once("exit", (code) => {
+        clearTimeout(timer);
+        const said = seen.split("\n").map((l) => l.trim()).filter(Boolean).slice(-4).join(" / ").slice(-500);
+        reject(new Error(`Chrome exited before it was ready (${code})${said ? `: ${said}` : ""}`));
+      });
       proc.once("error", () => { clearTimeout(timer); reject(new Error("Chrome could not be started")); });
     });
   } catch (err) {
