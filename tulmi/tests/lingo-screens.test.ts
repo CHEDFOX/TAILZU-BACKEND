@@ -278,14 +278,34 @@ describe("a course with nothing in it", () => {
     expect(s).not.toContain("Nothing to learn yet");
   });
 
-  it("offers talking rather than a lesson that has nothing to ask", () => {
+  /**
+   * THE CARD STILL OPENS THE LESSON. Opening one is what makes the first unit for the pair, so a card that sent an
+   * empty course anywhere else was the reason a new language never got any lessons: the only screen that builds the
+   * first unit was the only screen the card would not open.
+   */
+  it("sends them to the lesson, which is what makes their first one", () => {
     const s = json(territory(ctx(), { courses: [course({ progress: bare })] }));
-    expect(s).toContain("Start by talking");
+    expect(s).toContain("Start learning");
+    expect(s).toContain(SCREENS.lingoSet);
     expect(s).toContain("no words yet");
     // "0% of what you've met" is a measurement of nothing, drawn as though it were a fact about them.
     expect(s).not.toContain("you'd still have now");
     expect(s).not.toContain("Practise anyway");
     expect(s).not.toContain("nothing due");
+  });
+
+  /**
+   * A THIRD EMPTY, and the only one that ends by itself: the unit for this pair is being written this moment. Told
+   * "nothing due" they would think they were finished; told "nothing to learn yet" they would go and talk to it for
+   * no reason. Both were wrong for the ten seconds that matter most, which are somebody's first ten.
+   */
+  it("says the first lesson is being got ready, rather than that there is nothing", () => {
+    const s = json(setScreen(ctx(), "es", { exercises: [], progress: bare, mastery: course().mastery, building: true }));
+    expect(s).toContain("Getting your first lesson ready");
+    expect(s).toContain("Check again");
+    expect(s).toContain('"refresh"');
+    expect(s).not.toContain("Nothing to learn yet");
+    expect(s).not.toContain("Nothing due");
   });
 });
 

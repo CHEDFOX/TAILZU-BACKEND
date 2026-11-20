@@ -49,7 +49,11 @@ export interface TerritoryData { courses: CourseView[] }
 export interface LanguageRow { tag: string; name: string; en: string }
 export interface PickerData { from: string | null; fromName: string | null; suggested: LanguageRow[]; languages: LanguageRow[] }
 /** A set, and what the language is called so a prompt can name it. */
-export interface SetData { exercises: Exercise[]; progress: Progress; mastery: Mastery; name?: string }
+export interface SetData {
+  exercises: Exercise[]; progress: Progress; mastery: Mastery; name?: string;
+  /** Their first unit is being written right now (POST /v1/lingo/session). Only ever sent with no exercises. */
+  building?: boolean;
+}
 
 const toast = (message: string, tone?: "error"): ActionRef => ({ kind: "toast", message, ...(tone ? { tone } : {}) });
 
@@ -92,9 +96,12 @@ function courseCard(ctx: BotsCtx, c: CourseView): Node {
     // No meter on a course with nothing in it: "0% of what you've met" is a measurement of nothing, drawn as a fact.
     ...(c.progress.items ? [meter(c.mastery.held, 1, { label: `${held}% of what you've met, you'd still have now`, color: look(ctx).color, height: 6 })] : []),
     meta(countsLine(c.progress), { size: 13 }),
-    // A course with nothing in it is offered the thing that actually works, not a lesson that has nothing to ask.
+    // A COURSE WITH NOTHING IN IT STILL GOES TO THE LESSON, because opening one is what makes the first unit for
+    // this pair (POST /v1/lingo/session walks the path). This used to offer the chat instead, from before the path
+    // existed, when an empty course really did have nothing to ask — and that was the whole reason a new language
+    // never got any lessons: the one screen that builds the first unit was the one screen the card never opened.
     c.progress.items === 0
-      ? primaryButton("Start by talking", open(SCREENS.chat, { slug: LINGO_SLUG }))
+      ? primaryButton("Start learning", open(SCREENS.lingoSet, { target: c.target }))
       : c.progress.due || c.progress.unseen
         ? primaryButton("Continue", open(SCREENS.lingoSet, { target: c.target }))
         : secondaryButton("Practise anyway", open(SCREENS.lingoSet, { target: c.target })),
@@ -292,8 +299,11 @@ export function whyScreen(ctx: BotsCtx, target: string, name: string): Node[] {
   // exactly the assumption this app does not make.
   const from = String(ctx.params?.from ?? "");
   const fromName = String(ctx.params?.fromName ?? "");
+  // STRAIGHT INTO THE FIRST EXERCISE. Landing on the territory meant a card to read and another button to find
+  // before anything was learned; the answer to "what's it for?" is the last thing anybody wants to answer twice.
+  // `replace` so Back from the set goes to their languages and not round the picker again.
   const begin = (why: unknown, whyNote: unknown): ActionRef => call("PUT", `${PATH}/course`, { target, why, whyNote, ...(from ? { from } : {}) }, {
-    ok: seq(toast(`Learning ${name}`), { kind: "navigate", screenId: SCREENS.lingo, replace: true }),
+    ok: seq(toast(`Learning ${name}`), { kind: "navigate", screenId: SCREENS.lingoSet, params: { target }, replace: true }),
     fail: toast("Couldn't start that one. Try again in a moment.", "error"),
   });
   return [
@@ -494,7 +504,20 @@ function markRow(): Node {
 export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefined): Node[] {
   const exs = data?.exercises ?? [];
   if (!exs.length) {
-    // TWO DIFFERENT EMPTIES, and telling somebody the wrong one is how this screen read as broken. "Nothing due"
+    // STILL BEING WRITTEN. A third empty, and the only one that ends by itself: they started the course a moment
+    // ago and the unit for their pair is being made (a model call, once per pair ever). So this says what is
+    // happening rather than that there is nothing, and the way on is to ask again in a moment.
+    if (data?.building) {
+      return [
+        emptyState({
+          pose: "think",
+          title: "Getting your first lesson ready",
+          body: "Lingo is putting together the first words for you. It takes a few seconds the very first time anyone learns this pair of languages — after that it is instant.",
+          action: { label: "Check again", onPress: { kind: "refresh" } },
+        }),
+      ];
+    }
+    // THREE DIFFERENT EMPTIES, and telling somebody the wrong one is how this screen read as broken. "Nothing due"
     // means they have met things and are holding them. A course with NOTHING IN IT has not earned that sentence:
     // they picked a language a minute ago and are being told they are up to date on a language they cannot speak.
     // It happens whenever the shared bank has no sentences for the pair yet, which is every pair nobody has poured

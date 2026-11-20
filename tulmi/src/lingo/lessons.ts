@@ -117,21 +117,36 @@ export function tidyDraft(draft: UnitDraft, want: number): UnitItem[] {
 }
 
 /**
- * The unit's content for this pair: what is kept, or made and kept. Null when it could not be made, which is not
- * an error — the caller carries on with whatever the person already has, and the next person tries again.
+ * ONE BUILD PER PAIR AND UNIT, however many people arrive at it at once. A unit takes a model call and a few
+ * seconds, and the people who want it most are the ones who have just started the course: the person whose first
+ * lesson it is, and the session screen they land on a moment later. Without this they each start their own.
+ *
+ * It is per process, so two servers can still each make it once — wasteful, not wrong: the row is upserted and the
+ * content of a unit does not depend on who asked for it.
  */
-export async function unitFor(
+const inFlight = new Map<string, Promise<UnitItem[] | null>>();
+const flightKey = (lang: string, glossLang: string, unit: string): string => `${lang}\u0000${glossLang}\u0000${unit}`;
+
+/**
+ * IS THIS UNIT BEING GOT RIGHT NOW? What lets a caller say "it is being made" instead of waiting for it, which is
+ * the difference between a screen that explains itself and a screen that hangs (routes/bots/lingo.ts walk()).
+ *
+ * True from the moment somebody asks until they have it, the read of what is already kept included. That read is
+ * one query, so for a pair somebody has already made this is true for a few milliseconds and the window is not
+ * worth code: the worst it can do is ask somebody to tap again once.
+ */
+export const makingUnit = (lang: string, glossLang: string, unit: string): boolean =>
+  inFlight.has(flightKey(lang, glossLang, unit));
+
+/** The model call itself, and what it is allowed to keep. Separate so the in-flight map has one thing to hold. */
+async function makeUnit(
   bank: LessonBank,
   ctx: ModelCtx,
+  u: Unit,
   lang: string,
   glossLang: string,
   unitKey: string,
 ): Promise<UnitItem[] | null> {
-  const u = unitOf(unitKey);
-  if (!u) return null;
-  const kept = await bank.get(lang, glossLang, unitKey).catch(() => null);
-  if (kept?.length) return kept;
-
   const asked = await askJson<UnitDraft>(ctx, {
     tier: "strong",
     role: "lingo_unit",
@@ -146,4 +161,52 @@ export async function unitFor(
   if (items.length < ENOUGH) return null;
   await bank.put(lang, glossLang, unitKey, items, Date.now()).catch(() => undefined);
   return items;
+}
+
+/** What is kept for this pair and unit, or made and kept. The body of unitFor, with the claim held over it. */
+async function keptOrMade(
+  bank: LessonBank,
+  ctx: ModelCtx,
+  u: Unit,
+  lang: string,
+  glossLang: string,
+  unitKey: string,
+): Promise<UnitItem[] | null> {
+  const kept = await bank.get(lang, glossLang, unitKey).catch(() => null);
+  if (kept?.length) return kept;
+  return makeUnit(bank, ctx, u, lang, glossLang, unitKey);
+}
+
+/**
+ * The unit's content for this pair: what is kept, or made and kept. Null when it could not be made, which is not
+ * an error — the caller carries on with whatever the person already has, and the next person tries again.
+ *
+ * ONE IN THE AIR AT A TIME, joined rather than started again, so arriving while somebody else's call is out costs
+ * nothing and gives the same answer. NOT `async`, on purpose: the claim has to be made in the same tick as the
+ * call, because an await before it is a gap in which the next caller sees nothing running and starts a second one.
+ * That next caller is not hypothetical — it is the lesson screen, a moment behind the course that started it.
+ */
+export function unitFor(
+  bank: LessonBank,
+  ctx: ModelCtx,
+  lang: string,
+  glossLang: string,
+  unitKey: string,
+): Promise<UnitItem[] | null> {
+  const u = unitOf(unitKey);
+  if (!u) return Promise.resolve(null);
+
+  const key = flightKey(lang, glossLang, unitKey);
+  const running = inFlight.get(key);
+  if (running) return running;
+
+  // What the map holds never rejects and is always cleared, so a pair whose first attempt failed is tried again by
+  // the next person rather than looking busy for ever, and a joiner is never handed a throw. The SAME promise is
+  // handed back, so that by the time anybody has their answer the claim is already let go of — handing back the
+  // one underneath would settle a tick early and leave the unit looking busy to whoever asked next.
+  const work = keptOrMade(bank, ctx, u, lang, glossLang, unitKey)
+    .then((v) => v, () => null)
+    .finally(() => inFlight.delete(key));
+  inFlight.set(key, work);
+  return work;
 }

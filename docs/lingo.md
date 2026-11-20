@@ -300,6 +300,36 @@ fills in behind them when they do not. No ratio to tune — the ordering is the 
 An empty bank is not an error: the course stays as it is, and a language nobody has poured a corpus into simply has
 no spine yet (`scripts/lingo-seed.ts`).
 
+## 9c. The path, and the first lesson
+
+The spine above is the floor. The **path** is the course: twenty-four units in order, written once in no language at
+all (`course.ts`), each one a thing you can DO at the end of it — "you can order food and drink, and say what you do
+not want" — never a grammar heading. The order is the easy half and barely differs between languages: everybody needs
+hello before the past tense. What FILLS a unit is the hard half, and there are more pairs of languages than anybody
+will ever write by hand, so a unit's content is written by a model the first time anybody on that pair reaches it and
+kept for everybody after (`lessons.ts`, `lingo_lessons`). The second learner on Spanish-from-Tamil waits for nothing.
+
+A unit that could not be made is **not kept**. A model that was down, a reply that did not parse, or a unit that came
+back thin (`ENOUGH`, four items) writes nothing, because a thin unit kept now is taught to everybody after it.
+
+**The first lesson is started when the course is.** `PUT /v1/lingo/course` kicks off the unit for a brand-new course
+and does not wait for it, and the answer to "what's it for?" goes straight into the first exercise. Three things had
+to be true at once for that to work:
+
+- **One build in the air at a time** (`makingUnit`, `unitFor`). The course that starts it and the lesson screen a
+  second behind it are the same person; without this they pay for the same unit twice. The claim is made in the same
+  tick as the call, because an await before it is a gap in which the next caller sees nothing running.
+- **A session never blocks on a model call.** `walk()` asks whether the unit is being made and, if it is, says so
+  instead of waiting: `POST /v1/lingo/session` answers `{ exercises: [], building: true }`.
+- **A third empty on the set screen.** "Nothing due" means they are holding everything they have met; "nothing to
+  learn yet" means the course is empty and talking is the way out; **"Getting your first lesson ready"** is the only
+  one that ends by itself, and it is the one that was missing.
+
+Until this, none of the path was reachable on a new course. `POST /v1/lingo/session` was the only thing that ever
+walked it, and the territory card sent a course with no words to the chat instead — so the first unit was never
+reached, never made, and a new language sat at nothing for ever: no words, so no lesson; no lesson, so no words.
+The card opens the lesson now whatever the course holds, because opening one is what makes it.
+
 ## 10. The order a session is put in
 
 Which words to ask is the scheduler's business. **The order they are asked in is a different question with its own

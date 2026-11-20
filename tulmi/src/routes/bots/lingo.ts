@@ -23,7 +23,7 @@ import { gradeChips, gradeChoice, gradeSpoken, gradeText, gradeUsed } from "../.
 import { blendMs, thinkingTime, workedForIt } from "../../lingo/portrait.js";
 import { after, canDo, FIRST_UNIT, placeOf, unitDone, unitOf } from "../../lingo/course.js";
 import { askLingo, ASK_MAX } from "../../lingo/ask.js";
-import { lessonBank, unitFor, type LessonBank, type UnitItem } from "../../lingo/lessons.js";
+import { lessonBank, makingUnit, unitFor, type LessonBank, type UnitItem } from "../../lingo/lessons.js";
 import { recall } from "../../lingo/schedule.js";
 import { learned } from "../../lingo/schedule.js";
 import { answered, dayOf, pick, plan, progress, refOf, shapeFor, streakAfter, wire, type Exercise, type SentenceLookup } from "../../lingo/session.js";
@@ -165,6 +165,17 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       ...(str(b["whyNote"], WHY_NOTE_MAX) ? { whyNote: str(b["whyNote"], WHY_NOTE_MAX) } : kept?.whyNote ? { whyNote: kept.whyNote } : {}),
     };
     const saved = await store().setCourse(user.id, learner, at);
+    // THE FIRST LESSON IS STARTED HERE AND NOT WAITED FOR. A course begins with nothing in it, and the unit that
+    // fills it is written by a model the first time anybody on this PAIR reaches it: a few seconds, once per pair,
+    // ever. Waiting for it would hold "Start learning" open with nothing to show, and not starting it at all is
+    // what used to happen — the set screen was the only thing that ever asked for a unit, and the territory sent a
+    // course with no words to the chat instead, so the first unit was never reached and never made (walk()).
+    //
+    // Only for a course that is NEW: changing the level or the voice of one somebody is already on must not spend a
+    // call. The person's own items are left to walk() so that one place files them; this only warms the shared bank.
+    if (!kept && deps.lessons !== null) {
+      void unitFor(lessons(), modelCtx(user.id), target, from, learner.unit || FIRST_UNIT).catch(() => null);
+    }
     return reply.send({ course: saved });
   });
 
@@ -274,11 +285,13 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
    * This is the difference between a course and a pile of words. Without it there is no answer to "what now?"
    * except "whatever is due", and on a quiet day that is nothing at all.
    */
-  const walk = async (userId: string, course: Learner, items: readonly LingoItem[], at: number): Promise<{ items: readonly LingoItem[]; course: Learner }> => {
+  const walk = async (userId: string, course: Learner, items: readonly LingoItem[], at: number): Promise<{ items: readonly LingoItem[]; course: Learner; building: boolean }> => {
     let here = course.unit || FIRST_UNIT;
     let learner = course;
     const held = (i: { memory?: Memory }) => (i.memory ? recall(i.memory, at) : 0);
     let have = items;
+    // Their unit is being written this moment — by the start of their own course, or by somebody else on the pair.
+    let building = false;
 
     // At most two steps in one sitting: somebody who has been away does not get three units poured in at once.
     for (let step = 0; step < 2; step++) {
@@ -290,6 +303,9 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
         continue;
       }
       if (mine.length) break;                     // this unit is loaded and not finished: nothing to do
+      // ALREADY BEING MADE: do not wait for it and do not start a second one. The screen says so and asks again in
+      // a moment, which is the whole reason starting a course does not have to block on a model call.
+      if (deps.lessons !== null && makingUnit(course.target, course.from, here)) { building = true; break; }
       // Never reached before. Make it for this pair, or take what was made for somebody else on it.
       const made = deps.lessons === null ? null
         : await unitFor(lessons(), modelCtx(userId), course.target, course.from, here).catch(() => null);
@@ -304,7 +320,7 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       learner = { ...course, unit: here };
       await store().setCourse(userId, { ...learner, usedMs: at }, at).catch(() => undefined);
     }
-    return { items: have, course: learner };
+    return { items: have, course: learner, building };
   };
 
   const topUp = async (userId: string, course: Learner, items: readonly LingoItem[], at: number): Promise<readonly LingoItem[]> => {
@@ -389,6 +405,9 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
         exercises, progress: progress(items, at), mastery: mastery(items, at),
         // What the language is called, so a prompt can say "in Español" rather than "in es".
         name: languageOf(target)?.name ?? target,
+        // NOTHING TO ASK YET BECAUSE THEIR FIRST UNIT IS STILL BEING WRITTEN. Only ever sent with no exercises, and
+        // it is a different empty from "nothing due" and from "no words at all": this one ends by itself.
+        ...(!exercises.length && walked.building ? { building: true } : {}),
       });
   });
 
