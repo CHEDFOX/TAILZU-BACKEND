@@ -213,3 +213,50 @@ describe("the feed on the Travel bot's own screen", () => {
     expect(text(placePage(ctxFor(SCREENS.travelPlace, "phone"), undefined))).toContain("has gone");
   });
 });
+
+describe("the six as the first screen, with no way past", () => {
+  const required = () => firstLookPage(ctxFor(SCREENS.travel, "phone"), VIEW, { required: true });
+  const asText = (s: unknown) => JSON.stringify(s);
+
+  it("shows the images and no words at all", () => {
+    const out = asText(required());
+    expect(out).not.toContain("Most like you first");
+    expect(out).not.toContain("Skip for now");
+    expect(out).not.toContain("Tap all of them");
+    // and no label on any tile: a label tells somebody what the picture is FOR
+    expect(out).not.toContain("Grey water, one red hut");
+    expect(out).not.toContain("A street at midnight");
+  });
+
+  it("still numbers them from its own state, one badge per place", () => {
+    const out = asText(required());
+    for (let i = 0; i < 6; i += 1) expect(out).toContain(`"order.${i}"`);
+  });
+
+  it("sends the order and goes, on the tap that fills the last place", () => {
+    const presses = treeOf(required())
+      .map((n) => (n as { on?: { onPress?: unknown } }).on?.onPress)
+      .filter(Boolean);
+    expect(presses).toHaveLength(6);
+
+    const first = asText(presses[0]);
+    expect(first).toContain("toggleInArray");
+    // the condition is checked after the toggle: a sixth tap means they have just finished
+    expect(first).toContain('"truthy":"order.5"');
+    expect(first).toContain(FIRST_LOOK_PATH);
+    expect(first).toContain("bots.travel");
+  });
+
+  it("keeps the worded version for doing it again later", () => {
+    const out = asText(firstLookPage(ctxFor(SCREENS.travelFirstLook, "phone"), VIEW));
+    expect(out).toContain("Skip for now");
+    expect(out).toContain("Most like you first");
+  });
+
+  it("will not stand in for the screen unless all six are really there", () => {
+    const five = { ...VIEW, images: VIEW.images.slice(0, 5) };
+    const out = asText(firstLookPage(ctxFor(SCREENS.travel, "phone"), five, { required: true }));
+    // falls back to the worded layout rather than holding somebody on a ragged grid
+    expect(out).toContain("Skip for now");
+  });
+});

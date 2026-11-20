@@ -37,6 +37,16 @@ const TAG_SET: ReadonlySet<string> = new Set(TAGS);
  * card leaves with "December to March" and with the days left of that window when the window is closing. Sending
  * the mask raw is how a feed ends up saying "best 3585".
  */
+/**
+ * Our own photographs are stored root-relative (/photos/<slug>.jpg) so the catalogue stays a data file with no
+ * config in it. The app needs somewhere to fetch them from: the same origin the typefaces come from (kit.ts).
+ */
+function absolute(url: string): string {
+  if (!url.startsWith("/")) return url;
+  const origin = process.env.PUBLIC_ORIGIN || "https://api.x0bot.com";
+  return `${origin.replace(/\/$/, "")}${url}`;
+}
+
 function cardView(card: Card, now: Date): Record<string, unknown> {
   const left = daysLeftInSeason(card.season, now);
   return {
@@ -50,7 +60,7 @@ function cardView(card: Card, now: Date): Record<string, unknown> {
     tags: card.tags,
     budget: card.budget,
     effort: card.effort,
-    photos: card.photos,
+    photos: card.photos.map((p) => ({ ...p, url: absolute(p.url) })),
     origin: card.origin,
     sources: card.sources,
     at: card.at,

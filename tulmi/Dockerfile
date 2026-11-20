@@ -70,6 +70,8 @@ COPY --from=build /app/tulmi/fonts ./fonts
 COPY --from=build /app/tulmi/blip ./blip
 # The connected apps' logos, served at /icons/ (see server.ts).
 COPY --from=build /app/tulmi/icons ./icons
+# The written places' photographs, served at /photos/ (routes/app/staticFiles.ts).
+COPY --from=build /app/tulmi/photos ./photos
 # Art for keys nothing has been uploaded to yet: the sign-in email's mark
 # (/media/k/email.mark, see routes/media.ts).
 COPY --from=build /app/tulmi/brand ./brand

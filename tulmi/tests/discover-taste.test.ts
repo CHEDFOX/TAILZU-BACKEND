@@ -332,3 +332,23 @@ describe("what the app is sent, not what we hold", () => {
     expect(left(erg.season, new Date(Date.UTC(2027, 5, 20)))).toBeNull();          // June: out of it
   });
 });
+
+describe("the photographs", () => {
+  it("gives every written place a picture, with a credit on it", () => {
+    for (const card of CURATED) {
+      const photo = card.photos[0];
+      expect({ slug: card.slug, has: !!photo }).toEqual({ slug: card.slug, has: true });
+      expect(photo!.url).toMatch(/^\/photos\/[a-z0-9-]+\.jpg$/);
+      expect(photo!.alt.length).toBeGreaterThan(3);
+      // The grade makes each one a derivative: the credit has to name the licence and say it was altered.
+      expect(photo!.credit).toContain("Wikimedia Commons");
+      expect(photo!.credit).toContain("altered");
+    }
+  });
+
+  it("points each place at its own file, never somebody else's", () => {
+    for (const card of CURATED) {
+      expect(card.photos[0]!.url).toBe(`/photos/${card.slug}.jpg`);
+    }
+  });
+});

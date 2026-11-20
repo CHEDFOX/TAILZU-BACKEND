@@ -36,6 +36,7 @@ import {
 } from "./bots/sharePhone.js";
 import * as places from "./botsPlaces.js";
 import { feedBlocks, FEED_PATH, TASTE_PATH, type FeedView, type TasteView } from "./discoverFeed.js";
+import { firstLookPage, FIRST_LOOK_PATH, type FirstLookView } from "./firstLook.js";
 import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
 import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
@@ -501,7 +502,7 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
 interface TripData { trip: { id: string; place: string; when: string; who: string; packing: Array<{ text: string; done: boolean }>; spots?: string[]; stays?: Array<{ picked: boolean }> } | null; facts: Array<{ id: string; text: string }>; bookings: Array<{ label: string; url: string; at: number; said: string }> }
 
 /** `x`: the trip's weather, places and stays compared (GET .../trip/:id/extras, botsPlaces.ts); `work`: Work in space (work/workTab.ts). */
-interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView; work?: WorkRead; feed?: FeedView; taste?: TasteView }
+interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView; work?: WorkRead; feed?: FeedView; taste?: TasteView; look?: FirstLookView }
 
 const TRAVELLY = /ticket|pnr|boarding|itinerary|hotel|booking|flight|train|irctc|visa|passport|e-?ticket|bus|stay|trip/i;
 const GETTING = /train|flight|bus|cab|ticket|irctc|rail|air|uber|ola|route|maps|direction/i;
@@ -841,9 +842,22 @@ export const botsScreens: BotsScreen[] = [
         deps.api<FeedView>("GET", `${FEED_PATH}?limit=10`).catch(() => undefined),
         deps.api<TasteView>("GET", TASTE_PATH).catch(() => undefined),
       ]);
-      return { t, files, x, work, feed, taste };
+      // Only a person with no profile is ever shown the six, so this is read only for them.
+      const look = taste && taste.signals === 0
+        ? await deps.api<FirstLookView>("GET", FIRST_LOOK_PATH).catch(() => undefined)
+        : undefined;
+      return { t, files, x, work, feed, taste, look };
     },
-    build: (ctx, d) => { const c = workCtx(ctx, d?.work); return isDesk(c) ? travelDesk(c, d ?? {}) : travelPhone(c, d ?? {}); },
+    build: (ctx, d) => {
+      const c = workCtx(ctx, d?.work);
+      // A NEW PERSON SEES THE SIX AND NOTHING ELSE. The bot has nothing worth saying to somebody it knows nothing
+      // about, and fifteen seconds of tapping is what turns the feed from everybody's into theirs. There is no way
+      // past it — but it stands in for this screen only while all six are really there to show, so a catalogue
+      // with no images can never lock somebody out of their own trip.
+      const fresh = !!d?.taste && d.taste.signals === 0 && (d.look?.images.length ?? 0) === 6;
+      if (fresh) return firstLookPage(c, d!.look, { required: true });
+      return isDesk(c) ? travelDesk(c, d ?? {}) : travelPhone(c, d ?? {});
+    },
   }),
   screen<ShareData & { capture?: CaptureView }>({
     id: SCREENS.shareIn,
