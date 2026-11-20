@@ -87,10 +87,10 @@ function badges(id: string, of: number): Node[] {
 function bareTile(image: FirstLookImageView, of: number, w: number, h: number, press: ActionRef): Node {
   return box([
     image.photo?.url
-      ? picture(image.photo.url, w, h, { radius: 0, background: image.colour, fit: "cover", label: image.photo.alt })
-      : box([], { width: "100%", height: h, backgroundColor: image.colour }),
+      ? picture(image.photo.url, w, h, { radius: 18, background: image.colour, fit: "cover", label: image.photo.alt })
+      : box([], { width: "100%", height: h, borderRadius: 18, backgroundColor: image.colour }),
     when(chosen(image.id, of), box([], {
-      position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderWidth: 3, borderColor: C.paper,
+      position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 18, borderWidth: 3, borderColor: C.ink,
     })),
     ...Array.from({ length: of }, (_, i) =>
       when({ eq: [`${ORDER}.${i}`, image.id] }, box([
@@ -100,7 +100,7 @@ function bareTile(image: FirstLookImageView, of: number, w: number, h: number, p
         backgroundColor: C.paper, alignItems: "center", justifyContent: "center",
       })),
     ),
-  ], { height: h, overflow: "hidden", minWidth: 0 }, press);
+  ], { height: h, borderRadius: 18, overflow: "hidden", minWidth: 0 }, press);
 }
 
 function tile(image: FirstLookImageView, of: number, width: number): Node {
@@ -148,17 +148,28 @@ export function firstLookPage(ctx: BotsCtx, data: FirstLookView | undefined, o: 
 
   const skip: ActionRef = { kind: "navigate", screenId: SCREENS.travel, replace: true };
 
-  // SIX IMAGES AND NOTHING ELSE. Only when all six are really there: five or seven would make a ragged grid, and a
-  // person cannot be held on a screen that is also broken.
+  // SIX IMAGES, ONE LINE, AND NOTHING ELSE. Only when all six are really there: five or seven would make a ragged
+  // grid, and a person cannot be held on a screen that is also broken.
+  //
+  // The one line asks what LOOKS most exciting, which is a question about the picture in front of them. The tiles
+  // stay unlabelled: a label would say what a picture is FOR, and from that moment somebody is ranking phrases
+  // about themselves instead of reacting to photographs.
   if (o.required && of === 6) {
-    const rows = ctx.client === "desktop" ? 2 : 3;
-    const cols = ctx.client === "desktop" ? 3 : 2;
-    const w = Math.floor((ctx.client === "desktop" ? 900 : 390) / cols);
-    const h = Math.floor((ctx.client === "desktop" ? 620 : 812) / rows);
+    const desk = ctx.client === "desktop";
+    const cols = desk ? 3 : 2;
+    const rows = Math.ceil(of / cols);
+    const gap = 12;
+    const pad = 20;
+    const w = Math.floor(((desk ? 900 : 390) - pad * 2 - gap * (cols - 1)) / cols);
+    const h = Math.floor(((desk ? 660 : 744) - gap * (rows - 1)) / rows);
     return page(ctx, {
-      title: "Put these in order",
+      title: "What looks most exciting",
       // No tab, no back bar, no footer: omitting them is what makes the frame get out of the way.
-      body: [grid(view.images.map((image) => bareTile(image, of, w, h, tapAndMaybeGo(image.id, of, done))), cols, 0)],
+      body: [
+        text("What looks most exciting?", { size: 19, weight: 600, lineHeight: 24, tracking: -0.3 }),
+        grid(view.images.map((image) => bareTile(image, of, w, h, tapAndMaybeGo(image.id, of, done))), cols, gap),
+      ],
+      gap: 16,
     });
   }
 
