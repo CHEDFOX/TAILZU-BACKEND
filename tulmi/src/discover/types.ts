@@ -15,12 +15,18 @@ import type { Budget, SeasonMask, Tag } from "./taxonomy.js";
 
 export interface LatLon { lat: number; lon: number }
 
-/** One photograph. `credit` is required on anything we did not shoot, and is shown wherever the picture is. */
+/**
+ * One picture. `credit` says what KIND it is and is shown wherever the picture is, because every one of these
+ * is an illustration rather than a photograph of the place (photos-catalog.ts) and a card must say so.
+ */
 export interface Photo {
+  /** 1280px wide: the one place somebody opened. */
   url: string;
+  /** 520px wide: the feed, which shows the whole catalogue at about 160pt a tile. */
+  tile?: string;
   /** What it shows, for a screen reader. */
   alt: string;
-  /** "Wikimedia Commons · CC BY-SA · <photographer>", or null for ours. */
+  /** "Illustration · made for this catalogue, not a photograph of the place". */
   credit: string | null;
   width?: number;
   height?: number;

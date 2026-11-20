@@ -80,6 +80,21 @@ describe("the feed on the Travel bot's own screen", () => {
     expect(out).toContain("bots.travel.place");
   });
 
+  it("draws the tile file in the grid and the full one on the page, because the feed is now the whole catalogue", () => {
+    // Sixty-odd tiles at 160pt each, served the 1280px file, is a download rather than a feed.
+    const withPics = { total: 1, cards: [card({ photos: [{ url: "/photos/x.jpg", tile: "/photos/tile/x.jpg", alt: "a dune", credit: "Illustration · x" }] })] };
+    expect(text(feedBlocks(ctx(), withPics, taught))).toContain("/photos/tile/x.jpg");
+
+    const opened = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: withPics.cards[0]! }));
+    expect(opened).toContain("/photos/x.jpg");
+    expect(opened).not.toContain("/photos/tile/x.jpg");
+  });
+
+  it("falls back to the full picture when there is no tile, as on a card the bot built", () => {
+    const built = { total: 1, cards: [card({ photos: [{ url: "/photos/y.jpg", alt: "a cave", credit: null }] })] };
+    expect(text(feedBlocks(ctx(), built, taught))).toContain("/photos/y.jpg");
+  });
+
   it("draws every card it was given, rather than a sample of them", () => {
     // This drew `columns * 3` tiles — six on a phone — so the feed showed seven places however many the server
     // sent. How many there are is the server's decision (query.ts); the grid's job is to draw them.

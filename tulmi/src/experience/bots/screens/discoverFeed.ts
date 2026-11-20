@@ -39,7 +39,7 @@ const PLACE_PATH = "/v1/discover/place";
 const enc = encodeURIComponent;
 const SEA = PALETTE_HEX.sea!;
 
-export interface FeedPhoto { url: string; alt: string; credit: string | null }
+export interface FeedPhoto { url: string; tile?: string; alt: string; credit: string | null }
 
 export interface FeedCard {
   slug: string;
@@ -77,11 +77,16 @@ const openCard = (slug: string): ActionRef =>
     { kind: "navigate", screenId: SCREENS.travelPlace, params: { slug } },
   );
 
-/** The one photograph a tile gets, or the bot's own colour where the catalogue has none yet. */
+/**
+ * The one picture a tile gets, or the bot's own colour where the catalogue has none yet.
+ *
+ * The TILE file, not the full one: the feed draws the whole catalogue now, and sixty 1280px files is a download
+ * rather than a feed. Falls back to the full size for a built card, which has no tile of its own.
+ */
 function tileImage(card: FeedCard, w: number, h: number): Node {
   const photo = card.photos[0];
   return photo
-    ? picture(photo.url, w, h, { radius: 18, background: C.surface, fit: "cover", label: photo.alt })
+    ? picture(photo.tile ?? photo.url, w, h, { radius: 18, background: C.surface, fit: "cover", label: photo.alt })
     : box([icon("pin", { size: 18, color: C.idle })], {
         width: "100%", height: h, borderRadius: 18, backgroundColor: C.surface, alignItems: "center", justifyContent: "center",
       });

@@ -62,7 +62,7 @@ function cardView(card: Card, now: Date): Record<string, unknown> {
     tags: card.tags,
     budget: card.budget,
     effort: card.effort,
-    photos: card.photos.map((p) => ({ ...p, url: absolute(p.url) })),
+    photos: card.photos.map((p) => ({ ...p, url: absolute(p.url), ...(p.tile ? { tile: absolute(p.tile) } : {}) })),
     origin: card.origin,
     sources: card.sources,
     at: card.at,
