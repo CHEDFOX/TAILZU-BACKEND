@@ -11,7 +11,8 @@ import type { ActionSpec } from "../../../../shared/types/sdui.js";
 export const SCREENS = {
   // screens/shell.ts: Home and around it, first run, system states
   home: "bots.home",                 // Main / DeskHome (built: the reference screen)
-  activity: "bots.activity",         // Activity / DeskActivity
+  activity: "bots.activity",         // Activity / DeskActivity: the ledger, by day, with receipts — a page now, not the tab
+  activities: "bots.activities",     // ACTIVITIES, the second tab: what your work is doing, its bots drawn joined, and the schedules (screens/bots/activities.ts)
   activityItem: "bots.activity.item", // One ask from Activity: what was asked, a few numbers, ask again (params: id, message, bot, at)
   ask: "bots.ask",                   // Ask / DAsk, DeskAsk (a minimal answer page is built; replace it)
   search: "bots.search",             // Search / DSearch

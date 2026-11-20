@@ -31,6 +31,7 @@ import {
 } from "./planShare.js";
 import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_SESSION_AT } from "./cinema.js";
 import { TALK_API, TALK_EMPTY_API } from "./talk.js";
+import { ACTIVITIES_API, ACTIVITIES_EMPTY_API } from "./activities.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -77,6 +78,9 @@ export const SAMPLES: Sample[] = [
   // and a message that was for Mom with a choice to tap. And the empty thread a new account lands on.
   { id: S.talk, area: "shell", api: TALK_API },
   { id: S.talk, area: "shell", variant: "empty", api: TALK_EMPTY_API },
+  // ACTIVITIES, the second tab: a two-bot activity drawn joined, a job on its own, a missed call, and the schedules.
+  { id: S.activities, area: "shell", api: ACTIVITIES_API },
+  { id: S.activities, area: "shell", variant: "empty", api: ACTIVITIES_EMPTY_API },
   { id: S.activity, area: "shell", board: "Activity", deskBoard: "DeskActivity" },
   { id: S.ask, area: "shell", board: "Ask", deskBoard: "DAsk", params: { message: ASK } },
   { id: S.search, area: "shell", board: "Search", deskBoard: "DSearch", params: { q: "salon" } },

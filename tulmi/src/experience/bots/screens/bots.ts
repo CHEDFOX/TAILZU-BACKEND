@@ -50,6 +50,7 @@ import { homeOn, planOn } from "../../../botsBots/planSwitch.js";
 import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./bots/planHome.js";
 import { planMakeScreens } from "./bots/planMake.js";
 import { loadTalk, talkPage, type TalkData } from "./bots/talkDoor.js";
+import { activitiesPage, type ActivitiesData } from "./bots/activities.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
@@ -744,6 +745,15 @@ export const botsScreens: BotsScreen[] = [
    * through the door (`POST /v1/botsapp/talk` -> the front door), and the answer lands here with whatever the bot drew
    * under it. A tab root is fetched with no params, so there is nothing to read one from and nothing it needs.
    */
+  /**
+   * ACTIVITIES, the second tab (screens/bots/activities.ts): what the work turned into, derived from what is already
+   * kept (botsBots/activities.ts). A tab root takes no params.
+   */
+  screen<ActivitiesData>({
+    id: SCREENS.activities,
+    load: (_ctx, deps) => deps.api<ActivitiesData>("GET", "/v1/botsapp/activities").catch(() => ({ down: true })),
+    build: (ctx, d) => activitiesPage(ctx, d),
+  }),
   screen<TalkData>({
     id: SCREENS.talk,
     load: loadTalk,
