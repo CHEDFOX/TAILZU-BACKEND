@@ -44,9 +44,9 @@ const { sampleApi, fakeReader, WEEK } = await import("./bots-bots-data.js");
 type Client = "phone" | "desktop";
 const RL = { rateLimit: { max: 1000, timeWindow: 60_000 } };
 
-async function build(screenId: string, client: Client, params: Record<string, string> = {}, api?: Record<string, unknown>) {
+async function build(screenId: string, client: Client, params: Record<string, string> = {}, api?: Record<string, unknown>, can = new Set(["BotsKit"])) {
   const calls: Array<{ method: string; path: string }> = [];
-  const s = await buildBotsScreen({ screenId, client, params, tzOffsetMinutes: IST, user: { id: "u" }, can: new Set(["BotsKit"]), desk: { pages: client === "desktop", notes: false } },
+  const s = await buildBotsScreen({ screenId, client, params, tzOffsetMinutes: IST, user: { id: "u" }, can, desk: { pages: client === "desktop", notes: false } },
     fakeDeps({ jobs: [], tasks: [], api: api ?? await sampleApi(), calls }));
   return { s, calls, nodes: walk(s.root!) };
 }
@@ -70,7 +70,8 @@ const posts = (nodes: Node[]) => actions(nodes).filter((a) => a.kind === "callEn
 
 describe("the screens, from the boards' day", () => {
   const CASES: Array<[string, Record<string, string>, string[]]> = [
-    ["bots.bot", { slug: "gym-bot" }, ["Gym bot", "Rules · 3", "Remembers · 4 things", "Plan my next week"]],
+    // The bot's page is its CONVERSATIONS now, not the last turns of one running chat (screens/bots/botSessions.ts).
+    ["bots.bot", { slug: "gym-bot" }, ["Gym bot", "Rules · 3", "Remembers · 4 things", "Your conversations", "Plan my next week", "Swap Thursday for a run"]],
     ["bots.chat", { slug: "gym-bot" }, ["Gym bot", "Legs done, 40 minutes"]],
     ["bots.make", {}, ["Make a bot", "Make Gym bot", "Plan my next week"]],
     ["bots.edit", { slug: "gym-bot" }, ["Never plan on days I'm travelling", "In Find a bot", "Delete this bot"]],
@@ -103,9 +104,19 @@ describe("the screens, from the boards' day", () => {
     }
   });
 
-  it("wires the bot page to the bot's chat, its edit page and its keys", async () => {
+  it("wires the bot page to a new conversation, its edit page and its keys — and has no box of its own", async () => {
     const { nodes } = await build("bots.bot", "phone", { slug: "gym-bot" });
-    expect(posts(nodes)).toContain(`POST ${AREA}/chat/gym-bot`);
+    // THE PAGE ASKS THE BOT NOTHING: it has no box of its own, because a box at the foot of a list asks "add to
+    // which one?" (screens/bots/botSessions.ts).
+    expect(posts(nodes)).not.toContain(`POST ${AREA}/chat/gym-bot`);
+    // The "+" on a build whose phone cannot fill a "$state.x" param opens the chat, which carries on the last
+    // conversation — where that button has always landed.
+    const plain = actions(nodes).filter((a) => a.kind === "navigate").map((a) => a.screenId);
+    expect(plain).toContain("bots.chat");
+    // Where it CAN, the "+" makes a new one and opens the id it gets back.
+    const rich = await build("bots.bot", "phone", { slug: "gym-bot" }, undefined, new Set(["BotsKit", "ActionParams"]));
+    expect(posts(rich.nodes)).toContain(`POST ${AREA}/sessions/gym-bot`);
+    expect(actions(rich.nodes).filter((a) => a.kind === "navigate").map((a) => a.screenId)).toContain("bots.session");
     const navs = actions(nodes).filter((a) => a.kind === "navigate").map((a) => a.screenId);
     expect(navs).toEqual(expect.arrayContaining(["bots.edit", "bots.keys"]));
   });

@@ -51,6 +51,7 @@ import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./b
 import { planMakeScreens } from "./bots/planMake.js";
 import { loadTalk, talkPage, type TalkData } from "./bots/talkDoor.js";
 import { activitiesPage, type ActivitiesData } from "./bots/activities.js";
+import { botSessions, newSessionKey, SESSION_STATE, type BotSession } from "./bots/botSessions.js";
 import { botsStartPage } from "./bots/botsStart.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
@@ -80,11 +81,14 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
   // `o.slug` is for a page that is a TAB: a tab root is fetched with no params, so there is nowhere to read one from.
   const slug = o.slug ?? slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sky, about, mail, meet, cinema] = await Promise.all([
+  const [bot, memory, linked, chat, sessions, sky, about, mail, meet, cinema] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
     deps.api<{ turns: Turn[] }>("GET", `${A}/chat/${enc(slug)}?limit=${turnsLimit}`).then((r) => r.turns).catch(() => undefined),
+    // THIS BOT'S CONVERSATIONS: what its page is now (screens/bots/botSessions.ts). The store was built before any
+    // screen drew it (botsBots/sessions.ts), so this is the first read of it.
+    deps.api<{ sessions: BotSession[] }>("GET", `${A}/sessions/${enc(slug)}`).then((r) => r.sessions).catch(() => undefined),
     // The Oracle's own card: when and where they were born (routes/bots/oracle.ts).
     slug === "oracle" ? deps.api<OracleSkyView>("GET", "/v1/oracle/sky").catch(() => undefined) : Promise.resolve(undefined),
     // And whether its last card is owed: the person's name and gender, as the About you card reads them.
@@ -103,7 +107,7 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     ? await deps.api<{ moves: Moves | null }>("GET", `/v1/bots/${enc(slug)}/health/moves`).then((r) => r.moves).catch(() => undefined)
     : undefined;
   return {
-    bot, memory, linked, turns: chat, ...(moves ? { moves } : {}),
+    bot, memory, linked, turns: chat, ...(sessions ? { sessions } : {}), ...(moves ? { moves } : {}),
     ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}),
     ...(cinema ? { cinema } : {}),
   };
@@ -141,7 +145,6 @@ function phoneHead(look: ReturnType<typeof lookOf>, name: string, line: string, 
 function botPhone(ctx: BotsCtx, d: BotPageData) {
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
-  const turns = (d.turns ?? []).slice(-2);
   const facts = d.memory?.facts ?? [];
   const edit = open(SCREENS.edit, { slug: bot.slug });
   const info: Node[] = [
@@ -153,21 +156,26 @@ function botPhone(ctx: BotsCtx, d: BotPageData) {
       mono(apiLine(bot.slug)),
     ], { gap: 8, paddingVertical: 14, paddingHorizontal: 16 }, open(SCREENS.keys, { slug: bot.slug }))]),
   ];
+  // THE PAGE IS THIS BOT'S CONVERSATIONS, not one running chat with a box under it (screens/bots/botSessions.ts).
+  // A box at the foot of a list asks "add to which one?"; the one way to begin is the round "+", and a conversation
+  // is carried on by tapping it. With none yet, what the bot is FOR and a few things to say, as before.
+  const sessions = botSessions(ctx, look, d.sessions);
   return page(ctx, {
     title: bot.name, nav: bot.slug,
+    state: { ...SESSION_STATE, ...(bot.skills.health ? HEALTH_PAGE_STATE : {}) },
     // A page that draws a health number is never kept on the device (kit page keep), so none of it reaches the phone's
     // AsyncStorage cache and from there the device backup and iCloud (docs: perms §4.6).
-    ...(bot.skills.health ? { keep: false as const, state: { ...HEALTH_PAGE_STATE } } : {}),
+    ...(bot.skills.health ? { keep: false as const } : {}),
     body: [
       phoneHead(look, bot.name, stateLine(ctx, bot), undefined, headerBuddy(ctx, bot.slug, { color: look.color, lookTo: "down", thinkWhen: ANSWERING })),
-      ...(turns.length
-        ? [col(chatTurns(ctx, bot, turns), { gap: 14 }), ...(d.turns && d.turns.length > 2 ? [quietButton("See the whole chat", open(SCREENS.chat, { slug: bot.slug }), { size: "md" })] : [])]
+      ...(sessions.length
+        ? sessions
         : [col([body(bot.purpose, { color: C.grey70 }), row(starters(bot.slug, bot.purpose).map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })], { gap: 12 })]),
       listCard([...movesLine(ctx, bot, d.moves), ...info]),
       // The numbers come in while the page is open, and only then: ask: false never prompts (docs: perms §4.3).
       ...healthRefresh(ctx, bot),
     ],
-    footer: [chatBar(ctx, bot.slug, bot.name)],
+    footer: [newSessionKey(ctx, bot.slug)],
   });
 }
 

@@ -571,7 +571,12 @@ const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsParts = botsAreaParts({ bots, connectors });
 // A routine's answer goes into the same chat the app's own shows (above).
 routineChat = botsParts.chat;
-const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
+// `readFiles`: a file attached to a bot's chat is read exactly as one attached to Ask is — the SAME reader, so there is
+// one set of caps, one secret scan and one cache by SHA-256 (front/index.ts). Null while FRONT_DOOR is off, and then a
+// chat message's files are simply ignored and its words asked as before.
+const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, {
+  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}),
+});
 // Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
 // account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
 // plan can only be shared with someone you already share a space with) and the same meter the You tab shows. Every route answers

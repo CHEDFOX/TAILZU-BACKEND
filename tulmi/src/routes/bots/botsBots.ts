@@ -54,6 +54,9 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { BotError, isBotError, type Bots } from "../../bots/index.js";
 import { bearerKey, looksLikeKey, maskKey, prefixOf } from "../../bots/keys.js";
 import { getConfig } from "../../config.js";
+import { refFromBody } from "../../front/attachments.js";
+import type { AttachmentRef } from "../../front/types.js";
+import type { Front } from "../../front/index.js";
 import { defaultGuard } from "../../guard/index.js";
 import { botsAreaParts, shareAsk, shareLine, shareMessage, type BotsAreaParts } from "../../botsBots/index.js";
 import { THREAD_KEEP } from "../../botsBots/sessions.js";
@@ -124,7 +127,45 @@ export function apiOrigin(): string {
  * so a bot shared into a space reads it there as it does in its chat; and `chatShared`, exactly what the chat itself gives the bot, for
  * a reply typed into a notification (routes/bots/botsNotifyReply.ts).
  */
-export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): {
+/**
+ * The files on a chat message, read the front door's way. At most four, as `POST /v1/ask` allows; the bytes come with
+ * the message the first time and the ref alone is enough after (the reader keeps what it read by SHA-256). A ref that
+ * is not the right shape is skipped rather than failing the message — a bad attachment should not lose the words.
+ */
+async function readChatFiles(
+  read: Front["readFiles"], userId: string, body: unknown, question: string, signal?: AbortSignal,
+): Promise<Array<{ name: string; kind: string; text: string }>> {
+  const raw = (body as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const refs: AttachmentRef[] = [];
+  const data = new Map<string, Buffer>();
+  for (const a of raw.slice(0, CHAT_FILES)) {
+    const got = refFromBody(a);
+    if (!got.ok || refs.some((x) => x.id === got.input.ref.id)) continue;
+    refs.push(got.input.ref);
+    if (got.input.data) data.set(got.input.ref.id, got.input.data);
+  }
+  if (!refs.length) return [];
+  const out = await read(userId, refs, data, question, { maxPaise: CHAT_FILES_PAISE, ...(signal ? { signal } : {}) })
+    .catch(() => null);
+  return (out?.files ?? []).map((f) => ({ name: f.name, kind: f.kind, text: f.text }));
+}
+
+/** At most four files on one message, and what reading them may cost — the front door's own numbers. */
+const CHAT_FILES = 4;
+const CHAT_FILES_PAISE = 60;
+
+export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: {
+  parts?: BotsAreaParts; events?: EventStore;
+  /**
+   * READS FILES ATTACHED TO A CHAT MESSAGE, the front door's way (front/index.ts readFiles: once, by SHA-256, only the
+   * part that answers the question, never a file the secret scan flags). A bot's own chat never read a file before —
+   * `attached` is documented as "already read (the front door reads them)" — so this is the one thing a message with a
+   * photo on it needs, and it is the SAME reader, not a second one. Absent (FRONT_DOOR off): a message's files are
+   * ignored and its words are asked as they always were.
+   */
+  readFiles?: Front["readFiles"];
+} = {}): {
   sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
   chatShared: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
 } {
@@ -197,13 +238,18 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     try {
       const out = await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
         const slug = param(req, "slug").toLowerCase(), body = bodyOf(req.body);
+        const found = deps.bots ? await deps.bots.resolve(s.user.id, slug).catch(() => null) : null;
         // An answer to a drawing (a choice of several, a form: experience/bots/show.ts) comes as picks; the chat turns them into words.
         const picks = body.picks && typeof body.picks === "object" ? body.picks as Picks : undefined;
         // With Spaces off a bot reads nothing a space shared (botsBots/spacesSwitch.ts).
         const shared = spacesOn() ? await spacesArea.items.forBot(s.user.id, slug).catch(() => []) : [];
         // A message can name the session it belongs to; with none, it joins the one last touched (sessions.ts current).
         const session = String(body.session ?? "") || null;
-        const r = await parts.chat!.send(s.user.id, slug, body.message, stop, shared, live, { ...(picks ? { picks } : {}), ...(session ? { session } : {}) });
+        // FILES ON THE MESSAGE (the insert key beside the box: experience/bots/screens/bots/parts.ts chatBar). Read the
+        // front door's way and handed to the bot as `attached`, beside what the person's spaces shared — a bot without
+        // the `files` skill is given none, and nothing is read for it.
+        const files = o.readFiles && found?.def.skills.files ? await readChatFiles(o.readFiles, s.user.id, req.body, String(body.message ?? ""), stop) : [];
+        const r = await parts.chat!.send(s.user.id, slug, body.message, stop, [...shared, ...files], live, { ...(picks ? { picks } : {}), ...(session ? { session } : {}) });
         const said = r.turns.find((t) => t.role === "me")?.text ?? String(body.message);
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
         await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: said, paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
