@@ -192,11 +192,16 @@ const ROWS: Row[] = [
     "At its height perhaps a hundred thousand people lived here, in a grid, with apartment blocks and painted walls. We do not know what they called themselves.",
   ],
   [
-    "rapa-nui-tongariki", "Fifteen moai facing the sunrise", "Easter Island, Chile", "cl", -27.1257, -109.2769,
-    "The sun comes up behind you and lights fifteen backs of stone, with the sea breaking below.",
-    "sunrise at Ahu Tongariki, which is the only hour they are lit from the front", "carved between about 1250 and 1500, toppled, and raised again in the 1990s after a tsunami scattered them",
+    // NO COUNT IN THE COPY WHILE THE PICTURE IS DRAWN. This card said "Fifteen moai" and the illustration has
+    // thirteen in it; four attempts could not make the model put a given number of anything in a frame. Until
+    // this one is a photograph again, the words do not claim something the picture is asked to corroborate.
+    // The old copy was also simply wrong: it said sunrise is the only hour they are lit from the front, when
+    // the row faces inland and the sun comes up out of the sea behind it.
+    "rapa-nui-tongariki", "Dawn behind the moai", "Easter Island, Chile", "cl", -27.1257, -109.2769,
+    "The sun comes out of the Pacific behind them and the whole row goes black against it.",
+    "sunrise, as the sun clears the sea directly behind the row", "carved between about 1250 and 1500, toppled, and raised again in the 1990s after a tsunami scattered them",
     ["history", "island", "culture", "water"], [10, 11, 12, 1, 2, 3], "premium", 2, 0.94, 0.45,
-    "The statues face inland, toward the people they were raised for, which is why dawn is the hour: the light comes over the Pacific and hits them full on.",
+    "The statues on the largest ahu on the island face inland, toward the people they were raised for — so at dawn the light is behind them and they are cut-outs, not faces. Wait an hour and the sun comes round onto them.",
   ],
   [
     "uyuni-mirror", "The salt flat when it floods", "Salar de Uyuni, Bolivia", "bo", -20.2043, -67.515,
