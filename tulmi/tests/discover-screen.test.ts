@@ -80,6 +80,15 @@ describe("the feed on the Travel bot's own screen", () => {
     expect(out).toContain("bots.travel.place");
   });
 
+  it("draws every card it was given, rather than a sample of them", () => {
+    // This drew `columns * 3` tiles — six on a phone — so the feed showed seven places however many the server
+    // sent. How many there are is the server's decision (query.ts); the grid's job is to draw them.
+    const many = { total: 40, cards: Array.from({ length: 40 }, (_, i) => card({ slug: `place-${i}`, title: `Place ${i}` })) };
+    const out = text(feedBlocks(ctx(), many, taught));
+    // one leads as today's card, the other thirty-nine are tiles — all of them present
+    for (let i = 0; i < 40; i += 1) expect(out).toContain(`place-${i}`);
+  });
+
   it("draws nothing at all when the feed could not be read, so the trip below survives", () => {
     expect(feedBlocks(ctx(), undefined, taught)).toEqual([]);
     expect(feedBlocks(ctx(), { total: 0, cards: [] }, taught)).toEqual([]);
@@ -91,6 +100,53 @@ describe("the feed on the Travel bot's own screen", () => {
     expect(out).toContain("Best season");
     expect(out).toContain("Keep it");
     expect(out).toContain('"kind":"not_for_me"');
+  });
+
+  it("tells somebody what it actually costs them: how long, how they get there, what can stop them", () => {
+    const out = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), {
+      card: card({
+        takes: "Four days underground, six on the trip",
+        getting: "Fly to Dong Hoi, then an hour to Phong Nha",
+        need: "One of roughly a thousand permits a year, with a waiting list over a year",
+      }),
+    }));
+    expect(out).toContain("How long");
+    expect(out).toContain("Four days underground");
+    expect(out).toContain("What you need");
+    expect(out).toContain("thousand permits a year");
+    expect(out).toContain("Fly to Dong Hoi");
+  });
+
+  it("leaves a fact out rather than showing an empty row for it", () => {
+    // A built card has none of these: the bot read pages about a place, and a half-remembered quota is worse
+    // than nothing. The table must simply be shorter, not have blanks in it.
+    const out = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card() }));
+    expect(out).not.toContain("How long");
+    expect(out).not.toContain("What you need");
+    expect(out).toContain("Effort");
+  });
+
+  it("shows the moment, which every card has carried from the start and no screen ever showed", () => {
+    const out = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), {
+      card: card({ moment: "six in the evening, when the wind drops" }),
+    }));
+    expect(out).toContain("six in the evening, when the wind drops");
+  });
+
+  it("counts the season down on the page too, not only on the tile", () => {
+    const closing = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card({ daysLeft: 11 }) }));
+    expect(closing).toContain("11 days left");
+    const far = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card({ daysLeft: 200 }) }));
+    expect(far).not.toContain("days left");
+  });
+
+  it("gives the place its past, and its tags, where it has them", () => {
+    const out = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), {
+      card: card({ dated: "a capital of half a million until 1565", tags: ["desert", "road_trip"] }),
+    }));
+    expect(out).toContain("ITS PAST");
+    expect(out).toContain("half a million until 1565");
+    expect(out).toContain("road trip");
   });
 
   it("shows the picture's credit on the page, so an illustration is never passed off as a photograph", () => {

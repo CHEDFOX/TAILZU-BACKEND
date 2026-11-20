@@ -35,7 +35,7 @@ import {
   sharePeople, type Attachment, sharePhone,
 } from "./bots/sharePhone.js";
 import * as places from "./botsPlaces.js";
-import { feedBlocks, FEED_PATH, TASTE_PATH, type FeedView, type TasteView } from "./discoverFeed.js";
+import { feedBlocks, FEED_LIMIT, FEED_PATH, TASTE_PATH, type FeedView, type TasteView } from "./discoverFeed.js";
 import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
 import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
@@ -838,7 +838,7 @@ export const botsScreens: BotsScreen[] = [
           : Promise.resolve(undefined),
         loadWork(ctx, deps, "travel"),
         // The feed is what the screen opens on, so it is read every time — and its failure takes nothing down.
-        deps.api<FeedView>("GET", `${FEED_PATH}?limit=10`).catch(() => undefined),
+        deps.api<FeedView>("GET", `${FEED_PATH}?limit=${FEED_LIMIT}`).catch(() => undefined),
         deps.api<TasteView>("GET", TASTE_PATH).catch(() => undefined),
       ]);
       return { t, files, x, work, feed, taste };
