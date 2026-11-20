@@ -218,14 +218,25 @@ describe("the six as the first screen, with no way past", () => {
   const required = () => firstLookPage(ctxFor(SCREENS.travel, "phone"), VIEW, { required: true });
   const asText = (s: unknown) => JSON.stringify(s);
 
-  it("shows the images and no words at all", () => {
+  it("asks one short question and says nothing else", () => {
     const out = asText(required());
+    expect(out).toContain("What looks most exciting?");
     expect(out).not.toContain("Most like you first");
     expect(out).not.toContain("Skip for now");
     expect(out).not.toContain("Tap all of them");
-    // and no label on any tile: a label tells somebody what the picture is FOR
+  });
+
+  it("leaves the pictures unlabelled, so a reaction is what gets measured", () => {
+    const out = asText(required());
+    // A label would say what a picture is FOR, and then somebody ranks a phrase about themselves instead.
     expect(out).not.toContain("Grey water, one red hut");
     expect(out).not.toContain("A street at midnight");
+    expect(out).not.toContain("Cold, and nobody about");
+  });
+
+  it("draws them as blocks with corners, not a full-bleed wall", () => {
+    const out = asText(required());
+    expect(out).toContain('"borderRadius":18');
   });
 
   it("still numbers them from its own state, one badge per place", () => {
