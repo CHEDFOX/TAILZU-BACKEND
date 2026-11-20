@@ -182,6 +182,25 @@ describe("the home's day", () => {
     expect(stripOf("2026-12-31", today, []).next).toBe("2027-01-07");
     expect(stripOf("2026-09-17", today, []).prev).toBeNull();
     expect(stripOf("2026-09-24", today, []).prev).toBe("2026-09-17");
+  });
+
+  /**
+   * A STRIP THAT SCROLLS NEEDS MORE THAN A WEEK. Seven days fill a phone's width exactly, so there is nothing to
+   * swipe along; a build that can scroll it sideways asks for several weeks. They run FORWARD from the week shown,
+   * because a scroller opens at its start, and days before it would open the week off screen.
+   */
+  it("carries several weeks when a scrolling strip asks for them, forward from the week shown", async () => {
+    const today = "2026-11-12";
+    const wide = stripOf(today, today, [], 5);
+    expect(wide.days.length).toBe(35);
+    expect(wide.days[0]!.key, "it still starts on the Monday of the week shown").toBe("2026-11-09");
+    expect(wide.days[6]!.key).toBe("2026-11-15");
+    expect(wide.days[34]!.key).toBe("2026-12-13");
+    // The arrows are unchanged: a week back is still a week back, whatever the strip carries.
+    expect([wide.prev, wide.next]).toEqual(["2026-11-05", "2026-11-19"]);
+    // One week is what everybody else gets, and asking for nonsense cannot widen it past the eight weeks allowed.
+    expect(stripOf(today, today, []).days.length).toBe(7);
+    expect(stripOf(today, today, [], 99).days.every((d) => d.key <= "2027-01-13")).toBe(true);
     // The day param: within the reach, else the old week param, else the default.
     expect(dayParam("2027-01-10", undefined, today)).toBe("2027-01-10");
     expect(dayParam("2027-01-12", undefined, today)).toBeNull();

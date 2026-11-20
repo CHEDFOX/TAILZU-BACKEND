@@ -29,6 +29,7 @@ import {
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
 import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { BOT_PEEK_CAPABILITY, type BotPeekProps } from "../../../../shared/types/sdui.js";
+import { SCROLL_X_CAPABILITY } from "../../../../shared/types/sdui.js";
 import {
   ARRIVAL_CAPABILITY, CALENDAR_ADD_CAPABILITY, CALENDAR_READ_CAPABILITY, CONTACT_PICK_CAPABILITY, FOCUS_CAPABILITY,
   HEALTH_CAPABILITY, HEALTH_SLEEP_CAPABILITY, LOCATION_CAPABILITY, MOTION_CAPABILITY, REMINDERS_CAPABILITY,
@@ -350,6 +351,16 @@ export const SCROLL_COMPONENT = "Scroll";
 export const canScroll = (ctx: BotsCtx): boolean => ctx.can.has(SCROLL_COMPONENT);
 /** Its children in a box of their own that scrolls (style: maxHeight, and its look). */
 export const scrollBox = (children: Node[], style: Style = {}): Node => ({ type: SCROLL_COMPONENT, style: { flexDirection: "column", ...style }, children });
+
+/**
+ * SIDEWAYS (ScrollX): a row longer than the screen that the person swipes along — a month of days where seven used to
+ * sit. Its own ability and not merely a style, because a build without it lays the row out DOWN the screen: a phone
+ * puts a Scroll's children in its content container, where a flexDirection on the box never reaches. So ask
+ * `canScrollX` first and keep whatever the screen did before for everybody else.
+ */
+export const canScrollX = (ctx: BotsCtx): boolean => ctx.can.has(SCROLL_X_CAPABILITY);
+export const scrollRow = (children: Node[], style: Style = {}): Node =>
+  ({ type: SCROLL_COMPONENT, props: { horizontal: true }, style: { flexDirection: "row", ...style }, children });
 
 /** The words under a bot's name (botLine's, as plain text). */
 export function botLineText(bot: LiveBot, idle: string): string {

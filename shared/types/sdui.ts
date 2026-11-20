@@ -1225,6 +1225,13 @@ export interface HeadBarProps {
 
 /** Declared by a build that runs uploadFile. */
 export const FILE_UPLOAD_CAPABILITY = "FileUpload";
+/**
+ * NOT A COMPONENT — a `Scroll` with `props.horizontal`, which scrolls sideways: a week of days, a row longer than the
+ * screen. Its own name and not merely a style, because a build without it draws that row DOWN the screen: a phone lays a
+ * Scroll's children out in its content container, so a flexDirection on the box does nothing. A week as a column is worse
+ * than the arrows it replaces, so the server keeps the arrows for a build that does not declare this.
+ */
+export const SCROLL_X_CAPABILITY = "ScrollX";
 /** Declared by a build that runs playAudio and stopAudio. */
 export const AUDIO_PLAY_CAPABILITY = "AudioPlay";
 /** Declared by a build that runs recordVoice. */

@@ -381,7 +381,10 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // The threaded home (PLAN_V2_HOME; planThread.ts): one day as a thread. The query holds only tz, day, week, made (a uuid) and n.
   app.get(`${AREA}/plan/day`, RL, v2(async (user, req, reply) => {
     void reply.header("cache-control", "no-store");
-    return parts.ease.day(user.id, tzQ(req), query(req, "day"), { week: query(req, "week"), made: query(req, "made"), n: query(req, "n") });
+    // `weeks`: how many weeks of days the strip carries. One unless the screen asked for more, which it does for a
+    // phone that can scroll the strip sideways (experience/bots/kit.ts canScrollX).
+    const weeks = Math.max(1, Math.min(8, Math.round(Number(query(req, "weeks")) || 1)));
+    return parts.ease.day(user.id, tzQ(req), query(req, "day"), { week: query(req, "week"), made: query(req, "made"), n: query(req, "n"), weeks });
   }));
   app.get(`${AREA}/plan/week`, RL, v2(async (user, req) => parts.ease.week(user.id, tzQ(req))));
   app.get(`${AREA}/plan/line`, RL, v2(async (user, req) => parts.ease.line(user.id, tzQ(req))));

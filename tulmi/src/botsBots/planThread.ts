@@ -51,7 +51,10 @@ export type ThreadStep =
 /** One day of the week strip: "Mon" and "9", a dot when anything is still open that day, a ring on today. */
 export interface StripDay { key: string; wd: string; n: string; busy: boolean; today: boolean }
 
-/** The week that holds the shown day, Monday to Sunday; `prev` / `next` are null more than 8 weeks from today's week. */
+/**
+ * The week that holds the shown day, Monday to Sunday; `prev` / `next` are null more than 8 weeks from today's week.
+ * `days` runs on past that week when a wider one was asked for (stripOf's `weeks`), for a strip that scrolls.
+ */
 export interface PlanStrip { days: StripDay[]; prev: string | null; next: string | null }
 
 /** What GET .../plan/day answers (PlanEase.day). */
@@ -234,10 +237,15 @@ export function stripRange(today: string): { from: string; to: string } {
 }
 
 /** The week that holds `day`, Monday to Sunday: a dot on a day with anything still open, a ring on today; prev and next a week away. */
-export function stripOf(day: string, today: string, items: readonly DayItem[]): PlanStrip {
+export function stripOf(day: string, today: string, items: readonly DayItem[], weeks = 1): PlanStrip {
   const mon = mondayOf(day);
   const range = stripRange(today);
-  const days = Array.from({ length: 7 }, (_, n) => shiftDay(mon, n)).map((key) => ({
+  // SEVERAL WEEKS FOR A STRIP THAT SCROLLS. Seven days fill the width exactly, so there is nothing to swipe along:
+  // a phone that can scroll sideways (ScrollX) asks for more, and they run FORWARD from the week shown, because the
+  // only place a scroller can be opened at is its start — days before it would open the week off screen. The arrows
+  // stay for the week before, and for the window, which keeps the seven it always had.
+  const span = Math.max(1, Math.min(8, Math.round(weeks))) * 7;
+  const days = Array.from({ length: span }, (_, n) => shiftDay(mon, n)).filter((key) => key <= range.to).map((key) => ({
     key, wd: WEEKDAYS[weekdayOf(key)]!, n: String(Number(key.slice(8))), busy: items.some((it) => it.day === key && !it.done), today: key === today,
   }));
   // An arrow only to a week the strip reaches (a far day Done just landed on has none: the strip's days take the person back).
