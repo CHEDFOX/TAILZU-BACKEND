@@ -507,9 +507,9 @@ function markRow(): Node {
     divider(),
     // The palette has no green and no red, and that is right: a verdict is said with the same marks the rest of the
     // app says state with. `close` gets "waiting" rather than "failed", because it is not a failure.
-    when({ eq: ["$state.mark.mark.verdict", "right"] }, row([statusMark("done", { size: 10, still: true }), text("right", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
-    when({ eq: ["$state.mark.mark.verdict", "close"] }, row([statusMark("waiting", { size: 10, still: true }), text("$state.whyWords", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
-    when({ eq: ["$state.mark.mark.verdict", "wrong"] }, row([statusMark("needs", { size: 10, still: true }), text("$state.whyWords", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
+    when({ eq: ["mark.mark.verdict", "right"] }, row([statusMark("done", { size: 10, still: true }), text("right", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
+    when({ eq: ["mark.mark.verdict", "close"] }, row([statusMark("waiting", { size: 10, still: true }), text("$state.whyWords", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
+    when({ eq: ["mark.mark.verdict", "wrong"] }, row([statusMark("needs", { size: 10, still: true }), text("$state.whyWords", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
     when({ truthy: "mark.learned" }, meta("Learned — you've said it right twice now.", { size: 12 })),
   ], { gap: 8 }));
 }
@@ -609,7 +609,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
    * at once (session.ts), so moving to the next is not a trip to the server — it used to refetch the session and
    * draw ITS first exercise, which is why the counter read "1 of 12" for ever and no set ever ended.
    */
-  const step = (ex: Exercise, i: number): Node => when({ eq: ["$state.i", i] }, col([
+  const step = (ex: Exercise, i: number): Node => when({ eq: ["i", i] }, col([
     row([meta(`${i + 1} of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
     meter(i + 1, exs.length, { color: look(ctx).color, height: 4 }),
     ...exerciseBody(ex, target, lang),
