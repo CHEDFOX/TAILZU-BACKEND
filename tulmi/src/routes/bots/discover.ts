@@ -68,6 +68,9 @@ function cardView(card: Card, now: Date): Record<string, unknown> {
     at: card.at,
     season: seasonWords(card.season),
     daysLeft: left,
+    takes: card.detail.takes ?? null,
+    getting: card.detail.getting ?? null,
+    need: card.detail.need ?? null,
   };
 }
 
@@ -108,7 +111,7 @@ export function registerDiscoverRoutes(
     const q = req.query ?? {};
     const tags = tagsFrom(q.tags);
     const month = intFrom(q.month, 1, 12);
-    const limit = intFrom(q.limit, 1, 40);
+    const limit = intFrom(q.limit, 1, 100);
     const country = typeof q.country === "string" && /^[a-zA-Z]{2}$/.test(q.country) ? q.country.toLowerCase() : undefined;
     const budget = isBudget(q.budget) ? q.budget : undefined;
 

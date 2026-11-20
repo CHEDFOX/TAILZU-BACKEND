@@ -12,6 +12,7 @@
  */
 import type { Advisory, Card } from "./types.js";
 import { seasonFrom, type Budget, type Tag } from "./taxonomy.js";
+import { detailOf } from "./catalog-detail.js";
 import { PHOTOS } from "./photos-catalog.js";
 
 type Row = [
@@ -519,6 +520,7 @@ function cardOf(row: Row): Card {
     // One picture a place, shipped in the image and served at /photos/ (routes/app/staticFiles.ts). The url is
     // root-relative here; the route makes it absolute, so the catalogue stays a data file with no config in it.
     photos: PHOTOS[slug] ? [PHOTOS[slug]!] : [],
+    detail: detailOf(slug),
     origin: "ours",
     sources: [],
     forUserId: null,

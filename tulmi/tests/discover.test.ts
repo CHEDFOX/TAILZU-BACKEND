@@ -346,7 +346,7 @@ describe("the tools, as a bot calls them", () => {
     const out = await runDiscover(d, "user_1", "places_discover", { tags: ["warm"], month: 1 }, (c) => cards.push(c));
     expect(out.ok).toBe(true);
     expect(out.content).toContain("Erg Chebbi");
-    expect(out.content).toMatch(/never a price/);
+    expect(out.content).toMatch(/searched live/);
     expect(cards).toHaveLength(1);
     const card = cards[0] as { kind: string; query: string; results: Array<{ title: string; ours: boolean }> };
     expect(card.kind).toBe("places");

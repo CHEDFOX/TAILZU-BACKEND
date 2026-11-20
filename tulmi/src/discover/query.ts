@@ -20,7 +20,8 @@ import { because, match, type Taste } from "./taste.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
 const DEFAULT_LIMIT = 14;
-const MAX_LIMIT = 40;
+/** The catalogue is the limit. A feed is for scrolling, so the cap exists to stop abuse, not to ration places. */
+const MAX_LIMIT = 100;
 /** Where the wildcard goes, when there is one to put in. */
 const WILDCARD_AT = 2;
 /** How many of one country may sit together before the next is pushed down. */

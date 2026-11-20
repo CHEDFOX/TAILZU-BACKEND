@@ -212,7 +212,7 @@ export async function runDiscover(d: Discover, userId: string, name: string, arg
       head,
       ...chosen.map(lineOf),
       "",
-      "Offer two or three, not the list. Our own words, never a price: flights and stays are searched live.",
+      "Offer two or three, not the list. Our own words; flights and stays are searched live, never quoted from here.",
     ].join("\n"),
     ok: true,
   };
