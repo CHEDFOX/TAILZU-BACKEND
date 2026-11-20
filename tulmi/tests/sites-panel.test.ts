@@ -112,7 +112,14 @@ import type { HeldPage } from "../src/web/browser/types.js";
 const U = "aaaaaaaa-0000-4000-8000-000000000001";
 
 /** A held page, faked: it records what was done to it and can be told what the page looks like. */
-function fakePage(o: { signedIn?: boolean } = {}) {
+/** The page a sign-in card is read off: a phone box, a password box, and the button that sends them. */
+const SIGNIN_ELEMENTS = [
+  { id: "e1", role: "field", label: "Phone number" },
+  { id: "e2", role: "secret", label: "Password" },
+  { id: "e3", role: "button", label: "Continue" },
+];
+
+function fakePage(o: { signedIn?: boolean; elements?: Array<{ id: string; role: string; label?: string }>; roles?: Record<string, string | null> } = {}) {
   const did: string[] = [];
   let send: ((j: string, m: { width: number; height: number }) => void) | null = null;
   const forgot: string[] = [];
@@ -123,10 +130,12 @@ function fakePage(o: { signedIn?: boolean } = {}) {
     async type(t) { did.push(`type ${t}`); },
     async key(k) { did.push(`key ${k}`); },
     async scroll(d) { did.push(`scroll ${d}`); },
+    // What the page says it focused. `roles` is how a test moves the page under the card.
+    async focus(id) { did.push(`focus ${id}`); return o.roles ? (o.roles[id] ?? null) : (o.elements ?? SIGNIN_ELEMENTS).find((e) => e.id === id)?.role ?? null; },
     async look() {
       return o.signedIn
         ? { finalUrl: "https://swiggy.com/account", title: "Your account", elements: [] }
-        : { finalUrl: "https://swiggy.com/login", title: "Sign in", elements: [{ id: "e1", role: "secret" }] };
+        : { finalUrl: "https://swiggy.com/login", title: "Sign in", elements: (o.elements ?? SIGNIN_ELEMENTS) as never };
     },
     async state() { return { cookies: [{ name: "sid", value: "kept" }] }; },
     async forgetHost(h) { forgot.push(h); },
@@ -142,6 +151,67 @@ describe("the panel", () => {
     vi.stubEnv("CONNECTOR_TOKEN_KEY", Buffer.alloc(32, 3).toString("base64"));
     resetConfigForTests();
   };
+
+  describe("the card, and filling it", () => {
+    const open = async (o: Parameters<typeof fakePage>[0] = {}) => {
+      envOn();
+      const f = fakePage(o);
+      const panels = new Panels({ hold: async () => f.page, store: new SiteStore(null) });
+      const v = await panels.open(U, "https://swiggy.com/login");
+      // The card is read when the panel is looked at, which is what the page does a second later.
+      const polled = await panels.poll(v.id, U);
+      return { f, panels, id: v.id, view: polled };
+    };
+
+    it("carries the page's boxes once it has looked at the page", async () => {
+      const { view } = await open();
+      expect(view.card?.fields).toEqual([
+        { id: "e1", kind: "phone", label: "Phone number" },
+        { id: "e2", kind: "secret", label: "Password" },
+      ]);
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    it("puts the keyboard on the box the card named and types there", async () => {
+      const { f, panels, id } = await open();
+      await panels.fill(id, U, "e2", "hunter2");
+      expect(f.did).toContain("focus e2");
+      expect(f.did).toContain("type hunter2");
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    // THE ONE THAT MATTERS. "e2" is the second element of a walk of the page, not a thing with a name on it, so a
+    // page that moved has something else there — and a password typed into a box that shows what it holds is the
+    // worst this can do. The role is checked, the card is dropped, and the page is what is left.
+    it("will not type a password into a box that is not one, and drops the card when the page moved", async () => {
+      const { f, panels, id } = await open({ roles: { e1: "field", e2: "field" } });
+      await expect(panels.fill(id, U, "e2", "hunter2")).rejects.toThrow(/page changed/i);
+      expect(f.did).not.toContain("type hunter2");
+      // The card it was holding is thrown away there and then. It is not gone for good: the next look reads the
+      // page again, so a card comes back as soon as the page has one to give — wrong for a moment, never wrong twice.
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    it("will not type an ordinary answer into a password box either", async () => {
+      const { f, panels, id } = await open({ roles: { e1: "secret", e2: "secret" } });
+      await expect(panels.fill(id, U, "e1", "9876543210")).rejects.toThrow(/page changed/i);
+      expect(f.did).not.toContain("type 9876543210");
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    it("fills no box the card did not offer", async () => {
+      const { f, panels, id } = await open();
+      await expect(panels.fill(id, U, "e3", "x")).rejects.toThrow(/isn't on this page/i);
+      expect(f.did).not.toContain("focus e3");
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    it("has no card for a page that is not a sign-in, and the panel is then the page", async () => {
+      const { view } = await open({ elements: [{ id: "e1", role: "button", label: "Order now" }] });
+      expect(view.card).toBeUndefined();
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+  });
 
   it("opens only on a site the server allows", async () => {
     envOn();

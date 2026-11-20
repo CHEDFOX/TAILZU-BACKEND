@@ -91,9 +91,15 @@ and was not.
 The whole of the above is the server's half, and it is done: the protocol, the rules, the reader, the event,
 and `tests/agent-signin.test.ts`.
 
-What is not built is the drawing of it, in the desktop app and in whatever runs a browser later. Until a client
-draws cards, every planner that writes `FIELD` lines still produces a correct plain handover, which is the
-behaviour that shipped — so this can go out ahead of them.
+The desktop draws it (17 Nov), and so does the sign-in panel of a person's own browser — `src/sites/card.ts`
+reads the boxes off the page and `panelHost.ts` draws them, with the page still above. That card is not the
+planner's: a panel has no run and no model in its path, so it reads the roles the page reader already assigned
+(`secret` is a password box) and names them from their own labels. Same shape, same kinds, no model.
+
+The rule that matters is the same in both: **a card is only ever an improvement on the page.** `cardFor` returns
+null for anything that does not plainly look like a sign-in, and the panel then draws the page, which always
+works. Filling checks the page has not moved first — the ids are positions in a walk, so a page that changed has
+something else under the same name, and a secret goes into a password box or nowhere.
 
 ## The session behind it
 
