@@ -855,7 +855,7 @@ export const botsScreens: BotsScreen[] = [
       // past it — but it stands in for this screen only while all six are really there to show, so a catalogue
       // with no images can never lock somebody out of their own trip.
       const fresh = !!d?.taste && d.taste.signals === 0 && (d.look?.images.length ?? 0) === 6;
-      if (fresh) return firstLookPage(c, d!.look, { required: true });
+      if (fresh) return firstLookPage(c, d!.look);
       return isDesk(c) ? travelDesk(c, d ?? {}) : travelPhone(c, d ?? {});
     },
   }),

@@ -9,10 +9,9 @@
  * exists: a trip is what somebody does once a month, and this is what they do while waiting.
  *
  * ORDER OF THE BLOCKS, and why:
- *   1. the six images, but only for somebody with no profile yet — and as an invitation, never a wall
- *   2. a search field, because "I want to look up one place" is the other half of discovery
- *   3. today's one place, large, with its season window when it has one
- *   4. the rest as a grid, each with its "because you…" where the profile can say it
+ *   1. a search field, because "I want to look up one place" is the other half of discovery
+ *   2. today's one place, large, with its season window when it has one
+ *   3. the rest as a grid, each with its "because you…" where the profile can say it
  *
  * EVERY TAP IS REPORTED. Opening a card sends `open` and then navigates, in that order, so the profile hears it
  * even if the person leaves at once. The viewport's own `shown` and `dwell` are the app's to send (the server
@@ -116,17 +115,6 @@ function feedTile(ctx: BotsCtx, card: FeedCard): Node {
   ], { gap: 5, minWidth: 0 }, openCard(card.slug));
 }
 
-/** The invitation to the six images. An invitation, not a wall: a skipper still gets the editorial order. */
-function firstLookInvite(): Node {
-  return col([
-    text("Six pictures, fifteen seconds", { size: 15, weight: 600, lineHeight: 19 }),
-    text("Put them in order and this feed becomes yours instead of everybody's.", { size: 12.5, lineHeight: 17, color: C.grey70 }),
-    row([
-      primaryButton("Show me", { kind: "navigate", screenId: SCREENS.travelFirstLook }, { size: "md" }),
-    ], { gap: 8 }),
-  ], { gap: 9, padding: 14, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line });
-}
-
 /** Look up one place by name: the other half of discovery, and the way into the build pipeline. */
 function searchRow(): Node {
   const go = ifFilled(
@@ -153,8 +141,10 @@ export function feedBlocks(ctx: BotsCtx, feed: FeedView | undefined, taste: Tast
   const fresh = !taste || taste.signals === 0;
   const columns = ctx.client === "desktop" ? 3 : 2;
 
+  // No invitation to the six here: a person with no profile never reaches this screen, because bots.travel
+  // shows them the six instead (screens/firstLook.ts). The only way one could have appeared is if the six
+  // failed to load — and then the invitation would open the screen that fetches the same six.
   return [
-    ...(fresh ? [firstLookInvite()] : []),
     searchRow(),
     ...(first ? [todayCard(ctx, first)] : []),
     ...(rest.length
