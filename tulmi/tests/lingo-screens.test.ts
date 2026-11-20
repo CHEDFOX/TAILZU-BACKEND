@@ -299,13 +299,60 @@ describe("a course with nothing in it", () => {
    * "nothing due" they would think they were finished; told "nothing to learn yet" they would go and talk to it for
    * no reason. Both were wrong for the ten seconds that matter most, which are somebody's first ten.
    */
+  const waiting: SetData = { exercises: [], progress: bare, mastery: course().mastery, building: true };
+
   it("says the first lesson is being got ready, rather than that there is nothing", () => {
-    const s = json(setScreen(ctx(), "es", { exercises: [], progress: bare, mastery: course().mastery, building: true }));
+    const s = json(setScreen(livelyCtx(), "es", waiting));
     expect(s).toContain("Getting your first lesson ready");
-    expect(s).toContain("Check again");
-    expect(s).toContain('"refresh"');
     expect(s).not.toContain("Nothing to learn yet");
     expect(s).not.toContain("Nothing due");
+  });
+
+  /**
+   * NOTHING TO PRESS AND NOTHING TO READ. A button that only means "ask again" makes somebody who is already
+   * waiting do the waiting's work, and our model call is ours to carry, not theirs to read about.
+   */
+  it("gives them nothing to press and no explanation to read", () => {
+    const s = json(setScreen(livelyCtx(), "es", waiting));
+    expect(s).not.toContain("Check again");
+    expect(s).not.toContain('"refresh"');
+    expect(s, "no talk of pairs of languages, or of how long a model takes").not.toContain("pair of languages");
+    expect(s).not.toContain("Talk to Lingo");
+  });
+
+  /** Lingo mutters over it — its own idling, and exactly what is happening — until the unit lands. */
+  it("has Lingo working over it on a loop, not a still pose", () => {
+    const bot = buddies(setScreen(livelyCtx(), "es", waiting))[0];
+    expect(bot, "the waiting screen is the bot, not an empty state").toBeTruthy();
+    expect(bot).toMatchObject({ state: "working" });
+    expect(JSON.stringify(bot)).toContain("l.mutter");
+    expect(JSON.stringify(bot)).toContain("loop");
+  });
+
+  /** A build that cannot draw him still says what is happening rather than drawing nothing. */
+  it("still says it on a build with no living bot", () => {
+    const s = json(setScreen(ctx(), "es", waiting));
+    expect(s).toContain("Getting your first lesson ready");
+    expect(s).not.toContain("Check again");
+  });
+
+  /**
+   * AND IT ENDS BY ITSELF. The screen with no button on it only works because it is listening: the server says when
+   * the unit has settled (src/live/topics.ts) and the open screen reloads into the first exercise. A set in progress
+   * must NOT listen — a live event mid-exercise would pull the question out from under somebody — so the topic is
+   * named while it waits and at no other time.
+   */
+  const setDef = LINGO_SCREENS.find((sc) => sc.id === SCREENS.lingoSet)!;
+  const built = (data: SetData) => setDef.build(ctxFor(SCREENS.lingoSet, "phone", live, { params: { target: "es" } }), data);
+
+  it("listens for the unit to land, so it needs nothing pressed", () => {
+    expect(built(waiting).liveTopics).toContain("lingo:es");
+  });
+
+  it("stops listening the moment there is a set to do", () => {
+    const going: SetData = { exercises: [ex("choose", { options: ["coffee", "dog"], correct: 0 })], progress: course().progress, mastery: course().mastery };
+    expect(built(going).liveTopics ?? []).not.toContain("lingo:es");
+    expect(built({ ...waiting, building: false }).liveTopics ?? []).not.toContain("lingo:es");
   });
 });
 

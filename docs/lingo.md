@@ -324,6 +324,16 @@ to be true at once for that to work:
 - **A third empty on the set screen.** "Nothing due" means they are holding everything they have met; "nothing to
   learn yet" means the course is empty and talking is the way out; **"Getting your first lesson ready"** is the only
   one that ends by itself, and it is the one that was missing.
+- **And it ends by itself.** That screen has no button on it and nothing to read. There is nothing for the person to
+  decide, and a button meaning "ask again" would make somebody who is already waiting do the waiting's work; an
+  explanation of our model call is ours to carry, not theirs to read. Lingo mutters over it instead (`l.mutter`, its
+  own idling), the page listens on `lingo:<tag>` (`src/live/topics.ts`), and the server publishes that topic when the
+  unit settles — so the open screen reloads itself and the first exercise appears where he stands.
+
+  It is published **whichever way the unit went**. On one that landed, the reload is the lesson; on one that could
+  not be written, the reload is a fresh attempt and then the honest empty. A screen with nothing to press must never
+  be left waiting on a message that is not coming. The topic is named while it waits and at no other moment: a live
+  event mid-set would pull the question out from under somebody.
 
 Until this, none of the path was reachable on a new course. `POST /v1/lingo/session` was the only thing that ever
 walked it, and the territory card sent a course with no words to the chat instead — so the first unit was never

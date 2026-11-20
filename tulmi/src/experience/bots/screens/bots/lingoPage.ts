@@ -29,6 +29,7 @@ import { screen, type BotsScreen } from "../../registry.js";
 import { field, inputBox, isDesk, sendField } from "./parts.js";
 import { searchField, searchLine } from "../keybotParts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
+import { lingoTopic } from "../../../../live/topics.js";
 import type { Exercise } from "../../../../lingo/session.js";
 import type { Gesture, Mastery, Performance } from "../../../../lingo/set.js";
 import type { Learner } from "../../../../lingo/types.js";
@@ -501,22 +502,40 @@ function markRow(): Node {
   ], { gap: 8 }));
 }
 
+/**
+ * STILL BEING WRITTEN. A third empty, and the only one that ENDS BY ITSELF: they started the course a moment ago and
+ * the unit for their pair is being made (a model call, once per pair, ever).
+ *
+ * So it has no button and nothing to read. There is nothing for them to decide, and a button that only means "ask
+ * again" is the app putting its own not-knowing in front of the person — it makes somebody who is already waiting do
+ * the waiting's work. An explanation of our model call is ours to carry too, not theirs to read.
+ *
+ * What there is instead is Lingo, muttering over it: `l.mutter` is its own idling, conjugations under its breath
+ * with letter tiles drifting up, and it is exactly what is happening. The screen listens on the course's topic
+ * (src/live/topics.ts) and the server says when the unit has settled, so this swaps itself for the first exercise
+ * where it stands — the reload is quiet, and the exercise simply appears under him.
+ *
+ * A build that cannot draw him still says what is happening rather than nothing.
+ */
+function building(ctx: BotsCtx): Node[] {
+  if (!canBuddy(ctx)) return [emptyState({ pose: "think", title: "Getting your first lesson ready" })];
+  return [
+    col([
+      botBuddy({
+        kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
+        height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
+        state: "working", lookTo: "down", label: "Lingo",
+        ...botMoment(ctx, "l.mutter", "loop"),
+      }),
+      text("Getting your first lesson ready", { size: 16, weight: 600, align: "center" }),
+    ], { gap: 12, padding: 24, style: { alignItems: "center" } }),
+  ];
+}
+
 export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefined): Node[] {
   const exs = data?.exercises ?? [];
   if (!exs.length) {
-    // STILL BEING WRITTEN. A third empty, and the only one that ends by itself: they started the course a moment
-    // ago and the unit for their pair is being made (a model call, once per pair ever). So this says what is
-    // happening rather than that there is nothing, and the way on is to ask again in a moment.
-    if (data?.building) {
-      return [
-        emptyState({
-          pose: "think",
-          title: "Getting your first lesson ready",
-          body: "Lingo is putting together the first words for you. It takes a few seconds the very first time anyone learns this pair of languages — after that it is instant.",
-          action: { label: "Check again", onPress: { kind: "refresh" } },
-        }),
-      ];
-    }
+    if (data?.building) return building(ctx);
     // THREE DIFFERENT EMPTIES, and telling somebody the wrong one is how this screen read as broken. "Nothing due"
     // means they have met things and are holding them. A course with NOTHING IN IT has not earned that sentence:
     // they picked a language a minute ago and are being told they are up to date on a language they cannot speak.
@@ -597,6 +616,11 @@ export const LINGO_SCREENS: BotsScreen[] = [
       body: setScreen(ctx, String(ctx.params?.target ?? ""), data),
       // Mid-lesson is exactly when somebody wants a word, and Continue puts them back on this set.
       footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingoSet)],
+      // ONLY WHILE IT IS WAITING. The screen hears that the unit has settled and reloads into the first exercise,
+      // which is what lets the waiting screen have no button on it. Listening at any other time would mean a set
+      // could be pulled out from under somebody mid-exercise, so the topic is named on no other screen and at no
+      // other moment.
+      ...(data?.building ? { live: [lingoTopic(String(ctx.params?.target ?? ""))] } : {}),
       state: { said: "", mark: null, say: "" },
     }),
   }),

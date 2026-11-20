@@ -33,6 +33,8 @@ import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sent
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
 import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type LingoItem, type Memory, type Verdict, type Why } from "../../lingo/types.js";
 import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
+import { live } from "../../live/bus.js";
+import { lingoTopic } from "../../live/topics.js";
 
 export interface LingoRouteDeps {
   rateLimit: unknown;
@@ -174,7 +176,14 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     // Only for a course that is NEW: changing the level or the voice of one somebody is already on must not spend a
     // call. The person's own items are left to walk() so that one place files them; this only warms the shared bank.
     if (!kept && deps.lessons !== null) {
-      void unitFor(lessons(), modelCtx(user.id), target, from, learner.unit || FIRST_UNIT).catch(() => null);
+      void unitFor(lessons(), modelCtx(user.id), target, from, learner.unit || FIRST_UNIT)
+        // WHICHEVER WAY IT WENT, the screen waiting on it is told, and asks again (src/live/topics.ts). On a unit
+        // that landed it reloads into the first exercise. On one that could not be written it reloads into a fresh
+        // attempt and, if that fails too, into the honest empty — which is the end a person can act on, and the
+        // reason this is not only published on success: a screen with no button must never be left waiting on a
+        // message that is not coming.
+        .catch(() => null)
+        .then(() => live.publish([user.id], lingoTopic(target)));
     }
     return reply.send({ course: saved });
   });

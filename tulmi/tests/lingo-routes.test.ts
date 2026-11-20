@@ -30,6 +30,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 const { MemoryLingoStore } = await import("../src/lingo/store.js");
 const { MemorySentenceBank } = await import("../src/lingo/sentences.js");
 const { MemoryLessonBank } = await import("../src/lingo/lessons.js");
+const { live } = await import("../src/live/bus.js");
 const { registerLingoRoutes } = await import("../src/routes/bots/lingo.js");
 const { refOf } = await import("../src/lingo/session.js");
 const { EXERCISE_KINDS } = await import("../src/lingo/types.js");
@@ -445,7 +446,8 @@ describe("the first lesson", () => {
     const call = async (input: { messages: Array<{ content: unknown }> }) => {
       calls.push(String(input.messages[input.messages.length - 1]?.content ?? ""));
       await gate;
-      return { json: reply, paise: 1, model: "stub" };
+      // `null` is the model that could not do it: no json, which is what askJson reads as down.
+      return reply === null ? { paise: 0, model: "stub" } : { json: reply, paise: 1, model: "stub" };
     };
     return { call: call as never, calls, release: () => open() };
   }
@@ -489,6 +491,26 @@ describe("the first lesson", () => {
     expect(mine.length).toBe(8);
     expect(mine.every((i) => i.unit === "hello"), "the first unit of the path, not loose sentences").toBe(true);
     expect(m.calls.length, "one call for the pair, ever").toBe(1);
+  });
+
+  /**
+   * THE SCREEN WITH NO BUTTON ON IT only works because it is told. Whichever way the unit went, the person's
+   * course topic is published, so the waiting screen reloads: into the first exercise if it landed, into a fresh
+   * attempt and then the honest empty if it did not. A screen with nothing to press must never be left waiting on
+   * a message that is not coming, so this is NOT only published on success.
+   */
+  it("tells the waiting screen when the unit has settled, whichever way it went", async () => {
+    for (const [what, reply] of [["landed", { items: [{ text: "hola", meaning: "hello", kind: "phrase" }] }], ["failed", null]] as const) {
+      const heard: string[] = [];
+      const stop = live.subscribe("u1", (e) => heard.push(e.topic));
+      const m = heldModel(reply);
+      const app = await withPath(new MemoryLingoStore(), m);
+      await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+      expect(heard, `${what}: nothing is said while it is still in the air`).toEqual([]);
+      m.release();
+      await vi.waitFor(() => expect(heard, what).toContain("lingo:es"));
+      stop();
+    }
   });
 
   it("does not spend a call again on a course somebody is already on", async () => {
