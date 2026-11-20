@@ -17,8 +17,8 @@
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import type { Activity, ActivityBot, ActivitySchedule } from "../../../../botsBots/activities.js";
 import {
-  type BotsCtx, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, emptyState, botAvatar, canScrollX,
-  grid, scrollRow, statusMark, roundButton, labelled, title as pageTitle, canHead, liveMark, tailzuMark, RADIUS, botLook,
+  type BotsCtx, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, emptyState, botAvatar,
+  statusMark, roundButton, labelled, title as pageTitle, canHead, liveMark, tailzuMark, RADIUS, botLook,
 } from "../../kit.js";
 import { shapes } from "../../glyphs.js";
 import { refresh } from "./parts.js";
@@ -144,33 +144,8 @@ export function activitiesPage(ctx: BotsCtx, d: ActivitiesData | undefined): Ret
     // THE "+" IS THE BOTS: the roster, as the place you go to start something.
     footer: [row([grow(), labelled(box([text("+", { size: 26, weight: 600, lineHeight: 30, color: C.paper })], {
       width: 56, height: 56, borderRadius: 28, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0,
-    }, open(SCREENS.home)), "Start something: your bots")], {})],
+    }, open(SCREENS.start)), "Start something: your bots")], {})],
     gap: 20,
   });
 }
 
-// ===================================================================== the "+" : the bots, grouped
-
-/**
- * HOW THE BOTS ARE GROUPED in the picker. A resident menu should be ordered by state; a picker you open to EXPLORE is
- * the one case where naming the kinds helps, because you are browsing rather than returning.
- *
- * Each group's line is what the week-one question needs answering with: not "here are ten bots", but "describe it and
- * they build it".
- */
-export const BOT_GROUPS: ReadonlyArray<{ title: string; line: string; slugs: readonly string[] }> = [
-  { title: "Your day", line: "What's on, and what's ahead", slugs: ["plan", "oracle"] },
-  { title: "Said and written", line: "Your meetings, your mail, and what was agreed", slugs: ["meet", "mail", "notes"] },
-  { title: "Making", line: "Describe it, and they build it", slugs: ["code", "cinema"] },
-  { title: "Out in the world", line: "Where you are going, and how you'll speak there", slugs: ["travel", "lingo"] },
-];
-
-/**
- * A group's bots: TWO OR FEWER sit in a row of two; MORE THAN TWO scroll sideways. A build that cannot scroll
- * sideways gets the row of two either way, which is the small shape anyway — so the fallback needed no design of
- * its own (kit canScrollX; docs/renderer.md section 4).
- */
-export function groupRow(ctx: BotsCtx, tiles: Node[]): Node {
-  if (tiles.length > 2 && canScrollX(ctx)) return scrollRow(tiles.map((t) => box([t], { width: 150, flexShrink: 0 })), { gap: 10 });
-  return grid(tiles, 2, 10);
-}
