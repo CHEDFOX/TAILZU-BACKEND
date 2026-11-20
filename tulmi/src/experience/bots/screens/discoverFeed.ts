@@ -26,6 +26,11 @@ import { screen, type BotsScreen } from "../registry.js";
 import { clearState, field, ifFilled, inputBox, refresh, toast } from "./bots/parts.js";
 
 export const FEED_PATH = "/v1/discover/feed";
+/**
+ * How many places the screen asks for. The whole catalogue, in effect: it is a feed to scroll, and a person who
+ * reaches the end of it has seen everything we think is worth the journey — which is a better end than a wall.
+ */
+export const FEED_LIMIT = 80;
 export const TASTE_PATH = "/v1/discover/taste";
 export const BUILD_PATH = "/v1/discover/build";
 export const SIGNALS_PATH = "/v1/discover/signals";
@@ -34,7 +39,7 @@ const PLACE_PATH = "/v1/discover/place";
 const enc = encodeURIComponent;
 const SEA = PALETTE_HEX.sea!;
 
-export interface FeedPhoto { url: string; alt: string; credit: string | null }
+export interface FeedPhoto { url: string; tile?: string; alt: string; credit: string | null }
 
 export interface FeedCard {
   slug: string;
@@ -50,6 +55,10 @@ export interface FeedCard {
   photos: FeedPhoto[];
   origin: "ours" | "built";
   sources?: Array<{ host: string; url: string; readAt: string }>;
+  /** How long it costs, how it is reached, and what can stop it (discover/catalog-detail.ts). */
+  takes?: string | null;
+  getting?: string | null;
+  need?: string | null;
   /** Said in words by the server (taxonomy seasonWords). */
   season?: string | null;
   /** Honest urgency, when there is any. */
@@ -68,11 +77,16 @@ const openCard = (slug: string): ActionRef =>
     { kind: "navigate", screenId: SCREENS.travelPlace, params: { slug } },
   );
 
-/** The one photograph a tile gets, or the bot's own colour where the catalogue has none yet. */
+/**
+ * The one picture a tile gets, or the bot's own colour where the catalogue has none yet.
+ *
+ * The TILE file, not the full one: the feed draws the whole catalogue now, and sixty 1280px files is a download
+ * rather than a feed. Falls back to the full size for a built card, which has no tile of its own.
+ */
 function tileImage(card: FeedCard, w: number, h: number): Node {
   const photo = card.photos[0];
   return photo
-    ? picture(photo.url, w, h, { radius: 18, background: C.surface, fit: "cover", label: photo.alt })
+    ? picture(photo.tile ?? photo.url, w, h, { radius: 18, background: C.surface, fit: "cover", label: photo.alt })
     : box([icon("pin", { size: 18, color: C.idle })], {
         width: "100%", height: h, borderRadius: 18, backgroundColor: C.surface, alignItems: "center", justifyContent: "center",
       });
@@ -142,7 +156,7 @@ export function feedBlocks(ctx: BotsCtx, feed: FeedView | undefined, taste: Tast
   const columns = ctx.client === "desktop" ? 3 : 2;
 
   // No invitation to the six here: a person with no profile never reaches this screen, because bots.travel
-  // shows them the six instead (screens/firstLook.ts). The only way one could have appeared is if the six
+  // has no onboarding at all: the feed is the first screen. Nothing invites anybody to fill anything in
   // failed to load — and then the invitation would open the screen that fetches the same six.
   return [
     searchRow(),
@@ -154,7 +168,10 @@ export function feedBlocks(ctx: BotsCtx, feed: FeedView | undefined, taste: Tast
             grow(),
             ...(fresh ? [] : [meta(`${feed.total} places`, { size: 11.5 })]),
           ], { gap: 8 }),
-          grid(rest.slice(0, columns * 3).map((card) => feedTile(ctx, card)), columns, 12),
+          // EVERY CARD WE WERE GIVEN, not a sample of them. This used to draw columns * 3 — six tiles on a
+          // phone — so the feed showed seven places out of sixty whatever the server sent. Scrolling is the
+          // whole point of the screen; the server decides how many there are (query.ts), not the grid.
+          grid(rest.map((card) => feedTile(ctx, card)), columns, 12),
         ], { gap: 10 })]
       : []),
   ];
@@ -175,10 +192,20 @@ export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType
 
   const w = ctx.client === "desktop" ? 560 : 390;
   const photo = card.photos[0];
+
+  // Everything a person needs to decide, in the order they need it: when, how long, how they get there, what
+  // could stop them, how hard it is, what it costs. The season carries its own countdown when the window is
+  // closing, because that is the one fact that makes this week different from next.
+  const season = card.season
+    ? card.daysLeft && card.daysLeft <= 60 ? `${card.season} · ${card.daysLeft} days left` : card.season
+    : null;
   const facts: Node[] = [
-    ...(card.season ? [factRow("Best season", card.season)] : []),
+    ...(season ? [factRow("Best season", season)] : []),
+    ...(card.takes ? [factRow("How long", card.takes)] : []),
+    ...(card.getting ? [factRow("Getting there", card.getting)] : []),
+    ...(card.need ? [factRow("What you need", card.need)] : []),
+    factRow("Effort", `${card.effort} of 5`),
     factRow("Budget", card.budget),
-    factRow("Getting there", `${card.effort} of 5`),
   ];
 
   const keep = call("POST", SIGNALS_PATH, { signals: [{ kind: "keep", slug: card.slug }] }, {
@@ -200,20 +227,44 @@ export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType
       photo
         ? picture(photo.url, w, 240, { radius: 0, background: C.surface, fit: "cover", label: photo.alt })
         : box([icon("pin", { size: 22, color: C.idle })], { width: "100%", height: 200, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
+      // THE CREDIT IS SHOWN, NOT JUST STORED. Half these pictures are graded photographs somebody else took and
+      // half are illustrations made for this catalogue, and a card that says "this is Deadvlei" has to say which
+      // of the two the reader is looking at. A credit nobody ever sees is not a credit.
+      ...(photo?.credit ? [meta(photo.credit, { size: 11 })] : []),
       col([
         meta(card.where.toUpperCase(), { size: 11, tracking: 0.9 }),
         title(card.title),
         text(card.hook, { size: 15, lineHeight: 21, color: C.grey70 }),
       ], { gap: 7 }),
+      // THE MOMENT, which was stored on every card from the beginning and shown on none of them. It is the one
+      // line that says why this is a thing to do rather than a place to be near, so it leads the body.
+      ...(card.moment
+        ? [row([
+            box([], { width: 3, alignSelf: "stretch", borderRadius: 2, backgroundColor: SEA }),
+            text(`Go ${card.moment}.`, { size: 15, lineHeight: 21, weight: 500 }),
+          ], { gap: 11, alignItems: "flex-start" })]
+        : []),
       ...(card.story ? [text(card.story, { size: 14, lineHeight: 21, color: C.grey70 })] : []),
       col(facts, { gap: 0, borderWidth: 1, borderColor: C.line, borderRadius: RADIUS.list, overflow: "hidden" }),
+      // Its past, where the pull of the place IS the past. Null on somewhere whose pull is the weather.
+      ...(card.dated
+        ? [col([
+            meta("ITS PAST", { size: 11, tracking: 0.8 }),
+            text(card.dated.charAt(0).toUpperCase() + card.dated.slice(1) + ".", { size: 14, lineHeight: 20, color: C.grey70 }),
+          ], { gap: 5 })]
+        : []),
+      ...(card.tags.length
+        ? [row(card.tags.map((t) => box([text(t.replace(/_/g, " "), { size: 12, color: C.meta })], {
+            paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.chip, backgroundColor: C.surface,
+          })), { gap: 6, flexWrap: "wrap" })]
+        : []),
       ...(card.origin === "built" && card.sources?.length
         ? [col([
             meta("WHERE THIS CAME FROM", { size: 11, tracking: 0.8 }),
             ...card.sources.map((s) => meta(`${s.host} · read ${s.readAt}`, { size: 11.5 })),
             meta("Written by the bot from those, not by us.", { size: 11 }),
           ], { gap: 5 })]
-        : [row([icon("pin", { size: 13, color: SEA }), meta("Ours: our own words, never a price.", { size: 11.5 })], { gap: 6 })]),
+        : [row([icon("pin", { size: 13, color: SEA }), meta("Ours: our own words. Flights and stays are searched live, never quoted here.", { size: 11.5 })], { gap: 6 })]),
     ],
     footer: [
       row([

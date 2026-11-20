@@ -53,7 +53,7 @@ const SLOTS = {
   budget: "budget",
   effort: 2,
   rarity: 0.4,
-  wow: 0.8,
+  wow: 0.92,
 };
 
 /** A model that answers with whatever it is told to, in the shape the gateway gives back. */

@@ -10,16 +10,23 @@
  * Nothing here names a person. A built card belongs to the person who asked for it until enough people ask for the
  * same place, and then it is written by hand and becomes everyone's.
  */
+import type { Detail } from "./catalog-detail.js";
 import type { Budget, SeasonMask, Tag } from "./taxonomy.js";
 
 export interface LatLon { lat: number; lon: number }
 
-/** One photograph. `credit` is required on anything we did not shoot, and is shown wherever the picture is. */
+/**
+ * One picture. `credit` says what KIND it is and is shown wherever the picture is, because every one of these
+ * is an illustration rather than a photograph of the place (photos-catalog.ts) and a card must say so.
+ */
 export interface Photo {
+  /** 1280px wide: the one place somebody opened. */
   url: string;
+  /** 520px wide: the feed, which shows the whole catalogue at about 160pt a tile. */
+  tile?: string;
   /** What it shows, for a screen reader. */
   alt: string;
-  /** "Wikimedia Commons · CC BY-SA · <photographer>", or null for ours. */
+  /** "Illustration · made for this catalogue, not a photograph of the place". */
   credit: string | null;
   width?: number;
   height?: number;
@@ -35,6 +42,13 @@ export interface Source {
 }
 
 export type Origin = "ours" | "built";
+
+/**
+ * A government travel warning standing over the place. Written on the card rather than applied by hand, so the
+ * card survives the advisory changing, and so the bar (bar.ts) can keep it out of the feed while the warning
+ * stands. "do_not_travel" is the top level of warning: US Level 4, or its equivalent elsewhere.
+ */
+export type Advisory = "do_not_travel";
 
 /**
  * A place worth keeping. The title is the ACT, not the place name ("The silence of Erg Chebbi"), because the act is
@@ -75,8 +89,18 @@ export interface Card {
   origin: Origin;
   /** Empty for "ours". At least two for "built", or the card is refused. */
   sources: Source[];
+  /**
+   * How long it takes, how you reach it, and what can stop you (catalog-detail.ts). Empty on a built card: the
+   * bot reads pages about a place, and a permit quota it half-remembers is worse than saying nothing.
+   */
+  detail: Detail;
   /** Whose feed it is in. Null for a card everybody gets. */
   forUserId: string | null;
+  /**
+   * A standing government warning over this place, or null. A card with one is written and kept, and never shown:
+   * a feed that says "go here, it is extraordinary" about a Do Not Travel zone is a liability, not a recommendation.
+   */
+  advisory: Advisory | null;
 }
 
 /** What the feed was asked for. Everything is optional: with nothing set it is "show me something". */

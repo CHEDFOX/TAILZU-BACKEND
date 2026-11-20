@@ -157,6 +157,11 @@ export function parseBuilt(raw: unknown, at: Resolved, forUserId: string, agains
     origin: "built",
     sources,
     forUserId,
+    // The builder reads pages about a place; it has no way to know what advisory stands over it. The country-level
+    // list in bar.ts is what protects a built card, which is the whole reason that list exists.
+    advisory: null,
+    // Likewise: a quota or a permit the model half-remembers is worse than an empty row on the screen.
+    detail: {},
   };
 
   const verdict = judge(card, against);

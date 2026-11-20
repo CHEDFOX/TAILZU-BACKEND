@@ -25,7 +25,6 @@ const {
   transferWeight, tagDilution, exposureNormalised, decayFactor, HALF_LIFE_DAYS,
 } = await import("../src/discover/taste.js");
 const { weightOf, rankWeight, dwellWeight, DWELL_MIN_MS, DWELL_FULL_MS } = await import("../src/discover/signals.js");
-const { FIRST_LOOK, foldRanking, checkRanking } = await import("../src/discover/onboarding.js");
 const { seasonWords: words, daysLeftInSeason: left } = await import("../src/discover/taxonomy.js");
 
 const memory = () => store({
@@ -40,6 +39,8 @@ class ISODate {
   constructor(daysOn: number) { this.iso = new Date(Date.parse(T0) + daysOn * DAY).toISOString(); }
 }
 
+// rankWeight outlives the onboarding screen it was written for: the "ranked" signal still carries a position in
+// a list, and the feed's own ordering is the obvious next thing to fold through it.
 describe("where something sits in an order", () => {
   it("is symmetric: first as strong as a keep, last against, middle near nothing", () => {
     expect(rankWeight(1, 6)).toBeCloseTo(2.5, 5);
@@ -56,54 +57,6 @@ describe("where something sits in an order", () => {
 
   it("is zero when there is nothing to compare against", () => {
     expect(rankWeight(1, 1)).toBe(0);
-  });
-});
-
-describe("the six images", () => {
-  it("are six, and every one is evidence for tags we know", () => {
-    expect(FIRST_LOOK.images).toHaveLength(6);
-    for (const image of FIRST_LOOK.images) {
-      expect(image.tags.length).toBeGreaterThanOrEqual(3);
-      expect(image.label.length).toBeGreaterThan(3);
-    }
-  });
-
-  it("pull against each other rather than all being pretty: the poles are genuinely opposed", () => {
-    const tagsOf = (id: string) => FIRST_LOOK.images.find((i) => i.id === id)!.tags as string[];
-    expect(tagsOf("fjord")).toContain("cold");
-    expect(tagsOf("lagoon")).toContain("warm");
-    expect(tagsOf("night")).toContain("social");
-    expect(tagsOf("dunes")).toContain("solitude");
-    // cold against warm, solitude against social — the transfer table agrees they are opposites.
-    expect(transferWeight("cold", "warm")).toBeLessThan(0);
-    expect(transferWeight("solitude", "social")).toBeLessThan(0);
-  });
-
-  it("borrow their photographs from cards we have written", () => {
-    const slugs = new Set(CURATED.map((c) => c.slug));
-    for (const image of FIRST_LOOK.images) {
-      if (image.from) expect({ id: image.id, known: slugs.has(image.from) }).toEqual({ id: image.id, known: true });
-    }
-  });
-
-  it("shapes a profile from one pass: top tags up, bottom tags down", () => {
-    const order = ["fjord", "dunes", "ridge", "carved", "lagoon", "night"];
-    const out = foldRanking(emptyTaste(at()), order, at());
-    expect(out.folded).toBe(6);
-
-    expect(scoreOf(out.taste, "cold")).toBeGreaterThan(0);
-    expect(scoreOf(out.taste, "solitude")).toBeGreaterThan(0);
-    expect(scoreOf(out.taste, "nightlife")).toBeLessThan(0);
-    expect(scoreOf(out.taste, "social")).toBeLessThan(0);
-  });
-
-  it("refuses a partial or repeated order instead of folding it", () => {
-    expect(checkRanking(["fjord", "dunes"])).toEqual({ ok: false, why: "wrong_count" });
-    expect(checkRanking(["fjord", "fjord", "dunes", "ridge", "carved", "night"])).toEqual({ ok: false, why: "repeated_image" });
-    expect(checkRanking(["nope", "dunes", "ridge", "carved", "lagoon", "night"])).toEqual({ ok: false, why: "unknown_image" });
-    const out = foldRanking(emptyTaste(at()), ["fjord", "dunes"], at());
-    expect(out.folded).toBe(0);
-    expect(out.taste.signals).toBe(0);
   });
 });
 
@@ -255,7 +208,9 @@ describe("the feed, once there is a profile", () => {
     const withNone = pick(CURATED, { tags: ["desert"], month: 1 }).map((c) => c.card.slug);
     const again = pick(CURATED, { tags: ["desert"], month: 1 }).map((c) => c.card.slug);
     expect(withNone).toEqual(again);
-    expect(withNone[0]).toBe("erg-chebbi-silence");
+    // What is asked for leads. Naming a slug here would make this a test of the catalogue's contents instead.
+    const top = CURATED.find((c) => c.slug === withNone[0])!;
+    expect(top.tags).toContain("desert");
   });
 });
 
@@ -267,27 +222,17 @@ describe("through Discover, as the server uses it", () => {
     expect(mine.likes).toEqual([]);
   });
 
-  it("takes the order of six and has an opinion straight after", async () => {
+  it("gets its whole shape from what they do, there being nothing to fill in first", async () => {
     const d = new Discover({ store: memory() });
-    const out = await d.ranked("user_1", ["fjord", "dunes", "ridge", "carved", "lagoon", "night"]);
-    expect(out.ok).toBe(true);
-    expect(out.known).toBeGreaterThan(0);
-
+    await d.did("user_1", { kind: "keep", slug: "deadvlei" });
     const mine = await d.taste("user_1");
-    expect(mine.likes.map((l) => l.tag)).toContain("cold");
-    expect(mine.dislikes.map((l) => l.tag)).toContain("nightlife");
-  });
-
-  it("refuses an incomplete order and stays blank", async () => {
-    const d = new Discover({ store: memory() });
-    const out = await d.ranked("user_1", ["fjord", "dunes"]);
-    expect(out).toMatchObject({ ok: false, why: "wrong_count" });
-    expect((await d.taste("user_1")).known).toBe(0);
+    expect(mine.known).toBeGreaterThan(0);
+    expect(mine.likes.map((l) => l.tag)).toContain("desert");
   });
 
   it("hears a rejection at once, rather than overnight", async () => {
     const d = new Discover({ store: memory() });
-    await d.did("user_1", { kind: "not_for_me", slug: "gion-lantern-night" });
+    await d.did("user_1", { kind: "not_for_me", slug: "deadvlei" });
     const mine = await d.taste("user_1");
     expect(mine.dislikes.length + mine.likes.length).toBeGreaterThan(0);
     expect(mine.taste.signals).toBe(1);
@@ -295,7 +240,7 @@ describe("through Discover, as the server uses it", () => {
 
   it("counts every card it put in a feed as shown, so interest is judged against what it pushed", async () => {
     const d = new Discover({ store: memory() });
-    await d.ranked("user_1", ["fjord", "dunes", "ridge", "carved", "lagoon", "night"]);
+    await d.did("user_1", { kind: "keep", slug: "deadvlei" });
     const before = (await d.taste("user_1")).taste;
     const shownBefore = Object.values(before.dims).reduce((n, dim) => n + (dim?.shown ?? 0), 0);
 
@@ -311,10 +256,11 @@ describe("through Discover, as the server uses it", () => {
     expect(taste.signals).toBe(0);
   });
 
-  it("learns from an onboarding image by its own id, not only from cards", async () => {
+  it("learns from how long a card sat on the screen, which is most of what it ever gets", async () => {
     const d = new Discover({ store: memory() });
-    await d.did("user_1", { kind: "dwell", slug: "dunes", ms: 9000 });
+    await d.did("user_1", { kind: "dwell", slug: "deadvlei", ms: 9000 });
     expect((await d.taste("user_1")).taste.signals).toBe(1);
+    expect(scoreOf((await d.taste("user_1")).taste, "desert")).toBeGreaterThan(0);
   });
 });
 
@@ -340,9 +286,13 @@ describe("the photographs", () => {
       expect({ slug: card.slug, has: !!photo }).toEqual({ slug: card.slug, has: true });
       expect(photo!.url).toMatch(/^\/photos\/[a-z0-9-]+\.jpg$/);
       expect(photo!.alt.length).toBeGreaterThan(3);
-      // The grade makes each one a derivative: the credit has to name the licence and say it was altered.
-      expect(photo!.credit).toContain("Wikimedia Commons");
-      expect(photo!.credit).toContain("altered");
+      // Two kinds of picture, and the credit must say plainly which this is. A graded Commons photograph is a
+      // derivative, so it names the licence and says it was altered. An illustration is not a photograph of the
+      // place at all, and saying so is the whole point of the field.
+      const credit = photo!.credit ?? "";
+      const commons = credit.includes("Wikimedia Commons") && credit.includes("altered");
+      const drawn = credit.startsWith("Illustration");
+      expect({ slug: card.slug, honest: commons || drawn }).toEqual({ slug: card.slug, honest: true });
     }
   });
 

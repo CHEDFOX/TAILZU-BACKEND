@@ -15,7 +15,6 @@ import { comingSoon, type BotsCtx, type Client } from "./kit.js";
 import { loadLive, type BotsDeps } from "./live.js";
 import { isBotsScreen, type BotsScreen } from "./registry.js";
 import { botsScreens } from "./screens/bots.js";
-import { firstLookScreens } from "./screens/firstLook.js";
 import { discoverScreens } from "./screens/discoverFeed.js";
 import { codeScreens } from "./screens/code.js";
 import { keybotScreens } from "./screens/keybot.js";
@@ -37,7 +36,7 @@ export { isBotsScreen, screen, type BotsScreen } from "./registry.js";
 export { botsDepsFor, emptyDeps, type BotsServices } from "./deps.js";
 export { botsFonts } from "./kit.js";
 
-const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...firstLookScreens, ...discoverScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens, ...linkScreens, ...notesScreens, ...routinesScreens, ...spacesScreens, ...safetyScreens, ...workScreens, ...LINGO_SCREENS];
+const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...discoverScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens, ...linkScreens, ...notesScreens, ...routinesScreens, ...spacesScreens, ...safetyScreens, ...workScreens, ...LINGO_SCREENS];
 
 /** Every registered screen, by id. Two files claiming one id is a mistake caught when the server starts. */
 export const BOTS_SCREENS: ReadonlyMap<string, BotsScreen> = (() => {

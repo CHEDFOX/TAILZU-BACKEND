@@ -1,13 +1,15 @@
 /**
  * PLACES WORTH KEEPING, OVER HTTP (src/discover, docs/discover.md). Everything here is the signed-in person's own.
  *
- *   GET  /v1/discover/first-look        the six images to put in order
- *   POST /v1/discover/first-look        { order: [id x6] } -> their profile's first shape
  *   GET  /v1/discover/feed              ?tags=&month=&country=&budget=&limit= -> the cards, in their order
  *   GET  /v1/discover/place/:slug       one card in full
  *   POST /v1/discover/build             { place } -> a card read off the web for a place nobody has written
  *   POST /v1/discover/signals           { signals: [...] } -> what they did; folded at once
  *   GET  /v1/discover/taste             what we think they like, in their own words
+ *
+ * THERE IS NOTHING TO FILL IN FIRST. The feed is the first screen a new person sees, ordered by wow and rarity
+ * until they have done anything (query.ts). Everything we know about somebody is built from what they tapped,
+ * what sat in their viewport and for how long — which is what /signals carries.
  *
  * SIGNALS ARRIVE IN BATCHES. The app watches the viewport and sends what it saw — which tiles were on screen and
  * for how long — a few at a time, because one request per tile would be most of the traffic in the product. The
@@ -60,12 +62,15 @@ function cardView(card: Card, now: Date): Record<string, unknown> {
     tags: card.tags,
     budget: card.budget,
     effort: card.effort,
-    photos: card.photos.map((p) => ({ ...p, url: absolute(p.url) })),
+    photos: card.photos.map((p) => ({ ...p, url: absolute(p.url), ...(p.tile ? { tile: absolute(p.tile) } : {}) })),
     origin: card.origin,
     sources: card.sources,
     at: card.at,
     season: seasonWords(card.season),
     daysLeft: left,
+    takes: card.detail.takes ?? null,
+    getting: card.detail.getting ?? null,
+    need: card.detail.need ?? null,
   };
 }
 
@@ -97,52 +102,6 @@ export function registerDiscoverRoutes(
     return user?.id ?? null;
   };
 
-  app.get("/v1/discover/first-look", RL, async (req, reply) => {
-    const userId = await who(req.headers["authorization"]);
-    if (!userId) return reply.code(401).send(unauthorized);
-    const d = deps.discover;
-    if (!d) return reply.code(503).send(off);
-
-    // Each image borrows a photograph from the card it illustrates, so a better picture of Lofoten improves this
-    // screen the same day. Where the card has none yet the app draws the colour, and the screen still works.
-    const look = d.firstLook();
-    const images = await Promise.all(
-      look.images.map(async (image) => {
-        const card = image.from ? await d.open(image.from, null) : null;
-        const photo = card?.photos[0];
-        return {
-          id: image.id,
-          label: image.label,
-          sub: image.sub,
-          colour: image.colour,
-          photo: photo ? { url: photo.url, alt: photo.alt } : null,
-        };
-      }),
-    );
-    // The same six for everybody, and they change rarely: worth a cache, with the version to break it.
-    return reply
-      .header("cache-control", "private, max-age=3600")
-      .send({ version: look.version, title: look.title, sub: look.sub, images });
-  });
-
-  app.post<{ Body: { order?: unknown } }>("/v1/discover/first-look", RL, async (req, reply) => {
-    const userId = await who(req.headers["authorization"]);
-    if (!userId) return reply.code(401).send(unauthorized);
-    const d = deps.discover;
-    if (!d) return reply.code(503).send(off);
-
-    const raw = req.body?.order;
-    const order = Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : [];
-    const out = await d.ranked(userId, order);
-    if (!out.ok) {
-      return reply.code(400).send({
-        code: `first_look.${out.why ?? "bad_order"}`,
-        message: "Put all six in order, each one once.",
-      });
-    }
-    return reply.send({ ok: true, known: out.known });
-  });
-
   app.get<{ Querystring: Record<string, string> }>("/v1/discover/feed", RL, async (req, reply) => {
     const userId = await who(req.headers["authorization"]);
     if (!userId) return reply.code(401).send(unauthorized);
@@ -152,7 +111,7 @@ export function registerDiscoverRoutes(
     const q = req.query ?? {};
     const tags = tagsFrom(q.tags);
     const month = intFrom(q.month, 1, 12);
-    const limit = intFrom(q.limit, 1, 40);
+    const limit = intFrom(q.limit, 1, 100);
     const country = typeof q.country === "string" && /^[a-zA-Z]{2}$/.test(q.country) ? q.country.toLowerCase() : undefined;
     const budget = isBudget(q.budget) ? q.budget : undefined;
 
