@@ -321,9 +321,16 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       const made = deps.lessons === null ? null
         : await unitFor(lessons(), modelCtx(userId), course.target, course.from, here).catch(() => null);
       if (!made?.length) break;                   // could not be made: they carry on with what they have
+      // SAID OUT LOUD WHEN IT FAILS. This was `.catch(() => 0)`, and it swallowed the whole feature: the live
+      // database was three migrations behind, `lingo_items` had no `unit` column, and every unit ever written was
+      // refused by this insert in silence while the screen said there was nothing to learn. A unit that cannot be
+      // filed is the end of the road for that course, so it says so. No words of anybody's: the pair and the unit.
       await store().add(userId, course.target, made.map((m: UnitItem) => ({
         item: m.text, gloss: m.meaning, kind: m.kind, source: "seed" as const, unit: here,
-      })), at).catch(() => 0);
+      })), at).catch((err: unknown) => {
+        console.warn(`[lingo] could not file unit ${here} of ${course.target}<-${course.from}: ${(err as Error)?.message ?? "unknown"}`);
+        return 0;
+      });
       have = await store().items(userId, course.target).catch(() => have);
       break;
     }
