@@ -147,7 +147,8 @@ describe("the panel", () => {
     envOn();
     const f = fakePage();
     const panels = new Panels({ hold: async () => f.page, store: new SiteStore(null) });
-    await expect(panels.open(U, "https://zomato.com/login")).rejects.toThrow(/can't sign in/i);
+    // On neither list: not a catalog entry (src/sites/catalog.ts) and not this server's CLOUD_BROWSER_SITES.
+    await expect(panels.open(U, "https://example.com/login")).rejects.toThrow(/can't sign in/i);
     const v = await panels.open(U, "https://swiggy.com/login");
     expect(v.site).toBe("swiggy.com");
     vi.unstubAllEnvs(); resetConfigForTests();

@@ -149,7 +149,7 @@ describe("the routes", () => {
   it("refuse a site that is not on the server's list", async () => {
     const { app, sites } = await server();
     await sites.signIn(U, "swiggy.com", { cookies: [] });
-    const bad = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/watch", headers: as(U), payload: { url: "https://zomato.com/x", label: "Dinner" } });
+    const bad = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/watch", headers: as(U), payload: { url: "https://example.com/x", label: "Dinner" } });
     expect(bad.statusCode).toBe(400);
     const ok = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/watch", headers: as(U), payload: { url: "https://swiggy.com/o/1", label: "Behrouz" } });
     expect(ok.statusCode).toBe(200);
@@ -338,13 +338,21 @@ describe("bots.sites: the way in to a sign-in", () => {
     expect(d.labels).toContain("Forget");
   });
 
-  it("an allowed site they have never signed in to is offered, once, and only with the panel", async () => {
+  it("a site is added by searching for it, and only with the panel", async () => {
     const fresh = { ...VIEW, canAdd: ["swiggy.com", "zomato.com"], logins: [{ site: "swiggy.com", who: "Rahul" }] };
     const on = await drawWith(PANEL_CAN, { "GET /v1/botsapp/bots/sites": fresh });
+    expect(lintTree(on.s.root!)).toEqual([]);
     expect(on.labels).toContain("Add a site");
-    expect(on.labels).toContain("zomato.com");
-    // Already signed in, so it is not offered again.
-    expect(on.labels.filter((t) => t === "Not signed in")).toHaveLength(1);
+    // A field, not a list of hosts: the name picks the site, and the answer fills the rows.
+    const nodes = walk(on.s.root!);
+    expect(nodes.some((n) => n.type === "TextField" && (n.bind as { value?: string })?.value === "q")).toBe(true);
+    const search = JSON.stringify(nodes.flatMap((n) => Object.values(n.on ?? {})));
+    expect(search).toContain("/v1/botsapp/bots/sites/search?q=$state.q");
+    expect(search).toContain('"assignTo":"found"');
+    // Each row signs in at the page the catalog names for that site, never at a host typed in here.
+    expect(search).toContain("$state.found.results.0.signIn");
+    expect((on.s as { state?: Record<string, unknown> }).state).toMatchObject({ q: "" });
+
     const off = await drawWith(PHONE, { "GET /v1/botsapp/bots/sites": fresh });
     expect(off.labels).not.toContain("Add a site");
   });

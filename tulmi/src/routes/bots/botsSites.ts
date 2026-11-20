@@ -3,6 +3,9 @@
  * while CLOUD_BROWSER is off, which is the default.
  *
  *   GET    /v1/botsapp/bots/sites                      -> SitesView   what they are signed in to, what is being watched
+ *   GET    /v1/botsapp/bots/sites/search?q=            -> { results }  the sites they can find by name, each with that site's
+ *                                                                      OWN sign-in page (src/sites/catalog.ts). Nothing off the
+ *                                                                      catalog is ever answered, so no query reaches the open web
  *   POST   /v1/botsapp/bots/sites/watch { url, label } -> { view }    start watching a thing on a site they are signed in to
  *   DELETE /v1/botsapp/bots/sites/watch/:id            -> { view }    stop watching it
  *   POST   /v1/botsapp/bots/sites/check/:id            -> { view }    look now, if the floor allows (the pull-to-refresh)
@@ -39,6 +42,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SitesView } from "../../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { allowedSites, cloudBrowserOn, mayUseCloudBrowser, watchLimits } from "../../sites/gate.js";
+import { searchSites } from "../../sites/catalog.js";
 import type { Panels } from "../../sites/panel.js";
 import { SiteError, type Sites } from "../../sites/service.js";
 import { heldFreeUse } from "../../trust/actions.js";
@@ -85,6 +89,18 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
   };
 
   app.get(`${AREA}/sites`, RL, run(async (user) => view(user.id)));
+
+  /**
+   * The sites somebody can find by typing a name (src/sites/catalog.ts). It answers entries, each with the site's
+   * OWN sign-in page, because the whole point of searching by name is that the name picks the host — a person
+   * reading a domain off a result and deciding whether it is the real one is how phishing works. Nothing that is
+   * not in the catalog is ever answered here, so there is no query that turns this into a way to the open web.
+   */
+  app.get(`${AREA}/sites/search`, RL, run(async (user, req) => {
+    const q = str((req.query as Record<string, unknown> | undefined)?.q, 64);
+    const signedIn = new Set((await o.sites.logins(user.id)).map((l) => l.site));
+    return { results: searchSites(q).map((e) => ({ id: e.id, name: e.name, host: e.host, signIn: e.signIn, category: e.category, connected: signedIn.has(e.host) })) };
+  }));
 
   app.post(`${AREA}/sites/watch`, RL, run(async (user, req) => {
     const b = body(req);

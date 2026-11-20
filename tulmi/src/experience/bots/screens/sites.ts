@@ -1,7 +1,8 @@
 /**
  * WHAT A SITE SAID, ON A SCREEN (src/sites, docs/sites.md, CLOUD_BROWSER — off).
  *
- *   sitesScreens   bots.sites: the things being watched, the sites they are signed in to, and what the server allows
+ *   sitesScreens   bots.sites: the things being watched, the sites they are signed in to, and a search that finds a site by name
+ *                  and signs in at THAT SITE'S OWN page (src/sites/catalog.ts)
  *
  * EVERY CARD SAYS WHERE IT CAME FROM AND WHEN. `readLine()` is under each one — "from swiggy.com · checked 4 min ago" —
  * because a card read an hour ago that looks live is worse than no card: somebody stands at a door for a parcel that
@@ -19,13 +20,13 @@ import {
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import {
-  NONE_ALLOWED, NOTHING_WATCHED, PANEL_NO_DRAW, PANEL_NO_OPEN, SIGN_IN_AGAIN, STOPS_LINE,
+  NONE_ALLOWED, NOTHING_WATCHED, PANEL_NO_DRAW, PANEL_NO_OPEN, SIGN_IN_AGAIN, SITES_API, STOPS_LINE,
   checkPath, loadPanel, loadSites, panelOrigin, readLine, signOutPath, watchPath,
   type PanelOpened, type SiteCard, type SiteWatchView, type SitesView,
 } from "../sites.js";
 import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
-import { refresh, toast } from "./bots/parts.js";
+import { field, refresh, toast } from "./bots/parts.js";
 
 /** The pips: one dot a stage, the last done one filled, the rest of the track grey. Drawn only when the site gave stages. */
 function pips(stages: SiteCard["stages"]): Node[] {
@@ -95,6 +96,50 @@ function signInButton(site: string): Node {
   return button("Sign in", { kind: "navigate", screenId: SCREENS.sitePanel, params: { url: `https://${site}/` } }, { kind: "secondary", size: "md" });
 }
 
+/** How many results the field shows. The catalog is short on purpose, and a long list of sign-ins is not a thing to scroll. */
+const FOUND = 6;
+
+/**
+ * FIND A SITE BY ITS NAME, AND SIGN IN AT THAT SITE'S OWN PAGE (src/sites/catalog.ts).
+ *
+ * The name is what picks the host. A person who has to read a domain off a result and decide whether it is the
+ * real one is doing the job phishing relies on them doing badly, so nothing here is typed in as an address and
+ * nothing off the catalog is ever offered: the search answers vetted entries, and Sign in opens the page that
+ * entry names. The host is shown under the name — not to be judged, but so that what they are about to sign in
+ * to is never a surprise.
+ */
+function findBlock(): Node[] {
+  const search = call("GET", `${SITES_API}/search?q=$state.q`, undefined, {
+    assignTo: "found", fail: toast("Couldn't search just now."),
+  });
+  // One row a result, drawn like a list row and filled from the answer. A row with no result behind it is not there.
+  const slot = (i: number): Node => {
+    const at = `found.results.${i}`;
+    const signIn = { kind: "navigate", screenId: SCREENS.sitePanel, params: { url: `$state.${at}.signIn` } } as ActionRef;
+    return {
+      ...row([
+        col([
+          text("", { size: 15, weight: 600, lineHeight: 20, bind: `${at}.name` }),
+          // The host, so what they are about to sign in to is never a surprise — not for them to judge.
+          text("", { size: 12, color: C.meta, lineHeight: 16, bind: `${at}.host` }),
+        ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
+        { ...button("Sign in", signIn, { kind: "secondary", size: "md" }), visibleIf: { falsy: `${at}.connected` } },
+        { ...meta("Signed in", { size: 12 }), visibleIf: { truthy: `${at}.connected` } },
+      ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 48 }),
+      visibleIf: { truthy: `${at}.id` },
+    } as Node;
+  };
+  return [
+    sectionLabel("Add a site"),
+    row([
+      box([field("q", "q", "Search for a site, like Swiggy", { onSubmit: search })], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      button("Find", search, { kind: "secondary", size: "md" }),
+    ], { gap: 8, alignItems: "center" }),
+    listCard(Array.from({ length: FOUND }, (_, i) => slot(i))),
+    meta("You sign in on the site's own page, in a browser that is yours. Only the slip that keeps you signed in is kept — never your password.", { size: 12, color: C.idle, lines: 3 }),
+  ];
+}
+
 function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
   if (!d) return page(ctx, { title: "Sites", body: [emptyState({ title: "Not switched on", body: NONE_ALLOWED })], back: back() });
   const now = Date.now();
@@ -126,15 +171,11 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
     body.push(meta(d.canAdd.length ? "Nothing yet." : NONE_ALLOWED, { size: 13, color: C.idle, lines: 2 }));
   }
 
-  // The sites the server allows but this person has not signed in to. Only offered to a build that can draw a panel:
-  // a "Sign in" that opens a screen the app cannot render is a dead end with a name on it.
-  const toAdd = d.canAdd.filter((site) => !d.logins.some((l) => l.site === site));
-  if (toAdd.length && canLive(ctx)) {
-    body.push(sectionLabel("Add a site"));
-    body.push(listCard(toAdd.map((site) => listRow({ label: site, sub: "Not signed in", chevron: false, right: signInButton(site) }))));
-  }
+  // Finding a site by name, and signing in at its own page. Only offered to a build that can draw a panel: a
+  // "Sign in" that opens a screen the app cannot render is a dead end with a name on it.
+  if (canLive(ctx)) body.push(...findBlock());
 
-  return page(ctx, { title: "Sites", body, back: back() });
+  return page(ctx, { title: "Sites", body, back: back(), state: { q: "", found: {} } });
 }
 
 // ===================================================================== the panel: their own browser, drawn

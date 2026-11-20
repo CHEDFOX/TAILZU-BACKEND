@@ -50,9 +50,12 @@ A shop that shuts a real person's account has cost them more than this feature i
    one look while a parcel is out reads as a person; the same site seeing a heartbeat all day reads as a scraper.
 2. **Never sooner than `CLOUD_BROWSER_EVERY_MIN`** (20), whoever asks.
 3. **At most `CLOUD_BROWSER_WATCHES`** (6) things open per person.
-4. **`CLOUD_BROWSER_SITES` is empty by default and empty means NONE.** Every other list in the config is "empty
-   means everyone"; this one is inverted on purpose. Nobody should be able to point a signed-in browser at an
-   arbitrary host because a setting was left blank.
+4. **An arbitrary host is never reachable.** What a signed-in browser may be pointed at is the vetted catalog in
+   `src/sites/catalog.ts` plus whatever an operator added in `CLOUD_BROWSER_SITES` — and that env list keeps its
+   inverted meaning: it *adds* hosts, and empty adds none. Every other list in the config is "empty means
+   everyone"; this one is the other way round on purpose, so a blank setting can never widen anything. The
+   catalog is code rather than configuration for the same reason `web/search/catalog.ts` is: a list that decides
+   where somebody types a password is a reviewed change with a test beside it, not a line on a server.
 
 ## Being signed out
 
@@ -91,6 +94,20 @@ than by reading it:
 because a page can carry words meant for the reader rather than the person — including words nobody can see,
 since text faded to nothing is still text in `innerText`. The model is told to report what the page shows, and
 is given nothing it could act on even if it were talked into wanting to.
+
+## Finding a site
+
+A person types a name, not an address. The name is what picks the host: searching answers entries from
+`src/sites/catalog.ts` and nothing else, and Sign in opens the page that entry names, so there is no query that
+reaches the open web and no result whose domain the person has to read and judge. That judgement is the one
+phishing relies on them making badly, and the whole value of typing "Swiggy" is that they never have to make it.
+
+An entry's `signIn` is the site's own sign-in page, read from the site. The host is shown under the name — not to
+be approved, but so that what they are about to sign in to is never a surprise. A site that moves its sign-in is
+an edit to that file, which is a pull request somebody reads.
+
+The catalog is short on purpose and grows one reviewed site at a time. A host an operator wants that is not worth
+a catalog entry goes in `CLOUD_BROWSER_SITES` instead.
 
 ## The panel
 
@@ -160,8 +177,10 @@ the page reader, the `site_read` role, the service and its manners (`service.ts`
 
 **Not built yet:**
 
-* **The routes and the screens.** Nothing in the app can reach this. It needs `GET/POST /v1/sites`, the Activity
-  cards from the mock, and a way to add a site.
+* ~~**The routes and the screens.**~~ Built: `routes/bots/botsSites.ts`, `bots.sites` and the panel screen, and a
+  way to add a site — a search over the catalog (`GET .../sites/search?q=`) that answers vetted entries only,
+  each carrying that site's own sign-in page, reached from Connected apps. The Activity cards from the mock are
+  still to come.
 * **The clock.** `dueNow()` answers which things are due; nothing calls it on a schedule yet.
 * **The phone's half of the panel.** The server side is done (`sites/panel.ts`, `sites/frames.ts`, `engine.hold()`,
   the routes); what is missing is the component that draws the frames and sends the taps. It lives in `app/**`, so
