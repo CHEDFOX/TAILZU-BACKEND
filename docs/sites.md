@@ -151,9 +151,16 @@ take no cookie, which is safe precisely BECAUSE the ticket is the whole of the a
 credential for another origin to ride on. (It is needed because Android gives a page loaded from HTML-with-a-base-URL
 an origin that is sometimes opaque, and without it the panel would work on one phone and not the other.)
 
-**Nothing typed is kept.** The box is a keyboard, not a field: each character is sent as it is typed and the box is
-emptied *before the call goes out*, so a password is in the page for one keystroke and never in anything that
-outlives the keypress. The characters appear where the real page draws them — as dots, because the site masks its
+**The boxes, when the page can be read.** Where the panel can tell what the page is asking for it draws a card —
+the real boxes, named, a password hidden as it is typed (`src/sites/card.ts`, docs/sign-in.md) — and the page
+stays above it, because a card is only ever an improvement on the page. The values cross once on Continue and are
+cleared; nothing of them is kept and nothing of them is in a message to the app. Filling checks the page first:
+the ids are positions in a walk of it, so a page that moved has a different box under the same name, and a
+password goes into a password box or nowhere.
+
+**And the keyboard behind it.** With no card — which is most pages — the box is a keyboard, not a field: each
+character is sent as it is typed and the box is emptied *before the call goes out*, so a password is in the page
+for one keystroke and never in anything that outlives the keypress. The characters appear where the real page draws them — as dots, because the site masks its
 own password box. Which is also why nothing here has to know which box on the page is a secret: it never holds the
 secret. Autocorrect, autofill, capitals and spellcheck are all off, because a suggestion would type something into
 a field nothing on this side can see the name of.

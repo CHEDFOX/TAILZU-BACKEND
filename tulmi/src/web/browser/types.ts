@@ -124,6 +124,13 @@ export interface HeldPage {
   type(text: string): Promise<void>;
   key(name: "Enter" | "Backspace" | "Tab"): Promise<void>;
   scroll(dy: number): Promise<void>;
+  /**
+   * Puts the keyboard on one element, named by the id `look()` gave it, and answers the ROLE it actually landed
+   * on — or null when that id is not there any more. The role is the answer and not a yes, because the ids are
+   * positions in a walk of the page: a page that moved has a different twelfth element, and a caller about to
+   * type a password has to know it is still a password box.
+   */
+  focus(elementId: string): Promise<string | null>;
   /** Where it is now and what is on it, to tell a sign-in page from the page behind it. */
   look(): Promise<Pick<VisitedPage, "finalUrl" | "title" | "elements">>;
   /** The session as it stands. Taken when they are through, and not before. */

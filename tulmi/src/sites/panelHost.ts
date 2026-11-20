@@ -53,6 +53,9 @@ const WORDS = {
   hint: "Type here",
   done: "I'm signed in",
   cancel: "Not now",
+  boxes: "The boxes this page is asking for.",
+  go: "Continue",
+  moved: "The page changed. Carry on on the page itself.",
   opening: "Opening…",
   checking: "Checking…",
   lost: "That sign-in has closed.",
@@ -82,6 +85,10 @@ function script(o: PanelPageOptions): string {
   var img = document.getElementById("f"), box = document.getElementById("t");
   var note = document.getElementById("n"), doneBtn = document.getElementById("d"), cancelBtn = document.getElementById("c");
   var lastTouch = null, over = false, told = false, timer = null, checking = false;
+  var card = document.getElementById("cd"), cFields = document.getElementById("cf");
+  var cGo = document.getElementById("cg");
+  // What is drawn now, so a poll every second does not wipe what they are halfway through typing.
+  var shape = "", inputs = [];
 
   /** UP to the app: the WebView's bridge on the phone, the window's own preload in the desktop app. */
   function up(m) {
@@ -94,6 +101,72 @@ function script(o: PanelPageOptions): string {
 
   function say(text) { note.textContent = text || ""; note.style.display = text ? "block" : "none"; }
 
+  /** The keyboard the page had before cards: shown whenever there is no card to show. */
+  function plainBox(on) { box.style.display = on ? "" : "none"; }
+
+  /**
+   * THE CARD, BUILT FROM THE ANSWER. Every label came off the site, so it is set as text and never as HTML — a
+   * shop that names its box "<img onerror=...>" gets a box with a silly name and nothing else. Rebuilt only when
+   * the shape changes, because rebuilding under somebody's fingers would throw away what they had typed.
+   */
+  function draw(c) {
+    var fields = c && c.fields && c.fields.length ? c.fields : null;
+    if (!fields) { shape = ""; inputs = []; card.hidden = true; plainBox(true); return; }
+    var sig = JSON.stringify(fields.map(function (f) { return [f.id, f.kind, f.label]; }));
+    if (sig === shape) return;
+    shape = sig; inputs = [];
+    cFields.textContent = "";
+    for (var i = 0; i < fields.length; i++) {
+      var f = fields[i];
+      var wrap = document.createElement("label");
+      var name = document.createElement("span");
+      name.textContent = f.label;
+      var input = document.createElement("input");
+      // A secret and a one-time code are hidden as typed, as the desktop's card does it (rule S5).
+      input.type = f.kind === "secret" || f.kind === "code" ? "password" : f.kind === "email" ? "email" : f.kind === "phone" ? "tel" : "text";
+      if (f.kind === "code" || f.kind === "phone") input.inputMode = "numeric";
+      input.autocomplete = "off"; input.autocapitalize = "off"; input.spellcheck = false;
+      input.setAttribute("autocorrect", "off");
+      wrap.appendChild(name); wrap.appendChild(input);
+      cFields.appendChild(wrap);
+      inputs.push({ id: f.id, el: input });
+    }
+    // The other ways in ("Continue with Google") are NOT drawn here. Pressing one means pressing a control on the
+    // page, and a card can only fill boxes it named — so a button here would be a button that does nothing. They
+    // are in the frame above, where a tap already reaches them.
+    card.hidden = false; plainBox(false);
+  }
+
+  /**
+   * Each box to the page, in the order the card named them, then Enter — which is what sends a sign-in form. The
+   * values are read out of the inputs here and cleared straight after: nothing of them is kept, and nothing of
+   * them is ever in a message to the app.
+   */
+  function fillAll() {
+    if (over || !inputs.length) return;
+    cGo.disabled = true;
+    var queue = inputs.slice(), moved = false;
+    function next() {
+      var one = queue.shift();
+      if (!one) {
+        for (var i = 0; i < inputs.length; i++) inputs[i].el.value = "";
+        cGo.disabled = false;
+        if (!moved) touch({ key: "Enter" });
+        return;
+      }
+      var text = one.el.value;
+      if (!text) return next();
+      lastTouch = Date.now();
+      call("POST", base + "/fill", { field: one.id, text: text }).then(function (v) {
+        // No answer means the server would not do it — the page moved under the card. Back to the page, which works.
+        if (!v) { moved = true; queue.length = 0; shape = ""; card.hidden = true; plainBox(true); say(${JSON.stringify(WORDS.moved)}); }
+        else take(v);
+        next();
+      });
+    }
+    next();
+  }
+
   /** Every answer from every call lands here, so one place decides it is over and one place says so, once. */
   function take(v) {
     if (!v || typeof v !== "object") return;
@@ -101,10 +174,11 @@ function script(o: PanelPageOptions): string {
     if (typeof v.width === "number" && v.width > 0) page.w = v.width;
     if (typeof v.height === "number" && v.height > 0) page.h = v.height;
     if (typeof v.message === "string" && v.message) say(v.message);
+    if (!over) draw(v.card);
     if (v.ended && !told) {
       told = true; over = true;
       if (timer) clearTimeout(timer);
-      box.disabled = true; doneBtn.disabled = true;
+      box.disabled = true; doneBtn.disabled = true; cGo.disabled = true; card.hidden = true;
       // "Checking…" must not be the last thing they see under a panel that worked, if the app is slow to move on.
       if (!v.message) say("");
       up({ t: "panel", ended: String(v.ended), signedIn: v.signedIn === true, message: v.message || "" });
@@ -185,6 +259,8 @@ function script(o: PanelPageOptions): string {
   });
 
   // ---------------------------------------------------------------- the two buttons
+  cGo.addEventListener("click", fillAll);
+
   doneBtn.addEventListener("click", function () {
     if (over || checking) return;
     checking = true; say(${js(WORDS.checking)});
@@ -252,11 +328,28 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
   button { font:inherit; border-radius:12px; padding:12px 16px; border:1px solid var(--line); background:var(--paper); color:var(--ink); }
   #d { flex:1 1 auto; background:var(--ink); color:var(--paper); border-color:var(--ink); font-weight:600; }
   button[disabled] { opacity:.5; }
+  #cd { display:flex; flex-direction:column; gap:10px; padding:0 14px 12px; }
+  /* An author's display beats the hidden attribute's own rule, so hidden has to be said again here or an empty
+     card shows on every page that has none. */
+  #cd[hidden] { display:none; }
+  #cl { margin:0; font-size:12.5px; color:var(--meta); }
+  #cf { display:flex; flex-direction:column; gap:10px; }
+  #cf label { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--meta); }
+  #cf input { border:1px solid var(--line); border-radius:12px; padding:11px 12px; font:inherit; font-size:15px; color:var(--ink); background:var(--paper); }
+  #cg { background:var(--ink); color:var(--paper); border-color:var(--ink); font-weight:600; }
 </style>
 </head><body>
 <div id="h">${esc(WORDS.safe)} &middot; <b>${esc(o.site)}</b></div>
 <div id="s"><img id="f" alt="${esc(o.site)}"${first ? ` src="${esc(first)}"` : ""}></div>
 <p id="n"></p>
+<!-- THE CARD: the page's own boxes, named, when the panel could read them (src/sites/card.ts). It is built by the
+     script from the answer, never written here, and every label is set as TEXT because it came off the site. The
+     frame above stays either way: a card is only ever an improvement on the page, and the page always works. -->
+<div id="cd" hidden>
+  <p id="cl">${esc(WORDS.boxes)}</p>
+  <div id="cf"></div>
+  <button id="cg" type="button">${esc(WORDS.go)}</button>
+</div>
 <div id="k">
   <!-- type="text", not "password", on purpose. The box is empty between keystrokes either way, so a password one
        would hide nothing that is ever there; what it WOULD do is invite the WebView's own "save this password?"

@@ -22,6 +22,7 @@
  */
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { FrameGate, PanelLife, END_WORDS, type PanelEnd } from "./frames.js";
+import { cardFor, type SignInCard } from "./card.js";
 import { hostOf, mayUseCloudBrowser, siteAllowed } from "./gate.js";
 import { looksSignedOut } from "./read.js";
 import { SiteError } from "./service.js";
@@ -58,6 +59,11 @@ export interface PanelView {
   /** Set once it is over, with what to tell them. */
   ended?: PanelEnd;
   message?: string;
+  /**
+   * The page's own boxes, named (src/sites/card.ts), when it plainly looks like a sign-in. Absent means draw the
+   * page: a panel always works that way, and a card is only ever an improvement on it.
+   */
+  card?: SignInCard;
 }
 
 interface Live {
@@ -71,6 +77,8 @@ interface Live {
   life: PanelLife;
   /** The newest frame, kept rather than queued: an old one is not worth sending late. */
   frame: string;
+  /** The page's boxes as a card, or null: then the panel is the page, as it was before cards existed. */
+  card: SignInCard | null;
   width: number;
   height: number;
   ended: PanelEnd | null;
@@ -119,7 +127,7 @@ export class Panels {
       id: randomUUID(), userId, site, page,
       ticket: randomBytes(TICKET_BYTES).toString("base64url"),
       gate: new FrameGate(), life: new PanelLife(at),
-      frame: "", width: 412, height: 915, ended: null,
+      frame: "", width: 412, height: 915, ended: null, card: null,
     };
     page.onFrame((jpeg, meta) => {
       const now = this.now();
@@ -186,6 +194,7 @@ export class Panels {
     if (p.ended) return this.view(p);
     const over = p.life.over(this.now(), false);
     if (over) await this.shut(p, over);
+    else await this.readCard(p);
     return this.view(p);
   }
 
@@ -234,7 +243,44 @@ export class Panels {
       id: p.id, site: p.site, width: p.width, height: p.height,
       ...(p.frame ? { frame: p.frame } : {}),
       ...(p.ended ? { ended: p.ended, message: END_WORDS[p.ended] } : {}),
+      ...(p.card ? { card: p.card } : {}),
     };
+  }
+
+  /** Reads the page and keeps what it would draw as a card. A page that stops looking like a sign-in loses its card. */
+  private async readCard(p: Live): Promise<void> {
+    const look = await p.page.look().catch(() => null);
+    p.card = look ? cardFor(look.elements) : null;
+  }
+
+  /**
+   * One box of the card filled: the keyboard put on the element the CARD named, then typed as keystrokes, so a
+   * page that watches each key behaves as it would for a person.
+   *
+   * THE ROLE IS CHECKED FIRST, and this is the point of the whole method. The ids are positions in a walk of the
+   * page, so a page that moved since the card was read has a different element under the same name. Typing a
+   * password into whatever is there now — a search box, a box that shows what it holds — is the worst thing this
+   * file could do, so a secret goes nowhere but a password box, and a mismatch throws the card away and leaves
+   * the page, which always works.
+   */
+  async fill(id: string, userId: string, fieldId: string, text: string): Promise<PanelView> {
+    const p = this.mine(id, userId);
+    if (p.ended) return this.view(p);
+    const now = this.now();
+    p.gate.touched(now);
+    p.life.alive(now);
+
+    const want = p.card?.fields.find((f) => f.id === fieldId);
+    if (!want) throw new SiteError("no_box", "That box isn't on this page.", 400);
+    // A secret goes to a password box and nowhere else; everything else goes to a box that is not one.
+    const role = await p.page.focus(fieldId);
+    const ok = want.kind === "secret" ? role === "secret" : role === "field" || role === "area";
+    if (!ok) {
+      p.card = null;
+      throw new SiteError("page_moved", "The page changed. Carry on on the page itself.", 409);
+    }
+    if (text) await p.page.type(text);
+    return this.view(p);
   }
 
   /** Every open panel shut: for the server closing down, and for the tests. */
