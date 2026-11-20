@@ -25,8 +25,7 @@
  */
 import type { ActionRef, Condition, Node } from "../../../../../shared/types/sdui.js";
 import {
-  box, C, call, col, grid, meta, page, picture, primaryButton, quietButton, row, SCREENS, seq, text, title, when,
-  type BotsCtx,
+  box, C, call, grid, meta, page, picture, SCREENS, seq, text, when, type BotsCtx,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 
@@ -51,7 +50,6 @@ export interface FirstLookView {
 
 /** Where the order is kept while they tap. */
 const ORDER = "order";
-const TILE_H = 132;
 
 /** Tap to put it in the order; tap again to take it out. */
 const toggle = (id: string): ActionRef => ({ kind: "toggleInArray", path: ORDER, value: id });
@@ -67,18 +65,6 @@ const tapAndMaybeGo = (id: string, of: number, send: ActionRef): ActionRef =>
 const chosen = (id: string, of: number): Condition => ({
   any: Array.from({ length: of }, (_, i) => ({ eq: [`${ORDER}.${i}`, id] as [string, unknown] })),
 });
-
-/** The number on a chosen tile: one node per place in the order, only one of them ever visible. */
-function badges(id: string, of: number): Node[] {
-  return Array.from({ length: of }, (_, i) =>
-    when({ eq: [`${ORDER}.${i}`, id] }, box([
-      text(String(i + 1), { size: 13, weight: 700, color: C.paper, lineHeight: 16 }),
-    ], {
-      position: "absolute", top: 8, right: 8, width: 26, height: 26, borderRadius: 13,
-      backgroundColor: C.ink, alignItems: "center", justifyContent: "center",
-    })),
-  );
-}
 
 /**
  * One image, filling its share of the screen, with nothing on it but the number it was given. No label: see the
@@ -103,40 +89,13 @@ function bareTile(image: FirstLookImageView, of: number, w: number, h: number, p
   ], { height: h, borderRadius: 18, overflow: "hidden", minWidth: 0 }, press);
 }
 
-function tile(image: FirstLookImageView, of: number, width: number): Node {
-  const inner: Node[] = [
-    image.photo?.url
-      ? picture(image.photo.url, width, TILE_H, { radius: 18, background: image.colour, fit: "cover", label: image.photo.alt })
-      : box([], { width: "100%", height: TILE_H, borderRadius: 18, backgroundColor: image.colour }),
-    // The label sits on a white pill so it reads over any photograph.
-    box([text(image.label, { size: 12, weight: 600, lines: 2 })], {
-      position: "absolute", left: 8, bottom: 8, right: 40, paddingHorizontal: 9, paddingVertical: 5,
-      borderRadius: 10, backgroundColor: C.paper,
-    }),
-    // A ring, so a chosen tile reads as chosen even to somebody who cannot see the badge's colour.
-    when(chosen(image.id, of), box([], {
-      position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 18,
-      borderWidth: 2.5, borderColor: C.ink,
-    })),
-    ...badges(image.id, of),
-  ];
-
-  return box(inner, { height: TILE_H, borderRadius: 18, overflow: "hidden", minWidth: 0 }, toggle(image.id));
-}
-
-export interface FirstLookOpts {
-  /**
-   * The first thing a new person sees: the six images and nothing else, no way past, and the sixth tap goes
-   * straight to the feed.
-   */
-  required?: boolean;
-}
-
-export function firstLookPage(ctx: BotsCtx, data: FirstLookView | undefined, o: FirstLookOpts = {}): ReturnType<typeof page> {
-  const view = data ?? { version: "0", title: "Put these in order", sub: "", images: [] };
+export function firstLookPage(ctx: BotsCtx, data: FirstLookView | undefined): ReturnType<typeof page> {
+  const view = data ?? { version: "0", title: "What looks most exciting", sub: "", images: [] };
   const of = view.images.length;
-  const columns = ctx.client === "desktop" ? 3 : 2;
-  const width = ctx.client === "desktop" ? 220 : 160;
+
+  if (of === 0) {
+    return page(ctx, { title: "What looks most exciting", body: [meta("These are on their way.", { size: 13.5 })] });
+  }
 
   const done = call("POST", FIRST_LOOK_PATH, { order: `$state.${ORDER}` }, {
     ok: seq(
@@ -146,61 +105,22 @@ export function firstLookPage(ctx: BotsCtx, data: FirstLookView | undefined, o: 
     fail: { kind: "toast", message: "Could not save that. Try again.", tone: "error" },
   });
 
-  const skip: ActionRef = { kind: "navigate", screenId: SCREENS.travel, replace: true };
-
-  // SIX IMAGES, ONE LINE, AND NOTHING ELSE. Only when all six are really there: five or seven would make a ragged
-  // grid, and a person cannot be held on a screen that is also broken.
-  //
-  // The one line asks what LOOKS most exciting, which is a question about the picture in front of them. The tiles
-  // stay unlabelled: a label would say what a picture is FOR, and from that moment somebody is ranking phrases
-  // about themselves instead of reacting to photographs.
-  if (o.required && of === 6) {
-    const desk = ctx.client === "desktop";
-    const cols = desk ? 3 : 2;
-    const rows = Math.ceil(of / cols);
-    const gap = 12;
-    const pad = 20;
-    const w = Math.floor(((desk ? 900 : 390) - pad * 2 - gap * (cols - 1)) / cols);
-    const h = Math.floor(((desk ? 660 : 744) - gap * (rows - 1)) / rows);
-    return page(ctx, {
-      title: "What looks most exciting",
-      // No tab, no back bar, no footer: omitting them is what makes the frame get out of the way.
-      body: [
-        text("What looks most exciting?", { size: 19, weight: 600, lineHeight: 24, tracking: -0.3 }),
-        grid(view.images.map((image) => bareTile(image, of, w, h, tapAndMaybeGo(image.id, of, done))), cols, gap),
-      ],
-      gap: 16,
-    });
-  }
-
-  const body: Node[] = [
-    col([
-      title(view.title),
-      ...(view.sub ? [meta(view.sub, { size: 13.5 })] : []),
-    ], { gap: 8 }),
-    ...(of === 0
-      ? [meta("These are on their way.", { size: 13.5 })]
-      : [grid(view.images.map((image) => tile(image, of, width)), columns, 12)]),
-  ];
-
-  const footer: Node[] = of === 0 ? [] : [
-    col([
-      // Only a complete order means anything, so Done is not offered until the last tile has a number.
-      when({ truthy: `${ORDER}.${of - 1}` }, primaryButton("Done", done, { wide: true })),
-      when({ falsy: `${ORDER}.${of - 1}` }, box([
-        meta("Tap all of them, most like you first", { size: 13, align: "center" }),
-      ], { height: 54, alignItems: "center", justifyContent: "center" })),
-      row([quietButton("Skip for now", skip)], { justifyContent: "center" }),
-    ], { gap: 4 }),
-  ];
+  const desk = ctx.client === "desktop";
+  const cols = desk ? 3 : 2;
+  const rows = Math.ceil(of / cols);
+  const gap = 12;
+  const pad = 20;
+  const w = Math.floor(((desk ? 900 : 390) - pad * 2 - gap * (cols - 1)) / cols);
+  const h = Math.floor(((desk ? 660 : 744) - gap * (rows - 1)) / rows);
 
   return page(ctx, {
-    title: "Put these in order",
-    nav: "travel",
-    back: true,
-    backTitle: "Travel bot",
-    body,
-    footer,
+    title: "What looks most exciting",
+    // No tab, no back bar, no footer: omitting them is what makes the frame get out of the way.
+    body: [
+      text("What looks most exciting?", { size: 19, weight: 600, lineHeight: 24, tracking: -0.3 }),
+      grid(view.images.map((image) => bareTile(image, of, w, h, tapAndMaybeGo(image.id, of, done))), cols, gap),
+    ],
+    gap: 16,
     state: { [ORDER]: [] },
   });
 }

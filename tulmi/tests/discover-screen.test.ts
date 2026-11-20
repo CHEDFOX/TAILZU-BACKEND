@@ -59,13 +59,12 @@ describe("the six images, put in order", () => {
   });
 
   it("makes every tile tappable, adding and removing it from the order", () => {
-    const toggles = treeOf(built).filter((n) => {
-      const press = (n as { on?: { onPress?: { kind?: string; path?: string } } }).on?.onPress;
-      return press?.kind === "toggleInArray" && press.path === "order";
-    });
-    expect(toggles).toHaveLength(6);
-    const values = toggles.map((n) => (n as { on: { onPress: { value: string } } }).on.onPress.value);
-    expect(new Set(values)).toEqual(new Set(["fjord", "lagoon", "carved", "night", "ridge", "dunes"]));
+    const presses = treeOf(built)
+      .map((n) => (n as { on?: { onPress?: unknown } }).on?.onPress)
+      .filter(Boolean);
+    expect(presses).toHaveLength(6);
+    const all = JSON.stringify(presses);
+    for (const id of ["fjord", "lagoon", "carved", "night", "ridge", "dunes"]) expect(all).toContain(id);
   });
 
   it("draws the number from its own state, so a tap needs no round trip", () => {
@@ -80,18 +79,11 @@ describe("the six images, put in order", () => {
     expect(badged.length).toBeGreaterThanOrEqual(6);
   });
 
-  it("offers Done only once the last place is filled", () => {
-    const shown = treeOf(built).filter((n) => {
-      const cond = (n as { visibleIf?: { truthy?: string } }).visibleIf;
-      return cond?.truthy === "order.5";
-    });
-    expect(shown.length).toBeGreaterThan(0);
-
-    const hidden = treeOf(built).filter((n) => {
-      const cond = (n as { visibleIf?: { falsy?: string } }).visibleIf;
-      return cond?.falsy === "order.5";
-    });
-    expect(hidden.length).toBeGreaterThan(0);
+  it("has no Done at all: the tap that fills the last place is the end of it", () => {
+    const text = json(built);
+    expect(text).not.toContain('"Done"');
+    // every tile checks, after its own toggle, whether that was the sixth
+    expect(text).toContain('"truthy":"order.5"');
   });
 
   it("sends the whole order to the one endpoint that takes it", () => {
@@ -101,8 +93,8 @@ describe("the six images, put in order", () => {
     expect(text).toContain('"method":"POST"');
   });
 
-  it("lets them out of it at any point", () => {
-    expect(json(built)).toContain("Skip for now");
+  it("offers no way out, because the six are the price of entry", () => {
+    expect(json(built)).not.toContain("Skip for now");
   });
 
   it("uses a photograph where the catalogue has one, and a colour where it does not", () => {
@@ -147,8 +139,11 @@ describe("the feed on the Travel bot's own screen", () => {
   const ctx = () => ctxFor(SCREENS.travel, "phone");
   const text = (nodes: unknown) => JSON.stringify(nodes);
 
-  it("invites a newcomer to the six images, and does not nag somebody who has done it", () => {
-    expect(text(feedBlocks(ctx(), feed, blank))).toContain("Six pictures, fifteen seconds");
+  it("never invites anybody to the six, because they cannot get here without doing them", () => {
+    // bots.travel shows the six INSTEAD of this screen while a profile is empty (screens/bots.ts), so an
+    // invitation here could only ever appear when the six failed to load — and it would open the screen that
+    // fetches the same six.
+    expect(text(feedBlocks(ctx(), feed, blank))).not.toContain("Six pictures");
     expect(text(feedBlocks(ctx(), feed, taught))).not.toContain("Six pictures");
   });
 
@@ -215,7 +210,7 @@ describe("the feed on the Travel bot's own screen", () => {
 });
 
 describe("the six as the first screen, with no way past", () => {
-  const required = () => firstLookPage(ctxFor(SCREENS.travel, "phone"), VIEW, { required: true });
+  const required = () => firstLookPage(ctxFor(SCREENS.travel, "phone"), VIEW);
   const asText = (s: unknown) => JSON.stringify(s);
 
   it("asks one short question and says nothing else", () => {
@@ -258,16 +253,18 @@ describe("the six as the first screen, with no way past", () => {
     expect(first).toContain("bots.travel");
   });
 
-  it("keeps the worded version for doing it again later", () => {
-    const out = asText(firstLookPage(ctxFor(SCREENS.travelFirstLook, "phone"), VIEW));
-    expect(out).toContain("Skip for now");
-    expect(out).toContain("Most like you first");
+  it("is the same screen however it is reached: one layout, not two", () => {
+    const direct = asText(firstLookPage(ctxFor(SCREENS.travelFirstLook, "phone"), VIEW));
+    expect(direct).toContain("What looks most exciting?");
+    expect(direct).not.toContain("Skip for now");
+    expect(direct).not.toContain("Most like you first");
   });
 
-  it("will not stand in for the screen unless all six are really there", () => {
+  it("draws whatever it was given rather than a half-built screen", () => {
     const five = { ...VIEW, images: VIEW.images.slice(0, 5) };
-    const out = asText(firstLookPage(ctxFor(SCREENS.travel, "phone"), five, { required: true }));
-    // falls back to the worded layout rather than holding somebody on a ragged grid
-    expect(out).toContain("Skip for now");
+    const out = asText(firstLookPage(ctxFor(SCREENS.travel, "phone"), five));
+    expect(out).toContain("What looks most exciting?");
+    // bots.travel only stands this in when all six are there (screens/bots.ts), so a short set is a direct visit
+    expect(out).not.toContain("Skip for now");
   });
 });
