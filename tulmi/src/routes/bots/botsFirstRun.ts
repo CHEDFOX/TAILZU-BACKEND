@@ -1,12 +1,14 @@
 /**
  * Bots app · first run: what its screens read beyond the existing routes (screens/firstRun.ts).
  *
- *   GET /v1/bots/first-run/about       the About you card on Home: { due, name, source, via, gender, botName }. Due once the
+ *   GET /v1/bots/first-run/about       the About you card on Home: { due, username, name, source, via, gender, botName }. Due once the
  *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th (3rd) visit, while something is
  *                                      still unsaid (the gender, and the name unless they signed in with Apple: App Review 4),
  *                                      or the assistant still has no name of its own. The name to start from: the account's own, else the
  *                                      sign-in provider's, else one suggested from the email
- *   PUT /v1/bots/first-run/about       { skip: true }: the card is answered and never due again (personality.botsAboutSkipped).
+ *   PUT /v1/bots/first-run/about       { done: true }: the username step is answered and the card never due again
+ *                                      (personality.botsUsernameDone). { skip: true }: the assistant's-name step was left
+ *                                      (botsAboutSkipped), which is the old card's flag and no longer decides whether this one shows.
  *                                      Sent by "Not now" on either step, and by the card finishing however much was filled in.
  *                                      NOTHING ON THE CARD IS REQUIRED (App Review 5.1.1(v), 5.1.1(x)): it can never lock Home.
  *                                      What it does save goes to the routes that own it: PUT /v1/profile { full_name, gender },
@@ -40,6 +42,7 @@ import { freeForAll } from "../../experience/policy.js";
 import { PAYWALL_CONFIG } from "../../experience/phone/paywall.js";
 import { getPersonality, updatePersonality } from "../../personality/store.js";
 import { getProfile } from "../../profile/store.js";
+import { usernameOf } from "../../profile/username.js";
 import { TYPING_WORDS_PER_MINUTE } from "../../history/stats.js";
 import { usageSummary } from "../../usage/metering.js";
 import { timesFree } from "../../you/usage.js";
@@ -255,16 +258,16 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
   app.get("/v1/bots/first-run/about", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return unauthorized(reply);
-    const [profile, p] = await Promise.all([getProfile(user).catch(() => null), getPersonality(user).catch(() => null)]);
+    const [profile, p, username] = await Promise.all([
+      getProfile(user).catch(() => null), getPersonality(user).catch(() => null), usernameOf(user.id).catch(() => ""),
+    ]);
     const gender = profile?.gender && GENDER_VALUES.has(profile.gender) ? profile.gender : null;
     const via = signedInVia(user);
     const visits = p?.botsVisits ?? 0;
-    // Still worth asking: the gender, the name (unless Apple signed them in: App Review 4), or a name for the assistant. Never
-    // once the card has been answered (botsAboutSkipped): the card asks for nothing and never comes back.
-    const due = !!profile?.onboarded && !!p && p.botsAboutSkipped !== true
-      && (!gender || (!profile.fullName?.trim() && via !== "apple") || !nicknameOf(p))
-      && visits >= ABOUT_AFTER_VISITS;
-    return reply.send({ due, ...startingName(user, profile?.fullName), via, gender, botName: nicknameOf(p) ?? "" });
+    // The username step keeps its OWN flag. botsAboutSkipped was the old name-and-gender card's, and everyone who tapped "Not
+    // now" on that one has it set: keying this card on it would mean they never saw their username at all (docs/username.md).
+    const due = !!profile?.onboarded && !!p && p.botsUsernameDone !== true && visits >= ABOUT_AFTER_VISITS;
+    return reply.send({ due, username, ...startingName(user, profile?.fullName), via, gender, botName: nicknameOf(p) ?? "" });
   });
 
   /**
@@ -274,11 +277,16 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
   app.put("/v1/bots/first-run/about", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return unauthorized(reply);
-    if ((req.body as { skip?: unknown } | null)?.skip !== true) {
-      return reply.code(400).send({ code: "bad_request", message: "skip must be true." });
+    const body = (req.body ?? {}) as { skip?: unknown; done?: unknown };
+    if (body.skip !== true && body.done !== true) {
+      return reply.code(400).send({ code: "bad_request", message: "skip or done must be true." });
     }
     try {
-      await updatePersonality(user, (p) => ({ ...p, botsAboutSkipped: true }));
+      await updatePersonality(user, (p) => ({
+        ...p,
+        ...(body.done === true ? { botsUsernameDone: true } : {}),
+        ...(body.skip === true ? { botsAboutSkipped: true } : {}),
+      }));
       return reply.send({ ok: true });
     } catch (err) {
       req.log.error(err);

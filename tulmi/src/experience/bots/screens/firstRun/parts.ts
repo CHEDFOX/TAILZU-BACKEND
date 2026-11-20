@@ -200,16 +200,24 @@ export const phoneStepBody = (body: Node[], footer: Node[], gap = 18): Node =>
 
 /** GET /v1/bots/first-run/profile (routes/bots/botsFirstRun.ts). */
 /** GET /v1/bots/first-run/about: the About you card (aboutCard.ts), due after a few visits while the answer is owed. */
-export interface About { due: boolean; name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; botName?: string }
+export interface About {
+  due: boolean; name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; botName?: string;
+  /** The one they hold now (docs/username.md). Always there: every account is given one the moment it is made. */
+  username?: string;
+}
 
 /** A text field in the boards' look: the ink outline, the clear button. */
-export function nameField(path: string, placeholder: string, onSubmit: ActionRef, desk: boolean, o: { capitalize?: boolean; label: string; height?: number }): Node {
+export function nameField(path: string, placeholder: string, onSubmit: ActionRef, desk: boolean, o: { capitalize?: boolean; lower?: boolean; label: string; height?: number }): Node {
   const input: Node = {
     type: "TextField", id: path, bind: { value: path },
     props: {
       placeholder, placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0,
       paddingVertical: 0, minHeight: 44, color: C.ink, autoCorrect: false, returnKeyType: "done",
       ...(o.capitalize ? { autoCapitalize: "words", textContentType: "name", autoComplete: "name" } : {}),
+      // A username is lower case and typed as it is stored, so nothing the keyboard does can make it a name they cannot have.
+      // Only these two: the phone's TextField takes textContentType and autoComplete from its keyboard kind, never from props
+      // (TAILZU-FRONTEND app/src/sdui/components/TextField.tsx), so sending them would be dead weight.
+      ...(o.lower ? { autoCapitalize: "none", autoCorrect: false } : {}),
     },
     on: { onSubmit },
     style: {

@@ -108,47 +108,54 @@ describe("after sign-in: straight to Home, nothing asked (App Review 4)", () => 
 });
 
 describe("About you: a card on Home after a few visits, never in the first run", () => {
-  const about = (o: Record<string, unknown>) => ({ ...API, "GET /v1/bots/first-run/about": { due: true, name: "Aanya Rao", via: "google", source: "provider", gender: null, ...o } });
-  it("the card: the name filled in from the sign-in, the three genders, Save writes whatever there is, and a quiet Not now", async () => {
-    // App Review 5.1.1(v) and (x): nothing on this card is required and it can never lock Home. Save goes through with no name
-    // and no gender (the profile route keeps only what is there), and "Not now" records the skip so it never comes back.
+  const about = (o: Record<string, unknown>) => ({ ...API, "GET /v1/bots/first-run/about": { due: true, username: "jolly-heron-646", name: "Aanya Rao", via: "google", source: "provider", gender: null, ...o } });
+  /** The username step alone (the smallest node holding it): the card's second step has its own Not now, which this one must not. */
+  const step1 = (root: Node) => walk(root).filter((n) => texts(n).includes("Your username"))
+    .sort((a, b) => texts(a).length - texts(b).length)[0]!;
+  it("the card: the username filled in and editable, the three genders, Save writes both, and no Not now on this step", async () => {
+    // App Review 5.1.1(v): nothing here is required and it can never lock Home. There is no Not now on this step, so SAVE is the
+    // one way past it — which is safe only because the username is already filled and already valid, and the gender is optional.
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.home", client, { api: about({}) });
-      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you. Both are up to you.", "Save", "Not now"]));
-      expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name"');
-      expect(s.state).toMatchObject({ aboutName: "Aanya Rao", aboutGender: "", aboutSaved: false, aboutClosed: false, aboutBotName: "", aboutBotDone: false });
-      const all = actions(s.root);
-      expect(all).toEqual(expect.arrayContaining([
-        expect.objectContaining({ kind: "setState", path: "aboutGender", value: "female" }),
-        // Save: no condition in front of it at all.
-        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
-        // Not now: the card closes and the skip is kept.
-        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/first-run/about", body: { skip: true } }),
+      expect(texts(s.root!), client).toEqual(expect.arrayContaining([
+        "Your username", "Male", "Female", "Other",
+        "Your username is your identity on the app. It's how friends and communities add you.", "Save",
       ]));
-      expect(JSON.stringify(all), client).not.toContain("Add your name and pick one.");
+      expect(JSON.stringify(s.root)).toContain('"placeholder":"Your username"');
+      // The one they were given, theirs to change; typed as it is stored, so the keyboard cannot make it a name they cannot have.
+      expect(JSON.stringify(s.root)).toContain('"autoCapitalize":"none"');
+      expect(s.state).toMatchObject({ aboutUsername: "jolly-heron-646", aboutGender: "", aboutSaved: false, aboutClosed: false, aboutBotName: "", aboutBotDone: false });
+      // No quiet way out of THIS step (the assistant's-name step keeps its own).
+      expect(texts(step1(s.root!)), client).not.toContain("Not now");
+      const all = actions(s.root);
+      // Save: no condition in front of it at all. The username first, because it is the one that can be refused.
+      const save = all.find((x) => (x as { path?: string }).path === "/v1/profile/username") as { body?: unknown; onSuccess?: unknown; onError?: unknown };
+      expect(save?.body).toEqual({ username: "$state.aboutUsername" });
+      // Then the gender, then the card is done with. A gender left empty is simply not written (the route keeps only the three).
+      expect(JSON.stringify(save?.onSuccess)).toContain('"body":{"gender":"$state.aboutGender"}');
+      expect(JSON.stringify(save?.onSuccess)).toContain('"body":{"done":true}');
+      expect(JSON.stringify(save?.onError)).toContain("taken");
+      expect(all).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "setState", path: "aboutGender", value: "female" })]));
       expect(JSON.stringify(all), client).not.toContain("Pick one to save.");
       expect(lintTree(s.root!), client).toEqual([]);
     }
   });
-  it("signed in with Apple: the name Apple gave, filled in and editable, never required (App Review 4); no field when Apple gave none", async () => {
-    // Apple gave a name: the field is there, filled with it, and Save needs only the gender (the name goes with it when it is kept).
-    const given = await build("bots.home", "phone", { api: about({ name: "Aanya Rao", via: "apple", source: "provider" }) });
-    expect(JSON.stringify(given.root)).toContain('"id":"aboutName"');
-    expect(given.state).toMatchObject({ aboutName: "Aanya Rao" });
-    // One Save, no gate in front of it: the route keeps the name only when it is not empty and the gender only when it is one of
-    // the three, so an Apple sign-in that gave no gender still saves and still moves on.
-    expect(actions(given.root)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
-    ]));
-    expect(JSON.stringify(actions(given.root))).not.toContain("Pick one to save.");
-    // Apple gave none (or only a guess from a relay address could be made): no name field at all, and the gender alone is saved.
-    for (const [name, source] of [["", null], ["Aanya", "email"]] as const) {
-      const s = await build("bots.home", "phone", { api: about({ name, via: "apple", source }) });
-      // Home has its own fields (the ask bar): the card's name field is the one that must not be there.
+  it("the username step is the same however they signed in: Apple, Google or an email", async () => {
+    // The old card asked for a name, which Apple's sign-in had already given (App Review 4). A username is ours to give, so
+    // there is nothing to leave out: everyone sees the same field, filled with the name their account was made with.
+    for (const who of [
+      { name: "Aanya Rao", via: "apple", source: "provider" },
+      { name: "", via: "apple", source: null },
+      { name: "Aanya", via: "email", source: "email" },
+    ] as const) {
+      const s = await build("bots.home", "phone", { api: about({ ...who, username: "swift-otter-042" }) });
+      expect(JSON.stringify(s.root)).toContain('"id":"aboutUsername"');
+      expect(s.state).toMatchObject({ aboutUsername: "swift-otter-042" });
+      // The card never asks for their real name any more, so no name field and no write of one.
       expect(JSON.stringify(s.root)).not.toContain('"id":"aboutName"');
-      expect(JSON.stringify(s.root)).not.toContain("Your name");
+      expect(JSON.stringify(actions(s.root))).not.toContain("full_name");
       expect(actions(s.root)).toEqual(expect.arrayContaining([
-        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
+        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile/username", body: { username: "$state.aboutUsername" } }),
       ]));
     }
   });
@@ -188,18 +195,21 @@ describe("About you: a card on Home after a few visits, never in the first run",
       expect(card?.props, client).toMatchObject({ overlay: true, width: client === "desktop" ? 360 : 330 });
     }
   });
-  it("comes back on the step still owed: name and gender saved, it opens on the assistant's name", async () => {
+  it("always opens on the username, even for someone who answered the old name-and-gender card", async () => {
+    // Showing someone their username is the point of the card, so a gender they gave the old one must not skip past it. The
+    // chips start on that gender, so Save keeps it.
     const s = await build("bots.home", "phone", { api: about({ name: "Aanya Rao", source: "saved", gender: "female" }) });
-    expect(s.state).toMatchObject({ aboutSaved: true, aboutBotDone: false });
-    // Signed in with Apple, the gender alone is their part.
-    expect((await build("bots.home", "phone", { api: about({ name: "", source: null, via: "apple", gender: "male" }) })).state).toMatchObject({ aboutSaved: true });
-    expect((await build("bots.home", "phone", { api: about({ name: "Aanya", source: "email", gender: null }) })).state).toMatchObject({ aboutSaved: false });
+    expect(s.state).toMatchObject({ aboutUsername: "jolly-heron-646", aboutGender: "female", aboutSaved: false, aboutBotDone: false });
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your username"]));
+    for (const g of [null, "male"] as const) {
+      expect((await build("bots.home", "phone", { api: about({ gender: g }) })).state).toMatchObject({ aboutSaved: false });
+    }
   });
   it("not due: no card; and one ask at a time, so not while the first-arrival card is due", async () => {
     const none = await build("bots.home", "phone", { api: about({ due: false }) });
-    expect(texts(none.root!)).not.toContain("Tell your bots about you");
+    expect(texts(none.root!)).not.toContain("Your username");
     const arriving = await build("bots.home", "phone", { api: { ...about({}), "GET /v1/bots/first-run/arrival": { due: true, kind: "first" } } });
-    expect(texts(arriving.root!)).not.toContain("Tell your bots about you");
+    expect(texts(arriving.root!)).not.toContain("Your username");
   });
 });
 
@@ -582,7 +592,7 @@ describe("the routes", () => {
   });
   afterAll(async () => { await server?.close(); });
   const auth = { authorization: "Bearer test-static-token-0123456789" };
-  it("the About you card: due from the third visit once onboarded, and done with for good once the skip is sent", async () => {
+  it("the About you card: due from the third visit once onboarded, and done with for good once done is sent", async () => {
     expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/about" })).statusCode).toBe(401);
     const about = async () => (await server.inject({ method: "GET", url: "/v1/bots/first-run/about", headers: auth })).json();
     // A static token has no sign-in to read, so no name is suggested.
@@ -596,22 +606,23 @@ describe("the routes", () => {
       expect((await about()).due).toBe(false);
       await visit();
       expect((await about()).due).toBe(true);
-      // The skip is the one thing the card writes here, and it must say so: nothing else is accepted.
+      // done or skip is the one thing the card writes here, and it must say so: nothing else is accepted.
       expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: {} })).statusCode).toBe(400);
       expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: { skip: "yes" } })).statusCode).toBe(400);
-      // The pick alone is not enough for someone who did not sign in with Apple: the name too; and then the assistant's name.
+      // Answering the OLD card leaves it due: the username is the point of it now, and nothing they did before said anything
+      // about a username. A gender, a name, an assistant's name: all still due.
       await server.inject({ method: "PUT", url: "/v1/profile", headers: auth, payload: { gender: "female" } });
       expect((await about()).due).toBe(true);
       await server.inject({ method: "PUT", url: "/v1/profile", headers: auth, payload: { full_name: "Aanya Rao" } });
       expect(await about()).toMatchObject({ due: true, name: "Aanya Rao", gender: "female", botName: "" });
-      await visit();
-      expect((await about()).due).toBe(true);
       expect((await server.inject({ method: "PUT", url: "/v1/personality", headers: auth, payload: { assistantName: "Zara" } })).statusCode).toBe(200);
-      expect(await about()).toMatchObject({ due: false, botName: "Zara" });
-      // "Not now", with nothing saved at all: the card is never due again (App Review 5.1.1(v): it can never lock Home).
-      await server.inject({ method: "PUT", url: "/v1/personality", headers: auth, payload: { assistantName: "X0" } });
-      expect((await about()).due).toBe(true);
+      expect(await about()).toMatchObject({ due: true, botName: "Zara" });
+      // And the OLD card's skip does not hide it either: everyone who tapped "Not now" on that one has it set, and they must
+      // still get to see their username once (docs/username.md).
       expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: { skip: true } })).statusCode).toBe(200);
+      expect((await about()).due).toBe(true);
+      // Save on the username step: done with, for good.
+      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: { done: true } })).statusCode).toBe(200);
       expect((await about()).due).toBe(false);
       await visit();
       expect((await about()).due).toBe(false);

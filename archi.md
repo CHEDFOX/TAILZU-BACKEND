@@ -233,7 +233,7 @@ billing/           entitlements (RevenueCat) and Razorpay
 usage/             metering, the allowance, request cost, keyboard telemetry
 history/           what was written (store.ts) and the numbers from it (stats.ts)
 personality/       the person's style profile (store.ts) and learning from use (learn.ts)
-profile/           the profile row and the language a request is written in
+profile/           the profile row and the language a request is written in; username.ts the name a person is reached by (docs/username.md)
 seo/               the website's pages and facts (also written into TAILZU-WEB by scripts/sync-site.mts)
 ads/               Meta and Google Tag Manager events
 ```
@@ -273,6 +273,7 @@ ads/               Meta and Google Tag Manager events
 | Lingo (the language bot: spaced repetition, marking on the server, talking rather than tapping) | `tulmi/src/lingo/` (`types.ts`, `schedule.ts` the FSRS scheduler, `grade.ts` the marking), migration 0087 (docs/lingo.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | The phone's own three (where the day starts, one contact, a fitness bot's workouts) | the contract `shared/types/sdui.ts` (`location.area`, `contact.pick`, `health.sync`), the card words `experience/bots/screens/permitWords.ts`, location in `experience/bots/screens/botsPlaces.ts`, the contact picker `screens/spaces/pickContact.ts` with the invite preview `botsBots/inviteMail.ts` and its retention `botsBots/inviteSweeper.ts`, health in `bots/healthDays.ts` + `bots/healthGate.ts` + `bots/door.ts` `isFitnessBot` + `screens/bots/health.ts` + `POST /v1/bots/:slug/health/days`, migration 0089; all five switches off in `config.ts` (docs/perms.md) |
+| The username (the one name a person is reached by: adding a friend, putting someone in a space) | `tulmi/src/profile/username.ts`, routes `routes/account/profile.ts` (`GET`/`PUT /v1/profile/username`), the card `experience/bots/screens/firstRun/aboutCard.ts`, migration 0109 (docs/username.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
 | Plan Ease's calls ("X0 is calling") | `tulmi/src/botsBots/planCall.ts` and `planCallWords.ts` (the ring, the limits, the words), `planCallLive.ts` and `planCallLiveWords.ts` (the live voice call), `planCallSeam.ts` (the one seam with the call judge), `src/realtime/` (the link to OpenAI), the judge that decides which things are worth a call `planCallJudge.ts`, `planCallJudgeWords.ts` and `planCallJudgeStore.ts` with `routes/bots/planCallJudge.ts` and migration 0086 (docs/plan-call-judge.md), routes `routes/bots/planCalls.ts`, the screen `experience/bots/screens/bots/planCall.ts`, migrations 0079 and 0085 (docs/plan-ease.md "Calls") |
 | The bot at the foot of Home, as what is happening (what needs you, what is working, what just finished; his ear, and typing behind a key) | `tulmi/src/experience/bots/screens/shell/homeUpdates.ts`, picked in `screens/shell/home.ts` and `screens/shell.ts` (which reads the feed for it), switches `HOME_UPDATES` / `HOME_UPDATES_USERS` / `HOME_LISTEN` (docs/home-updates.md) |
@@ -359,9 +360,9 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/code-schedule.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/home-updates.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/home-updates.md`, `docs/artifacts.md`, `docs/spaces.md`, `docs/username.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/cinema.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/cinema.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`, `docs/username.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers), `docs/perms.md`,
 `viewer/docs/artifact-viewer.md`.

@@ -232,6 +232,12 @@ export interface Personality {
    */
   botsVisits?: number;
   botsAboutSkipped?: boolean;
+  /**
+   * The username step of the About you card is answered (PUT /v1/bots/first-run/about { done: true }), so the card is never due
+   * again. Its own flag, not botsAboutSkipped: that one was set by everyone who tapped "Not now" on the old name-and-gender card,
+   * and keying the username card on it would mean those people never saw their username at all (docs/username.md).
+   */
+  botsUsernameDone?: boolean;
 
   /**
    * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:

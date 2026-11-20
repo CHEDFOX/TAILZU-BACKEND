@@ -9,6 +9,14 @@ import { updatePersonality } from "../../personality/store.js";
 import { getProfile, type Profile, updateProfile } from "../../profile/store.js";
 import { providerNameToSave, signedInVia } from "../bots/botsFirstRun.js";
 import { unauthorized } from "../../http/helpers.js";
+import { Limiter } from "../../artifacts/limits.js";
+import { checkShape, claim, free, usernameOf } from "../../profile/username.js";
+
+/**
+ * Asking whether a username is free is how a list of everyone would be made, so it is braked the way codes are
+ * (botsBots/spaceJoin.ts guessing()). It says free or not and nothing else: never whose a taken one is.
+ */
+const CHECKS = new Limiter(60, 60 * 60 * 1000);
 
 export interface ProfileRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -22,7 +30,9 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
   app.get("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return unauthorized(reply);
-    return reply.send(await getProfile(user));
+    // The username never fails this read: /v1/profile is read at every launch, and a profile without it is still a profile.
+    const [profile, username] = await Promise.all([getProfile(user), usernameOf(user.id).catch(() => "")]);
+    return reply.send({ ...profile, username });
   });
 
   // Sign in with Apple's one-time code (src/auth/appleSignIn.ts): the app hands it over just after an Apple sign-in, and the server trades it
@@ -41,6 +51,35 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
       return false;
     });
     return reply.send({ kept });
+  });
+
+  // --- The username ----------------------------------------------------------
+
+  // Is this one free? For a screen that wants to say so before Save does (the About you card does not yet: it saves and reads
+  // the 409 back). A bad shape answers with the line to show and never reaches the database.
+  app.get("/v1/profile/username", { config: AUTHED_RL }, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const want = (req.query as { u?: unknown } | null)?.u;
+    const shape = checkShape(want);
+    if (!shape.ok) return reply.send({ free: false, why: shape.why });
+    if (!CHECKS.allow(user.id)) {
+      return reply.code(429).send({ code: "check_limit", message: "That's a lot of usernames today. Try again later." });
+    }
+    return reply.send({ free: await free(shape.name), name: shape.name });
+  });
+
+  // Take one. "taken" covers held, ours and given up alike, so it never says which.
+  app.put("/v1/profile/username", { config: AUTHED_RL }, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const shape = checkShape((req.body as { username?: unknown } | null)?.username);
+    if (!shape.ok) return reply.code(400).send({ code: "bad_request", message: shape.why });
+    const got = await claim(user.id, shape.name);
+    if (got === "taken") return reply.code(409).send({ code: "taken", message: "That one's taken. Try another." });
+    if (got === "too_soon") return reply.code(429).send({ code: "too_soon", message: "You changed it recently. You can change it again in a month." });
+    if (got === "blocked") return reply.code(422).send({ code: "blocked_content", message: "Try another username." });
+    return reply.send({ username: shape.name });
   });
 
   app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
