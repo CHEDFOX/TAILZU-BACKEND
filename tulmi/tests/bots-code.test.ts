@@ -168,11 +168,16 @@ describe("the screens, for the phone and the window", () => {
     it(`bots.code (${client}): a project's own page is a way to another project`, async () => {
       const one = await build("bots.code", client, { project: P });
       expect(one.lint).toEqual([]);
-      expect(one.words).toContain("Add a project · or start one from scratch");
+      // TWO WAYS, each saying what it does. One row naming both and opening only the picker — a list of repos they
+      // already own — is what left somebody with no repo to bring nowhere to go.
+      expect(one.words).toContain("Add a project");
       expect(one.json).toContain('"screenId":"bots.code.start","params":{"step":"pick"}');
-      // And the overview still has it, since both draw the same row (code/parts.ts addProjectRow).
+      expect(one.words).toContain("Or start one from scratch");
+      expect(one.json).toContain('"screenId":"bots.code.new"');
+      // And the overview has them too, since both pages draw the same block (code/parts.ts addProjectRow).
       const many = await build("bots.code", client, {});
-      expect(many.words).toContain("Add a project · or start one from scratch");
+      expect(many.words).toContain("Add a project");
+      expect(many.json).toContain('"screenId":"bots.code.new"');
     });
     it(`bots.code.start meet / pick / read (${client})`, async () => {
       const meet = await build("bots.code.start", client, { step: "meet" }, { ...API, "GET /v1/code/github": { connected: false, installations: [] }, "POST /v1/code/github/connect": { installUrl: "https://github.com/apps/tailzu/installations/new?state=s" } });

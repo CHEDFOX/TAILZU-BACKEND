@@ -89,7 +89,9 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
     row(["Project", "Built with", "Now", "Tests"].map((h, j) => box([sectionLabel(h)], { flexGrow: [1.1, 0.6, 1.5, 1.2][j], flexBasis: 0, minWidth: 0 })), { gap: 14, paddingVertical: 10, paddingHorizontal: 18 }),
     ...rows.map((r, i) => row([...r.map((c, j) => box([c], { flexGrow: [1.1, 0.6, 1.5, 1.2][j], flexBasis: 0, minWidth: 0 })), icon("chevron", { size: 16, color: C.meta })],
       { gap: 14, paddingHorizontal: 18, minHeight: 58, borderTopWidth: 1, borderTopColor: C.divider }, open(SCREENS.code, { project: d.projects[i]!.id }))),
-    row([icon("plus", { size: 16, color: C.meta }), meta("Add a project · or start one from scratch", { size: 13 })], { gap: 10, paddingHorizontal: 18, minHeight: 50, borderTopWidth: 1, borderTopColor: C.divider }, open(SCREENS.codeStart, { step: "pick" })),
+    // Just the picker here: the header above carries "Start from scratch" as its own button, and a row that names
+    // both and does one is what sent people looking for a way to start something in a list of repos they own.
+    row([icon("plus", { size: 16, color: C.meta }), meta("Add a project", { size: 13 })], { gap: 10, paddingHorizontal: 18, minHeight: 50, borderTopWidth: 1, borderTopColor: C.divider }, open(SCREENS.codeStart, { step: "pick" })),
   ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" });
   const run = working[0];
   const recent = d.jobs.filter((j) => j.state === "done").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);

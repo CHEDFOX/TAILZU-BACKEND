@@ -11,16 +11,30 @@ import {
 } from "../../kit.js";
 
 /**
- * THE WAY TO ANOTHER PROJECT, and it has to be on a PROJECT'S OWN PAGE as well as on the overview.
+ * THE TWO WAYS TO ANOTHER PROJECT, and they belong on a PROJECT'S OWN PAGE as much as on the overview.
  *
  * Somebody with one project never sees the overview: with exactly one, that project IS Xode's home (code.ts
- * loadHome). So every way into the picker used to sit on a screen they could not reach, and the second project
- * could not be added until there was a second project. The picker is the same one the first project came through.
+ * loadHome). So both ways used to sit on screens they could not reach, and the second project could not be added
+ * until there was a second project.
+ *
+ * TWO ACTIONS AND NOT ONE, because they are two different things and a single row cannot honestly do both. This
+ * was one row reading "Add a project · or start one from scratch" that opened the picker — which lists the repos
+ * on their GitHub and has no way to start anything. The window's own header has had them as two buttons all along.
+ *
+ *   Add a project      the picker: repos they already have. The same one the first project came through, and it
+ *                      is built to be come back to — one already added shows as "added" and opens instead.
+ *   From scratch       bots.code.new: they name a repo, X0 Bot MAKES it on their GitHub (POST /v1/code/repos/new,
+ *                      a blink on GitHub to check it is them) and it is added — then the plan is written in it.
+ *                      Nothing has to exist first, which is the answer for somebody who has no repo to bring.
  */
 export const addProjectRow = (): Node =>
-  row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project · or start one from scratch", { size: 14, color: C.grey70, lineHeight: 19 })],
-    { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
-    open(SCREENS.codeStart, { step: "pick" }));
+  col([
+    row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project", { size: 14, color: C.grey70, lineHeight: 19 })],
+      { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
+      open(SCREENS.codeStart, { step: "pick" })),
+    col([text("Or start one from scratch", { size: 13, weight: 500, lineHeight: 18 }), meta("A new repo, made from here", { size: 13 })],
+      { gap: 1, paddingHorizontal: 16, paddingVertical: 4 }, open(SCREENS.newProject)),
+  ], { gap: 6 });
 
 // ===================================================================== what the routes answer (as much as is read)
 export interface Project { id: string; fullName: string; defaultBranch: string; private: boolean; createdAt: number }
