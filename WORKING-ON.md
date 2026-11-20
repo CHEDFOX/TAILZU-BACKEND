@@ -39,6 +39,13 @@ the whole migration.
 fails stashed too, as it has been), and `web-browser`'s "Chrome is not even started for it", which counts the machine's Chrome
 processes and so races the reaping of the ones the cases before it killed — stashed, it failed two runs in three.
 
+docs/social.md now holds the whole design this is the first step of: the username, the name you give someone
+(`person_names`, per reader), adding by username, a group whose admin has **no** automatic access to anyone's things, what "@"
+means (a mention inside a group, to that person alone anywhere else), one Share action routing between the two share
+mechanisms that already exist, and the three decisions the feed must not get wrong. It says which parts are built and which
+are planned, and the order to build them in. **Read it before starting any of them**, especially the two rules that must not
+be broken: a username is never given twice, and `to_id`'s visibility rule keeps being applied forever however "@" behaves.
+
 docs/username.md. Still to come: `person_names` (the name you give someone, resolved per reader), adding by username, and `@`
 taking either a username or the name you gave them.
 
