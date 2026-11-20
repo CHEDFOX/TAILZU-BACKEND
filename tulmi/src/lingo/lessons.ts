@@ -148,17 +148,32 @@ async function makeUnit(
   unitKey: string,
 ): Promise<UnitItem[] | null> {
   const asked = await askJson<UnitDraft>(ctx, {
-    tier: "strong",
+    // THE CHEAP TIER, which is the right size for the job: a unit is eight to fourteen pairs of a word and what it
+    // means, which a fast model does as well as a slow one and in a fraction of the time. The ladder is
+    // deepseek-v4.1-flash, gemini-2.5-flash, haiku, none of them thinking, and the person is WAITING on this —
+    // the celebration or the first-lesson screen is held open until it lands, so seconds are the thing to spend
+    // here, not cleverness. It also stops costing what it did: the worst case falls from about 320 paise against
+    // a 400 cap — four fifths of the budget, and silence when it tipped over — to roughly 90.
+    tier: "cheap",
     role: "lingo_unit",
     purpose: "lingo_unit",
     user: briefFor(u, lang, glossLang),
     schema: UnitDraft,
     maxTokens: 2000,
   });
-  if (!asked.ok) return null;
+  // SAY WHY, because a unit that was not made looks exactly like a pair with nothing to teach: the screen says
+  // "nothing to learn yet" whether the model was down, refused for budget, or came back too thin. No words of
+  // anybody's here — the pair, the unit and the reason.
+  if (!asked.ok) {
+    console.warn(`[lingo] no unit for ${lang}<-${glossLang} ${unitKey}: ${asked.reason}`);
+    return null;
+  }
   const items = tidyDraft(asked.value, u.size);
   // Too thin to keep: the model did not know the pair well enough, and a thin unit kept now is taught for ever.
-  if (items.length < ENOUGH) return null;
+  if (items.length < ENOUGH) {
+    console.warn(`[lingo] unit too thin for ${lang}<-${glossLang} ${unitKey}: ${items.length} of ${u.size}`);
+    return null;
+  }
   await bank.put(lang, glossLang, unitKey, items, Date.now()).catch(() => undefined);
   return items;
 }

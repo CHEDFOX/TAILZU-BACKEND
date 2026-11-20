@@ -310,7 +310,14 @@ will ever write by hand, so a unit's content is written by a model the first tim
 kept for everybody after (`lessons.ts`, `lingo_lessons`). The second learner on Spanish-from-Tamil waits for nothing.
 
 A unit that could not be made is **not kept**. A model that was down, a reply that did not parse, or a unit that came
-back thin (`ENOUGH`, four items) writes nothing, because a thin unit kept now is taught to everybody after it.
+back thin (`ENOUGH`, four items) writes nothing, because a thin unit kept now is taught to everybody after it — and
+it SAYS which of those it was, because all three look the same from the screen ("nothing to learn yet").
+
+**The cheap tier writes it**, not the strong one: a unit is eight to fourteen pairs of a word and its meaning, which
+deepseek-v4.1-flash or gemini-2.5-flash does as well as anything slower and in a fraction of the time. Somebody is
+waiting on it — the first-lesson screen, or the celebration holding its Continue — so seconds are what matter here.
+It costs about 90 paise in the worst case against a 400 cap, where the strong tier came to 320 and failed silently
+on the day it tipped over.
 
 **The first lesson is started when the course is.** `PUT /v1/lingo/course` kicks off the unit for a brand-new course
 and does not wait for it, and the answer to "what's it for?" goes straight into the first exercise. Three things had
