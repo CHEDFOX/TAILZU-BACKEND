@@ -10,7 +10,7 @@ import {
 } from "../../kit.js";
 import {
   type Job, ago, cut, firstLine, MOSS, type MeetData, type OverviewData, type Project, short, tag, plural, backButton, CODE_BUSY,
-  startTask, taskBar, field, roundInk, ENDED, clock, CODE, addProjectRow,
+  startTask, taskBar, field, roundInk, ENDED, clock, CODE, addProjectRow, outOfCode,
 } from "./parts.js";
 
 export interface Branch { branch: string; task: string; prNumber: number | null; prUrl: string | null; state: string; createdAt: number }
@@ -58,7 +58,11 @@ export type HomeData =
   | { kind: "off" }
   | { kind: "meet"; meet: MeetData }
   | { kind: "overview"; overview?: OverviewData }
-  | { kind: "project"; project: Project; brain?: BrainLite; jobs: Job[]; branches: Branch[] };
+  | {
+      kind: "project"; project: Project; brain?: BrainLite; jobs: Job[]; branches: Branch[];
+      /** They have more than this one. Decides whether Back is the overview or the way out of Xode. */
+      many?: boolean;
+    };
 
 /** Near the usage limit, or at it: one calm line, a tap to Usage (src/you/usage.ts). Nothing while there is plenty left. */
 function usageNote(ctx: BotsCtx): Node[] {
@@ -129,7 +133,9 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
     return page(ctx, {
       nav: "code", title: `Xode · ${name}`,
       body: [
-        row([backButton(), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        // With one project this page IS Xode (code.ts loadHome), so Back is the way out of the bot; with several
+        // it is the overview, one step up. Either way it is a place, not the last thing they happened to open.
+        row([backButton(d.many ? open(SCREENS.code) : outOfCode()), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
           ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, bookBtn, rules], { gap: 8 }),
         readCard,
         ...usageNote(ctx),
@@ -188,6 +194,7 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
   ], { width: 290, flexShrink: 0, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 18, gap: 12 });
   return page(ctx, {
     nav: "code", title: `Xode · ${name}`, maxWidth: 1100, gap: 18,
+    back: d.many ? open(SCREENS.code) : outOfCode(),
     state: { task: "" },
     body: [
       row([

@@ -27,6 +27,18 @@ import {
  *                      a blink on GitHub to check it is them) and it is added — then the plan is written in it.
  *                      Nothing has to exist first, which is the answer for somebody who has no repo to bring.
  */
+/**
+ * OUT OF XODE, and back to a project's own page: the two places Back ever means, inside this bot.
+ *
+ * Every screen here used to POP — `navigateBack` with nothing said about where. So Back walked somebody out the
+ * way they came in: project, job, project, task, overview, project… a trail the length of their visit, when what
+ * they wanted was out. A screen that says where its Back goes turns that trail into a tree, and the way out of
+ * the bot is never more than two taps from anywhere in it.
+ */
+export const outOfCode = (): ActionRef => open(SCREENS.home);
+/** A project's own page, which is the parent of every screen that is about one job, one PR or one set of rules. */
+export const toProject = (id: string): ActionRef => open(SCREENS.code, { project: id });
+
 export const addProjectRow = (): Node =>
   col([
     row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project", { size: 14, color: C.grey70, lineHeight: 19 })],

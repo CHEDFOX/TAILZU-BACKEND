@@ -94,6 +94,11 @@ describe("the project brain in the home's words", () => {
     expect(health(brain)).toMatchObject({ line: "212 of 215 tests pass", passed: 212, total: 215, failingCount: 3 });
     expect(stackChips(brain)).toEqual(["Next.js", "Supabase", "TypeScript", "1,284 files"]);
     expect(firstTasks(brain).map((t) => t.label)).toEqual(["Fix the 3 failing tests", "Add tests to Checkout"]);
+    // ONLY ONE of them, however many busy untested files there are: three "Add tests to X" rows are three first
+    // tasks that are one first task, and they crowd out every other kind of start.
+    const untested = { ...brain, structure: { ...brain.structure, testing: { ...brain.structure!.testing!, untestedHot: ["src/a.tsx", "src/b.tsx", "src/c.tsx"] } } };
+    const labels = firstTasks(untested as never).map((t) => t.label).filter((l) => l.startsWith("Add tests"));
+    expect(labels.length).toBe(1);
     expect(testsLine({ status: "ready", structure: { fileCount: 3, testing: { frameworks: [], testFiles: 0, untestedHot: [] } } })).toBe("no tests yet · I can add some");
     expect(health({ status: "building" })).toBeNull();
     expect(isEmptyRepo({ status: "ready", structure: { fileCount: 0, note: "This repo has no commits yet." } })).toBe(true);
@@ -179,6 +184,23 @@ describe("the screens, for the phone and the window", () => {
       expect(many.words).toContain("Add a project");
       expect(many.json).toContain('"screenId":"bots.code.new"');
     });
+    /**
+     * BACK IS A PLACE, NOT A TRAIL. Every screen here used to pop, so Back walked somebody out the way they came
+     * in — project, job, project, task, overview, project — when what they wanted was out of the bot.
+     */
+    it(`bots.code (${client}): Back leaves Xode, and a job goes up to its project`, async () => {
+      const one = await build("bots.code", client, { project: P });
+      expect(one.json, "one project: this page IS Xode, so Back is the way out").toContain('"screenId":"bots.home"');
+      // With several it is the overview, one step up, and not the way out.
+      const many = await build("bots.code", client, { project: P }, {
+        ...API,
+        "GET /v1/code/projects": { projects: [project, { ...project, id: "22222222-2222-4222-8222-222222222222", fullName: "aanya-sharma/salon-booking" }] },
+      });
+      expect(many.json).toContain('"screenId":"bots.code"');
+      const job = await build("bots.code.job", client, { id: J });
+      expect(job.json, "a job is reached from four places and goes up to the one parent it has").toContain(`"screenId":"bots.code","params":{"project":"${P}"}`);
+    });
+
     it(`bots.code.start meet / pick / read (${client})`, async () => {
       const meet = await build("bots.code.start", client, { step: "meet" }, { ...API, "GET /v1/code/github": { connected: false, installations: [] }, "POST /v1/code/github/connect": { installUrl: "https://github.com/apps/tailzu/installations/new?state=s" } });
       expect(meet.lint).toEqual([]);

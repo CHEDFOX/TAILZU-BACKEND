@@ -114,10 +114,14 @@ export function firstTasks(b: BrainLite | undefined, max = 3): FirstTask[] {
     const n = h.failingCount;
     out.push({ label: `Fix the ${n} failing test${n === 1 ? "" : "s"}`, task: `Fix the ${n} failing test${n === 1 ? "" : "s"}${h.failing.length ? `: ${h.failing.slice(0, 5).join(", ")}` : ""}.` });
   }
+  // ONE OF THESE, not a list of them. A project where nothing is tested has a long `untestedHot`, and this filled
+  // the whole card with the same sentence over and over — "Add tests to components", "Add tests to App.tsx", "Add
+  // tests to index.tsx" — which is three FIRST TASKS that are one first task, and it crowded out every other kind
+  // of start there is. The busiest untested file is the one worth naming; the rest are the same suggestion.
   for (const path of b?.structure?.testing?.untestedHot ?? []) {
     if (out.length >= max) break;
     const place = placeOf(b, path);
-    if (out.some((t) => t.label.includes(place))) continue;
+    if (out.some((t) => t.label.startsWith("Add tests"))) break;
     out.push({ label: `Add tests to ${place}`, sub: "busy, untested", task: `Add tests to ${place} (${path}): it changes often and nothing tests it.` });
   }
   if (b?.structure && b.structure.testing?.testFiles === 0 && out.length < max && !out.some((t) => t.label.startsWith("Add tests"))) {

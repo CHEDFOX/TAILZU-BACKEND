@@ -108,7 +108,7 @@ async function loadHome(ctx: BotsCtx, deps: BotsDeps): Promise<HomeData> {
     get<{ jobs: Job[] }>(deps, "/v1/code/jobs").then((r) => (r?.jobs ?? []).filter((j) => j.projectId === project.id)),
     get<{ branches: Branch[] }>(deps, `/v1/code/projects/${project.id}/branches`).then((r) => r?.branches ?? []),
   ]);
-  return { kind: "project", project, brain, jobs, branches };
+  return { kind: "project", project, brain, jobs, branches, many: projects.length > 1 };
 }
 
 function codeHome(ctx: BotsCtx, d: HomeData | undefined): ScreenResponse {

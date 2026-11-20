@@ -10,7 +10,7 @@ import {
 } from "../../kit.js";
 import {
   type Project, type Job, cut, MOSS, ago, type OverviewData, unreachable, short, startTask, codeAsk, setupBuddy, backButton, CODE,
-  CODE_BUSY, setupTop, taskBar, enterTop, addProjectRow,
+  CODE_BUSY, setupTop, taskBar, enterTop, addProjectRow, outOfCode,
 } from "./parts.js";
 
 /** A project's "now": what its jobs are doing, or when it last shipped. */
@@ -63,7 +63,8 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
         ...(facts.length ? [row(facts.map((f) => meta(f)), { gap: 14, flexWrap: "wrap" })] : []),
       ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 8 }, open(SCREENS.code, { project: p.id }));
     });
-    const head = row([backButton(), botAvatar(CODE, 40), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+    // Xode's home, so Back is the way OUT of Xode rather than one step down whatever path they took to get here.
+    const head = row([backButton(outOfCode()), botAvatar(CODE, 40), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
       ...(stage ? [] : headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY }))], { gap: 10 });
     return page(ctx, {
       back: false, nav: "code", title: "Xode",
