@@ -13,6 +13,10 @@ import { describe, expect, it } from "vitest";
 const { firstLookPage, FIRST_LOOK_PATH } = await import("../src/experience/bots/screens/firstLook.js");
 const { ctxFor } = await import("../src/experience/bots/fixtures.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
+const { feedBlocks, placePage } = await import("../src/experience/bots/screens/discoverFeed.js");
+
+type FeedView = import("../src/experience/bots/screens/discoverFeed.js").FeedView;
+type TasteView = import("../src/experience/bots/screens/discoverFeed.js").TasteView;
 
 type View = import("../src/experience/bots/screens/firstLook.js").FirstLookView;
 
@@ -115,5 +119,97 @@ describe("the six images, put in order", () => {
   it("builds for the window too", () => {
     const desk = firstLookPage(ctxFor(SCREENS.travelFirstLook, "desktop"), VIEW);
     expect(json(desk)).toContain("$state.order");
+  });
+});
+
+describe("the feed on the Travel bot's own screen", () => {
+  const card = (over: Partial<FeedView["cards"][number]> = {}): FeedView["cards"][number] => ({
+    slug: "erg-chebbi-silence",
+    title: "The silence of Erg Chebbi",
+    where: "Sahara, Morocco",
+    hook: "Dunes the height of buildings, and a quiet so complete it feels physical.",
+    tags: ["desert", "solitude"],
+    budget: "budget",
+    effort: 3,
+    photos: [],
+    origin: "ours",
+    season: "December to March",
+    ...over,
+  });
+
+  const feed: FeedView = {
+    total: 14,
+    cards: [card(), card({ slug: "hampi", title: "Boulders at dawn", reason: "because you keep places with a past" }), card({ slug: "petra", title: "Through the Siq", wildcard: true })],
+  };
+
+  const blank: TasteView = { known: 0, signals: 0, likes: [], dislikes: [] };
+  const taught: TasteView = { known: 0.4, signals: 12, likes: [{ tag: "desert" }], dislikes: [] };
+  const ctx = () => ctxFor(SCREENS.travel, "phone");
+  const text = (nodes: unknown) => JSON.stringify(nodes);
+
+  it("invites a newcomer to the six images, and does not nag somebody who has done it", () => {
+    expect(text(feedBlocks(ctx(), feed, blank))).toContain("Six pictures, fifteen seconds");
+    expect(text(feedBlocks(ctx(), feed, taught))).not.toContain("Six pictures");
+  });
+
+  it("gives them a way to look up any place, which is the way into the build", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("Search any place on earth");
+    expect(out).toContain("/v1/discover/build");
+    expect(out).toContain('"$state.dq"');
+  });
+
+  it("leads with one place, and says the season rather than a month number", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("TODAY");
+    expect(out).toContain("best December to March");
+  });
+
+  it("shows the honest season countdown only when the window is closing", () => {
+    const soon = { ...feed, cards: [card({ daysLeft: 11 }), ...feed.cards.slice(1)] };
+    const far = { ...feed, cards: [card({ daysLeft: 200 }), ...feed.cards.slice(1)] };
+    expect(text(feedBlocks(ctx(), soon, taught))).toContain("11 days left in season");
+    expect(text(feedBlocks(ctx(), far, taught))).not.toContain("days left in season");
+  });
+
+  it("carries the reason on a tile, and marks the wildcard as one", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("because you keep places with a past");
+    expect(out).toContain("Not your usual");
+  });
+
+  it("tells the profile before it navigates, so a person who leaves at once is still heard", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("/v1/discover/signals");
+    expect(out).toContain('"kind":"open"');
+    expect(out).toContain("bots.travel.place");
+  });
+
+  it("draws nothing at all when the feed could not be read, so the trip below survives", () => {
+    expect(feedBlocks(ctx(), undefined, taught)).toEqual([]);
+    expect(feedBlocks(ctx(), { total: 0, cards: [] }, taught)).toEqual([]);
+  });
+
+  it("opens one place with its facts, and a way to say yes or no", () => {
+    const out = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card() }));
+    expect(out).toContain("The silence of Erg Chebbi");
+    expect(out).toContain("Best season");
+    expect(out).toContain("Keep it");
+    expect(out).toContain('"kind":"not_for_me"');
+  });
+
+  it("says whose words a card is: ours, or the web's with its sources", () => {
+    const ours = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card() }));
+    expect(ours).toContain("our own words");
+
+    const built = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), {
+      card: card({ origin: "built", sources: [{ host: "whc.unesco.org", url: "https://whc.unesco.org/x", readAt: "2026-11-20" }] }),
+    }));
+    expect(built).toContain("whc.unesco.org");
+    expect(built).toContain("not by us");
+  });
+
+  it("says so plainly when the place has gone, rather than erroring", () => {
+    expect(text(placePage(ctxFor(SCREENS.travelPlace, "phone"), undefined))).toContain("has gone");
   });
 });
