@@ -123,12 +123,15 @@ On top of that `FrameGate`: 4 frames a second while a page merely fidgets (a spi
 held to 4), 12 for the second after a touch because that is when a person is watching, and when frames outrun the
 cap the newest is kept and the rest dropped — an old frame is not worth sending late.
 
-**It ends on a signal**, never a countdown: the page stopped looking like a sign-in page, or they said they were in,
-or they left. The idle cut (90s) and the ceiling (5 min) are backstops for somebody who walked away. A quick
+**It ends on a signal**, never a countdown: the page stopped looking like a sign-in page, or they left. The idle cut (90s) and the ceiling (5 min) are backstops for somebody who walked away. A quick
 sign-in is over in seconds; a slow one gets as long as it needs.
 
-**"I'm signed in" is checked, not believed.** If the page is still a sign-in page the panel stays open — closing
-there would save a signed-out session over a good one, which is the exact mistake the watcher made once.
+**Nobody says they are in; the panel notices.** There was a button whose whole job was to make the server look at
+the page, and the server can look by itself — every few seconds, not every poll, because a DOM read is not free.
+Two things keep it honest. It will not close a panel that has never looked like a sign-in page: a page part way
+through opening looks like nothing either, and shutting on that would write a signed-out session over a good slip
+and call it success — the exact mistake the watcher made once. And the idle and total cuts stay as they were, for
+somebody who walked away.
 
 ### On the phone, and why it is not an app component
 
@@ -157,6 +160,9 @@ outlives the keypress. The characters appear where the real page draws them — 
 own password box. Which is also why nothing here has to know which box on the page is a secret: it never holds the
 secret. Autocorrect, autofill, capitals and spellcheck are all off, because a suggestion would type something into
 a field nothing on this side can see the name of.
+
+**And nothing else is on the screen.** No box to type in, no buttons: the page fills the card, a tap on it raises
+the keyboard, and the way out is the screen's own back. What is left is the site, which is the point.
 
 **There is no card of our own.** A panel once drew the page's boxes again underneath it, named and typed
 (docs/sign-in.md). It went: the person is already looking at the real form and can touch it, so our copy was a
