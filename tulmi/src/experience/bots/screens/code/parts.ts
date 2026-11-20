@@ -7,8 +7,20 @@ import type { BrainLite } from "../../../../botsCode/brain.js";
 import { start as momentStart, SENT_WORDS, failed, streamed, askMoment } from "../../askMoment.js";
 import {
   botLook, labelled, box, icon, back, row, text, C, type BotsCtx, col, title, FACE, page, emptyState, seq, call, SCREENS, keptOffline,
-  canBuddy, botBuddy, meta, grow,
+  canBuddy, botBuddy, meta, grow, open,
 } from "../../kit.js";
+
+/**
+ * THE WAY TO ANOTHER PROJECT, and it has to be on a PROJECT'S OWN PAGE as well as on the overview.
+ *
+ * Somebody with one project never sees the overview: with exactly one, that project IS Xode's home (code.ts
+ * loadHome). So every way into the picker used to sit on a screen they could not reach, and the second project
+ * could not be added until there was a second project. The picker is the same one the first project came through.
+ */
+export const addProjectRow = (): Node =>
+  row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project · or start one from scratch", { size: 14, color: C.grey70, lineHeight: 19 })],
+    { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
+    open(SCREENS.codeStart, { step: "pick" }));
 
 // ===================================================================== what the routes answer (as much as is read)
 export interface Project { id: string; fullName: string; defaultBranch: string; private: boolean; createdAt: number }

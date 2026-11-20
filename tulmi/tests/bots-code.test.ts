@@ -160,6 +160,20 @@ describe("the screens, for the phone and the window", () => {
       expect(json).toContain("/v1/bots/code/start");
       expect(json).toContain('"bots.code.rules"');
     });
+    /**
+     * ANOTHER PROJECT, FROM A PROJECT'S OWN PAGE. With exactly one project that page IS Xode's home (code.ts
+     * loadHome), and the overview — the only screen that carried the way into the picker — needs two projects to
+     * appear. So the second project could not be added until there was a second project.
+     */
+    it(`bots.code (${client}): a project's own page is a way to another project`, async () => {
+      const one = await build("bots.code", client, { project: P });
+      expect(one.lint).toEqual([]);
+      expect(one.words).toContain("Add a project · or start one from scratch");
+      expect(one.json).toContain('"screenId":"bots.code.start","params":{"step":"pick"}');
+      // And the overview still has it, since both draw the same row (code/parts.ts addProjectRow).
+      const many = await build("bots.code", client, {});
+      expect(many.words).toContain("Add a project · or start one from scratch");
+    });
     it(`bots.code.start meet / pick / read (${client})`, async () => {
       const meet = await build("bots.code.start", client, { step: "meet" }, { ...API, "GET /v1/code/github": { connected: false, installations: [] }, "POST /v1/code/github/connect": { installUrl: "https://github.com/apps/tailzu/installations/new?state=s" } });
       expect(meet.lint).toEqual([]);

@@ -10,7 +10,7 @@ import {
 } from "../../kit.js";
 import {
   type Job, ago, cut, firstLine, MOSS, type MeetData, type OverviewData, type Project, short, tag, plural, backButton, CODE_BUSY,
-  startTask, taskBar, field, roundInk, ENDED, clock, CODE,
+  startTask, taskBar, field, roundInk, ENDED, clock, CODE, addProjectRow,
 } from "./parts.js";
 
 export interface Branch { branch: string; task: string; prNumber: number | null; prUrl: string | null; state: string; createdAt: number }
@@ -137,6 +137,9 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
           text(t.sub ? `${t.label} — ${t.sub}` : t.label, { size: 15, lineHeight: 20, style: { flexShrink: 1 } }), grow(), icon("chevron", { size: 16, color: C.meta }),
         ], { height: 52, gap: 8, ...(i < tasks.length - 1 ? { borderBottomWidth: 1, borderBottomColor: C.divider } : {}) }, startTask(p.id, t.task)))], { gap: 4 })] : []),
         latelyBlock,
+        // ANOTHER PROJECT STARTS HERE, because for somebody with one project this page is Xode and there is no
+        // overview to go back to (code.ts loadHome).
+        addProjectRow(),
       ],
       footer: [taskBar(ctx, { projectId: p.id })], gap: 18,
     });
@@ -204,6 +207,9 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
         col([
           latelyBlock,
           col([sectionLabel("Pull requests"), prs.length ? col(prRows, { borderWidth: 1, borderColor: C.line, borderRadius: 18 }) : meta("None yet. I open one when a change passes its checks.", { size: 13 })], { gap: 8 }),
+          // ANOTHER PROJECT STARTS HERE, because for somebody with one project this page is Xode and there is no
+          // overview to go back to (code.ts loadHome).
+          addProjectRow(),
         ], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 18 }),
         healthCard,
       ], { gap: 24, alignItems: "flex-start" }),

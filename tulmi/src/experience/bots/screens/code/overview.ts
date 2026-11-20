@@ -10,7 +10,7 @@ import {
 } from "../../kit.js";
 import {
   type Project, type Job, cut, MOSS, ago, type OverviewData, unreachable, short, startTask, codeAsk, setupBuddy, backButton, CODE,
-  CODE_BUSY, setupTop, taskBar, enterTop,
+  CODE_BUSY, setupTop, taskBar, enterTop, addProjectRow,
 } from "./parts.js";
 
 /** A project's "now": what its jobs are doing, or when it last shipped. */
@@ -47,8 +47,8 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
   }
   suggestions.push({ label: "What changed this week?", action: codeAsk(ctx, "What changed in my projects this week?") });
   const chipRow = row(suggestions.map((s) => box([text(s.label, { size: 13, lineHeight: 17, lines: 1 })], { borderWidth: 1, borderColor: C.outline, borderRadius: 18, paddingVertical: 8, paddingHorizontal: 14, flexShrink: 1 }, s.action)), { gap: 8, flexWrap: "wrap" });
-  const addRow = row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project · or start one from scratch", { size: 14, color: C.grey70, lineHeight: 19 })],
-    { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 }, open(SCREENS.codeStart, { step: "pick" }));
+  // The same row a project's own page carries, so the two cannot drift apart (parts.ts addProjectRow).
+  const addRow = addProjectRow();
 
   // The last getting-started step: he settles, in the same place as on the steps before.
   const stage = setup ? setupBuddy(ctx, "settle") : null;
