@@ -152,10 +152,11 @@ describe("Spaces (bots.spaces)", () => {
       expect(texts(nodes)).not.toContain("Your spaces");
       // An invitation waiting on the first Spaces screen is shown, not hidden behind a tap; he hops for it.
       expect(s.state).toMatchObject({ thOpen: true, news: 1, creating: false, made: false });
-      expect(texts(nodes)).toEqual(expect.arrayContaining(["You have an invitation", "Sharma Family", "Aanya invited you · 3 people", "Asked to join with the code 7KQ-29D. The space's admin will let you in.", "The space's admin can see and share your work and messages there.", "Have a code?"]));
+      expect(texts(nodes)).toEqual(expect.arrayContaining(["You have an invitation", "Sharma Family", "Aanya invited you · 3 people", "Asked to join with the code 7KQ-29D. The space's admin will let you in.", "Have a code?"]));
       const acc = callTo(stage, "PUT", `${A}/spaces/invitations/SHARMA22`);
       // Which line it showed goes with the yes (spacePerms.ts lineShown).
-      expect(acc?.body).toEqual({ decision: "accept", consent: true, consentV: 2 });
+      // Nothing about a line is sent any more: there is none (docs/social.md §4).
+      expect(acc?.body).toEqual({ decision: "accept" });
       expect(texts(nodes)).not.toContain("Make a new space");
       // Every refusal here says the server's own words.
       for (const c of callsIn(s.root)) expect(said(c.onError), `${String(c.path)}`).toBe(true);
@@ -218,7 +219,7 @@ describe("Spaces (bots.spaces)", () => {
       expect(ofType(nodes, "Vanish")).toHaveLength(0);
       const stage = ofType(nodes, "BotStage")[0]!;
       const inThought = texts(walk(stage));
-      for (const w of ["Make a new space", "You have an invitation", "Gym Buddies", "Kabir invited you · 4 people", "Requests", "Ishita wants to join Home", "The space's admin can see and share your work and messages there.", "Have a code?"]) expect(inThought, w).toContain(w);
+      for (const w of ["Make a new space", "You have an invitation", "Gym Buddies", "Kabir invited you · 4 people", "Requests", "Ishita wants to join Home", "Have a code?"]) expect(inThought, w).toContain(w);
       expect(callTo(stage, "POST", `${A}/spaces/draft`)?.body).toEqual({ name: "$state.newName" });
       expect(callTo(stage, "PUT", `${A}/spaces/invitations/GYM4BUDD`)).toBeTruthy();
       const decisions = callsIn(stage).filter((c) => c.path === `${A}/spaces/invitations/GYM4BUDD`).map((c) => (c.body as { decision: string }).decision);
@@ -226,7 +227,7 @@ describe("Spaces (bots.spaces)", () => {
       const reqs = callsIn(stage).filter((c) => c.path === `${A}/spaces/s1/requests/rq-ishita`).map((c) => (c.body as { decision: string }).decision);
       expect(reqs.sort()).toEqual(["accept", "dismiss"]);
       const join = callTo(stage, "POST", `${A}/spaces/join`)!;
-      expect(join.body).toEqual({ code: "$state.code", consent: true, consentV: 2 });
+      expect(join.body).toEqual({ code: "$state.code" });
       expect(join.onSuccess).toMatchObject({ kind: "condition", if: { eq: ["joined.status", "requested"] } });
       expect(s.state).toMatchObject({ thOpen: false, news: 2 });
       for (const c of callsIn(s.root)) expect(said(c.onError), `${String(c.path)}`).toBe(true);
@@ -312,18 +313,19 @@ describe("inside a space (bots.spaces?id=)", () => {
     expect(t).toContain("To Mom");
   });
 
-  it("a member who hasn't tapped OK on the admin line gets that card, no box and no key", async () => {
+  it("gets the writing box whatever `consented` says: there is no card to show any more", async () => {
+    // The feed used to swap the composer for a card carrying the line about the admin until it was agreed to. That line is gone
+    // (docs/social.md §4), and a server on this code sends `consented: true` regardless; an old payload must not bring it back.
     for (const client of ["phone", "desktop"] as const) {
       const feed = { ...D.FEED_ROHAN, space: { ...D.FEED_ROHAN.space, consented: false } };
       const { s, nodes } = await build("bots.spaces", client, { params: { id: "s1" }, api: { [`GET ${A}/spaces/s1/feed`]: feed } });
       expect(lintTree(s.root!)).toEqual([]);
-      expect(texts(nodes)).toContain("The space's admin can see and share your work and messages here.");
-      expect(ofType(nodes, "MentionField")).toHaveLength(0);
-      expect(ofType(nodes, "BotStage")).toHaveLength(0);
-      expect(s.talkTo).toBeUndefined();
-      expect(callTo(s.root, "PUT", `${A}/spaces/s1/consent`)?.body).toEqual({ consentV: 2 });
+      expect(texts(nodes)).not.toContain("The space's admin can see and share your work and messages here.");
+      expect(ofType(nodes, "MentionField")).toHaveLength(1);
+      expect(callTo(s.root, "PUT", `${A}/spaces/s1/consent`)).toBeUndefined();
     }
   });
+
 
   it("without live words: the same space, no double tap, no voice line, no LiveWords, no key", async () => {
     for (const client of ["phone", "desktop"] as const) {

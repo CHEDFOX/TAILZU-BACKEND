@@ -3,9 +3,8 @@
  *
  *   invitationsFor(user)                       the invitations waiting for this person: email invites the admin sent to their
  *                                              confirmed address, for named spaces they aren't in, from an admin they have no block with
- *   decideInvitation(user, code, accept|dismiss, consent, me)   Accept joins at once; Dismiss hides it. `consent`: which line about
- *                                              the admin their screen showed when they tapped it (0 none; spacePerms.ts lineShown)
- *   join(user, code, me, consent)              a code typed or linked: the space's own code, or an old invite's. The invited
+ *   decideInvitation(user, code, accept|dismiss, me)   Accept joins at once; Dismiss hides it
+ *   join(user, code, me)                       a code typed or linked: the space's own code, or an old invite's. The invited
  *                                              address joins at once; anyone else makes a join request for the admin
  *   peek(user, code)                           what an email invite's own code is for, before joining (never a space's own code)
  *   requestsFor(admin) / askedBy(user)         the open requests an admin decides; the ones a person is waiting on
@@ -31,7 +30,6 @@ import { screenPost } from "./filter.js";
 import { cleanEmail } from "./mail.js";
 import { looksIn, lookOf, type PersonLook } from "./personLook.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
-import { agreedTo, CONSENT_VERSION } from "./spacePerms.js";
 import { codeOf, isJoinCodeShape, showCode, type InviteRow, type Publish, type SpaceRow, type Spaces } from "./spaces.js";
 
 /** "requested" names no space: the code alone was all they had (the rules at the top). */
@@ -45,8 +43,12 @@ export interface MyRequest { id: string; code: string; at: number }
 
 export interface JoinRequestRow {
   [k: string]: unknown;
-  id: string; space_id: string; user_id: string; name: string; consent_ms: number | null;
-  /** Which line about the admin their screen showed when they asked (migration 0069; spacePerms.ts CONSENT_VERSION). */
+  id: string; space_id: string; user_id: string; name: string;
+  /**
+   * When they agreed to the line about the admin, and which line it was (migration 0069). Nothing reads either: there is no line
+   * any more (docs/social.md §4). Kept on the rows for a rollback.
+   */
+  consent_ms: number | null;
   consent_v?: number | null;
   status: "open" | "accepted" | "dismissed"; created_ms: number; decided_ms: number | null; decided_by: string | null;
   /** The code they typed, as they see it while they wait. */
@@ -136,7 +138,7 @@ export class SpaceJoin {
   }
 
   /** Accept (join at once, as the invited address) or dismiss an invitation the person has. Anything else is 404 bad_code. */
-  async decideInvitation(user: Joiner, codeIn: unknown, decisionIn: unknown, consent: number, me: string): Promise<JoinResult> {
+  async decideInvitation(user: Joiner, codeIn: unknown, decisionIn: unknown, me: string): Promise<JoinResult> {
     const decision = decisionOf(decisionIn);
     const code = codeOf(codeIn);
     const listed = (await this.invitationsFor(user)).find((i) => i.code === code);
@@ -149,17 +151,17 @@ export class SpaceJoin {
       await this.spaces.changed(s.id);
       return { status: "dismissed", name: s.name };
     }
-    return this.accept(user, code, s, consent, me);
+    return this.accept(user, code, s, me);
   }
 
   /** In by an invitation: room is checked before it is used up, then claimed once (two taps: one wins), then they are in. */
-  private async accept(user: Joiner, code: string, s: SpaceRow, consent: number, me: string): Promise<JoinResult> {
+  private async accept(user: Joiner, code: string, s: SpaceRow, me: string): Promise<JoinResult> {
     const inv = await this.spaces.inviteByCode(code);
     if (!inv) throw new BotError("bad_code", "That invitation isn't there any more.", 404);
     await this.spaces.roomFor(s, user.id);
     if (!(await this.spaces.claimInvite(inv, user.id))) throw new BotError("bad_code", "That invitation has been used.", 404);
     // The admin made it: they hear who came in with it (routes/bots/botsSpaces.ts, space_joined).
-    await this.spaces.addMember(s, { id: user.id }, me, { consent, invitedBy: inv.created_by });
+    await this.spaces.addMember(s, { id: user.id }, me, { invitedBy: inv.created_by });
     return { status: "joined", id: s.id, name: s.name };
   }
 
@@ -189,7 +191,7 @@ export class SpaceJoin {
     return r;
   }
 
-  async join(user: Joiner, codeIn: unknown, me: string, consent: number): Promise<JoinResult> {
+  async join(user: Joiner, codeIn: unknown, me: string): Promise<JoinResult> {
     const code = codeOf(codeIn);
     this.guessing(user.id);
     const s = code ? await this.spaceFor(code) : null;
@@ -201,12 +203,12 @@ export class SpaceJoin {
     if (await this.spaces.isMember(s.id, user.id)) return { status: "member", id: s.id, name: s.name };
     // The invited address, typing the code: as if they tapped Accept.
     const invited = (await this.invitationsFor(user)).find((i) => i.spaceId === s.id);
-    if (invited) return this.accept(user, invited.code, s, consent, me);
-    return this.ask(user, s, me, consent, code);
+    if (invited) return this.accept(user, invited.code, s, me);
+    return this.ask(user, s, me, code);
   }
 
   /** A join request for the admin (the rules at the top). */
-  private async ask(user: Joiner, s: SpaceRow, me: string, consent: number, code: string): Promise<JoinResult> {
+  private async ask(user: Joiner, s: SpaceRow, me: string, code: string): Promise<JoinResult> {
     // Someone with a block between them and the admin learns nothing more than a bad code would tell them.
     if (await this.blocks.between(user.id, s.owner_id)) throw badCode();
     const at = this.now();
@@ -223,7 +225,7 @@ export class SpaceJoin {
     const name = await screenPost([own]).then(() => own, () => "Someone");
     try {
       await this.rows.insert({
-        id: randomUUID(), space_id: s.id, user_id: user.id, name, consent_ms: consent > 0 ? at : null, consent_v: consent > 0 ? Math.min(consent, CONSENT_VERSION) : null, status: "open", created_ms: at, decided_ms: null, decided_by: null,
+        id: randomUUID(), space_id: s.id, user_id: user.id, name, consent_ms: null, consent_v: null, status: "open", created_ms: at, decided_ms: null, decided_by: null,
         code: code.slice(0, 16),
       });
     } catch (err) {
@@ -277,7 +279,7 @@ export class SpaceJoin {
     const at = this.now();
     if (decision === "accept") {
       // The line their screen showed comes in with them: one made under the line before ("can see") is asked once more in the feed.
-      await this.spaces.addMember(a.s, { id: r.user_id }, r.name, { consent: agreedTo(r) });
+      await this.spaces.addMember(a.s, { id: r.user_id }, r.name);
       await this.rows.update({ id: r.id }, { status: "accepted", decided_ms: at, decided_by: adminId });
       await this.notify(r.user_id, { kind: "space_accepted", key: `${spaceId}:${r.user_id}:accepted`, vars: { space: a.s.name, admin: a.me.name }, data: { id: spaceId } }).catch(() => undefined);
     } else {

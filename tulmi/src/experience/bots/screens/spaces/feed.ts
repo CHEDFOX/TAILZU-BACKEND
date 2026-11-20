@@ -21,9 +21,8 @@
 
 import type { ActionRef, ActionSpec, Node, ScreenResponse, TalkTo } from "../../../../../../shared/types/sdui.js";
 import { lookOf } from "../../../../botsBots/personLook.js";
-import { ADMIN_LINE, CONSENT_VERSION } from "../../../../botsBots/spacePerms.js";
 import {
-  type BotsCtx, C, SCREENS, box, botKind, botStage, button, call, canPersonBot, canScroll, canVoice, card, col, emptyState, icon, liveWords,
+  type BotsCtx, C, SCREENS, box, botKind, botStage, button, call, canPersonBot, canScroll, canVoice, col, emptyState, icon, liveWords,
   labelled, mentionField, messageText, meta, open, page, picture, primaryButton, roamFor, row, scrollBox, seq, text, voiceLive, voiceStop, when,
   type PersonLookSpec,
 } from "../../kit.js";
@@ -54,6 +53,7 @@ export interface FeedMessage {
   item: { id: string; kind: string; title: string } | null;
 }
 export interface FeedRead {
+  /** Always true from this server: there is no line about the admin to agree to (docs/social.md §4). */
   space: { id: string; name: string; admin: boolean; adminName: string; consented: boolean; threadId: string };
   /** `bot`: their tiny bot in this space (src/botsBots/personLook.ts), for the "@" list. */
   people: Array<{ userId: string; name: string; you: boolean; admin: boolean; bot?: PersonLookSpec }>;
@@ -290,22 +290,6 @@ function stage(ctx: BotsCtx, f: FeedRead): Node {
   ], { onPress: tapHim, ...(voice ? { onDoubleTap: voiceTurn(id, "chat") } : {}) });
 }
 
-/**
- * Before a member writes here: the line about the space's admin, once (and once more for someone who agreed to the line before it,
- * which said "can see" only). OK (consent), or the way to leave.
- */
-function consentCard(f: FeedRead): Node {
-  return card([
-    text(ADMIN_LINE, { size: 15, lineHeight: 21 }),
-    meta(`${f.space.adminName} made ${f.space.name}, so they are its admin.`, { size: 12 }),
-    row([
-      // Which line this card showed goes with the OK, so a card drawn before the line changed is asked once more (spacePerms.ts lineShown).
-      primaryButton("OK", call("PUT", `${A}/spaces/${enc(f.space.id)}/consent`, { consentV: CONSENT_VERSION }, { ok: refresh, fail: said("Couldn't save that. Try again.") }), { size: "md" }),
-      link("Leave the space", open(SCREENS.spacePeople, { id: f.space.id })),
-    ], { gap: 12 }),
-  ], { gap: 10, padding: 16 });
-}
-
 /** What waits on the person here (payments for a yes, tasks and plans): three at most, then the way to the rest. */
 function waitingRows(ctx: BotsCtx, f: FeedRead): Node[] {
   const rows = [...f.payments.map((p) => payRow(ctx, f.space.id, p)), ...f.tasks.map((t) => taskRow(ctx, t))];
@@ -334,7 +318,7 @@ export function feedScreen(ctx: BotsCtx, f: FeedRead | undefined): ScreenRespons
     ...(before ? [row([link("Back to the newest", { kind: "navigate", screenId: SCREENS.spaces, params: { id }, replace: true })], { justifyContent: "center" })] : []),
   ];
   const voice = canVoice(ctx);
-  const talkTo: TalkTo | undefined = f.space.consented && voice ? { voice: voiceTurn(id, "once") } : undefined;
+  const talkTo: TalkTo | undefined = voice ? { voice: voiceTurn(id, "once") } : undefined;
   // The window: the feed scrolls in its own box over his stage, opening at its newest; a window without one scrolls the page.
   const boxed = desk && canScroll(ctx);
   const feedBox = boxed ? [{ ...scrollBox(feed, { flexGrow: 1, flexShrink: 1, minHeight: 0, gap: 12 }), props: { startAtEnd: true } }] : feed;
@@ -346,7 +330,7 @@ export function feedScreen(ctx: BotsCtx, f: FeedRead | undefined): ScreenRespons
     ...(desk ? {} : { pinned: [col(top, { gap: 10, paddingHorizontal: 20, paddingTop: 6, paddingBottom: 6, backgroundColor: C.paper })] }),
     // The window's page is fixed, so the rows over the feed must keep their height: only the feed's own box gives way.
     body: desk ? [col(top, { gap: 14, flexShrink: 0 }), ...feedBox] : feed,
-    dock: [f.space.consented ? stage(ctx, f) : consentCard(f)],
+    dock: [stage(ctx, f)],
     ...(talkTo ? { talkTo } : {}),
   });
 }

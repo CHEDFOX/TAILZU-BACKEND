@@ -63,7 +63,7 @@ const item = (s: S, who: string, owner: string, id: string, space = s.home) => s
 const act = (s: S, who: string, owner: string, id: string, b: Record<string, unknown>, space = s.home) => s.call("POST", `${W("plan")}/item`, who, { space, owner, item: id, tz: 330, ...b });
 
 describe("sharing one thing with \"/\"", () => {
-  it("only shares your own things, and its card is seen by the one it is for, the sender and the admin", async () => {
+  it("only shares your own things, and its card is seen by the one it is for and the sender — nobody else", async () => {
     const s = await served();
     expect((await share(s, R_, { text: "look", thing: { bot: "plan", id: s.doctor } })).body).toEqual({ code: "not_found", message: "That isn't there any more." });
     expect((await share(s, M_, { thing: { bot: "shop", id: "x" } })).status).toBe(404);
@@ -71,7 +71,8 @@ describe("sharing one thing with \"/\"", () => {
     expect(r.status).toBe(201);
     expect(r.body.message.thing).toEqual({ grantId: expect.any(String), bot: "plan", botName: "Plan Ease", ownerId: M_, ownerName: "", id: s.doctor, title: "Doctor visit", line: "Event" });
     const cards = async (who: string) => ((await s.call("GET", `${AREA}/spaces/${s.home}/feed`, who)).body.messages as Array<{ thing: unknown }>).filter((m) => m.thing).length;
-    expect([await cards(M_), await cards(R_), await cards(A_), await cards(D_)]).toEqual([1, 1, 1, 0]);
+    // Aanya made Home; a card for a thing shared with Rohan by name is not hers to see (docs/social.md §4).
+    expect([await cards(M_), await cards(R_), await cards(A_), await cards(D_)]).toEqual([1, 1, 0, 0]);
     expect((await s.call("GET", `${W("plan")}/mine`, M_)).body.items.map((i: { title: string }) => i.title)).toEqual(["Doctor visit", "Satsang"]);
   });
 });
@@ -83,7 +84,8 @@ describe("Work in space", () => {
     s.reads.length = 0;
     const page = (await s.call("GET", W("plan"), R_)).body;
     expect(page).toEqual({
-      bot: "plan", botName: "Plan Ease", seenBy: ["Aanya S."], notesOnMine: [],
+      // seenBy was the admins who could see the viewer's own things. Nobody can, so it is empty (docs/social.md §4).
+      bot: "plan", botName: "Plan Ease", seenBy: [], notesOnMine: [],
       spaces: [{ spaceId: s.home, spaceName: "Home", admin: false, people: [{ userId: M_, name: "Mom", how: "shared", line: "1 plan shared with you", bot: bot(M_) }] }],
     });
     expect(s.reads).toEqual([]);
@@ -123,24 +125,27 @@ describe("Work in space", () => {
     expect((await act(s, R_, M_, s.doctor, { op: "time", day: "tomorrow", time: "x" })).status).toBe(400);
   });
 
-  it("shows the admin every member's things who saw the line about the admin, and nobody else's", async () => {
+  it("shows whoever made the space NOTHING of anyone's: making a space opens nobody's bot", async () => {
+    // It used to list every consenting member with "All their plans", and open any of their things read-write
+    // (docs/social.md §4). Now the space is listed, with nobody in it until somebody shares something.
     const s = await served();
     s.reads.length = 0;
     const page = (await s.call("GET", W("plan"), A_)).body;
-    expect(page.spaces).toEqual([{ spaceId: s.home, spaceName: "Home", admin: true, people: [
-      { userId: M_, name: "Mom", how: "admin", line: "All their plans", bot: bot(M_) }, { userId: R_, name: "Rohan", how: "admin", line: "All their plans", bot: bot(R_) },
-    ] }]);
+    expect(page.spaces).toEqual([{ spaceId: s.home, spaceName: "Home", admin: true, people: [] }]);
     expect(page.seenBy).toEqual([]);
     expect(s.reads).toEqual([]);
-    const mom = (await s.call("GET", `${W("plan")}/person?${q({ space: s.home, owner: M_ })}`, A_)).body;
-    expect(mom.items.map((i: { title: string }) => i.title)).toEqual(["Doctor visit", "Satsang"]);
-    expect((await item(s, A_, M_, s.satsang)).body.item).toMatchObject({ how: "admin", can: { time: true, note: true } });
-    // Dev never tapped OK: the admin sees nothing of his.
+    // Not a person's list, not one of their things, in any bot.
+    for (const owner of [M_, R_, D_]) {
+      expect((await s.call("GET", `${W("plan")}/person?${q({ space: s.home, owner })}`, A_)).status, owner).toBe(404);
+    }
+    expect((await item(s, A_, M_, s.satsang)).status).toBe(404);
     expect((await item(s, A_, D_, s.dev)).status).toBe(404);
-    expect((await s.call("GET", `${W("plan")}/person?${q({ space: s.home, owner: D_ })}`, A_)).status).toBe(404);
-    // Notes are every bot's: Mom's notes too.
-    expect((await s.call("GET", W("notes"), A_)).body.spaces[0].people[0]).toMatchObject({ how: "admin", line: "All their notes" });
+    expect((await s.call("GET", W("notes"), A_)).body.spaces[0].people).toEqual([]);
+    // And "/" offers only their own things, never a member's under an "of:" id.
+    const mine = (await s.call("GET", `${W("plan")}/mine?${q({ space: s.home })}`, A_)).body.items as Array<{ id: string }>;
+    expect(mine.every((i) => !i.id.startsWith("of:"))).toBe(true);
   });
+
 
   it("keeps an old per-bot share view only, and needs a space both are in", async () => {
     const s = await served();
@@ -239,11 +244,10 @@ describe("the gaps a review found", () => {
     expect((await item(s, R_, M_, s.satsang)).status).toBe(404);
   });
 
-  it("a note added through a share to one person is for the owner, its writer and the admin, not for another it was shared with", async () => {
+  it("a note added through a share to one person is for the owner and its writer, not for another it was shared with", async () => {
     const s = await served();
     await share(s, M_, { to: R_, thing: { bot: "plan", id: s.doctor } });
-    // Shared with Dev separately; and Dev taps OK so he can write.
-    await s.call("PUT", `${AREA}/spaces/${s.home}/consent`, D_);
+    // Shared with Dev separately. He needs nobody's leave to write now (docs/social.md §4).
     await share(s, M_, { to: D_, thing: { bot: "plan", id: s.doctor } });
     await act(s, D_, M_, s.doctor, { op: "note", text: "Can't come, hospital appointment" });
     s.clock.t += 1000;
@@ -252,8 +256,9 @@ describe("the gaps a review found", () => {
     expect(await notes(R_)).toEqual(["I'll drive"]);
     expect(await notes(D_)).toEqual(["Can't come, hospital appointment"]);
     expect(await notes(M_)).toEqual(["I'll drive", "Can't come, hospital appointment"]);
-    expect(await notes(A_)).toEqual(["I'll drive", "Can't come, hospital appointment"]);
-    // The owner's own note, and the admin's, are for everyone who may open it.
+    // Aanya made Home and may not open the thing at all, so there are no notes of it for her.
+    expect((await item(s, A_, M_, s.doctor)).status).toBe(404);
+    // The owner's own note is for everyone who may open it.
     s.clock.t += 1000;
     await act(s, M_, M_, s.doctor, { op: "note", text: "Thank you both" });
     expect(await notes(R_)).toEqual(["Thank you both", "I'll drive"]);

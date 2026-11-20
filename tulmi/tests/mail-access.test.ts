@@ -198,9 +198,11 @@ describe("how a person reaches a business", () => {
     expect(await acc.resolve(STRANGER, "older-co")).toEqual({ ownerId: STRANGER, access: "own" });
   });
 
-  it("the admin of a space its owner agreed to the line in reaches it whole, inside the owner's account", async () => {
+  it("whoever made the space reaches NONE of a member's business: making a space is not a way in", async () => {
+    // It used to be the whole thing, read and write, under the line members agreed to. That line is gone and so is this
+    // (docs/social.md §4): the only way into someone else's mail is the addresses they handed over themselves.
     const { acc } = await world();
-    expect(await acc.resolve(AANYA, "leaf-co")).toEqual({ ownerId: RAVI, access: "admin", owner: { id: RAVI, name: "Ravi Kumar" } });
+    expect(await acc.resolve(AANYA, "leaf-co")).toBeNull();
   });
 
   it("a member given addresses reaches only those, by their emails, lowercase", async () => {
@@ -209,10 +211,11 @@ describe("how a person reaches a business", () => {
     expect(await acc.adminName(SAM, RAVI)).toBe("Ravi K.");
   });
 
-  it("nobody else: a stranger, someone given an address before agreeing to the line as it is now, a row of another owner's", async () => {
+  it("nobody else: a stranger, or a row of another owner's", async () => {
     const { acc, handlers } = await world();
     expect(await acc.resolve(STRANGER, "leaf-co")).toBeNull();
-    expect(await acc.resolve(NEW, "leaf-co")).toBeNull();
+    // Someone whose addresses were handed to them, who never agreed to any line: the grant is its OWNER's to make, so it stands.
+    expect((await acc.resolve(NEW, "leaf-co"))?.access).toBe("handler");
     // Kim is in Ravi's space, but her row was given by an older business's owner under the same id: it opens nothing of Ravi's.
     await handlers.give({ businessId: "leaf-co", ownerId: OLD, addressId: 4, addressEmail: "old@leafandco.in", memberId: KIM });
     expect(await acc.resolve(KIM, "leaf-co")).toBeNull();
@@ -235,10 +238,12 @@ describe("how a person reaches a business", () => {
     expect(await draft.acc.resolve(AANYA, "leaf-co")).toBeNull();
   });
 
-  it("the admin's way in wins over addresses given to them", async () => {
+  it("the addresses handed over are the only way in, even for whoever made the space", async () => {
     const { acc, handlers } = await world();
     await handlers.give({ businessId: "leaf-co", ownerId: RAVI, addressId: 2, addressEmail: "support@leafandco.in", memberId: AANYA });
-    expect((await acc.resolve(AANYA, "leaf-co"))?.access).toBe("admin");
+    const reach = await acc.resolve(AANYA, "leaf-co");
+    expect(reach?.access).toBe("handler");
+    expect(reach?.addresses).toEqual(new Set(["support@leafandco.in"]));
   });
 
   it("is nobody's but the owner's while Spaces is off", async () => {

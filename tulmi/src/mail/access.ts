@@ -8,12 +8,12 @@
  *
  *   mailAccess(...).resolve(viewer, business)   how the viewer reaches a business, or null (as if it weren't there):
  *     own       its owner is the viewer, or the registry has not heard of it (an older business: the worker says no if it isn't theirs)
- *     admin     its owner is a member of a space the viewer is the admin of (people.ts membersOf(viewer)): everything, read and write
- *     handler   its owner gave the viewer addresses, and the viewer is still a member of a space the owner is the admin of
+ *     (there is no "admin" any more: making a space never opened a member's business, and does not now — docs/social.md §4)
+ *     handler   its owner gave the viewer addresses, and the two still share a space (either made it)
  *               (people.ts membersOf(owner)): only those addresses' folders, conversations and drafts, sending only from them
  *   Every call to the worker for that business is then made inside the OWNER's account (worker.ts ownerOf(ownerId)), never the viewer's.
  *
- * "A member" is exactly people.ts's: in a space the other person is the admin of, not a draft, agreed to the line about the admin as it is
+ * "A member" is exactly people.ts's: in a space the other person made, not a draft, as it is
  * now, no block between them. While Spaces is off there is nobody, so a person reaches only their own businesses. A row is never deleted
  * because someone left a space, a block was made or Spaces is off: it does nothing until that person is a member again. It goes when its
  * owner takes the address back, removes the address or the business, or an account goes.
@@ -257,7 +257,7 @@ export function mailHandlers(): MailHandlers {
 
 // ---------------------------------------------------------------------------------------------------------------------------- reach
 
-export type MailAccessKind = "own" | "admin" | "handler";
+export type MailAccessKind = "own" | "handler";
 
 /** How the viewer reaches a business. */
 export interface MailReach {
@@ -309,12 +309,16 @@ export function mailAccess(d: MailAccessDeps) {
       // Unknown (or unreadable): the viewer's own, so the worker is asked inside their account and says no if it isn't theirs.
       const ownerId = await d.businesses.whose(businessId).catch((err) => { console.warn(`[mail] whose business: ${said(err)}`); return null; });
       if (!ownerId || ownerId === viewerId) return { ownerId: viewerId, access: "own" };
-      const member = (await membersOf(viewerId)).find((m) => m.id === ownerId);
-      if (member) return { ownerId, access: "admin", owner: member };
+      // No clause for a space's admin: making a space opens nobody's business mail (docs/social.md §4). Only the addresses its
+      // owner handed over, to whoever they handed them to.
       const given = (await d.handlers.ofMember(viewerId).catch((err) => { console.warn(`[mail] handlers: ${said(err)}`); return [] as MailHandler[]; }))
         .filter((h) => h.businessId === businessId && h.ownerId === ownerId);
       if (!given.length) return null;
-      if (!(await membersOf(ownerId)).some((m) => m.id === viewerId)) return null;
+      // Still sharing a space, either way round. It used to insist the OWNER had made the space, which only made sense while
+      // making one carried powers; it does not now (docs/social.md §4), and a grant is the owner's to make either way.
+      const near = (await membersOf(ownerId)).some((m) => m.id === viewerId)
+        || (await membersOf(viewerId)).some((m) => m.id === ownerId);
+      if (!near) return null;
       return { ownerId, access: "handler", addresses: new Set(given.map((h) => lower(h.addressEmail))) };
     },
   };

@@ -178,24 +178,26 @@ the stage page (in Recall's bot) <──── GET /v1/meet/stage/<token>/events
 * **Event stream.** The route sends `X-Accel-Buffering: no` and a ping every 15 seconds, so a proxy in front does not hold it back
   (DEPLOY.md, "Meetings", step 6).
 
-## 5b. In a space
+## 5b. In a space: nothing
 
-The rules are Spaces' own (docs/spaces.md: the admin, and the line about the admin). `tulmi/src/meet/people.ts` asks them, walking the
-person's spaces the way Work in space does (`botsBots/work.ts`): a space's admin "has" each member who agreed to the line as it is now,
-with no block between them, in a space that is not a draft. Nothing of this while Spaces is off.
+**The meeting bot knows nothing of spaces any anymore** (docs/social.md §4). A space's admin used to see every consenting member's
+meetings read-only, be pushed when one took the bot anywhere (`space_meet`), and be able to send the bot into a member's meeting
+for them (`space_meet_sent`, `join`'s `forUser`). Making a space never justified any of that, and all three are gone:
 
-- **The admin sees their people's meetings.** The meeting bot's page lists "Your people's meetings" (live, coming up and recent), each
-  "Ravi · Supplier call"; one opens read only: who is there, the notes so far, the questions it answered, with no Leave, switch or call-off.
-  The note itself stays the member's, and their admin opens it through Notes' Work in space, as with every other note.
-- **The admin is told.** When such a member takes the bot to a meeting (by a link, or a calendar meeting joined by itself), each of their
-  admins gets a push, `space_meet` ("Ravi took the meeting bot to Supplier call."), opening that meeting. Never a word from the call.
-- **The admin can send the bot for a member.** The page's "For" chips list those members; joining for one makes the meeting the
-  member's: their AI consent, their day's minutes, their settings and name in the bot's chat line, their note and their push. The member is
-  told, `space_meet_sent` ("Aanya sent the meeting bot to your meeting."). The admin who sent it can still stop it (Leave, Call it off) while
-  the member is theirs; only the member changes how it answers.
-- **Rows.** A meeting keeps which space it came through and who sent it (`space_id`, `by_id`, migration 0083).
-- **Share.** A meeting with notes or answers has Share: the notes so far and the questions it answered, as text, to a space or a person
-  (docs/spaces.md "Sharing one thing"). None while Spaces is off.
+- `MeetService` holds no list of anyone's people; `setMeetPeople` is gone with it.
+- `overview` answers the person's own meetings only, and sends `people: []` and `sendFor: []` so a build that still draws those
+  sections draws nothing in them.
+- `meeting(viewer, id)` answers null for anyone but its owner; `leave` and `cancel` are its owner's alone.
+- `join` with a `forUser` other than yourself answers 403 `not_your_person`, rather than quietly sending the bot into the
+  sender's own call.
+- `space_meet` and `space_meet_sent` are no longer pushed by anything.
+
+What a meeting keeps: `space_id` and `by_id` on the row (migration 0083) stay, so a meeting a space's admin sent the bot into
+before this still shows its owner who did (`by` on the view).
+
+- **Share.** A meeting with notes or answers still has Share: the notes so far and the questions it answered, as text, to a space
+  or a person (docs/spaces.md "Sharing one thing"). That is the owner's own act, and it is the only way a meeting reaches anyone
+  else. None while Spaces is off.
 
 ## 6. The AI and the money
 

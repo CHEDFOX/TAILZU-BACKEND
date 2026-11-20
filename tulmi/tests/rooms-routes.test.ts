@@ -234,14 +234,15 @@ describe("the mail bot's calls", () => {
     expect(listed).toEqual([{ userId: "dev-user", o: { businessId: "leaf-co" } }]);
   });
 
-  it("is for its owner and their space's admin, never for a member who only answers addresses", async () => {
+  it("is for its owner alone: not a member who only answers addresses, and not whoever made their space", async () => {
     const { a, made } = await mailApp({ space: true });
     const as = (who: string) => ({ authorization: `Bearer ${who}` });
-    expect((await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/calls", headers: as("sam") })).statusCode).toBe(404);
-    expect((await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/calls", headers: as("sam") })).statusCode).toBe(404);
+    for (const who of ["sam", "aanya"]) {
+      expect((await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/calls", headers: as(who) })).statusCode, who).toBe(404);
+      expect((await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/calls", headers: as(who) })).statusCode, who).toBe(404);
+    }
     expect((await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/calls", headers: as("ravi") })).statusCode).toBe(201);
-    expect((await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/calls", headers: as("aanya") })).statusCode).toBe(201);
-    expect(made.map((m) => m.userId)).toEqual(["ravi", "aanya"]);
+    expect(made.map((m) => m.userId)).toEqual(["ravi"]);
   });
 
   it("has none while calls are off, and refuses a bad id or title", async () => {

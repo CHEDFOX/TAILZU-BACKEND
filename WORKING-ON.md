@@ -1,5 +1,52 @@
 # Being built right now (read before you start)
 
+## 20 Nov: A SPACE'S ADMIN HAS NO AUTOMATIC ACCESS TO ANYTHING OF ANYONE'S
+
+Third step of docs/social.md, and it deletes far more than it adds. Making a space never justified reading what the people in it
+keep in their own bots, and now it does not.
+
+**Gone, and what went with it.** The line every member agreed to before they could write — "The space's admin can see and share
+your work and messages here." — and with it `ADMIN_LINE`, `CONSENT_VERSION`, `hasConsent`, `agreedTo`, `lineShown`, the feed's
+**403 `consent_needed`** (a member simply writes now), the admin's "All their plans" in Work in space, the `of:<owner>:<item>`
+ids its "/" made, and the part that was hardest to defend: the admin sharing a member's thing **with the owner never told** — no
+card in their feed, no push, not even on their own page for that thing.
+
+**Three things rode on the same line and went with it**, or the product would have gone on claiming something false:
+
+- **`to_id`.** A message to one person was its sender's, that person's **and the admin's**. Now it is the two of them. Narrowing
+  leaks nothing, so no old message changed hands; the admin just stops seeing ones it was never party to. **The reader rule
+  itself keeps being applied, forever** — those messages were sent privately, and nothing new writing `to_id` is not the same as
+  nobody having written it.
+- **The meeting bot** saw every consenting member's meetings, was pushed when one took the bot anywhere, and could send the bot
+  into a member's meeting for them. All three gone; `MeetService` holds no list of anyone's people at all, and `join` with a
+  `forUser` now answers 403 rather than quietly joining the sender's own call.
+- **The mail bot** gave the admin a member's business **in full, read and write**. Gone. What survives is the `handler` grant,
+  which is the owner handing specific addresses over — their act, not the admin's. Its scope was itself admin-shaped ("the owner
+  made the space"), so it is symmetric now: the two still share a space, either way round.
+
+**What stopping a share still is.** The admin stops any share in its own feed. That is moderation of the space and takes nothing
+out of anyone's account, so it stays.
+
+**Migration 0112 withdraws the access, and that order matters.** The consent columns stay on every row untouched and nothing
+reads them (as the old perms columns and `space_roles` do), which is what makes this reversible — so older server code starts
+honouring the line again the moment it runs. That is exactly why the grants had to go first: live access that nothing in the app
+can show you or let you stop is worse than access withdrawn. It deletes the admin-made grants, their cards, and the work notes
+nothing else reached, and leaves every share an owner made themselves alone.
+
+Checked against a real Postgres 16: 0112 runs clean twice, the admin's grants and their cards go, Mom's own share of the same
+thing is untouched, a note only the admin's reach ever had goes, and a note on a thing its owner also shared stays.
+
+`spaces-admin-share.test.ts` is now `spaces-admin-no-access.test.ts`: every case in it is the inverse of one that used to pass,
+including that no grant is ever written with a `by_id` again. 16 cases across meet, mail, rooms, safety and the screens were
+inverted the same way rather than deleted, because "the admin cannot" is the thing worth holding.
+
+12,697 pass. The two failures are the same two unrelated ones, both checked by stashing: `launch-motion`'s side-by-side case,
+and `web-browser`'s Chrome-process check, which races the reaping of the ones the cases before it killed.
+
+docs/spaces.md, docs/meet.md §5b, docs/mail.md §9b and docs/social.md §4 all rewritten.
+
+Next in docs/social.md's order: "@" mentions.
+
 ## 20 Nov: THE NAME YOU GIVE SOMEONE, WHICH IS NOT THE NAME THEY ARE REACHED BY
 
 Second step of docs/social.md. A username reaches a person; this is what they are **called**, and it is per reader, the way a

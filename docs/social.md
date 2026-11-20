@@ -90,7 +90,7 @@ and so is `space_work_notes`'s). "Make a group with them" stays an ordinary spac
 
 Every way in ends at the same request-and-accept, exactly as a code and an email invite both end at `addMember()` today.
 
-## 4. Groups: no automatic access — PLANNED
+## 4. Groups: no automatic access — BUILT
 
 **The admin has no automatic sight of anyone's things.** This deletes, rather than adds:
 
@@ -105,8 +105,8 @@ Every way in ends at the same request-and-accept, exactly as a code and an email
 
 - the **meeting bot** (`docs/meet.md`, "In a space"): the admin sees members' meetings and can send the bot into one for them
 - the **mail bot** (`docs/mail.md`, "In a space"): the admin has a member's business mail in full, read and write
-- **existing grants** the admin made of members' things (`space_grants.by_id is not null`): revoked, since nothing in the app
-  would explain the access any more. `docs/spaces.md`'s rollback section has the snippet
+- **existing grants** the admin made of members' things (`space_grants.by_id is not null`): revoked by migration 0112, with
+  their cards and with the work notes nothing else reached, since nothing in the app would explain that access any more
 
 The Oracle was already the model for where all of these land: *"no admin ever sees a member's chart or readings."*
 
@@ -202,7 +202,7 @@ plus a hand-reviewed catalogue in `catalog.ts` that ships like code. No authors,
 ## The order to build in
 
 1. ~~`person_names`~~ — **done** (migration 0111)
-2. no automatic admin access (with the meeting bot, the mail bot and `to_id`)
+2. ~~no automatic admin access~~ — **done** (migration 0112; the meeting bot, the mail bot and `to_id`'s admin clause with it)
 3. `@` mentions
 4. the share registry, and shared things in each bot's list
 5. adding by username, and the two-person space

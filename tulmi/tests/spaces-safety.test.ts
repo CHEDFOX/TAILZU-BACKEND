@@ -313,8 +313,10 @@ describe("a message to one person (a space's feed)", () => {
     const { id, chat } = await s.home();
     await s.say(A_, chat, "Morning");
     const secret = (await s.call("POST", `${AREA}/spaces/${id}/feed`, R_, { text: "something awful", to: M_ })).body.message.id as string;
-    // Aanya, the admin, sees it, so she may report it too (spaces-feed.test.ts: a bystander can't).
-    expect((await s.call("GET", `${AREA}/reports/preview?kind=message&id=${secret}&thread=${chat}`, A_)).status).toBe(200);
+    // Aanya made Home, and that is no longer a way to see a message sent to somebody else — so she cannot report it either
+    // (docs/social.md §4). Only its sender and the one it was to can.
+    expect((await s.call("GET", `${AREA}/reports/preview?kind=message&id=${secret}&thread=${chat}`, A_)).status).toBe(404);
+    expect((await s.call("GET", `${AREA}/reports/preview?kind=message&id=${secret}&thread=${chat}`, M_)).status).toBe(200);
     const rep = (await s.call("POST", `${AREA}/reports`, M_, { kind: "message", id: secret, thread: chat, reason: "harassment" })).body.report.id as string;
     const open = (await s.call("GET", "/v1/admin/reports", null, undefined, ADMIN)).body.reports[0];
     expect(open.snapshot).toMatchObject({ text: "something awful", to: "Meera S." });

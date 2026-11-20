@@ -7,12 +7,12 @@ plans for each other, and what the group tells its bots. This file is the rules 
 
 | File | What it is |
 |---|---|
-| `spaces.ts` | Spaces, members, invites by email, the space's code, drafts, consent, leaving; `access()` and `need()`, every other module's one question |
-| `spacePerms.ts` | What a member may do (`MEMBER_PERMS`) and what only the admin may do (`ADMIN_ONLY`); the line about the admin (`ADMIN_LINE`, `CONSENT_VERSION`, `hasConsent`) |
+| `spaces.ts` | Spaces, members, invites by email, the space's code, drafts, leaving; `access()` and `need()`, every other module's one question |
+| `spacePerms.ts` | What a member may do (`MEMBER_PERMS`) and what only the admin may do (`ADMIN_ONLY`), which is all about the space itself and never about anyone's things |
 | `spaceJoin.ts` | Invitations waiting for an address, codes, join requests and the admin's decision |
 | `spaceFeed.ts` | The feed: a message to everyone or to one person, a thing shared with "/", the question asked about a name at the start |
 | `threads.ts` | The chats underneath (the feed is the space's own chat), and the one visibility rule every reader applies |
-| `grants.ts` | One thing shared from a bot, with one person or everyone, by its owner or by the space's admin |
+| `grants.ts` | One thing shared from a bot, with one person or everyone, by its owner — only ever its owner |
 | `work.ts` | Work in space on the four bots' pages: who may see and work on what |
 | `spaceShares.ts` | The old per-bot sharing (everything or picked items), read only |
 | `shared.ts`, `payments.ts`, `spaceTasks.ts`, `spaceMemory.ts` | Shared things, payment requests, tasks and plans, group memory |
@@ -62,8 +62,11 @@ While it is off (`botsBots/spacesSwitch.ts`):
 - There are no roles. Every member may do the same things (`MEMBER_PERMS`): message, share, use the group's bots, give tasks and
   plans, ask for money, approve someone else's request, start groups, see the activity, use group memory.
 - Only the admin (`ADMIN_ONLY`): invite by email, see the space's code and make a new one, let people in, remove people, rename,
-  delete, take back invites, forget anyone's group memory line, take out anyone's task. And, outside the perms: share any member's
-  thing with someone there, and stop any share ("Sharing one thing").
+  delete, take back invites, forget anyone's group memory line, take out anyone's task. And, outside the perms: stop any share in
+  its feed ("Sharing one thing"), which is moderation of the space and takes nothing from anyone's account.
+- **THE ADMIN HAS NO AUTOMATIC SIGHT OF ANYTHING OF ANYONE'S** (docs/social.md §4, migration 0112). Everything above is about
+  the space itself — who is in it, what it is called, whether it exists — and nothing about what a member keeps in their own
+  bots. The admin sees what was shared with it, like any other member, and nothing else.
 - The old perms columns and `space_roles` stay in the database for a rollback; nothing reads them. New member rows still write
   `perms: MEMBER_PERMS`, `role: null`, `can_approve: true`.
 - Old builds' role routes (`PUT /spaces/:id/members/:member`, `/spaces/:id/roles...`) answer 410 `gone`.
@@ -74,11 +77,12 @@ While it is off (`botsBots/spacesSwitch.ts`):
   space's detail (the admin only), by an invite mail, or by an old build's link invite. Never by a list. The admin can make a new one
   (`POST /spaces/:id/code`); the old one stops working at once.
 - **An email invite** (the admin's) is a row in `space_invites` with that address, seven days, good once. Its mail carries the space's
-  code and the line "The space's admin can see and share your work and messages there." Up to 30 invite mails a day per admin, counted in
+  code. (It used to carry a line about the admin; there is none any more.) Up to 30 invite mails a day per admin, counted in
   `mail_outbox` by `sent_by`: those rows stay when a draft or a space is deleted, so deleting one never starts the count again.
 - **An invitation** is an email invite waiting for the person who signs in with that address: only once the address is confirmed
   (`AuthedUser.emailConfirmed`), only when the space's admin made it (an invite a member made under the old roles is not one), only
-  for a named space they aren't in, and not when they have a block with the admin. Accept joins at once; Dismiss hides it.
+  for a named space they aren't in, and not when they have a block with the admin. Accept joins at once; Dismiss hides it. Neither
+  sends a `consent` any more.
 - **A code** typed or linked: the invited address joins at once, as if it tapped Accept. Anyone else only asks to join: the admin
   sees their name and accepts or dismisses (pushed as `space_request`; the person let in hears `space_accepted`). Both sides update
   live. After a dismissal the same person waits 7 days to ask that space again (409 `asked_recently`); nobody asks more than 10
@@ -98,30 +102,29 @@ While it is off (`botsBots/spacesSwitch.ts`):
   phone the same store), so the page can't tell a guess that works from one that doesn't. An email invite's own code still names
   its space.
 
-## The line about the admin
+## There is no line about the admin
 
-- The line is `ADMIN_LINE` (`spacePerms.ts`): "The space's admin can see and share your work and messages here." ("there" on an
-  invitation, in the bot's thought, and in the invite mail). It says up front that the admin may share their things, because the owner
-  is not told of each share.
-- `space_members.consent_ms` and `consent_v` (0069) are set when someone joins through a screen that showed it (the body says
-  `consent: true, consentV: 2`), or when they tap OK on the card in the feed (`PUT /spaces/:id/consent { consentV: 2 }`). The
-  version is the one the screen showed (`spacePerms.ts lineShown`): a yes without it came from a screen drawn before the line
-  changed (still open, or kept by the app), so it counts as version 1 and they are asked once more. A join request keeps the version
-  its screen showed (`space_join_requests.consent_v`), and the admin's Accept carries it over.
-- It counts only at `CONSENT_VERSION` (2, "can see and share"; `hasConsent`). Someone who agreed to version 1 ("can see"; no
-  `consent_v`) is asked once more with the new line, in the feed, before they can write.
-- Until they agree: the feed answers 403 `consent_needed` to anything they post or share, the admin sees only what they share (not
-  "All their plans" in Work in space, nothing of theirs in "/"), and nothing of theirs can be shared by the admin. Members from before,
-  and anyone who joined from an old build, see the card once.
+There used to be one, agreed to before a member could write: *"The space's admin can see and share your work and messages
+here."* It is gone, with everything it allowed (docs/social.md §4).
+
+- `space_members.consent_ms` / `consent_v` and `space_join_requests.consent_ms` / `consent_v` **stay in the database and nothing
+  reads them**, as the old perms columns and `space_roles` do. That is what makes this reversible.
+- The feed's 403 `consent_needed` is gone: a member simply writes.
+- `GET /spaces/:id/feed` still answers `consented: true` always, so an older build — which shows its card until it is true —
+  never shows one again. `PUT /spaces/:id/consent` still answers `{ ok: true }` and writes nothing, so an OK tapped on a screen
+  the app kept does not fail.
+- The invite mail no longer carries the line, and Accept and Join no longer send a `consent` or a `consentV`. A build that still
+  sends them is taken and ignored.
 
 ## The feed
 
 - The feed is the space's own chat (`threads`, kind `space`), so old builds read the same thread.
 - **A message to one person** (`thread_messages.to_id`, no foreign key on purpose: "on delete set null" would make it everyone's)
-  is seen by its sender, that person and the space's admin. Every reader applies that one rule (`Threads.sees`): a page, old builds'
-  chat, the widget's words, a report, a file, unread counts, live events and pushes.
-  - The person it is to is pinged (`space_feed`, never with the words); the admin sees it unannounced, and it counts as unread for
-    them too (it is their feed as well).
+  is seen by its sender and that person, and **by nobody else — the space's admin included** (docs/social.md §4). Every reader
+  applies that one rule (`Threads.sees`): a page, old builds' chat, the widget's words, a report, a file, unread counts, live
+  events and pushes. **That rule keeps being applied whatever happens to "@"**: these messages were sent privately, and nothing
+  new writing `to_id` is not the same as nobody having written it.
+  - The person it is to is pinged (`space_feed`, never with the words). Nobody else is, and it is nobody else's unread.
   - A space's feed pushes `space_feed` (it opens the space), never `space_message` (the old chat, with a Reply button): a reply from
     a notification would go to everyone, even when it answers a message to one person. A push can't tell an old build from a new
     one, so an old build's tap opens its old space page too, with no Reply button.
@@ -141,31 +144,17 @@ While it is off (`botsBots/spacesSwitch.ts`):
 - One of the sender's own items from Plan Ease, Notes, Travel bot or Xode (its bot must list it), given to one person or to
   everyone: a grant (`space_grants`) and a card in the feed (`item.kind = "grant"`), seen as any message is. The same thing to the
   same person by the same sharer twice is one grant.
-- **The admin shares any member's thing** the same way. The admin's "/" asks `GET /work/:bot/mine?space=&tz=`: the admin's own things,
-  then each member's who agreed to the line as it is now (oldest member first, nobody with a block with the admin), at most 50 each.
-  Each id is `of:<owner>:<item>` (`work.ts ofMember`) and each line says whose ("Mom's · Sat 14 Nov · 7:40 pm"), so the apps' list
-  and box send it back unchanged and needed no update. Anyone else asking with a space gets their own, as without it.
-  - The owner must be in the space now and have agreed to the new line (else 403 `not_allowed`, "Mom hasn't agreed yet that Home's
-    admin can share their things."); a block between the owner and the admin is the same 404 as a thing that isn't there; one between
-    the owner and the person it is for is 403 `blocked`; the owner as the one it is for is 400. A member naming someone else's thing,
-    by either id, is told it isn't there (404).
-  - The grant gives exactly what the owner's own share would, and keeps whose it is (`owner_id`) and who shared it (`by_id`, 0069).
-    The admin's share and the owner's own of the same thing are two grants, each stopped by whoever may stop it. A block made later,
-    between the admin and the owner, ends what the admin shared of theirs; and a share the admin made never reaches someone with a
-    block between them and the admin (they don't see its card either), as an owner's share never reaches someone with a block with
-    the owner.
-  - The card says whose it is: `thing.ownerName` ("Aanya shared Mom's Doctor, knee check-up from Plan Ease", Open in Plan Ease).
-  - **The owner is not told.** The card is never theirs to see (`Threads.sees`): no card in their feed, no push, no unread, no live
-    event; nor for anyone with a block with them. It is never a chat's last line, so no list, widget or Home card says it. It is not
-    on their page for the thing ("Shared with" lists only what they shared themselves). The line they agreed to says the admin may.
+- **Only its owner shares it.** The admin used to be able to share any member's thing, with the owner never told — no card in
+  their feed, no push, not even on their own page for that thing. That is gone (docs/social.md §4). `space_grants.by_id` stays on
+  the rows and nothing writes it; migration 0112 deletes the rows that have one, with their cards, so no access outlives the line
+  that explained it.
 - It reaches the person (or everyone) while both are in the space with no block between them. Leaving takes away what you gave and
   what you were given; the space going takes all of it. Moderation taking the card out (a report upheld) takes the grant with it.
 - A share to everyone reaches whoever is in the space, later joiners too (they read the same feed), so it is a look and a note: only
   a share to one person by name lets them change a plan's time.
-- **Stop sharing** (`DELETE /spaces/:id/grants/:gid`): the admin stops any share; a member only one they made of their own thing.
-  So a share the admin made is the admin's alone to stop: its owner is refused (403, "Only the space's admin can stop sharing this.")
-  like anyone else. The access goes at once and the card leaves the feed for everyone. It is on the card in the feed (for its sharer
-  and the admin), and on the owner's own page for what they shared themselves ("Shared with").
+- **Stop sharing** (`DELETE /spaces/:id/grants/:gid`): the one who shared it, or the space's admin — which is moderation of its
+  own feed, and takes nothing out of anyone's account. The access goes at once and the card leaves the feed for everyone. It is on
+  the card in the feed, and on the owner's own page ("Shared with").
 
 ## Work in space
 
@@ -176,18 +165,18 @@ isn't there.
 | Who | What | Change time (plan events) | Add a note |
 |---|---|---|---|
 | The owner | everything of theirs | yes | yes |
-| The admin, for a member who agreed to the line about the admin as it is now | all their things in that bot | yes | yes |
-| Someone a grant reaches (the owner's, or the admin's of the owner's thing) | that one thing | yes, when it was shared with them by name; no for a share to everyone | yes |
+| Someone a grant reaches (its owner's share — there is no other kind) | that one thing | yes, when it was shared with them by name; no for a share to everyone | yes |
 | Someone the owner shares the bot with the old way | everything shared, or what was picked: title, line and time only | no | yes |
 
-- A thing the admin shared of a member's is found under its owner ("Mom"), its line "1 plan · Shared by Aanya" (or "3 plans shared
-  with you · 1 by Aanya"), each such thing "Shared by Aanya" (`sharedBy` on the person's items and on the thing), and its foot says
-  the admin shared it. Where the owner shared it too, it is the owner's.
+- **Making a space opens nobody's bot.** The admin's own page lists a space with nobody in it until somebody there shares
+  something, and a person's line is only ever "2 plans shared with you". `GET /work/:bot/mine` answers the asker's own things
+  alone; the `of:<owner>:<item>` ids its "/" list used to make for the admin are gone, so such an id is a thing that isn't there.
+  `space` and `tz` are still taken on that route, and ignored.
 - Someone else's plan event moves on the owner's own calendar, with their id; a plan someone else set (`fixed`) never moves.
   Xode's projects are read only for everyone but their owner.
 - What someone did on another person's thing is a note on that thing (`space_work_notes`): its owner sees every space's; anyone
   else sees the notes added through the space they came by, except a note added through a share to one person (`only_owner`),
-  which only the owner, its writer and the space's admin read. So two people the owner shared the same thing with separately never
+  which only the owner and its writer read. So two people the owner shared the same thing with separately never
   read each other's notes, or learn the other has it. Never the space's activity, which every member reads.
 - Opening your own thing with a space you aren't in says no space's name.
 - The bot page shows both tabs to anyone in a space, with a line where nobody has shared anything yet.
@@ -274,12 +263,16 @@ group, as before.
 Plan Ease, Notes, Travel bot and Xode are every group's bots: they read what is shared in each of the person's spaces and what
 the group told its bots, with no adding step. Any other bot reads a space only once it is added to it.
 
-The meeting bot follows the line about the admin too (docs/meet.md, "In a space"): a space's admin sees the meetings of each member who
-agreed to it, is told when one takes the bot to a meeting (`space_meet`), and may send the bot to a member's meeting for them
-(`space_meet_sent`). The mail bot too (docs/mail.md, "In a space"): a business's owner gives addresses to members to answer
-(`space_mail_handle`; they see and send only that address's mail), and a space's admin has a member's own business in full, read and
-write, and is told when one is set up (`space_mail`). A meeting's notes and a mail conversation can be shared to a space or a person
-like anything else. The Oracle stays private: no admin ever sees a member's chart or readings.
+**The meeting bot knows nothing of spaces any more** (docs/meet.md, "In a space"): the admin saw every consenting member's
+meetings, was told when one took the bot anywhere, and could send the bot into a member's meeting for them. All three are gone
+(docs/social.md §4), and `MeetService` no longer holds a list of anyone's people.
+
+**The mail bot keeps only what an owner hands over** (docs/mail.md, "In a space"): a business's owner gives addresses to people to
+answer (`space_mail_handle`; they see and send only that address's mail, while the two still share a space). The admin's way into
+a member's whole business, read and write, is gone.
+
+A meeting's notes and a mail conversation can be shared to a space or a person like anything else. The Oracle was always the model
+for all of this: no admin ever sees a member's chart or readings.
 
 ## Lists stay cheap
 
@@ -296,9 +289,10 @@ code on this database:
 - delete the drafts, or each shows to its maker as a real space named "New space" (its invites go with it):
   `delete from public.spaces where draft_ms is not null;`
 
-- take out what the admin shared of members' things, or older code shows its card to the owner and lets them stop it:
-  `delete from public.thread_messages where id in (select message_id from public.space_grants where by_id is not null);` then
-  `delete from public.space_grants where by_id is not null;`
+- what the admin shared of members' things is already gone (migration 0112 deleted it), so there is nothing to take out here any
+  more. Older server code reads `consent_ms` and `consent_v`, which are still on every row exactly as they were, and starts
+  honouring the line about the admin again the moment it runs.
 
-Grants, requests, work notes, `consent_v` and `mail_outbox.sent_by` are ignored by older code (which counts any `consent_ms`, so a
-member who agreed to the old line is counted again, for what that line said).
+Grants, requests, work notes and `mail_outbox.sent_by` are ignored by older code. `consent_ms` and `consent_v` are still on every
+row untouched, so older code starts honouring the line about the admin again the moment it runs — which is exactly what makes this
+reversible, and exactly why 0112 withdrew the access first.
