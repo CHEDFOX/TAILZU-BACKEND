@@ -47,10 +47,21 @@ FROM node:22-slim AS runtime
 # It is off by default and on for a deploy (docker-compose.yml), because it is the largest thing in this image by far
 # and CI builds the image on every push. With it off, CINEMA_BLENDER names a binary that is not there, ready() says so,
 # and the 3D half answers that this machine renders nothing. Nothing else changes.
+# WITH_BROWSER=1 installs Chromium, which is the whole of putting a browser on this server. Two things need one and
+# both are dark without it: WEB_BROWSER=local, which reads a page that needs JavaScript, and CLOUD_BROWSER, the
+# browser that belongs to a person (docs/sites.md) — its sign-in panel needs a page HELD open while somebody types
+# in it, which only a local Chrome can do. src/web/browser/chrome.ts finds it as `chromium` on PATH, so nothing
+# needs CHROME_PATH. The fonts come with it for the same reason Blender's do: a bare container has none, and a
+# sign-in page rendered in boxes is a sign-in page nobody can read.
+#
+# Off by default and on for a deploy (docker-compose.yml), as Blender is. With it off the server says so at boot
+# ("CLOUD_BROWSER is on but there is no local browser") and every sites route answers 404; nothing else changes.
 ARG WITH_BLENDER=0
+ARG WITH_BROWSER=0
 RUN apt-get update \
  && apt-get install -y --no-install-recommends wget ffmpeg \
  && if [ "$WITH_BLENDER" = "1" ]; then apt-get install -y --no-install-recommends blender fonts-dejavu-core; fi \
+ && if [ "$WITH_BROWSER" = "1" ]; then apt-get install -y --no-install-recommends chromium fonts-liberation; fi \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
