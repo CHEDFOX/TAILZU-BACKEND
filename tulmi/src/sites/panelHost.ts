@@ -82,10 +82,10 @@ function script(o: PanelPageOptions): string {
   var page = { w: ${o.width}, h: ${o.height} };
   var QUIET = ${QUIET_MS}, BUSY = ${BUSY_MS}, BUSY_FOR = ${BUSY_FOR_MS}, SLOP = ${TAP_SLOP};
   var base = "/v1/botsapp/bots/sites/panel/t/" + encodeURIComponent(TICKET);
-  var img = document.getElementById("f"), box = document.getElementById("t");
+  var img = document.getElementById("f"), box = document.getElementById("t"), back = document.getElementById("bg");
   var note = document.getElementById("n"), doneBtn = document.getElementById("d"), cancelBtn = document.getElementById("c");
   var lastTouch = null, over = false, told = false, timer = null, checking = false;
-  var card = document.getElementById("cd"), cFields = document.getElementById("cf");
+  var card = document.getElementById("cd"), cFields = document.getElementById("cf"), shell = document.getElementById("card");
   var cGo = document.getElementById("cg");
   // What is drawn now, so a poll every second does not wipe what they are halfway through typing.
   var shape = "", inputs = [];
@@ -111,7 +111,7 @@ function script(o: PanelPageOptions): string {
    */
   function draw(c) {
     var fields = c && c.fields && c.fields.length ? c.fields : null;
-    if (!fields) { shape = ""; inputs = []; card.hidden = true; plainBox(true); return; }
+    if (!fields) { shape = ""; inputs = []; card.hidden = true; shell.classList.remove("withboxes"); plainBox(true); return; }
     var sig = JSON.stringify(fields.map(function (f) { return [f.id, f.kind, f.label]; }));
     if (sig === shape) return;
     shape = sig; inputs = [];
@@ -135,6 +135,7 @@ function script(o: PanelPageOptions): string {
     // page, and a card can only fill boxes it named — so a button here would be a button that does nothing. They
     // are in the frame above, where a tap already reaches them.
     card.hidden = false; plainBox(false);
+    shell.classList.add("withboxes");
   }
 
   /**
@@ -170,7 +171,12 @@ function script(o: PanelPageOptions): string {
   /** Every answer from every call lands here, so one place decides it is over and one place says so, once. */
   function take(v) {
     if (!v || typeof v !== "object") return;
-    if (typeof v.frame === "string" && v.frame) img.src = "data:image/jpeg;base64," + v.frame;
+    if (typeof v.frame === "string" && v.frame) {
+      var pic = "data:image/jpeg;base64," + v.frame;
+      img.src = pic;
+      // The same picture behind the card, blurred by the stylesheet: the page it is standing on is the page itself.
+      if (back) back.src = pic;
+    }
     if (typeof v.width === "number" && v.width > 0) page.w = v.width;
     if (typeof v.height === "number" && v.height > 0) page.h = v.height;
     if (typeof v.message === "string" && v.message) say(v.message);
@@ -178,7 +184,7 @@ function script(o: PanelPageOptions): string {
     if (v.ended && !told) {
       told = true; over = true;
       if (timer) clearTimeout(timer);
-      box.disabled = true; doneBtn.disabled = true; cGo.disabled = true; card.hidden = true;
+      box.disabled = true; doneBtn.disabled = true; cGo.disabled = true; card.hidden = true; shell.classList.remove("withboxes");
       // "Checking…" must not be the last thing they see under a panel that worked, if the app is slow to move on.
       if (!v.message) say("");
       up({ t: "panel", ended: String(v.ended), signedIn: v.signedIn === true, message: v.message || "" });
@@ -314,15 +320,26 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
 <style>
   :root { --ink:#0A0A0A; --paper:#FFFFFF; --meta:#5C5C5C; --line:#E6E4E1; --shade:#F4F2EF; }
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-  html, body { height:100%; background:var(--paper); color:var(--ink);
+  html, body { height:100%; background:var(--shade); color:var(--ink);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  body { display:flex; flex-direction:column; overscroll-behavior:none; }
-  #h { padding:8px 14px; font-size:12px; color:var(--meta); border-bottom:1px solid var(--line); }
+  /* The sign-in stands on a card, and behind the card is the same page blurred — the app's own overlay, to its
+     own numbers (app/src/sdui/components/blur.tsx: blur(10px) saturate(1.05) under a white veil). The backdrop
+     bleeds past every edge so the blur has something to take from and never shows a soft border of its own. */
+  #bg { position:fixed; left:-28px; top:-28px; width:calc(100% + 56px); height:calc(100% + 56px);
+    object-fit:cover; filter:blur(10px) saturate(1.05); }
+  #veil { position:fixed; inset:0; background:rgba(255,255,255,0.42); }
+  body { display:flex; flex-direction:column; overscroll-behavior:none;
+    padding:calc(10px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
+  /* Elongated: it takes the height it is given, as the window's sheet does (experience/bots/kit.ts sheetPage). */
+  #card { position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden;
+    background:var(--paper); border:1px solid var(--line); border-radius:24px;
+    box-shadow:0 24px 60px rgba(10,10,10,.10), 0 2px 8px rgba(10,10,10,.04); }
+  #h { padding:10px 14px; font-size:12px; color:var(--meta); border-bottom:1px solid var(--line); }
   #h b { color:var(--ink); font-weight:600; }
-  #s { flex:1 1 auto; min-height:0; background:var(--shade); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  #s { flex:1 1 auto; min-height:0; background:var(--paper); display:flex; align-items:center; justify-content:center; overflow:hidden; }
   #f { max-width:100%; max-height:100%; display:block; background:var(--paper); touch-action:none; user-select:none; -webkit-user-drag:none; }
   #n { display:none; padding:10px 14px 0; font-size:13px; }
-  #k { border-top:1px solid var(--line); padding:12px; display:flex; flex-direction:column; gap:10px; }
+  #k { border-top:1px solid var(--line); padding:12px; display:flex; flex-direction:column; gap:10px; flex:0 0 auto; }
   #t { border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:15px; color:var(--ink); background:var(--paper); width:100%; }
   #b { display:flex; gap:10px; }
   button { font:inherit; border-radius:12px; padding:12px 16px; border:1px solid var(--line); background:var(--paper); color:var(--ink); }
@@ -332,6 +349,10 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
   /* An author's display beats the hidden attribute's own rule, so hidden has to be said again here or an empty
      card shows on every page that has none. */
   #cd[hidden] { display:none; }
+  /* With boxes to fill, the page above gives up room to them and the boxes scroll if they still need more. The
+     card is a fixed height — whatever the phone gave it — so something has to yield, and it is the picture. */
+  #card.withboxes #s { flex:1 1 38%; }
+  #cd { overflow-y:auto; }
   #cl { margin:0; font-size:12.5px; color:var(--meta); }
   #cf { display:flex; flex-direction:column; gap:10px; }
   #cf label { display:flex; flex-direction:column; gap:5px; font-size:12.5px; color:var(--meta); }
@@ -339,6 +360,9 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
   #cg { background:var(--ink); color:var(--paper); border-color:var(--ink); font-weight:600; }
 </style>
 </head><body>
+<img id="bg" alt=""${first ? ` src="${esc(first)}"` : ""}>
+<div id="veil"></div>
+<div id="card">
 <div id="h">${esc(WORDS.safe)} &middot; <b>${esc(o.site)}</b></div>
 <div id="s"><img id="f" alt="${esc(o.site)}"${first ? ` src="${esc(first)}"` : ""}></div>
 <p id="n"></p>
@@ -361,6 +385,7 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
     <button id="d" type="button">${esc(WORDS.done)}</button>
     <button id="c" type="button">${esc(WORDS.cancel)}</button>
   </div>
+</div>
 </div>
 <script>${body}</script>
 </body></html>`;
