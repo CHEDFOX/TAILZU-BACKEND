@@ -137,13 +137,15 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
     body.push(col([sectionLabel("In the call"), row(m.participants.map((p) => chip(plain(p) || "Guest")), { gap: 6, flexWrap: "wrap" })], { gap: 8 }));
   }
 
-  if (live && !ro) {
+  // Whether it speaks belongs to the meeting, so it is set here and nowhere else — before it joins as well as during,
+  // which is the only way to settle it for a meeting that has not started.
+  if ((live || m.status === "scheduled") && !ro) {
     body.push(listCard([switchRow("Answer out loud", "mm_voice", {
       sub: "On, it says its answers. Off, it writes them in the call's chat.",
       onChange: call("PUT", M, { voice: "$state.mm_voice" }, { fail: toast("Couldn't change that. Try again.") }),
     })]));
-    body.push(secondaryButton("Leave the call", leave, { size: "md" }));
   }
+  if (live && !ro) body.push(secondaryButton("Leave the call", leave, { size: "md" }));
   // THE DOCUMENT THE BOT MADE OF THIS MEETING (src/brief, docs/brief.md): the overview, what it drew, what was said, who does
   // what, what is still open — drawn with the same renderer a bot's own answers are drawn with, so nothing here is new in the
   // apps. While the meeting runs it grows under the person's eyes; after, it is the meeting.
@@ -200,39 +202,7 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
   });
 }
 
-/**
- * THE MEETING BOT'S SETTINGS (bots.meet.settings), off the bot's page: the two switches, each saved as it is turned, and the day's
- * minutes. The name it shows in calls is not here — it is on the join card, where it is read before every call (meetPage.ts).
- */
-export function meetSettingsPage(ctx: BotsCtx, d: MeetData | undefined) {
-  const desk = isDesk(ctx);
-  const o = d?.overview;
-  const put = (k: string, v: string): ActionSpec => call("PUT", `${MEET}/settings`, { [k]: v }, { fail: toast("Couldn't save that. Try again.") }) as ActionSpec;
-  const body: Node[] = o
-    ? [
-      listCard([
-        switchRow("Join my calendar's meetings", "ms_auto", { sub: "It joins each one by itself, a minute early.", onChange: put("autoJoin", "$state.ms_auto") }),
-        switchRow("Answer out loud", "ms_voice", { sub: "In every call, unless you say otherwise in it.", onChange: put("voice", "$state.ms_voice") }),
-      ]),
-      ...(o.calendar ? [] : [meta("Connect Google Calendar in You › Connected apps first.", { size: 13, lineHeight: 18 })]),
-      meta(`${o.minutesToday} of ${o.minutesCap} minutes used today`, { size: 12 }),
-    ]
-    : [notice("The settings couldn't be read just now. Pull to try again.", { mark: "close" })];
-
-  return page(ctx, {
-    back: true, backTitle: "Meetings", title: "Settings", nav: MEET_SLUG, ...(desk ? { maxWidth: 720 } : {}),
-    body, gap: 18,
-    live: [botTopic(MEET_SLUG)],
-    state: { ms_auto: !!o?.settings.autoJoin, ms_voice: !!o?.settings.voice },
-  });
-}
-
 export const meetScreens: BotsScreen[] = [
-  screen<MeetData>({
-    id: SCREENS.meetSettings,
-    load: loadMeet,
-    build: (ctx, d) => meetSettingsPage(ctx, d),
-  }),
   screen<MeetingData>({
     id: SCREENS.meetMeeting,
     load: async (ctx, deps: Deps) => {

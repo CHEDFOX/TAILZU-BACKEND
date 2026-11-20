@@ -67,6 +67,7 @@ const callsOf = (acts: ActionSpec[]) => acts.filter((a) => a.kind === "callEndpo
 const navs = (acts: ActionSpec[], screenId: string) => acts.filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === screenId) as Array<{ params?: Record<string, string>; replace?: boolean }>;
 
 const MEETING_PAGE = { screen: "bots.meet.meeting", params: { m: "m1" } };
+const DETAIL = (o: Record<string, unknown> = {}) => ({ meeting: meeting("m1", o), asks: [] });
 /** The days the strip offers after "Now" on a build that cannot draw a row sideways (meetPage.ts STRIP_FIT). */
 const STRIP_FIT = 5;
 
@@ -92,12 +93,13 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     const guard = p.every().find((a) => a.kind === "condition" && JSON.stringify(a).includes("/v1/meet/join")) as { if: unknown; else: { message: string } };
     expect(guard.if).toEqual({ truthy: "mj_url" });
     expect(guard.else.message).toMatch(/link/);
-    // The settings are a row to their own screen, not a form on this one.
-    expect(p.texts).toContain("Settings");
-    expect(p.texts).toContain("0 of 120 minutes used today");
+    // No settings on the bot's page at all: whether it speaks belongs to a meeting, and nothing else was left to set.
+    // ("Settings" itself is the window's own sidebar, not this page.)
+    expect(p.every().filter((a) => a.kind === "navigate" && String((a as { screenId?: string }).screenId).startsWith("bots.meet.settings"))).toEqual([]);
     expect(p.texts).not.toContain("Name in calls");
     expect(p.texts).not.toContain("Save");
-    expect(navs(p.every(), "bots.meet.settings").length).toBe(1);
+    expect(p.texts.some((t) => /minutes used today/.test(t))).toBe(false);
+    expect(p.texts).not.toContain("Join my calendar's meetings");
   });
 
   it("the card holds the link alone until a link is in, and books the bot for a day and a time", async () => {
@@ -142,7 +144,7 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     expect(p.texts).toEqual(expect.arrayContaining([
       "In a call now", "Coming up", "Recent", "In a call: Sprint planning",
       "Sprint planning", "In the call · 3 people", "Meeting", "Waiting to be let in", "Joining…",
-      "Board call", "Customer sync", "Vendor call", "Retro", "47 of 120 minutes used today",
+      "Board call", "Customer sync", "Vendor call", "Retro",
     ]));
     // Sub lines: when, how long and the state.
     expect(p.texts.some((t) => /42 min · Notes ready$/.test(t))).toBe(true);
@@ -177,32 +179,18 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     expect(JSON.stringify(p.every())).not.toContain("mp_live");
   });
 
-  it("saves its settings as they change, on their own screen", async () => {
-    const p = await build({ client, screen: "bots.meet.settings", overview: OVERVIEW({ settings: { autoJoin: true, voice: false, botName: "Scribe" } }) });
-    expect(p.lint).toEqual([]);
-    expect(p.state).toMatchObject({ ms_auto: true, ms_voice: false });
-    expect(p.texts).toEqual(expect.arrayContaining(["Join my calendar's meetings", "Answer out loud"]));
-    const puts = callsOf(p.every()).filter((c) => c.path === "/v1/meet/settings");
-    expect(puts.map((c) => [c.method, c.body])).toEqual(expect.arrayContaining([
-      ["PUT", { autoJoin: "$state.ms_auto" }], ["PUT", { voice: "$state.ms_voice" }],
-    ]));
-    // The name it shows is on the join card, where it is read before every call: not here, and never behind a Save.
-    expect(p.texts).not.toContain("Name in calls");
-    expect(p.texts).not.toContain("Save");
-    // Connected: no line about the calendar.
-    expect(p.texts).not.toContain("Connect Google Calendar in You › Connected apps first.");
-  });
+  it("sets whether it speaks on the meeting itself, before it joins as well as during", async () => {
+    const soon = await build({ client, ...MEETING_PAGE, detail: DETAIL({ status: "scheduled", voice: false }) });
+    expect(soon.lint).toEqual([]);
+    expect(soon.texts).toContain("Answer out loud");
+    expect(soon.state).toMatchObject({ mm_voice: false });
+    // Nothing to leave yet.
+    expect(soon.texts).not.toContain("Leave the call");
 
-  it("says to connect the calendar first when it can't be read", async () => {
-    const p = await build({ client, screen: "bots.meet.settings", overview: OVERVIEW({ calendar: false }) });
-    expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("Connect Google Calendar in You › Connected apps first.");
-  });
-
-  it("the settings screen says so when they can't be read", async () => {
-    const p = await build({ client, screen: "bots.meet.settings", down: true });
-    expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("The settings couldn't be read just now. Pull to try again.");
+    const inCall = await build({ client, ...MEETING_PAGE, detail: DETAIL({ status: "in_call", voice: true, startedAt: FIXED_NOW - MIN }) });
+    expect(inCall.texts).toContain("Answer out loud");
+    expect(inCall.texts).toContain("Leave the call");
+    expect(callsOf(inCall.every()).some((c) => c.method === "PUT" && c.path === "/v1/meet/meetings/m1")).toBe(true);
   });
 
   it("says so when the meetings can't be read", async () => {

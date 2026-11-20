@@ -135,7 +135,7 @@ export const SAMPLES: Sample[] = [
   { id: S.bot, area: "bots", board: "BotPage", deskBoard: "DBotPage", params: { slug: "gym-bot" } },
   // screens/bots/cinemaPage.ts and cinemaScreens.ts (samples/cinema.ts): the cinema bot's page, empty and with films, and one film at each step.
   // The meeting bot's page (screens/bots/meetPage.ts; samples/meet.ts): its meetings, the first day, the join card with a link in it
-  // (now, and booked for Friday afternoon), an admin's, and the settings behind the row at its foot.
+  // (now, and booked for Friday afternoon), and an admin's.
   ...([
     ["meet", MEET_OVERVIEW, undefined], ["meet-empty", MEET_EMPTY, undefined], ["meet-admin", MEET_ADMIN, undefined],
     ["meet-now", MEET_OVERVIEW, MEET_STATES.now], ["meet-later", MEET_ADMIN, MEET_STATES.later],
@@ -143,7 +143,6 @@ export const SAMPLES: Sample[] = [
     id: S.bot, area: "bots" as const, variant, params: { slug: "meet" }, api: MEET_PAGE_API(overview),
     fake: { bots: [...SAMPLE_BOTS, MEET_FAKE] }, ...(state ? { state } : {}),
   })),
-  { id: S.meetSettings, area: "bots", params: { slug: "meet" }, api: MEET_PAGE_API(MEET_OVERVIEW), fake: { bots: [...SAMPLE_BOTS, MEET_FAKE] } },
   { id: S.bot, area: "bots", variant: "cinema", params: { slug: "cinema" }, api: CINEMA_PAGE_API(CINEMA_OVERVIEW), fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.bot, area: "bots", variant: "cinema-empty", params: { slug: "cinema" }, api: CINEMA_PAGE_API({ ...CINEMA_OVERVIEW, films: [], pictures: [], cast: [], spentToday: 0 }), fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   ...(Object.keys(CINEMA_FILMS) as (keyof typeof CINEMA_FILMS)[]).map((step) => ({

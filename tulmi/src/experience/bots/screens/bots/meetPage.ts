@@ -11,7 +11,6 @@
  *                  opens the note in Notes
  *   people       (an admin's) "Your people's meetings", shut the same way: the members' meetings, each "<name> · <title>" with where it
  *                  stands; opens it read only
- *   settings       one row to bots.meet.settings (meetScreens.ts), with the day's minutes under it
  *   the ask bar    the bots' own (parts.ts chatBar): "Ask about your meetings…" goes to the meeting bot's chat
  *
  * With no meeting at all there is just the link to paste: the field says what it takes, and the bot says who it is in the call itself
@@ -199,13 +198,6 @@ export function meetPage(ctx: BotsCtx, d: MeetPageData) {
     if (o.upcoming.length) body.push(fold("Coming up", "mp_up", o.upcoming.map((m) => upcomingRow(ctx, m))));
     if (o.recent.length) body.push(fold("Recent", "mp_recent", o.recent.map((m) => recentRow(ctx, m))));
     if (o.people?.length) body.push(fold("Your people's meetings", "mp_people", o.people.map((m) => personRow(ctx, m))));
-
-    // The switches, and the day's minutes under the row that holds them (meetScreens.ts meetSettingsPage).
-    body.push(listCard([listRow({
-      label: "Settings",
-      sub: `${o.minutesToday} of ${o.minutesCap} minutes used today`,
-      onPress: open(SCREENS.meetSettings),
-    })]));
   }
 
   return page(ctx, {
