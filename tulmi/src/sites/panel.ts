@@ -105,7 +105,14 @@ export class Panels {
     if (ONE_EACH) for (const p of this.live.values()) if (p.userId === userId) await this.shut(p, "cancelled");
 
     const page = await this.d.hold({ url, viewport: { width: 412, height: 915 }, allow: this.allowFor(site) })
-      .catch(() => { throw new SiteError("no_browser", "I can't open that right now.", 503); });
+      .catch((err: unknown) => {
+        // WHY IT WOULD NOT OPEN, SAID OUT LOUD. The person is told something vague on purpose — a sign-in that
+        // failed is not the place to explain a server — but this was the only copy, and dropping it left a 503
+        // with nothing in the log at all: the one thing anybody needs to fix it, caught and thrown away. Chrome's
+        // own startup lines travel in that message now (web/browser/chrome.ts), so this prints the real cause.
+        console.warn(`[sites] the panel could not open ${site}: ${err instanceof Error ? err.message : String(err)}`);
+        throw new SiteError("no_browser", "I can't open that right now.", 503);
+      });
 
     const at = this.now();
     const p: Live = {
