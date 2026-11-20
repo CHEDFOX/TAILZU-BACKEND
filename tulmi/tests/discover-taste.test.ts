@@ -26,6 +26,7 @@ const {
 } = await import("../src/discover/taste.js");
 const { weightOf, rankWeight, dwellWeight, DWELL_MIN_MS, DWELL_FULL_MS } = await import("../src/discover/signals.js");
 const { FIRST_LOOK, foldRanking, checkRanking } = await import("../src/discover/onboarding.js");
+const { seasonWords: words, daysLeftInSeason: left } = await import("../src/discover/taxonomy.js");
 
 const memory = () => store({
   cards: new MemoryTable(), asks: new MemoryTable(), taste: new MemoryTable(), signals: new MemoryTable(),
@@ -314,5 +315,20 @@ describe("through Discover, as the server uses it", () => {
     const d = new Discover({ store: memory() });
     await d.did("user_1", { kind: "dwell", slug: "dunes", ms: 9000 });
     expect((await d.taste("user_1")).taste.signals).toBe(1);
+  });
+});
+
+describe("what the app is sent, not what we hold", () => {
+  it("says the season in a sentence, because a screen does no month arithmetic", () => {
+    const erg = CURATED.find((c) => c.slug === "erg-chebbi-silence")!;
+    // Held as a bitmask; sent as words. A card that went out raw would read "best 3585".
+    expect(typeof erg.season).toBe("number");
+    expect(words(erg.season)).toBe("October to March");
+  });
+
+  it("counts the days left of a window only while somebody is inside it", () => {
+    const erg = CURATED.find((c) => c.slug === "erg-chebbi-silence")!;
+    expect(left(erg.season, new Date(Date.UTC(2027, 1, 20)))).toBeGreaterThan(0); // February: in season
+    expect(left(erg.season, new Date(Date.UTC(2027, 5, 20)))).toBeNull();          // June: out of it
   });
 });
