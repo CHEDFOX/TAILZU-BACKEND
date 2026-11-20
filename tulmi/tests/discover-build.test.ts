@@ -235,7 +235,7 @@ describe("photographs from Commons", () => {
 });
 
 describe("the search path, as a person uses it", () => {
-  const memory = () => store({ cards: new MemoryTable(), asks: new MemoryTable() });
+  const memory = () => store({ cards: new MemoryTable(), asks: new MemoryTable(), taste: new MemoryTable(), signals: new MemoryTable() });
   const withBuilder = (over: Partial<Parameters<typeof builder>[0]> = {}) =>
     new Discover({
       store: memory(),

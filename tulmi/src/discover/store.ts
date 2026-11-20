@@ -14,6 +14,8 @@
  */
 import { table, type Row, type Table } from "../botsBots/rows.js";
 import type { Card } from "./types.js";
+import type { Signal } from "./signals.js";
+import { emptyTaste, type Taste } from "./taste.js";
 
 interface CardRow extends Row {
   id: string;
@@ -22,6 +24,24 @@ interface CardRow extends Row {
   card: Card;
   created_at?: string;
   opened_at?: string | null;
+}
+
+interface TasteRow extends Row {
+  owner_id: string;
+  taste: Taste;
+  signals: number;
+  version: number;
+  updated_at?: string;
+}
+
+interface SignalRow extends Row {
+  owner_id: string;
+  kind: string;
+  slug: string;
+  ms?: number | null;
+  rank?: number | null;
+  of_n?: number | null;
+  at?: string;
 }
 
 interface AskRow extends Row {
@@ -34,6 +54,12 @@ interface AskRow extends Row {
 }
 
 export interface DiscoverStore {
+  /** Their profile, or an empty one. Never null, so a caller never has to decide what "no taste yet" means. */
+  taste(userId: string): Promise<Taste>;
+  /** The folded profile, written back. */
+  saveTaste(userId: string, taste: Taste): Promise<void>;
+  /** What they did, kept so the profile can be rebuilt if the weights change. "shown" is not kept. */
+  note(userId: string, signal: Signal, at: Date): Promise<void>;
   keep(card: Card): Promise<void>;
   mine(userId: string): Promise<Card[]>;
   one(userId: string, slug: string): Promise<Card | null>;
@@ -46,6 +72,8 @@ export interface DiscoverStore {
 export interface StoreDeps {
   cards?: Table<CardRow>;
   asks?: Table<AskRow>;
+  taste?: Table<TasteRow>;
+  signals?: Table<SignalRow>;
   now?: () => Date;
 }
 
@@ -56,11 +84,42 @@ export function store(deps: StoreDeps = {}): DiscoverStore {
   // no Supabase in sight. Neither should touch the config until something is actually read or written.
   let cardsT = deps.cards ?? null;
   let asksT = deps.asks ?? null;
+  let tasteT = deps.taste ?? null;
+  let signalsT = deps.signals ?? null;
   const cards = (): Table<CardRow> => (cardsT ??= table<CardRow>("discover_cards"));
   const asks = (): Table<AskRow> => (asksT ??= table<AskRow>("discover_asks"));
+  const tasteRows = (): Table<TasteRow> => (tasteT ??= table<TasteRow>("discover_taste"));
+  const signalRows = (): Table<SignalRow> => (signalsT ??= table<SignalRow>("discover_signals"));
   const now = deps.now ?? (() => new Date());
 
   return {
+    async taste(userId) {
+      const rows = await tasteRows().select({ owner_id: userId });
+      return rows[0]?.taste ?? emptyTaste(now().toISOString());
+    },
+
+    async saveTaste(userId, taste) {
+      await tasteRows().upsert(
+        { owner_id: userId, taste, signals: taste.signals, version: taste.version, updated_at: now().toISOString() },
+        ["owner_id"],
+      );
+    },
+
+    async note(userId, signal, at) {
+      // A "shown" is counted inside the profile and nowhere else: one row per tile per scroll would dwarf every
+      // other table in the product and tell us nothing the shown count does not.
+      if (signal.kind === "shown") return;
+      await signalRows().insert({
+        owner_id: userId,
+        kind: signal.kind,
+        slug: signal.slug,
+        ...(signal.ms !== undefined ? { ms: Math.round(signal.ms) } : {}),
+        ...(signal.rank !== undefined ? { rank: signal.rank } : {}),
+        ...(signal.of !== undefined ? { of_n: signal.of } : {}),
+        at: at.toISOString(),
+      });
+    },
+
     async keep(card) {
       if (!card.forUserId) return;
       await cards().upsert(

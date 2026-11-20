@@ -75,6 +75,8 @@ export const SCREENS = {
   planMake: "bots.plan.make",        // "Plan something": the card (what, when, for who, must not miss), Check, Change, Done, and the box that fills it (screens/bots/planMake.ts; params: from, day, kind, focus)
   planPhone: "bots.plan.phone",      // a real phone call's own number: add it, prove it (call X0 once), change or remove it (screens/bots/followPhone.ts)
   travel: "bots.travel",             // TravelBot / DTravelBot
+  travelFirstLook: "bots.travel.first-look", // The six images, put in order: the Travel bot's onboarding (screens/firstLook.ts)
+  travelPlace: "bots.travel.place",  // One place from the feed, in full (params: slug; screens/discoverFeed.ts)
   chat: "bots.chat",                 // Chat (params: slug)
   // screens/bots/mailScreens.ts: the mail bot (its page is bots.bot with slug "mail", screens/bots/mailPage.ts; no board)
   mailReply: "bots.mail.reply",      // a draft beside the message it answers: change, write again, send, throw away (params: b, run)

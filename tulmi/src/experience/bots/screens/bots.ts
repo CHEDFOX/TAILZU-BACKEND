@@ -35,6 +35,7 @@ import {
   sharePeople, type Attachment, sharePhone,
 } from "./bots/sharePhone.js";
 import * as places from "./botsPlaces.js";
+import { feedBlocks, FEED_PATH, TASTE_PATH, type FeedView, type TasteView } from "./discoverFeed.js";
 import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
 import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
@@ -500,7 +501,7 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
 interface TripData { trip: { id: string; place: string; when: string; who: string; packing: Array<{ text: string; done: boolean }>; spots?: string[]; stays?: Array<{ picked: boolean }> } | null; facts: Array<{ id: string; text: string }>; bookings: Array<{ label: string; url: string; at: number; said: string }> }
 
 /** `x`: the trip's weather, places and stays compared (GET .../trip/:id/extras, botsPlaces.ts); `work`: Work in space (work/workTab.ts). */
-interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView; work?: WorkRead }
+interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView; work?: WorkRead; feed?: FeedView; taste?: TasteView }
 
 const TRAVELLY = /ticket|pnr|boarding|itinerary|hotel|booking|flight|train|irctc|visa|passport|e-?ticket|bus|stay|trip/i;
 const GETTING = /train|flight|bus|cab|ticket|irctc|rail|air|uber|ola|route|maps|direction/i;
@@ -588,9 +589,11 @@ function travelParts(ctx: BotsCtx, d: TravelData) {
 function travelPhone(ctx: BotsCtx, d: TravelData) {
   const p = travelParts(ctx, d);
   return page(ctx, {
-    title: "Travel bot", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "", ...places.TRIP_STATE }, live: ["bot:travel"],
+    title: "Travel bot", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "", dq: "", ...places.TRIP_STATE }, live: ["bot:travel"],
     body: [
       phoneHead(p.look, "Travel bot", p.headLine, undefined, headerBuddy(ctx, "travel", { lookTo: "down", thinkWhen: ANSWERING })),
+      // Somewhere to look before anything is planned (screens/discoverFeed.ts).
+      ...feedBlocks(ctx, d.feed, d.taste),
       ...(!d.t ? [emptyState({ pose: "think", title: "Couldn't load your trip", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : !p.trip ? [tripForm(ctx), ...(p.remembers ? [p.remembers] : [])]
           : [
@@ -829,13 +832,16 @@ export const botsScreens: BotsScreen[] = [
         deps.api<TripData>("GET", `${A}/trip`).catch(() => undefined),
         deps.api<{ files: MediaFile[] }>("GET", "/v1/files").then((r) => r.files).catch(() => undefined),
       ]);
-      const [x, work] = await Promise.all([
+      const [x, work, feed, taste] = await Promise.all([
         t?.trip
           ? deps.api<{ extras: places.TripExtrasView }>("GET", `${A}/trip/${enc(t.trip.id)}/extras?tz=${ctx.tzOffsetMinutes}`).then((r) => r.extras).catch(() => undefined)
           : Promise.resolve(undefined),
         loadWork(ctx, deps, "travel"),
+        // The feed is what the screen opens on, so it is read every time — and its failure takes nothing down.
+        deps.api<FeedView>("GET", `${FEED_PATH}?limit=10`).catch(() => undefined),
+        deps.api<TasteView>("GET", TASTE_PATH).catch(() => undefined),
       ]);
-      return { t, files, x, work };
+      return { t, files, x, work, feed, taste };
     },
     build: (ctx, d) => { const c = workCtx(ctx, d?.work); return isDesk(c) ? travelDesk(c, d ?? {}) : travelPhone(c, d ?? {}); },
   }),

@@ -81,6 +81,8 @@ import { registerTalkRoutes } from "./routes/ask/talk.js";
 import { registerContextRoutes } from "./routes/ask/context.js";
 import { createPersonContext } from "./context/index.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
+import { registerDiscoverRoutes } from "./routes/bots/discover.js";
+import { discover } from "./discover/server.js";
 import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
 import { installAiConsent, registerAiConsentRoutes } from "./privacy/aiConsent.js";
@@ -551,6 +553,9 @@ registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
 }
 // Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
 registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
+// Places worth keeping (src/discover): the six images, the feed, one place, a place built from the web, and what
+// somebody did. The same Discover the Travel bot's tools use, so a tap and a tool call move one profile.
+registerDiscoverRoutes(app, { rateLimit: AUTHED_RL, discover: discover() });
 // The person's context (src/context, docs/context.md): who they are, who they message, their last asks and open work, for the one key's
 // brain and Ask's first step. Off with CONTEXT=false; migration 0065 keeps it.
 const personContext = createPersonContext({ jobs: codeJobs, connectors, routines: routineStore() });

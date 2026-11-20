@@ -1,0 +1,215 @@
+/**
+ * The Travel bot's onboarding screen (experience/bots/screens/firstLook.ts), built pure from a ctx and data.
+ *
+ *   - six tiles, each tappable, each able to show any of the six places in the order
+ *   - a tile's number is drawn by the app from its own state: no round trip per tap
+ *   - Done is offered only when the LAST place is filled, because a half-order must never be sent
+ *   - Skip is there throughout
+ *   - a photograph is used where the catalogue has one; a colour where it does not
+ *   - no data at all still builds a screen, never an error
+ */
+import { describe, expect, it } from "vitest";
+
+const { firstLookPage, FIRST_LOOK_PATH } = await import("../src/experience/bots/screens/firstLook.js");
+const { ctxFor } = await import("../src/experience/bots/fixtures.js");
+const { SCREENS } = await import("../src/experience/bots/ids.js");
+const { feedBlocks, placePage } = await import("../src/experience/bots/screens/discoverFeed.js");
+
+type FeedView = import("../src/experience/bots/screens/discoverFeed.js").FeedView;
+type TasteView = import("../src/experience/bots/screens/discoverFeed.js").TasteView;
+
+type View = import("../src/experience/bots/screens/firstLook.js").FirstLookView;
+
+const VIEW: View = {
+  version: "1",
+  title: "Put these in order",
+  sub: "Most like you first.",
+  images: [
+    { id: "fjord", label: "Grey water, one red hut", sub: "Cold", colour: "#5F6B6E", photo: { url: "https://u/1.jpg", alt: "a fjord" } },
+    { id: "lagoon", label: "Warm shallows", sub: "Bright", colour: "#3E6E8E", photo: null },
+    { id: "carved", label: "Carved stone", sub: "Old", colour: "#7A6440", photo: null },
+    { id: "night", label: "A street at midnight", sub: "Loud", colour: "#6E4A6B", photo: null },
+    { id: "ridge", label: "A ridge above cloud", sub: "Steep", colour: "#2F5D50", photo: null },
+    { id: "dunes", label: "A track over the dunes", sub: "Empty", colour: "#A9573A", photo: null },
+  ],
+};
+
+/** Everything in the tree, flattened, so a test can look for a node anywhere in it. */
+const nodes = (n: unknown): unknown[] => {
+  if (!n || typeof n !== "object") return [];
+  const self = n as { children?: unknown[] };
+  const kids = Array.isArray(self.children) ? self.children.flatMap(nodes) : [];
+  return [n, ...kids];
+};
+
+const treeOf = (screen: unknown): unknown[] => {
+  const s = screen as { screen?: { root?: unknown }; root?: unknown };
+  return nodes(s.screen?.root ?? s.root ?? s);
+};
+
+const json = (screen: unknown): string => JSON.stringify(screen);
+
+describe("the six images, put in order", () => {
+  const built = firstLookPage(ctxFor(SCREENS.travelFirstLook, "phone"), VIEW);
+
+  it("starts with an empty order, so nothing is chosen for them", () => {
+    const s = built as unknown as { screen?: { state?: Record<string, unknown> }; state?: Record<string, unknown> };
+    const state = s.screen?.state ?? s.state ?? {};
+    expect(state.order).toEqual([]);
+  });
+
+  it("makes every tile tappable, adding and removing it from the order", () => {
+    const toggles = treeOf(built).filter((n) => {
+      const press = (n as { on?: { onPress?: { kind?: string; path?: string } } }).on?.onPress;
+      return press?.kind === "toggleInArray" && press.path === "order";
+    });
+    expect(toggles).toHaveLength(6);
+    const values = toggles.map((n) => (n as { on: { onPress: { value: string } } }).on.onPress.value);
+    expect(new Set(values)).toEqual(new Set(["fjord", "lagoon", "carved", "night", "ridge", "dunes"]));
+  });
+
+  it("draws the number from its own state, so a tap needs no round trip", () => {
+    const text = json(built);
+    // one badge per place in the order, per tile: the app decides which is visible
+    for (let i = 0; i < 6; i += 1) expect(text).toContain(`"order.${i}"`);
+    const badged = treeOf(built).filter((n) => {
+      const cond = (n as { visibleIf?: { eq?: [string, unknown] } }).visibleIf;
+      return Array.isArray(cond?.eq) && cond.eq[0] === "order.0";
+    });
+    // the first place: a badge on each tile, plus each tile's ring condition mentions it
+    expect(badged.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("offers Done only once the last place is filled", () => {
+    const shown = treeOf(built).filter((n) => {
+      const cond = (n as { visibleIf?: { truthy?: string } }).visibleIf;
+      return cond?.truthy === "order.5";
+    });
+    expect(shown.length).toBeGreaterThan(0);
+
+    const hidden = treeOf(built).filter((n) => {
+      const cond = (n as { visibleIf?: { falsy?: string } }).visibleIf;
+      return cond?.falsy === "order.5";
+    });
+    expect(hidden.length).toBeGreaterThan(0);
+  });
+
+  it("sends the whole order to the one endpoint that takes it", () => {
+    const text = json(built);
+    expect(text).toContain(FIRST_LOOK_PATH);
+    expect(text).toContain('"$state.order"');
+    expect(text).toContain('"method":"POST"');
+  });
+
+  it("lets them out of it at any point", () => {
+    expect(json(built)).toContain("Skip for now");
+  });
+
+  it("uses a photograph where the catalogue has one, and a colour where it does not", () => {
+    const text = json(built);
+    expect(text).toContain("https://u/1.jpg");
+    expect(text).toContain("#A9573A");
+  });
+
+  it("builds a screen even with nothing to show, rather than an error", () => {
+    const empty = firstLookPage(ctxFor(SCREENS.travelFirstLook, "phone"), undefined);
+    expect(json(empty)).toContain("on their way");
+  });
+
+  it("builds for the window too", () => {
+    const desk = firstLookPage(ctxFor(SCREENS.travelFirstLook, "desktop"), VIEW);
+    expect(json(desk)).toContain("$state.order");
+  });
+});
+
+describe("the feed on the Travel bot's own screen", () => {
+  const card = (over: Partial<FeedView["cards"][number]> = {}): FeedView["cards"][number] => ({
+    slug: "erg-chebbi-silence",
+    title: "The silence of Erg Chebbi",
+    where: "Sahara, Morocco",
+    hook: "Dunes the height of buildings, and a quiet so complete it feels physical.",
+    tags: ["desert", "solitude"],
+    budget: "budget",
+    effort: 3,
+    photos: [],
+    origin: "ours",
+    season: "December to March",
+    ...over,
+  });
+
+  const feed: FeedView = {
+    total: 14,
+    cards: [card(), card({ slug: "hampi", title: "Boulders at dawn", reason: "because you keep places with a past" }), card({ slug: "petra", title: "Through the Siq", wildcard: true })],
+  };
+
+  const blank: TasteView = { known: 0, signals: 0, likes: [], dislikes: [] };
+  const taught: TasteView = { known: 0.4, signals: 12, likes: [{ tag: "desert" }], dislikes: [] };
+  const ctx = () => ctxFor(SCREENS.travel, "phone");
+  const text = (nodes: unknown) => JSON.stringify(nodes);
+
+  it("invites a newcomer to the six images, and does not nag somebody who has done it", () => {
+    expect(text(feedBlocks(ctx(), feed, blank))).toContain("Six pictures, fifteen seconds");
+    expect(text(feedBlocks(ctx(), feed, taught))).not.toContain("Six pictures");
+  });
+
+  it("gives them a way to look up any place, which is the way into the build", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("Search any place on earth");
+    expect(out).toContain("/v1/discover/build");
+    expect(out).toContain('"$state.dq"');
+  });
+
+  it("leads with one place, and says the season rather than a month number", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("TODAY");
+    expect(out).toContain("best December to March");
+  });
+
+  it("shows the honest season countdown only when the window is closing", () => {
+    const soon = { ...feed, cards: [card({ daysLeft: 11 }), ...feed.cards.slice(1)] };
+    const far = { ...feed, cards: [card({ daysLeft: 200 }), ...feed.cards.slice(1)] };
+    expect(text(feedBlocks(ctx(), soon, taught))).toContain("11 days left in season");
+    expect(text(feedBlocks(ctx(), far, taught))).not.toContain("days left in season");
+  });
+
+  it("carries the reason on a tile, and marks the wildcard as one", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("because you keep places with a past");
+    expect(out).toContain("Not your usual");
+  });
+
+  it("tells the profile before it navigates, so a person who leaves at once is still heard", () => {
+    const out = text(feedBlocks(ctx(), feed, taught));
+    expect(out).toContain("/v1/discover/signals");
+    expect(out).toContain('"kind":"open"');
+    expect(out).toContain("bots.travel.place");
+  });
+
+  it("draws nothing at all when the feed could not be read, so the trip below survives", () => {
+    expect(feedBlocks(ctx(), undefined, taught)).toEqual([]);
+    expect(feedBlocks(ctx(), { total: 0, cards: [] }, taught)).toEqual([]);
+  });
+
+  it("opens one place with its facts, and a way to say yes or no", () => {
+    const out = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card() }));
+    expect(out).toContain("The silence of Erg Chebbi");
+    expect(out).toContain("Best season");
+    expect(out).toContain("Keep it");
+    expect(out).toContain('"kind":"not_for_me"');
+  });
+
+  it("says whose words a card is: ours, or the web's with its sources", () => {
+    const ours = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: card() }));
+    expect(ours).toContain("our own words");
+
+    const built = text(placePage(ctxFor(SCREENS.travelPlace, "phone"), {
+      card: card({ origin: "built", sources: [{ host: "whc.unesco.org", url: "https://whc.unesco.org/x", readAt: "2026-11-20" }] }),
+    }));
+    expect(built).toContain("whc.unesco.org");
+    expect(built).toContain("not by us");
+  });
+
+  it("says so plainly when the place has gone, rather than erroring", () => {
+    expect(text(placePage(ctxFor(SCREENS.travelPlace, "phone"), undefined))).toContain("has gone");
+  });
+});
