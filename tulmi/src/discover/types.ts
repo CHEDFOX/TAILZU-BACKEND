@@ -37,6 +37,13 @@ export interface Source {
 export type Origin = "ours" | "built";
 
 /**
+ * A government travel warning standing over the place. Written on the card rather than applied by hand, so the
+ * card survives the advisory changing, and so the bar (bar.ts) can keep it out of the feed while the warning
+ * stands. "do_not_travel" is the top level of warning: US Level 4, or its equivalent elsewhere.
+ */
+export type Advisory = "do_not_travel";
+
+/**
  * A place worth keeping. The title is the ACT, not the place name ("The silence of Erg Chebbi"), because the act is
  * what a person pictures themselves doing; the place name lives in `where`.
  */
@@ -77,6 +84,11 @@ export interface Card {
   sources: Source[];
   /** Whose feed it is in. Null for a card everybody gets. */
   forUserId: string | null;
+  /**
+   * A standing government warning over this place, or null. A card with one is written and kept, and never shown:
+   * a feed that says "go here, it is extraordinary" about a Do Not Travel zone is a liability, not a recommendation.
+   */
+  advisory: Advisory | null;
 }
 
 /** What the feed was asked for. Everything is optional: with nothing set it is "show me something". */

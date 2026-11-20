@@ -142,7 +142,7 @@ export function feedBlocks(ctx: BotsCtx, feed: FeedView | undefined, taste: Tast
   const columns = ctx.client === "desktop" ? 3 : 2;
 
   // No invitation to the six here: a person with no profile never reaches this screen, because bots.travel
-  // shows them the six instead (screens/firstLook.ts). The only way one could have appeared is if the six
+  // has no onboarding at all: the feed is the first screen. Nothing invites anybody to fill anything in
   // failed to load — and then the invitation would open the screen that fetches the same six.
   return [
     searchRow(),
@@ -200,6 +200,10 @@ export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType
       photo
         ? picture(photo.url, w, 240, { radius: 0, background: C.surface, fit: "cover", label: photo.alt })
         : box([icon("pin", { size: 22, color: C.idle })], { width: "100%", height: 200, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
+      // THE CREDIT IS SHOWN, NOT JUST STORED. Half these pictures are graded photographs somebody else took and
+      // half are illustrations made for this catalogue, and a card that says "this is Deadvlei" has to say which
+      // of the two the reader is looking at. A credit nobody ever sees is not a credit.
+      ...(photo?.credit ? [meta(photo.credit, { size: 11 })] : []),
       col([
         meta(card.where.toUpperCase(), { size: 11, tracking: 0.9 }),
         title(card.title),

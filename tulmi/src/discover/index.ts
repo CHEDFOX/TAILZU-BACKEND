@@ -17,12 +17,12 @@
  */
 import { CURATED, curatedCountries } from "./catalog.js";
 import { pick, countFor } from "./query.js";
+import { judge } from "./bar.js";
 import type { Built } from "./build.js";
 import type { Fail } from "./builder.js";
 import { store as makeStore, type DiscoverStore } from "./store.js";
 import { decayAll, fold, known, likes, dislikes, type Taste, type TasteLine } from "./taste.js";
 import { weightOf, type Signal } from "./signals.js";
-import { FIRST_LOOK, checkRanking, foldRanking, firstLookImage } from "./onboarding.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
 export * from "./types.js";
@@ -37,7 +37,6 @@ export { pick, countFor } from "./query.js";
 export { DISCOVER_TOOLS, runDiscover, discoverFor } from "./tools.js";
 export * from "./taste.js";
 export * from "./signals.js";
-export * from "./onboarding.js";
 export type { Fail } from "./builder.js";
 
 export interface DiscoverOptions {
@@ -95,9 +94,14 @@ export class Discover {
   }
 
   /** Everything this person may see: what we wrote, plus what was built for them. */
+  /**
+   * Every card the feed may draw on. The bar is applied HERE rather than at write time, so a card is never lost:
+   * a place under a travel warning, or one whose scores put it below the exceptional line, stays written and
+   * comes back the day the warning lifts or the scores are revisited (bar.ts). Nothing is deleted to be hidden.
+   */
   private async all(userId?: string | null): Promise<Card[]> {
     const mine = userId ? await this.store.mine(userId) : [];
-    return [...this.curated, ...mine];
+    return [...this.curated, ...mine].filter((c) => judge(c).ok);
   }
 
   /**
@@ -140,7 +144,7 @@ export class Discover {
     const at = new Date();
     await this.store.note(userId, signal, at);
 
-    const tags = card ? card.tags : firstLookImage(signal.slug)?.tags ?? [];
+    const tags = card ? card.tags : [];
     const taste = await this.load(userId);
     if (tags.length === 0) return taste;
 
@@ -152,29 +156,6 @@ export class Discover {
     });
     await this.store.saveTaste(userId, next);
     return next;
-  }
-
-  /** The six images, as the app draws them. */
-  firstLook(): typeof FIRST_LOOK {
-    return FIRST_LOOK;
-  }
-
-  /**
-   * Their order of the six. Folded into the same profile behaviour writes to, so onboarding gives it a shape and
-   * what they do afterwards moves it — there is no second model competing with the first.
-   */
-  async ranked(userId: string, order: readonly string[]): Promise<{ ok: boolean; why?: string; known: number }> {
-    const check = checkRanking(order);
-    if (!check.ok) return { ok: false, why: check.why, known: 0 };
-
-    const at = new Date();
-    const taste = await this.load(userId);
-    const out = foldRanking(taste, order, at.toISOString());
-    await this.store.saveTaste(userId, out.taste);
-    for (const [i, slug] of order.entries()) {
-      await this.store.note(userId, { kind: "ranked", slug, rank: i + 1, of: order.length }, at);
-    }
-    return { ok: true, known: known(out.taste) };
   }
 
   async count(ask: Ask = {}): Promise<number> {

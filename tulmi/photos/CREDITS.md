@@ -1,10 +1,14 @@
-# The photographs
+# The pictures
 
-One per written place (`src/discover/catalog.ts`), served at `/photos/`.
+One per written place (`src/discover/catalog.ts`), served at `/photos/`. There are two kinds and the
+credit on every card says which, because a card that tells somebody "this is Deadvlei" must not quietly
+show them something nobody ever stood in front of.
 
-Every one came from Wikimedia Commons under a free licence and was **altered**: resized to 1280px and
-graded to a single look (focus falloff, a vignette, shadows toward #3E6E8E, warmed highlights, eased
-saturation). Where the original is CC BY-SA, this derivative carries the same licence.
+## Photographs
+
+Taken from Wikimedia Commons under a free licence and **altered**: resized to 1280px and graded to a
+single look (focus falloff, a vignette, shadows toward #3E6E8E, warmed highlights, eased saturation).
+Where the original is CC BY-SA, this derivative carries the same licence.
 
 | Place | File on Commons | Licence | Photographer |
 |---|---|---|---|
@@ -38,3 +42,49 @@ saturation). Where the original is CC BY-SA, this derivative carries the same li
 | `uyuni-mirror` | Piles of Salt Salar de Uyuni Bolivia Luca Galuzzi 2006 a | CC BY-SA 2.5 | Luca Galuzzi ( Lucag ), edit by Trialsanderrors |
 | `vestrahorn-black-sand` | Vestrahorn and Stokksnes beach in Iceland | CC BY 4.0 | Daniel Oberhaus |
 | `wanaka-roys-peak` | Wanaka, New Zealand, view 1 | CC BY-SA 4.0 | Sky_xe |
+
+## Illustrations
+
+Made for this catalogue and **not photographs of the place**. Each is drawn
+faithful to how the place really looks — the test applied to every one was whether somebody who
+went there would feel the picture had lied to them — but it is drawn, and every card says so.
+
+- `atacama-sky`
+- `christmas-island-crabs`
+- `chugach-heliski`
+- `deadvlei`
+- `dominica-sperm-whales`
+- `gorilla-trek`
+- `haute-route`
+- `hornbill-nagaland`
+- `ijen-blue-fire`
+- `kolmanskop`
+- `kona-mantas`
+- `kumano-kodo`
+- `lencois`
+- `luxor-eclipse`
+- `mara-balloon`
+- `monarch-michoacan`
+- `mt-yasur`
+- `naadam`
+- `ningaloo-whale-sharks`
+- `oaxaca-muertos`
+- `pamir-highway`
+- `raja-ampat`
+- `san-ignacio-greys`
+- `sardine-run`
+- `silfra`
+- `skjervoy-orca`
+- `smokies-fireflies`
+- `snow-hill-emperors`
+- `snowman-trek`
+- `socotra`
+- `son-doong`
+- `svalbard-polar-night`
+- `tonga-humpbacks`
+- `tristan-da-cunha`
+- `tsingy-bemaraha`
+- `up-helly-aa`
+- `uyuni-mirror`
+- `vatnajokull-ice-cave`
+- `yi-peng`
