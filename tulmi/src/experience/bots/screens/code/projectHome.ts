@@ -10,7 +10,7 @@ import {
 } from "../../kit.js";
 import {
   type Job, ago, cut, firstLine, MOSS, type MeetData, type OverviewData, type Project, short, tag, plural, backButton, CODE_BUSY,
-  startTask, taskBar, field, roundInk, ENDED, clock, CODE, addProjectRow, outOfCode,
+  startTask, taskBar, field, roundInk, ENDED, clock, CODE,
 } from "./parts.js";
 
 export interface Branch { branch: string; task: string; prNumber: number | null; prUrl: string | null; state: string; createdAt: number }
@@ -58,11 +58,7 @@ export type HomeData =
   | { kind: "off" }
   | { kind: "meet"; meet: MeetData }
   | { kind: "overview"; overview?: OverviewData }
-  | {
-      kind: "project"; project: Project; brain?: BrainLite; jobs: Job[]; branches: Branch[];
-      /** They have more than this one. Decides whether Back is the overview or the way out of Xode. */
-      many?: boolean;
-    };
+  | { kind: "project"; project: Project; brain?: BrainLite; jobs: Job[]; branches: Branch[] };
 
 /** Near the usage limit, or at it: one calm line, a tap to Usage (src/you/usage.ts). Nothing while there is plenty left. */
 function usageNote(ctx: BotsCtx): Node[] {
@@ -133,9 +129,9 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
     return page(ctx, {
       nav: "code", title: `Xode · ${name}`,
       body: [
-        // With one project this page IS Xode (code.ts loadHome), so Back is the way out of the bot; with several
-        // it is the overview, one step up. Either way it is a place, not the last thing they happened to open.
-        row([backButton(d.many ? open(SCREENS.code) : outOfCode()), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        // Always one step under the list, because that is the only way in (code.ts loadHome). A place, not the
+        // last thing they happened to open.
+        row([backButton(open(SCREENS.code)), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
           ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, bookBtn, rules], { gap: 8 }),
         readCard,
         ...usageNote(ctx),
@@ -143,9 +139,6 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
           text(t.sub ? `${t.label} — ${t.sub}` : t.label, { size: 15, lineHeight: 20, style: { flexShrink: 1 } }), grow(), icon("chevron", { size: 16, color: C.meta }),
         ], { height: 52, gap: 8, ...(i < tasks.length - 1 ? { borderBottomWidth: 1, borderBottomColor: C.divider } : {}) }, startTask(p.id, t.task)))], { gap: 4 })] : []),
         latelyBlock,
-        // ANOTHER PROJECT STARTS HERE, because for somebody with one project this page is Xode and there is no
-        // overview to go back to (code.ts loadHome).
-        addProjectRow(),
       ],
       footer: [taskBar(ctx, { projectId: p.id })], gap: 18,
     });
@@ -194,7 +187,7 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
   ], { width: 290, flexShrink: 0, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 18, gap: 12 });
   return page(ctx, {
     nav: "code", title: `Xode · ${name}`, maxWidth: 1100, gap: 18,
-    back: d.many ? open(SCREENS.code) : outOfCode(),
+    back: open(SCREENS.code),
     state: { task: "" },
     body: [
       row([
@@ -214,9 +207,6 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
         col([
           latelyBlock,
           col([sectionLabel("Pull requests"), prs.length ? col(prRows, { borderWidth: 1, borderColor: C.line, borderRadius: 18 }) : meta("None yet. I open one when a change passes its checks.", { size: 13 })], { gap: 8 }),
-          // ANOTHER PROJECT STARTS HERE, because for somebody with one project this page is Xode and there is no
-          // overview to go back to (code.ts loadHome).
-          addProjectRow(),
         ], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 18 }),
         healthCard,
       ], { gap: 24, alignItems: "flex-start" }),

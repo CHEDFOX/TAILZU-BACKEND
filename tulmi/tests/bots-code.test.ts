@@ -166,37 +166,40 @@ describe("the screens, for the phone and the window", () => {
       expect(json).toContain('"bots.code.rules"');
     });
     /**
-     * ANOTHER PROJECT, FROM A PROJECT'S OWN PAGE. With exactly one project that page IS Xode's home (code.ts
-     * loadHome), and the overview — the only screen that carried the way into the picker — needs two projects to
-     * appear. So the second project could not be added until there was a second project.
+     * OPENING XODE IS THE LIST, with one project or eight. It used to drop somebody with exactly one straight
+     * into that project, so a project's own page doubled as the bot's front door — it met them with one
+     * project's branch, book and rules, and the list, the only place carrying the two ways to another project,
+     * could not be reached until there were two.
      */
-    it(`bots.code (${client}): a project's own page is a way to another project`, async () => {
-      const one = await build("bots.code", client, { project: P });
+    it(`bots.code (${client}): opening it is the list, however many projects there are`, async () => {
+      const alone = { ...API, "GET /v1/code/projects": { projects: [project] } };
+      const one = await build("bots.code", client, {}, alone);
       expect(one.lint).toEqual([]);
-      // TWO WAYS, each saying what it does. One row naming both and opening only the picker — a list of repos they
-      // already own — is what left somebody with no repo to bring nowhere to go.
+      // The list, not that one project's page: none of its own things are here.
+      expect(one.json).not.toContain('"bots.code.rules"');
+      expect(one.json).not.toContain('"bots.code.book"');
+      // TWO WAYS ON, each saying what it does. A row naming both and opening only the picker — a list of repos
+      // they already own — left somebody with no repo to bring nowhere to go.
       expect(one.words).toContain("Add a project");
       expect(one.json).toContain('"screenId":"bots.code.start","params":{"step":"pick"}');
-      expect(one.words).toContain("Or start one from scratch");
       expect(one.json).toContain('"screenId":"bots.code.new"');
-      // And the overview has them too, since both pages draw the same block (code/parts.ts addProjectRow).
-      const many = await build("bots.code", client, {});
-      expect(many.words).toContain("Add a project");
-      expect(many.json).toContain('"screenId":"bots.code.new"');
+      // A project's page is reached by naming the project, and that is where its own things live.
+      const inside = await build("bots.code", client, { project: P }, alone);
+      expect(inside.json).toContain('"bots.code.rules"');
+      expect(inside.words, "and it carries no way to add another: the list is one tap up").not.toContain("Add a project");
     });
+
     /**
      * BACK IS A PLACE, NOT A TRAIL. Every screen here used to pop, so Back walked somebody out the way they came
      * in — project, job, project, task, overview, project — when what they wanted was out of the bot.
      */
-    it(`bots.code (${client}): Back leaves Xode, and a job goes up to its project`, async () => {
-      const one = await build("bots.code", client, { project: P });
-      expect(one.json, "one project: this page IS Xode, so Back is the way out").toContain('"screenId":"bots.home"');
-      // With several it is the overview, one step up, and not the way out.
-      const many = await build("bots.code", client, { project: P }, {
-        ...API,
-        "GET /v1/code/projects": { projects: [project, { ...project, id: "22222222-2222-4222-8222-222222222222", fullName: "aanya-sharma/salon-booking" }] },
-      });
-      expect(many.json).toContain('"screenId":"bots.code"');
+    it(`bots.code (${client}): the list leaves Xode, a project goes up to it, a job to its project`, async () => {
+      // On the phone the list is Xode's home, so its Back is the way out of the bot. The window leaves by its own
+      // nav down the side and draws no back bar on a bot's home at all.
+      const list = await build("bots.code", client, {});
+      if (client === "phone") expect(list.json, "the list's Back is the way out").toContain('"screenId":"bots.home"');
+      const inside = await build("bots.code", client, { project: P });
+      expect(inside.json, "a project is one step under the list").toContain('"screenId":"bots.code"');
       const job = await build("bots.code.job", client, { id: J });
       expect(job.json, "a job is reached from four places and goes up to the one parent it has").toContain(`"screenId":"bots.code","params":{"project":"${P}"}`);
     });

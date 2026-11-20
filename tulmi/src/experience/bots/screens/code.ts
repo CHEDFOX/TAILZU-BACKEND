@@ -100,15 +100,20 @@ async function loadHome(ctx: BotsCtx, deps: BotsDeps): Promise<HomeData> {
   const projects = await deps.api<{ projects: Project[] }>("GET", "/v1/code/projects").then((r) => r.projects).catch((e: { status?: number }) => { status = e?.status ?? 500; return undefined; });
   if (!projects) return status === 404 || status === 503 ? { kind: "meet", meet: await loadMeet(deps) } : { kind: "off" };
   if (!projects.length) return { kind: "meet", meet: await loadMeet(deps) };
+  // OPENING XODE IS ALWAYS THE LIST, whether they have one project or eight. It used to drop somebody with
+  // exactly one straight into that project, which made a project's own page double as the bot's front door: it
+  // greeted them with one project's branch, book and rules, and the list — the only place carrying "Add a
+  // project" and "Start one from scratch" — could not be reached at all until there were two. A page is one
+  // thing or the other. A project's page is reached by naming the project, and by nothing else.
   const wanted = str(ctx.params.project);
-  const project = wanted ? projects.find((p) => p.id === wanted) : projects.length === 1 ? projects[0] : undefined;
+  const project = wanted ? projects.find((p) => p.id === wanted) : undefined;
   if (!project) return { kind: "overview", overview: await loadOverview(deps, projects) };
   const [brain, jobs, branches] = await Promise.all([
     get<BrainLite>(deps, `/v1/code/projects/${project.id}/brain`),
     get<{ jobs: Job[] }>(deps, "/v1/code/jobs").then((r) => (r?.jobs ?? []).filter((j) => j.projectId === project.id)),
     get<{ branches: Branch[] }>(deps, `/v1/code/projects/${project.id}/branches`).then((r) => r?.branches ?? []),
   ]);
-  return { kind: "project", project, brain, jobs, branches, many: projects.length > 1 };
+  return { kind: "project", project, brain, jobs, branches };
 }
 
 function codeHome(ctx: BotsCtx, d: HomeData | undefined): ScreenResponse {
