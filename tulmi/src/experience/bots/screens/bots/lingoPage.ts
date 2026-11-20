@@ -19,7 +19,7 @@
  *
  * The phone and the window alike; `page()` picks the frame.
  */
-import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, chips, col, divider, emptyState, grow, icon, listCard,
   listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
@@ -174,6 +174,9 @@ function languageRow(l: LanguageRow, forFrom?: { target: string; name: string })
 
 // ===================================================================== a unit finished
 
+/** Whether the unit after this one can be asked for yet (GET /v1/lingo/next). */
+export interface NextUp { ready: boolean; unit?: string; goal?: string; at?: number; of?: number }
+
 export interface DoneData {
   unit: string;
   goal: string;
@@ -196,13 +199,18 @@ export interface DoneData {
  * The bot's gesture is THIS unit's own, so the first and the fourteenth do not feel identical, and the four units
  * that end a level get the big one.
  */
-export function doneScreen(ctx: BotsCtx, d: DoneData, target: string): Node[] {
+export function doneScreen(ctx: BotsCtx, d: DoneData, target: string, next?: NextUp): Node[] {
   const live = ctx.live.bots.find((b) => b.slug === LINGO_SLUG);
+  // THE NEXT UNIT IS BEING WRITTEN WHILE THIS IS ON SCREEN (routes/bots/lingo.ts, the set's end). So the moment
+  // runs on a LOOP rather than once, and Continue is not drawn yet: the few seconds a model takes are spent being
+  // congratulated instead of staring at a screen with nothing on it, which is where they used to be spent — at
+  // the start of the next session, with the unit made only once they had asked for it.
+  const waiting = !!next && !next.ready;
   const bot = canBuddy(ctx) ? [botBuddy({
     kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
     height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
     state: live?.working ? "working" : "idle", label: "Lingo",
-    ...botMoment(ctx, d.mark, "once"),
+    ...botMoment(ctx, d.mark, waiting ? "loop" : "once"),
   })] : [];
   const earlier = d.canDo.slice(0, -1);
   return [
@@ -215,7 +223,11 @@ export function doneScreen(ctx: BotsCtx, d: DoneData, target: string): Node[] {
           ...earlier.slice(-6).reverse().map((g) => row([icon("check", { size: 14, color: C.meta }), text(g, { size: 14, color: C.grey70, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" })),
         ], { gap: 8 })]
       : []),
-    primaryButton("Keep going", open(SCREENS.lingoSet, { target })),
+    // Stop for now is always there — waiting for the next unit must never be a room with no door — but Keep going
+    // arrives with the unit, so it never opens a set that has nothing to ask.
+    ...(waiting
+      ? [meta(`Lining up ${next?.goal ? "what's next" : "the next one"}…`, { size: 13 })]
+      : [primaryButton("Keep going", open(SCREENS.lingoSet, { target }))]),
     quietButton("Stop for now", open(SCREENS.lingo)),
   ];
 }
@@ -561,15 +573,52 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
       }),
     ];
   }
-  const first = exs[0]!;
-  return [
-    row([meta(`1 of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
-    meter(1, exs.length, { color: look(ctx).color, height: 4 }),
-    ...exerciseBody(first, target, data?.name?.trim() ?? ""),
+  const lang = data?.name?.trim() ?? "";
+  const last = exs.length - 1;
+
+  // THE APP REPORTS NOTHING. Every answer was marked and written into the set by the server as it was given
+  // (/v1/lingo/answer, migration 0109), so closing a set off sends which course and nothing else. An app that
+  // handed its own list back would be the one message in Lingo that could say "I was right".
+  const clear: ActionSpec[] = [{ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }];
+
+  /**
+   * THE END OF THE SET, and the only time the server is asked anything between the first exercise and the last.
+   * What comes back decides all three of: whether the bot celebrates (and it does NOT for a set that went badly —
+   * set.ts gestureFor), whether a unit was finished, and the shape of the next set, which the next session is
+   * asked for by name so the difficulty follows the person instead of starting fresh every time.
+   */
+  const finish = (): ActionRef => seq(
+    ...clear,
+    call("POST", `${PATH}/set`, { target }, {
+      assignTo: "done",
+      ok: seq(
+        { kind: "condition", if: { truthy: "done.gesture.cheer" }, then: { kind: "confetti" } },
+        {
+          kind: "condition", if: { truthy: "done.finished" },
+          then: { kind: "navigate", screenId: SCREENS.lingoDone, replace: true, params: { target, done: "$state.done.finished" } },
+          else: { kind: "navigate", screenId: SCREENS.lingoSet, replace: true, params: { target, shape: "$state.done.next" } },
+        },
+      ),
+      // Nothing is lost that mattered: each answer was marked and scheduled the moment it was given.
+      fail: toast("Couldn't close off that set. Every answer in it already counted.", "error"),
+    }),
+  );
+
+  /**
+   * THE WHOLE SET IS IN THE TREE and the one they are on is the one drawn. A set is a dozen exercises handed over
+   * at once (session.ts), so moving to the next is not a trip to the server — it used to refetch the session and
+   * draw ITS first exercise, which is why the counter read "1 of 12" for ever and no set ever ended.
+   */
+  const step = (ex: Exercise, i: number): Node => when({ eq: ["$state.i", i] }, col([
+    row([meta(`${i + 1} of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
+    meter(i + 1, exs.length, { color: look(ctx).color, height: 4 }),
+    ...exerciseBody(ex, target, lang),
     markRow(),
-    // The whole set is handed over at once, so Continue is the server's word on what comes next, not the app's guess.
-    when({ truthy: "mark" }, primaryButton("Next", seq({ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }, { kind: "refresh" }))),
-  ];
+    when({ truthy: "mark" }, primaryButton(i === last ? "Finish" : "Next",
+      i === last ? finish() : seq(...clear, { kind: "incrementState", path: "i", by: 1 }))),
+  ], { gap: 14 }));
+
+  return exs.map(step);
 }
 
 // ===================================================================== the screens
@@ -607,7 +656,12 @@ export const LINGO_SCREENS: BotsScreen[] = [
   }),
   screen<SetData>({
     id: SCREENS.lingoSet,
-    load: (ctx, deps) => deps.api<SetData>("POST", `${PATH}/session`, { target: String(ctx.params?.target ?? "") }),
+    // `shape` is what the LAST set earned (set.ts shapeNext), handed back by name so the difficulty follows the
+    // person. Without it every set is the first of a sitting and a struggling day is asked as much as a flying one.
+    load: (ctx, deps) => deps.api<SetData>("POST", `${PATH}/session`, {
+      target: String(ctx.params?.target ?? ""),
+      ...(ctx.params?.shape ? { shape: ctx.params.shape } : {}),
+    }),
     build: (ctx, data) => page(ctx, {
       nav: LINGO_SLUG,
       title: "Lingo",
@@ -621,7 +675,9 @@ export const LINGO_SCREENS: BotsScreen[] = [
       // could be pulled out from under somebody mid-exercise, so the topic is named on no other screen and at no
       // other moment.
       ...(data?.building ? { live: [lingoTopic(String(ctx.params?.target ?? ""))] } : {}),
-      state: { said: "", mark: null, say: "" },
+      // `i` is how far through the set they are. That is all the app keeps of a set: the answers themselves are
+      // the server's, written as they were marked.
+      state: { i: 0, said: "", mark: null, say: "" },
     }),
   }),
   screen({
@@ -635,24 +691,35 @@ export const LINGO_SCREENS: BotsScreen[] = [
       state: { why: "", note: "" },
     }),
   }),
-  screen({
+  screen<NextUp>({
     id: SCREENS.lingoDone,
-    build: (ctx) => page(ctx, {
-      nav: LINGO_SLUG,
-      title: "Done",
-      back: open(SCREENS.lingo),
-      backTitle: "Languages",
-      body: doneScreen(ctx, {
-        unit: String(ctx.params?.unit ?? ""),
-        goal: String(ctx.params?.goal ?? ""),
-        mark: String(ctx.params?.mark ?? "celebrate"),
-        at: Number(ctx.params?.at ?? 1),
-        of: Number(ctx.params?.of ?? 24),
-        canDo: String(ctx.params?.canDo ?? "").split("\u0000").filter(Boolean),
-      }, String(ctx.params?.target ?? "")),
-      footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingo)],
-      state: { say: "" },
-    }),
+    // The one thing on this screen that changes: whether the unit being written under the celebration is done.
+    load: (ctx, deps) => deps.api<NextUp>("GET", `${PATH}/next?target=${encodeURIComponent(String(ctx.params?.target ?? ""))}`),
+    build: (ctx, data) => {
+      // The set's end hands the whole `finished` object over; the older shape, one param each, still reads.
+      const f = (ctx.params?.done ?? null) as Record<string, unknown> | null;
+      const at = f ?? (ctx.params ?? {});
+      const list = at["canDo"];
+      const target = String(ctx.params?.target ?? "");
+      return page(ctx, {
+        nav: LINGO_SLUG,
+        title: "Done",
+        back: open(SCREENS.lingo),
+        backTitle: "Languages",
+        body: doneScreen(ctx, {
+          unit: String(at["unit"] ?? ""),
+          goal: String(at["goal"] ?? ""),
+          mark: String(at["mark"] ?? "celebrate"),
+          at: Number(at["at"] ?? 1),
+          of: Number(at["of"] ?? 24),
+          canDo: Array.isArray(list) ? list.map(String) : String(list ?? "").split("\u0000").filter(Boolean),
+        }, target, data),
+        footer: [askBar(ctx, target, SCREENS.lingo)],
+        // Listening only while the next unit is being written, as on the set screen: this is what brings Continue.
+        ...(data && !data.ready ? { live: [lingoTopic(target)] } : {}),
+        state: { say: "" },
+      });
+    },
   }),
   screen({
     id: SCREENS.lingoSaid,

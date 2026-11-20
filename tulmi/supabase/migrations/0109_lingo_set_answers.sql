@@ -1,0 +1,13 @@
+-- Tailzu — the set a person is in the middle of, kept by the SERVER (src/lingo/set.ts; docs/lingo.md).
+--
+-- A set is a dozen exercises, and what it was worth — the gesture, and the shape of the next set — is read from
+-- how all of them went together. Somebody had to remember them until the last one is answered.
+--
+-- IT IS NOT THE APP. The app could hand its own list back at the end, and that is how this was first wired, but it
+-- would have been the one message in Lingo that says "I was right": every other verdict is the server's own
+-- (grade.ts, and nothing is marked on a phone). So each answer is written here as it is marked, and the end of a
+-- set reads what is already known and empties it. There is no message an app can send that changes a verdict,
+-- which is the whole point, and the screens are simpler for it — they report nothing, they only ask what is next.
+--
+-- [{ item, kind, verdict, learnedNow }], in the order they were answered, at most a set's worth.
+alter table public.lingo_learners add column if not exists set_answers jsonb;

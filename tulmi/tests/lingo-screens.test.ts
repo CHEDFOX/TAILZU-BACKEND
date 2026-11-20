@@ -356,9 +356,75 @@ describe("a course with nothing in it", () => {
   });
 });
 
+/**
+ * A SET IS WALKED, AND IT ENDS. It used to be one exercise and a refresh: the counter read "1 of 12" for ever, no
+ * set ever ended, and everything that hangs off the end of one — the gesture, the shape of the next set, finishing
+ * a unit — was server-side work nothing ever asked for.
+ */
+describe("a set, from the first exercise to the last", () => {
+  const three = [ex("choose", { options: ["coffee", "dog"], correct: 0 }), ex("write"), ex("say")];
+  const set = (): SetData => ({ exercises: three, progress: course().progress, mastery: course().mastery });
+
+  it("holds the whole set and draws the one they are on", () => {
+    const s = json(setScreen(ctx(), "es", set()));
+    // Each exercise is in the tree behind its own place in the set, so moving on is not a trip to the server.
+    for (const i of [0, 1, 2]) expect(s, `step ${i}`).toContain(`"eq":["$state.i",${i}]`);
+    expect(s).toContain("1 of 3");
+    expect(s).toContain("3 of 3");
+    expect(s).toContain('"incrementState","path":"i"');
+  });
+
+  it("asks the server once, at the end, and sends nothing but which course", () => {
+    const s = json(setScreen(ctx(), "es", set()));
+    expect(s).toContain("Finish");
+    expect(s).toContain('"path":"/v1/lingo/set"');
+    // The app reports no answers at all: every verdict is the server's own, written as it was marked.
+    expect(s).not.toContain('"answers"');
+    expect(s).not.toContain('"verdict"');
+  });
+
+  it("celebrates only when the server says to, and goes where the server points", () => {
+    const s = json(setScreen(ctx(), "es", set()));
+    expect(s).toContain('"truthy":"done.gesture.cheer"');
+    expect(s).toContain('"confetti"');
+    // A finished unit goes to the celebration; anything else goes straight into the next set, shaped by this one.
+    expect(s).toContain('"truthy":"done.finished"');
+    expect(s).toContain(SCREENS.lingoDone);
+    expect(s).toContain('"shape":"$state.done.next"');
+  });
+
+  it("every step passes the kit's own check", () => {
+    for (const client of ["phone", "desktop"] as const) {
+      expect(clean(setScreen(ctx(client), "es", set())), client).toEqual([]);
+    }
+  });
+});
+
 describe("finishing a unit", () => {
   const d = { unit: "food", goal: "You can order food and drink.", mark: "celebrate", at: 6, of: 24,
     canDo: ["You can greet someone.", "You can say who you are.", "You can order food and drink."] };
+
+  /**
+   * THE NEXT UNIT IS BEING WRITTEN WHILE THIS IS ON SCREEN. So Continue is not drawn yet and the moment LOOPS: the
+   * seconds a model takes are spent being congratulated, instead of at the start of the next session in front of a
+   * screen with nothing on it. Stop for now stays, because waiting must never be a room with no door.
+   */
+  it("holds Continue back while the next unit is written, and keeps him going", () => {
+    const waiting = json(doneScreen(livelyCtx(), d, "es", { ready: false }));
+    expect(waiting).not.toContain("Keep going");
+    expect(waiting).toContain("Stop for now");
+    expect(waiting).toContain('"loop"');
+    const ready = json(doneScreen(livelyCtx(), d, "es", { ready: true }));
+    expect(ready).toContain("Keep going");
+    expect(ready).toContain(SCREENS.lingoSet);
+  });
+
+  it("listens for the next unit only while it is being written", () => {
+    const def = LINGO_SCREENS.find((sc) => sc.id === SCREENS.lingoDone)!;
+    const built = (data: { ready: boolean }) => def.build(ctxFor(SCREENS.lingoDone, "phone", live, { params: { target: "es", done: d } }), data);
+    expect(built({ ready: false }).liveTopics).toContain("lingo:es");
+    expect(built({ ready: true }).liveTopics ?? []).not.toContain("lingo:es");
+  });
 
   it("says what they can DO, not what they scored", () => {
     const s = json(doneScreen(livelyCtx(), d, "es"));

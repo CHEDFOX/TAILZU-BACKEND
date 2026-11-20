@@ -31,7 +31,7 @@ import { againAfter } from "../../lingo/order.js";
 import { gestureFor, mastery, performanceOf, readSet, shapeNext, SET_SIZE, type Answered, type SetShape } from "../../lingo/set.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
-import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type LingoItem, type Memory, type Verdict, type Why } from "../../lingo/types.js";
+import { EXERCISE_KINDS, isWhy, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type LingoItem, type Memory, type Why } from "../../lingo/types.js";
 import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
 import { live } from "../../live/bus.js";
 import { lingoTopic } from "../../live/topics.js";
@@ -58,6 +58,8 @@ const WHY_NOTE_MAX = 400;
 /** What writing one unit of a course for one pair may cost. It is paid once and then everybody on the pair has it. */
 const UNIT_PAISE = 400;
 const WORDS_PER_CALL = 50;
+/** How many answers of a set are kept against a course. A set is twelve; this is room for a long one and no more. */
+const SET_KEEP = 80;
 /** Sentences fetched per word that needs one. A handful is plenty: the shortest usable one is taken. */
 const SENTENCES_PER_WORD = 4;
 
@@ -440,6 +442,28 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
   };
 
   /**
+   * IS THE NEXT UNIT READY? The one question the celebration screen has to ask, and the only thing on it that
+   * changes: Continue appears when this says yes, and until then the bot goes on celebrating.
+   *
+   * Ready means NOTHING LEFT TO WAIT FOR, not "the unit exists". A unit that could not be written would otherwise
+   * hold Continue back for ever, so the end of the attempt is the end of the waiting either way: the next session
+   * walks the path again and lands on a fresh attempt, or on the honest empty.
+   */
+  app.get<{ Querystring: { target?: string } }>("/v1/lingo/next", rl, async (req, reply) => {
+    const user = await begin(req, reply);
+    if (!user) return reply;
+    const target = str(req.query.target, TAG_MAX);
+    const course = isTag(target) ? await store().course(user.id, target).catch(() => null) : null;
+    if (!course) return bad(reply, "That course has not been started.");
+    const next = after(course.unit || FIRST_UNIT);
+    const waiting = !!next && deps.lessons !== null && makingUnit(target, course.from, next.key);
+    return reply.header("cache-control", "no-store").send({
+      ready: !waiting,
+      ...(next ? { unit: next.key, goal: next.goal, ...placeOf(next.key) } : {}),
+    });
+  });
+
+  /**
    * A SET IS FINISHED. What happened, what the bot does about it, and the shape of the next one — all decided here.
    * The app sends what was answered and gets back the gesture to play and the shape to ask for next, so the
    * difficulty follows the person and the app works none of it out for itself.
@@ -452,21 +476,16 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const course = isTag(target) ? await store().course(user.id, target).catch(() => null) : null;
     if (!course) return bad(reply, "That course has not been started.");
 
-    const raw = Array.isArray(b["answers"]) ? (b["answers"] as unknown[]).slice(0, 80) : [];
-    const answers: Answered[] = [];
-    for (const r of raw) {
-      const o = (r ?? {}) as Record<string, unknown>;
-      const item = keyOf(str(o["item"], TEXT_MAX));
-      const kind = str(o["kind"], 8);
-      const verdict = str(o["verdict"], 8);
-      if (!item || !(EXERCISE_KINDS as readonly string[]).includes(kind)) continue;
-      if (!["right", "close", "wrong"].includes(verdict)) continue;
-      answers.push({ item, kind: kind as ExerciseKind, verdict: verdict as Verdict, learnedNow: o["learnedNow"] === true });
-    }
-    if (!answers.length) return bad(reply, "Nothing was answered.");
-
     const at = now();
     const items = await store().items(user.id, target).catch(() => []);
+
+    // WHAT THE SET WAS, as the SERVER wrote it down one answer at a time (/answer, migration 0109). The app sends
+    // which course and nothing else: it is handed no verdict it could give back, so there is no message it can
+    // send that says a set went better than it did — the same rule the single answer has always followed.
+    const answers: Answered[] = (course.setAnswers ?? []).filter((a) =>
+      a && (EXERCISE_KINDS as readonly string[]).includes(a.kind) && ["right", "close", "wrong"].includes(a.verdict));
+    if (!answers.length) return bad(reply, "Nothing was answered.");
+
     const result = readSet(answers);
     const performance = performanceOf(result);
     // DID THEY JUST FINISH A UNIT? It used to pass in silence: walking the path moved them to the next one on
@@ -475,6 +494,24 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const here = course.unit || FIRST_UNIT;
     const u = unitOf(here);
     const done = u && unitDone([...items], here, (i) => ("memory" in i ? recall((i as LingoItem).memory, at) : 0));
+
+    // THE NEXT UNIT IS WRITTEN WHILE THEY ARE BEING CONGRATULATED. It has to be written by somebody, and until now
+    // that was the person, at the start of their next session, staring at a screen that had nothing on it yet
+    // (walk()). The celebration is a few seconds they are happy to spend and a model call is a few seconds long,
+    // so the two are spent at once: started here, before the reply, so that the screen they land on already knows
+    // it is being made and can hold its Continue back until it is not.
+    //
+    // Started, never waited for — finishing a unit must not hang on a model — and published whichever way it went,
+    // so a build that failed releases the screen instead of leaving it celebrating for ever.
+    // Emptied, so the next set is read on its own and a set cannot be closed off twice.
+    await store().setCourse(user.id, { ...course, setAnswers: [], usedMs: at }, at).catch(() => undefined);
+
+    const nextUnit = done && u ? after(u.key) : null;
+    if (nextUnit && deps.lessons !== null) {
+      void unitFor(lessons(), modelCtx(user.id), target, course.from, nextUnit.key)
+        .catch(() => null)
+        .then(() => live.publish([user.id], lingoTopic(target)));
+    }
     return reply.send({
       result,
       performance,
@@ -565,7 +602,14 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
         ms: thought ? blendMs(was.ms, thought) : was.ms,
       },
     };
-    await store().setCourse(user.id, { ...course, ...streak, tally, lastAnswerMs: at, usedMs: at }, at).catch(() => undefined);
+    // AND INTO THE SET THEY ARE IN THE MIDDLE OF. The end of a set is read from all of its answers together, and
+    // this is the only place that knows one: the app is handed no verdict it could give back, which is what keeps
+    // "nothing is marked on a phone" true of the set as well as of the answer.
+    const setAnswers = [
+      ...(course.setAnswers ?? []).slice(-(SET_KEEP - 1)),
+      { item: item.item, kind: ex.kind, verdict: mark.verdict, ...(learned(next) && !learned(item) ? { learnedNow: true } : {}) },
+    ];
+    await store().setCourse(user.id, { ...course, ...streak, tally, setAnswers, lastAnswerMs: at, usedMs: at }, at).catch(() => undefined);
 
     return reply.send({
       mark,

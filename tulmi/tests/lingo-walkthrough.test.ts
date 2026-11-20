@@ -149,8 +149,13 @@ describe("three weeks of somebody actually using it", () => {
     const got = answers.filter((a) => a.verdict === "right").length;
     say(`  she got ${got} of ${answers.length} right`);
 
-    const set1 = await go("POST", "/v1/lingo/set", { target: "es", answers });
+    // SHE SENDS NOTHING BUT WHICH COURSE. The set is the server's own record of how each answer was marked, so
+    // what it reads back has to match the list she kept of the same twelve answers — and it is the only list that
+    // counts, whatever an app might send.
+    const set1 = await go("POST", "/v1/lingo/set", { target: "es" });
     expect(set1.code).toBe(200);
+    expect(set1.body.result.asked, "the server counted the same set she did").toBe(answers.length);
+    expect(set1.body.result.right).toBe(got);
     say(`  the bot's reading: ${set1.body.performance} -> gesture ${JSON.stringify(set1.body.gesture)}`);
     say(`  next set: ${set1.body.next.size} long, ${set1.body.next.newRoom} new, nothing above "${set1.body.next.rungCap ?? "anything"}", revisiting ${set1.body.next.revisit.length}`);
     expect(["flying", "solid", "shaky", "struggling"]).toContain(set1.body.performance);
@@ -206,7 +211,8 @@ describe("three weeks of somebody actually using it", () => {
         const owned = (it.memory.stability ?? 0) > 20 && it.spoken > 0;
         clock += knows ? (owned ? 2_200 : 9_000) : 14_000;
       }
-      const done = await go("POST", "/v1/lingo/set", { target: "es", answers: todays });
+      const done = await go("POST", "/v1/lingo/set", { target: "es" });
+      expect(done.body.result.asked, `day ${day}`).toBe(todays.length);
       say(`    day ${String(day).padStart(2)}: ${todays.filter((a) => a.verdict === "right").length}/${todays.length} right -> ${done.body.performance.padEnd(11)} cap "${done.body.next.rungCap ?? "none"}" new ${done.body.next.newRoom}`);
       shape = done.body.next;
       if (day % 5 === 0 || day === 21) {

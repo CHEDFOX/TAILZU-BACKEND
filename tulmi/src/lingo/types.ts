@@ -132,6 +132,14 @@ export interface Learner {
   lastAnswerMs?: number;
   /** Per kind of exercise: asked, right, and the middle time. What the portrait's rates are built from. */
   tally?: { [kind: string]: { asked: number; right: number; ms: number } };
+  /**
+   * THE SET THEY ARE IN THE MIDDLE OF: every answer since the last one was closed off, in order.
+   *
+   * Kept by the server because the alternative is the app handing its own list back at the end, and that would be
+   * the one message in Lingo that says "I was right". Written as each answer is marked, read and emptied when the
+   * set ends (migration 0109).
+   */
+  setAnswers?: Array<{ item: string; kind: ExerciseKind; verdict: Verdict; learnedNow?: boolean }>;
   /** What the language is for, one of WHY_CODES; "" when they skipped the question or the course predates it. */
   why?: Why;
   /** The same thing in their own words, which is worth more than the code: who they will speak it with, and when. */

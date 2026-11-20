@@ -423,6 +423,32 @@ Learning is **continuous**, not a session that ends: a set of a dozen exercises,
 Continue. Each set is built from the one before, so the difficulty follows the person instead of a tree. `set.ts`
 decides all of it, on the server.
 
+### A set is walked, and the server keeps it
+
+The app is handed the whole set at once and walks it: which exercise they are on is the only thing it keeps
+(`state.i`). It used to refetch the session after every answer and draw ITS first exercise, so the counter read
+"1 of 12" for ever, no set ever ended, and everything hanging off the end of one — the gesture, the shape of the
+next set, finishing a unit — was server-side work that nothing ever asked for.
+
+**The answers are the server's.** Each one is written against the course as it is marked (`setAnswers`, migration
+0109), and `POST /v1/lingo/set` reads what is already known and empties it. The app sends which course and nothing
+else. Having it hand its own list back at the end would have been the one message in Lingo that says "I was
+right", and every other verdict here is the server's own — so the rule the single answer has always followed now
+holds for the set as well. The screens are smaller for it: they report nothing, they only ask what is next.
+
+### The next unit is written under the celebration
+
+Finishing a unit starts the NEXT one — `unitFor(after(unit))`, started and not waited for, before the reply.
+Somebody has to write it and it takes a model call; until now that somebody was the person, at the start of their
+next session, in front of a screen with nothing on it yet. A celebration is a few seconds they are glad to spend,
+so the two are spent together.
+
+`bots.lingo.done` asks `GET /v1/lingo/next` the one question that changes — is there anything left to wait for —
+and while there is, **Continue is not drawn and the unit's moment loops**: the bot goes on celebrating. The page
+listens on `lingo:<tag>`, the build publishes it whichever way it went, and Continue arrives with the unit. Stop
+for now is always there, because waiting must never be a room with no door. Ready means nothing left to wait for
+rather than "the unit exists", so an attempt that failed releases the screen instead of holding it for ever.
+
 ### How a set went, in four bands
 
 | | |
