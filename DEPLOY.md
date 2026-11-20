@@ -437,7 +437,24 @@ is `docs/sites.md`, and it is worth reading before turning this on.
    above). A session is encrypted with it exactly as a connector's token is;
    with no key nothing is written at all and the sign-in fails loudly rather
    than quietly keeping a secret in a table.
-3. `CLOUD_BROWSER=true`, then restart.
+3. **A Chrome on the machine, and `WEB_BROWSER=local`.** This is the step that
+   catches people out: the switch below does nothing without it. The panel
+   needs a page HELD open while somebody signs in, which only the local engine
+   can do — `WEB_BROWSER=cloudflare` cannot, having no Chrome of its own, and
+   `off` (the default) has no browser at all. Chrome is found in
+   `/opt/pw-browsers`, at `PLAYWRIGHT_BROWSERS_PATH`, at `CHROME_PATH`, or as
+   `google-chrome` / `chromium` / `chromium-browser` on `PATH`.
+4. `CLOUD_BROWSER=true`, then restart.
+
+**Check the boot log.** With the switch on and no local browser the server says
+so and carries on with sites off:
+
+```
+CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be "local" with Chrome): sites stay off.
+```
+
+Every sites route then answers 404 and Connected apps shows no row, which looks
+exactly like the feature not existing. If you see that line, it is step 3.
 
 Which sites are reachable is **the vetted catalog in `src/sites/catalog.ts`**
 plus anything in `CLOUD_BROWSER_SITES`. The catalog is what somebody can find
