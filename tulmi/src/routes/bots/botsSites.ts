@@ -16,8 +16,6 @@
  *   POST   /v1/botsapp/bots/sites/panel { url }        -> PanelView   open their browser at a site's sign-in
  *   GET    /v1/botsapp/bots/sites/panel/:id            -> PanelView   the newest frame, and whether it is over
  *   POST   /v1/botsapp/bots/sites/panel/:id/touch      -> PanelView   { tap:{x,y} } | { type } | { key } | { scroll }
- *   POST   /v1/botsapp/bots/sites/panel/:id/fill       -> PanelView   { field, text }: one box of the card (src/sites/card.ts),
- *                                                                     named by the card and checked against the page first
  *   POST   /v1/botsapp/bots/sites/panel/:id/done       -> PanelView   "I'm signed in": checked, kept, closed
  *   DELETE /v1/botsapp/bots/sites/panel/:id            -> PanelView   they gave up
  *
@@ -159,8 +157,6 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
 
   app.post(`${AREA}/sites/panel/:id/touch`, RL, run(async (user, req) => needPanels().touch(param(req, "id"), user.id, oneTouch(req))));
 
-  app.post(`${AREA}/sites/panel/:id/fill`, RL, run(async (user, req) => { const f = oneFill(req); return needPanels().fill(param(req, "id"), user.id, f.field, f.text); }));
-
   app.post(`${AREA}/sites/panel/:id/done`, RL, run(async (user, req) => needPanels().done(param(req, "id"), user.id)));
 
   app.delete(`${AREA}/sites/panel/:id`, RL, run(async (user, req) => needPanels().cancel(param(req, "id"), user.id)));
@@ -198,7 +194,6 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
   const TICKET = `${AREA}/sites/panel/t/:ticket`;
   app.get(TICKET, RL, byTicket(async (panels, id, userId) => panels.poll(id, userId)));
   app.post(`${TICKET}/touch`, RL, byTicket(async (panels, id, userId, req) => panels.touch(id, userId, oneTouch(req))));
-  app.post(`${TICKET}/fill`, RL, byTicket(async (panels, id, userId, req) => { const f = oneFill(req); return panels.fill(id, userId, f.field, f.text); }));
   app.post(`${TICKET}/done`, RL, byTicket(async (panels, id, userId) => panels.done(id, userId)));
   app.delete(TICKET, RL, byTicket(async (panels, id, userId) => panels.cancel(id, userId)));
 
@@ -209,20 +204,6 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
  * One touch a call, and only a shape we recognise: a panel takes a tap, some text, a named key or a scroll, and
  * nothing else is passed through to a real browser. Shared by both ways in, so neither can drift into taking more.
  */
-/**
- * One box of the card and what goes in it. The box is named by the card, never by a selector or an address from
- * the caller: the only ids that work are the ones the card already offered, and the panel checks the page still
- * has that kind of box there before a character is typed.
- */
-function oneFill(req: FastifyRequest): { field: string; text: string } {
-  const b = body(req);
-  const field = typeof b.field === "string" ? b.field.trim() : "";
-  if (!/^e[0-9]{1,4}$/.test(field)) return failFill();
-  if (typeof b.text !== "string") return failFill();
-  return { field, text: b.text.slice(0, 200) };
-}
-const failFill = (): never => { throw new SiteError("bad_fill", "That isn't a box on this page.", 400); };
-
 function oneTouch(req: FastifyRequest): { tap?: { x: number; y: number }; type?: string; key?: "Enter" | "Backspace" | "Tab"; scroll?: number } {
   const b = body(req);
   const tap = (b.tap ?? null) as { x?: unknown; y?: unknown } | null;
