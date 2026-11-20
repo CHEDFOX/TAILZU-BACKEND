@@ -30,6 +30,7 @@ import {
   SHARE_ASKED_NEWEST, SHARE_ASKED_NEWEST_FREE, SHARE_OWNER, SHARE_WAITING, person, share,
 } from "./planShare.js";
 import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_SESSION_AT } from "./cinema.js";
+import { MEET_ADMIN, MEET_BOT, MEET_EMPTY, MEET_OVERVIEW, MEET_PAGE_API, MEET_STATES } from "./meet.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -63,6 +64,7 @@ const codeVariant = (v: keyof typeof CODE.variants): Record<string, unknown> => 
 
 const S = SCREENS;
 /** The cinema bot among the person's bots (it is listed only where CINEMA=true). */
+const MEET_FAKE = { slug: MEET_BOT.slug, name: MEET_BOT.name, colour: MEET_BOT.colour, purpose: MEET_BOT.purpose, builtin: true } as (typeof SAMPLE_BOTS)[number];
 const CINEMA_FAKE = { slug: "cinema", name: "Cinema", colour: "plum", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true } as (typeof SAMPLE_BOTS)[number];
 export const SAMPLES: Sample[] = [
   // screens/shell.ts
@@ -132,6 +134,15 @@ export const SAMPLES: Sample[] = [
   // screens/bots.ts
   { id: S.bot, area: "bots", board: "BotPage", deskBoard: "DBotPage", params: { slug: "gym-bot" } },
   // screens/bots/cinemaPage.ts and cinemaScreens.ts (samples/cinema.ts): the cinema bot's page, empty and with films, and one film at each step.
+  // The meeting bot's page (screens/bots/meetPage.ts; samples/meet.ts): its meetings, the first day, the join card with a link in it
+  // (now, and booked for Friday afternoon), and an admin's.
+  ...([
+    ["meet", MEET_OVERVIEW, undefined], ["meet-empty", MEET_EMPTY, undefined], ["meet-admin", MEET_ADMIN, undefined],
+    ["meet-now", MEET_OVERVIEW, MEET_STATES.now], ["meet-later", MEET_ADMIN, MEET_STATES.later],
+  ] as const).map(([variant, overview, state]) => ({
+    id: S.bot, area: "bots" as const, variant, params: { slug: "meet" }, api: MEET_PAGE_API(overview),
+    fake: { bots: [...SAMPLE_BOTS, MEET_FAKE] }, ...(state ? { state } : {}),
+  })),
   { id: S.bot, area: "bots", variant: "cinema", params: { slug: "cinema" }, api: CINEMA_PAGE_API(CINEMA_OVERVIEW), fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.bot, area: "bots", variant: "cinema-empty", params: { slug: "cinema" }, api: CINEMA_PAGE_API({ ...CINEMA_OVERVIEW, films: [], pictures: [], cast: [], spentToday: 0 }), fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   ...(Object.keys(CINEMA_FILMS) as (keyof typeof CINEMA_FILMS)[]).map((step) => ({

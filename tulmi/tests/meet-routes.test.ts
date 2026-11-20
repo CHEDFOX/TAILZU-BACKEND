@@ -110,6 +110,17 @@ describe("the person's routes", () => {
     expect(j.json()).toEqual({ meeting: VIEW });
     expect(svc.calls[1]).toEqual({ fn: "join", args: ["dev-user", { url: "https://meet.google.com/abc-defg-hij", title: "Standup", voice: false }] });
 
+    // A day and a time, read in the phone's own offset, become the moment the bot is booked for.
+    const booked = await a.inject({
+      method: "POST", url: "/v1/meet/join",
+      payload: { url: "https://meet.google.com/abc-defg-hij", day: "2026-11-12", time: "18:00", tz: 330, botName: "  Aanya's  notetaker " },
+    });
+    expect(booked.statusCode).toBe(201);
+    expect(svc.calls[2]).toEqual({ fn: "join", args: ["dev-user", {
+      url: "https://meet.google.com/abc-defg-hij", botName: "Aanya's notetaker", joinAt: Date.UTC(2026, 10, 12, 12, 30),
+    }] });
+    svc.calls.length = 2;
+
     expect((await a.inject({ method: "GET", url: `/v1/meet/meetings/${MID}` })).json()).toEqual({ meeting: VIEW, asks: [] });
     await a.inject({ method: "POST", url: `/v1/meet/meetings/${MID}/leave` });
     const v = await a.inject({ method: "PUT", url: `/v1/meet/meetings/${MID}`, payload: { voice: true } });
@@ -158,6 +169,16 @@ describe("the person's routes", () => {
       ["POST", "/v1/meet/join", {}], ["POST", "/v1/meet/join", { url: "" }], ["POST", "/v1/meet/join", { url: "x".repeat(2001) }],
       ["POST", "/v1/meet/join", { url: "https://x.y", title: "t".repeat(201) }], ["POST", "/v1/meet/join", { url: "https://x.y", voice: "yes" }],
       ["POST", "/v1/meet/join", { url: "https://x.y", forUser: "not-an-id" }], ["POST", "/v1/meet/join", { url: "https://x.y", forUser: 7 }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", botName: "n".repeat(41) }],
+      // A day wants a real day, a time with it, an offset to read it in, and a moment still to come.
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "12 Nov", time: "18:00", tz: 330 }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-12", tz: 330 }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-12", time: "6 pm", tz: 330 }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-12", time: "25:00", tz: 330 }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-12", time: "18:00" }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-12", time: "18:00", tz: "330" }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-12", time: "18:00", tz: 2000 }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", day: "2026-11-11", time: "18:00", tz: 330 }],
       ["PUT", `/v1/meet/meetings/${MID}`, {}], ["PUT", `/v1/meet/meetings/${MID}`, { voice: "on" }],
       ["PUT", "/v1/meet/settings", { botName: "n".repeat(41) }], ["PUT", "/v1/meet/settings", { autoJoin: "yes" }],
     ];

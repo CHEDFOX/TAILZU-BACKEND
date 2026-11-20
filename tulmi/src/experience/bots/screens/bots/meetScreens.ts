@@ -137,13 +137,15 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
     body.push(col([sectionLabel("In the call"), row(m.participants.map((p) => chip(plain(p) || "Guest")), { gap: 6, flexWrap: "wrap" })], { gap: 8 }));
   }
 
-  if (live && !ro) {
+  // Whether it speaks belongs to the meeting, so it is set here and nowhere else — before it joins as well as during,
+  // which is the only way to settle it for a meeting that has not started.
+  if ((live || m.status === "scheduled") && !ro) {
     body.push(listCard([switchRow("Answer out loud", "mm_voice", {
       sub: "On, it says its answers. Off, it writes them in the call's chat.",
       onChange: call("PUT", M, { voice: "$state.mm_voice" }, { fail: toast("Couldn't change that. Try again.") }),
     })]));
-    body.push(secondaryButton("Leave the call", leave, { size: "md" }));
   }
+  if (live && !ro) body.push(secondaryButton("Leave the call", leave, { size: "md" }));
   // THE DOCUMENT THE BOT MADE OF THIS MEETING (src/brief, docs/brief.md): the overview, what it drew, what was said, who does
   // what, what is still open — drawn with the same renderer a bot's own answers are drawn with, so nothing here is new in the
   // apps. While the meeting runs it grows under the person's eyes; after, it is the meeting.
