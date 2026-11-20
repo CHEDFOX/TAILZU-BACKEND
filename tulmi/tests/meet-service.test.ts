@@ -229,6 +229,51 @@ describe("joining a call", () => {
     expect(quiet.calls.create[0]!.intro).toBe('Hi, I\'m Nova, taking notes for this call. Say "Nova" or message me here to ask me something. Say "Nova, leave" to send me away.');
   });
 
+  it("books the bot for a time far enough ahead, and sends it at once for one that is not", async () => {
+    const r = rig();
+    const soon = r.clock.t + 25 * 60_000;
+    const later = await r.svc.join(USER, { url: MEET, title: "Board call", joinAt: soon });
+    expect(later).toMatchObject({ status: "scheduled", source: "link", joinAt: soon });
+    await r.svc.idle();
+    // Recall is told when, so it holds the bot until then.
+    expect(r.calls.create[0]!.joinAt).toBe(new Date(soon).toISOString());
+
+    // Ten minutes off or nearer, Recall would not hold it: the bot goes in now instead.
+    const near = rig();
+    const view = await near.svc.join(USER, { url: MEET, joinAt: near.clock.t + 5 * 60_000 });
+    expect(view).toMatchObject({ status: "joining", joinAt: null });
+    await near.svc.idle();
+    expect(near.calls.create[0]!.joinAt).toBeUndefined();
+
+    // A time already gone is a time gone: in now.
+    const past = rig();
+    expect(await past.svc.join(USER, { url: MEET, joinAt: past.clock.t - 60_000 })).toMatchObject({ status: "joining", joinAt: null });
+  });
+
+  it("answers the one already waiting for that call rather than booking a second bot", async () => {
+    const r = rig();
+    const at = r.clock.t + 30 * 60_000;
+    const a = await r.svc.join(USER, { url: MEET, joinAt: at });
+    const b = await r.svc.join(USER, { url: `${MEET}#again`, joinAt: at + 60_000 });
+    expect(b.id).toBe(a.id);
+    await r.svc.idle();
+    expect(r.calls.create).toHaveLength(1);
+    // One booked for later is no reason to refuse sending it into a call now.
+    expect((await r.svc.join(USER, { url: MEET })).id).not.toBe(a.id);
+  });
+
+  it("keeps the name the join card carried, so the next call has it too", async () => {
+    const r = rig();
+    await r.svc.join(USER, { url: MEET, botName: "  Aanya's  notetaker " });
+    await r.svc.idle();
+    expect(r.calls.create[0]!.botName).toBe("Aanya's notetaker");
+    expect(await r.store.settings(USER)).toMatchObject({ botName: "Aanya's notetaker" });
+    // Nothing said, nothing changed.
+    await r.svc.join(USER, { url: "https://meet.google.com/zzz-zzzz-zzz" });
+    await r.svc.idle();
+    expect(r.calls.create[1]!.botName).toBe("Aanya's notetaker");
+  });
+
   it("answers the bot already in that call when the link is pasted again", async () => {
     const r = rig();
     const a = await r.svc.join(USER, { url: MEET });

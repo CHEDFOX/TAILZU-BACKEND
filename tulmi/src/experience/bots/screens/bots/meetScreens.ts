@@ -200,7 +200,39 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
   });
 }
 
+/**
+ * THE MEETING BOT'S SETTINGS (bots.meet.settings), off the bot's page: the two switches, each saved as it is turned, and the day's
+ * minutes. The name it shows in calls is not here — it is on the join card, where it is read before every call (meetPage.ts).
+ */
+export function meetSettingsPage(ctx: BotsCtx, d: MeetData | undefined) {
+  const desk = isDesk(ctx);
+  const o = d?.overview;
+  const put = (k: string, v: string): ActionSpec => call("PUT", `${MEET}/settings`, { [k]: v }, { fail: toast("Couldn't save that. Try again.") }) as ActionSpec;
+  const body: Node[] = o
+    ? [
+      listCard([
+        switchRow("Join my calendar's meetings", "ms_auto", { sub: "It joins each one by itself, a minute early.", onChange: put("autoJoin", "$state.ms_auto") }),
+        switchRow("Answer out loud", "ms_voice", { sub: "In every call, unless you say otherwise in it.", onChange: put("voice", "$state.ms_voice") }),
+      ]),
+      ...(o.calendar ? [] : [meta("Connect Google Calendar in You › Connected apps first.", { size: 13, lineHeight: 18 })]),
+      meta(`${o.minutesToday} of ${o.minutesCap} minutes used today`, { size: 12 }),
+    ]
+    : [notice("The settings couldn't be read just now. Pull to try again.", { mark: "close" })];
+
+  return page(ctx, {
+    back: true, backTitle: "Meetings", title: "Settings", nav: MEET_SLUG, ...(desk ? { maxWidth: 720 } : {}),
+    body, gap: 18,
+    live: [botTopic(MEET_SLUG)],
+    state: { ms_auto: !!o?.settings.autoJoin, ms_voice: !!o?.settings.voice },
+  });
+}
+
 export const meetScreens: BotsScreen[] = [
+  screen<MeetData>({
+    id: SCREENS.meetSettings,
+    load: loadMeet,
+    build: (ctx, d) => meetSettingsPage(ctx, d),
+  }),
   screen<MeetingData>({
     id: SCREENS.meetMeeting,
     load: async (ctx, deps: Deps) => {

@@ -92,6 +92,7 @@ export const SCREENS = {
   mailCall: "bots.mail.call",        // one call (src/rooms): its link, Join, who waits with Let in, who is in, the lobby, End (screens/bots/mailCalls.ts; params: b, r)
   // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
   meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
+  meetSettings: "bots.meet.settings",// the meeting bot's switches: join my calendar's meetings, answer out loud by default, the day's minutes
   // screens/bots/cinemaScreens.ts: the cinema bot (its page is bots.bot with slug "cinema", screens/bots/cinemaPage.ts)
   cinemaFilm: "bots.cinema.film",    // one film: what it waits for, the script or the storyboard grid, the finished film (params: f)
   cinemaShot: "bots.cinema.shot",    // one shot: its still, its card in full, the takes and what the checker said, change this shot (params: f, n)

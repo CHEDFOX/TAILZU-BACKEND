@@ -1,7 +1,8 @@
 /**
- * THE MEETING BOT'S SCREENS (screens/bots/meetPage.ts, meetScreens.ts): its page (join a meeting by its link, what is in a call now, what is
- * coming up, the recent ones, its settings, the minutes used) and one meeting's own screen (leave, answer out loud, the notes so far, call it
- * off on a second yes, the questions it answered, the notes). Every tree is drawn by the shipped app (the linter), on the phone and the window.
+ * THE MEETING BOT'S SCREENS (screens/bots/meetPage.ts, meetScreens.ts): its page (the join card — the link, and once there is one, when, for
+ * who and the name it shows — what is in a call now, what is coming up, the recent ones, the row to its settings), its settings screen, and
+ * one meeting's own screen (leave, answer out loud, the notes so far, call it off on a second yes, the questions it answered, the notes).
+ * Every tree is drawn by the shipped app (the linter), on the phone and the window.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -66,26 +67,60 @@ const callsOf = (acts: ActionSpec[]) => acts.filter((a) => a.kind === "callEndpo
 const navs = (acts: ActionSpec[], screenId: string) => acts.filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === screenId) as Array<{ params?: Record<string, string>; replace?: boolean }>;
 
 const MEETING_PAGE = { screen: "bots.meet.meeting", params: { m: "m1" } };
+/** The days the strip offers after "Now" on a build that cannot draw a row sideways (meetPage.ts STRIP_FIT). */
+const STRIP_FIT = 5;
 
 describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", (client) => {
-  it("with no meeting says what it does, and joins by a link", async () => {
+  it("with no meeting is the link to paste and nothing else, and joins by it", async () => {
     const p = await build({ client });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("Paste a meeting link and your bot joins the call. It takes the notes, answers questions in the chat and out loud, and turns what was agreed into your to-dos.");
-    expect(p.texts).toContain("Everyone in the call sees it join, and it says so in the chat.");
+    // No card explaining itself: the field says what it takes, and the bot says who it is in the call.
+    expect(p.texts.some((t) => /^Paste a meeting link and your bot joins/.test(t))).toBe(false);
+    expect(p.texts).not.toContain("Everyone in the call sees it join, and it says so in the chat.");
     expect(p.texts).toContain("Joins your calls, takes the notes, answers questions");
-    expect(p.fields).toEqual(expect.arrayContaining(["mt_url", "ms_name"]));
+    expect(p.fields).toEqual(expect.arrayContaining(["mj_url", "mj_name"]));
     expect(p.live).toContain("bot:meet");
-    expect(p.state).toMatchObject({ mt_url: "", mt_voice: true, ms_auto: false, ms_voice: true });
+    expect(p.state).toMatchObject({ mj_url: "", mj_day: "", mj_time: "", mj_for: "", mj_name: "" });
     const join = callsOf(p.every()).find((c) => c.path === "/v1/meet/join")!;
-    expect(join).toMatchObject({ method: "POST", body: { url: "$state.mt_url", voice: "$state.mt_voice", forUser: "$state.mt_for" } });
-    expect(JSON.stringify(join.onSuccess)).toContain("Joining. Let it in if the call asks.");
-    expect(JSON.stringify(join.onSuccess)).toContain('"mt_url"');
+    expect(join).toMatchObject({
+      method: "POST",
+      body: { url: "$state.mj_url", forUser: "$state.mj_for", botName: "$state.mj_name", day: "$state.mj_day", time: "$state.mj_time", tz: IST },
+    });
+    expect(JSON.stringify(join.onSuccess)).toContain("Done. Let it in if the call asks.");
+    expect(JSON.stringify(join.onSuccess)).toContain('"mj_url"');
     // An empty field is a toast, not a call.
     const guard = p.every().find((a) => a.kind === "condition" && JSON.stringify(a).includes("/v1/meet/join")) as { if: unknown; else: { message: string } };
-    expect(guard.if).toEqual({ truthy: "mt_url" });
+    expect(guard.if).toEqual({ truthy: "mj_url" });
     expect(guard.else.message).toMatch(/link/);
+    // The settings are a row to their own screen, not a form on this one.
+    expect(p.texts).toContain("Settings");
     expect(p.texts).toContain("0 of 120 minutes used today");
+    expect(p.texts).not.toContain("Name in calls");
+    expect(p.texts).not.toContain("Save");
+    expect(navs(p.every(), "bots.meet.settings").length).toBe(1);
+  });
+
+  it("the card holds the link alone until a link is in, and books the bot for a day and a time", async () => {
+    const p = await build({ client });
+    expect(p.texts).toEqual(expect.arrayContaining(["Meeting link", "When", "Time", "Name in the call", "Now", "Join"]));
+    // Everything but the link is behind the link being there.
+    const shown = (path: string) => p.nodes.filter((n) => JSON.stringify(n.visibleIf ?? "").includes(path)).length;
+    expect(shown("mj_url")).toBeGreaterThan(0);
+    // The day chips: Now is no day (join at once), then today and the next four.
+    // The strip's cells, and the reset the join's answer runs: one value each, so count what is distinct.
+    const days = [...new Set(p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === "mj_day").map((a) => (a as unknown as { value: string }).value))];
+    expect(days[0]).toBe("");
+    // A build that cannot draw a row sideways gets the few days that fit instead of the fortnight.
+    expect(days).toHaveLength(1 + STRIP_FIT);
+    expect(days.slice(1).every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))).toBe(true);
+    // The times, and the field for one of their own.
+    const times = p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === "mj_time").map((a) => (a as unknown as { value: string }).value);
+    expect(times).toEqual(expect.arrayContaining(["09:00", "12:00", "16:00", "18:00", "20:00"]));
+    expect(p.fields).toContain("mj_time");
+    // A day with no time is no moment: that is said here, not by the server.
+    const guard = p.every().find((a) => a.kind === "condition" && JSON.stringify(a).includes("/v1/meet/join")) as { then: { if: unknown; then: { message: string } } };
+    expect(guard.then.if).toEqual({ all: [{ truthy: "mj_day" }, { falsy: "mj_time" }] });
+    expect(guard.then.then.message).toMatch(/time/);
   });
 
   it("shows what is in a call now, what is coming up and the recent ones, each opening where it belongs", async () => {
@@ -122,30 +157,59 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     expect(p.texts).not.toContain("Everyone in the call sees it join, and it says so in the chat.");
   });
 
-  it("saves its settings as they change", async () => {
-    const p = await build({ client, overview: OVERVIEW({ settings: { autoJoin: true, voice: false, botName: "Scribe" } }) });
+  it("keeps Coming up and Recent shut until their heading is pressed", async () => {
+    const p = await build({ client, overview: OVERVIEW({
+      upcoming: [meeting("u1", { title: "Board call" })],
+      recent: [meeting("r1", { status: "done", title: "Customer sync", noteId: "n7", startedAt: FIXED_NOW - 3_600_000, endedAt: FIXED_NOW - 3_000_000 })],
+      live: [meeting("l1", { status: "in_call", title: "Sprint planning" })],
+    }) });
     expect(p.lint).toEqual([]);
-    expect(p.state).toMatchObject({ ms_auto: true, ms_voice: false, ms_name: "Scribe", mt_voice: false });
-    expect(p.texts).toEqual(expect.arrayContaining(["Join my calendar's meetings", "Answer out loud by default", "Name in calls", "Save"]));
+    // The headings are there, and each opens its own list.
+    const folds = p.every().filter((a) => a.kind === "toggleState").map((a) => (a as unknown as { path: string }).path);
+    expect(folds).toEqual(expect.arrayContaining(["mp_up", "mp_recent"]));
+    expect(p.state).toMatchObject({ mp_up: false, mp_recent: false });
+    // The rows and the lines between them are behind the heading, so a shut one is the heading alone.
+    const behind = (path: string) => p.nodes.filter((n) => JSON.stringify(n.visibleIf ?? "") === JSON.stringify({ truthy: path })).length;
+    expect(behind("mp_up")).toBe(1);
+    expect(behind("mp_recent")).toBe(1);
+    // What it is in now is not behind anything.
+    expect(p.texts).toContain("In a call now");
+    expect(JSON.stringify(p.every())).not.toContain("mp_live");
+  });
+
+  it("saves its settings as they change, on their own screen", async () => {
+    const p = await build({ client, screen: "bots.meet.settings", overview: OVERVIEW({ settings: { autoJoin: true, voice: false, botName: "Scribe" } }) });
+    expect(p.lint).toEqual([]);
+    expect(p.state).toMatchObject({ ms_auto: true, ms_voice: false });
+    expect(p.texts).toEqual(expect.arrayContaining(["Join my calendar's meetings", "Answer out loud"]));
     const puts = callsOf(p.every()).filter((c) => c.path === "/v1/meet/settings");
     expect(puts.map((c) => [c.method, c.body])).toEqual(expect.arrayContaining([
-      ["PUT", { autoJoin: "$state.ms_auto" }], ["PUT", { voice: "$state.ms_voice" }], ["PUT", { botName: "$state.ms_name" }],
+      ["PUT", { autoJoin: "$state.ms_auto" }], ["PUT", { voice: "$state.ms_voice" }],
     ]));
+    // The name it shows is on the join card, where it is read before every call: not here, and never behind a Save.
+    expect(p.texts).not.toContain("Name in calls");
+    expect(p.texts).not.toContain("Save");
     // Connected: no line about the calendar.
     expect(p.texts).not.toContain("Connect Google Calendar in You › Connected apps first.");
   });
 
   it("says to connect the calendar first when it can't be read", async () => {
-    const p = await build({ client, overview: OVERVIEW({ calendar: false }) });
+    const p = await build({ client, screen: "bots.meet.settings", overview: OVERVIEW({ calendar: false }) });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Connect Google Calendar in You › Connected apps first.");
+  });
+
+  it("the settings screen says so when they can't be read", async () => {
+    const p = await build({ client, screen: "bots.meet.settings", down: true });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("The settings couldn't be read just now. Pull to try again.");
   });
 
   it("says so when the meetings can't be read", async () => {
     const p = await build({ client, down: true });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("The meetings couldn't be read just now. Pull to try again.");
-    expect(p.fields).not.toContain("mt_url");
+    expect(p.fields).not.toContain("mj_url");
   });
 
 
@@ -160,13 +224,13 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     }) });
     expect(p.lint).toEqual([]);
     expect(p.texts).toEqual(expect.arrayContaining(["For", "Me", "Ravi", "Meera", "Your people's meetings", "Ravi · Sales call", "Meera · Review", "In the call · 2 people"]));
-    expect(p.state.mt_for).toBe("");
-    const chips = p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === "mt_for").map((a) => (a as unknown as { value: string }).value);
+    expect(p.state.mj_for).toBe("");
+    const chips = p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === "mj_for").map((a) => (a as unknown as { value: string }).value);
     expect(chips).toEqual(expect.arrayContaining(["", "u2", "u3"]));
-    expect(callsOf(p.every()).find((c) => c.path === "/v1/meet/join")).toMatchObject({ body: { forUser: "$state.mt_for" } });
+    expect(callsOf(p.every()).find((c) => c.path === "/v1/meet/join")).toMatchObject({ body: { forUser: "$state.mj_for" } });
     expect(navs(p.every(), "bots.meet.meeting").map((n) => n.params)).toEqual(expect.arrayContaining([{ m: "p1" }, { m: "p2" }]));
     expect(p.texts.some((t) => /· Sent by Aanya$/.test(t))).toBe(true);
-    expect(p.texts).not.toContain("Paste a meeting link and your bot joins the call. It takes the notes, answers questions in the chat and out loud, and turns what was agreed into your to-dos.");
+    expect(p.texts.some((t) => /^Paste a meeting link and your bot joins/.test(t))).toBe(false);
   });
 
   it("without anyone to send it for: no For chips and no people section", async () => {
