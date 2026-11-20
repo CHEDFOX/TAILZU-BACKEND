@@ -48,6 +48,195 @@ be broken: a username is never given twice, and `to_id`'s visibility rule keeps 
 
 docs/username.md. Still to come: `person_names` (the name you give someone, resolved per reader), adding by username, and `@`
 taking either a username or the name you gave them.
+## 20 Nov: PLAN EASE — THE WEEK STRIP IS SWIPED ON A PHONE (and `ScrollX`, a new ability)
+
+The strip was seven cells sharing the width and two arrows, and it could not be anything else from here: the kit's
+only scroller, `Scroll`, is VERTICAL in both clients, and `List`, which does take `horizontal` on the phone, is a
+vocabulary-2 block node that **no client declares** — it would have drawn nothing at all.
+
+So the phone's `Scroll` takes `horizontal` now. The direction has to reach the CONTENT: a ScrollView lays its
+children out in `contentContainerStyle`, so a `flexDirection` left on the box does nothing and the row comes out as
+a column — which is why this is its own ability (`ScrollX`) and not merely a style. A build that does not say it
+keeps exactly today's strip.
+
+**The data had to widen with it.** Seven days fill the width exactly, so there was nothing to swipe along:
+`stripOf` takes a number of weeks, `GET .../plan/day` reads `weeks`, and the screen asks for five — but only where
+`canScrollX`. They run FORWARD from the week shown, because a scroller can only be opened at its start and days
+before it would open the week off screen. The left arrow stays for the week before; **the right one goes**, since
+forward is the swipe now, and its 26 px is what lets the next day show its edge — the only thing on a strip that
+says there is more of it.
+
+**The window keeps its arrows**, which suit a pointer better than a drag, and `nodes.js` is untouched.
+
+Phone: `app/src/sdui/components/Scroll.tsx`, `registry.ts`. Backend: the capability in `shared/types/sdui.ts`,
+`canScrollX`/`scrollRow` in the kit, `planThread.ts`, `planEase.ts`, the route, `planHome.ts`. A case in
+`plan-thread.test.ts` holds the wider strip. 12,695 pass here; the phone's 1,178 pass, its 6 failures pre-existing
+(they want `node_modules`), both checked by stashing.
+
+**It reaches people as they update.** Until a build carries `ScrollX`, the strip is the week and the two arrows.
+
+## 20 Nov: XODE — OPENING IT IS THE LIST, WITH ONE PROJECT OR EIGHT
+
+`loadHome` dropped somebody with exactly one project straight into that project. So a project's own page doubled
+as the bot's front door, and opening Xode met you with ONE project's branch chip, book and rules — things that
+belong to a project, on the screen where several could be listed. It is also the whole reason the second project
+could not be added: the list, the only place carrying the two ways on, needed two projects to appear.
+
+A page is one thing or the other now. The list is the home whichever number they have; a project's page is
+reached by naming the project and by nothing else, and keeps its own things. Back follows: the list leaves the
+bot (the phone's; the window leaves by its nav and draws no back bar on a bot's home), a project goes up to the
+list, a job to its project.
+
+**This supersedes the add row on a project's page** from the entry below — the list is one tap up and always
+there, so the row has gone from the project page and stays on the list. The cost is one tap for somebody with a
+single project, which is the price of the front door saying what it is.
+
+Two cases in `bots-code.test.ts` hold the shape and the three backs.
+
+## 20 Nov: XODE — BACK IS A PLACE NOW, AND THREE FIRST TASKS THAT WERE ONE
+
+**Back retraced the whole visit.** Every screen in Xode called `backButton()` with nothing said about where, which
+is `navigateBack` — pop one off the stack. So Back walked somebody out the way they came in: project, job,
+project, task, overview, project, as long as their visit had been, when what they wanted was out of the bot.
+
+Two places are all Back ever means in here, and `code/parts.ts` names them: `outOfCode()` (the bots home) and
+`toProject(id)`. With one project its page IS Xode (`loadHome`), so Back leaves the bot; with several it is the
+overview, one step up — `loadHome` now says which with `many`. A job, a PR and the rules go up to their project,
+whichever of the four ways in they came by, phone and window both. The trail is a tree, and the way out is never
+more than two taps from anywhere.
+
+**And three first tasks that were one.** A project with nothing tested has a long `untestedHot`, and `firstTasks`
+pushed one row per file: "Add tests to components", "Add tests to App.tsx", "Add tests to index.tsx" — the whole
+card, the same sentence three times, crowding out every other kind of start. One of them now, the busiest, and
+the rest of the card goes to the other kinds (the failing tests, the first tests, the README).
+
+Two cases in `bots-code.test.ts` hold both. 12,694 pass; the two failures are the standing pair.
+
+**Not done, and it needs the apps:** the Plan Ease week strip (`planHome.ts`) is arrows and seven fixed cells, and
+smooth sideways scrolling cannot be served from here — `Scroll` is VERTICAL ONLY in both clients (the phone's
+`components/Scroll.tsx` is a plain vertical ScrollView; the window's `nodes.js` hard-codes `overflow-y`). It wants
+a `horizontal` prop in both, behind a capability of its own, because a build without it would lay the strip out
+as a column. Then the strip becomes a scroller server-side and the arrows can stay for the window.
+
+## 20 Nov: LINGO — A SET ENDS NOW, AND THE NEXT UNIT IS WRITTEN WHILE THEY ARE CONGRATULATED
+
+**Nothing ever called `POST /v1/lingo/set`.** The set screen drew `exercises[0]`, and Next was a `refresh` — it
+refetched the session and drew ITS first exercise. So the counter read "1 of 12" for ever, the meter never moved,
+no set ever ended, and everything hanging off the end of one was finished, tested, server-side work that nothing
+asked for: the four bands, the scaled gesture, the shape of the next set, and `bots.lingo.done`, which nothing
+opened either. Finishing a unit passed in silence, which is the thing `07e9a9c` set out to fix.
+
+**The set is walked now.** The whole set is in the tree and `state.i` says which one they are on, so moving on is
+not a trip to the server; the server is asked once, at the end. What comes back decides all three of: whether the
+bot celebrates (and it does NOT for a bad set — `set.ts gestureFor`), whether a unit was finished, and the shape
+of the next set, which the next session is now asked for **by name**, so the difficulty follows the person instead
+of every set being the first of a sitting.
+
+**The answers are the server's, not the app's.** The first wiring had the app hand its list back at the end, and
+`tests/lingo-screens.test.ts` said no: "sends what the person DID and never whether it was right". It was right to
+— that would have been the one message in Lingo that says "I was right", and the route accepted verdicts from the
+body. So each answer is written against the course as it is marked (`setAnswers`, **migration 0109**) and the end
+of a set reads what is known and empties it. The app sends which course and nothing else. `lingo-walkthrough` now
+sends no answers at all and asserts the server counted the same set she did, over three weeks of use.
+
+**And the next unit is written under the celebration.** Finishing one starts `unitFor(after(unit))` before the
+reply, started and never waited for. `bots.lingo.done` asks `GET /v1/lingo/next` — is there anything left to wait
+for — and while there is, Continue is not drawn and the unit's own moment LOOPS. It listens on `lingo:<tag>`, the
+build publishes whichever way it went, and Continue arrives with the unit. Stop for now is always there. Those
+seconds used to be spent at the start of the next session, in front of a screen with nothing on it.
+
+128 lingo tests, 12,692 in all. The two failures are the pre-existing pair: `launch-motion`'s side-by-side case and
+`web-browser`'s `/proc` scan, both checked by stashing.
+
+**Still open:** `againAfter` (the server's word on how soon a missed word should come back inside the same sitting)
+is answered and still not used — the set is walked in the order it was planned. And `gesture.act`/`scale` only
+reach the screens as confetti or nothing; the buddy act a set earns is not played yet.
+
+## 20 Nov: XODE — A SECOND PROJECT COULD NOT BE ADDED UNTIL THERE WAS A SECOND PROJECT
+
+`code.ts` `loadHome` picks the home by how many projects there are: none is `meet`, **exactly one is that project's
+own page**, two or more is the overview. The overview is the only ordinary screen that carried "Add a project · or
+start one from scratch" — so the screen that lets you add a second project only appeared once you had two.
+
+A project's page has no way out to it either: rules, book, attach, a job, a review, PR care, start a task, read this
+project again — every exit is about the project you are already in, and the branch chip is a label, not a button.
+The one surviving route was "Start the next job" in the Work area, which opens `bots.code.start` with no step and
+falls through to `meet`; nothing about it says it adds a project.
+
+`addProjectRow()` in `code/parts.ts` is now on the overview AND on a project's own page, phone and window, so the
+two cannot drift apart. **Two actions, not one**, which is the second half of this: the row used to read "Add a
+project · or start one from scratch" and open the picker — a list of the repos already on their GitHub, with no way
+to start anything. Somebody with no repo to bring was told there was a way and then not given one. The window's own
+header has had them as two buttons all along, and now every copy does:
+
+* **Add a project** → the picker, which was already built to be come back to: a repo already added shows a done mark
+  and "added" instead of a tick, and opens that project rather than adding it twice (`pickProjects.ts`).
+* **Or start one from scratch** → `bots.code.new`: they name a repo, X0 Bot MAKES it on their GitHub
+  (`POST /v1/code/repos/new` → a blink on GitHub to check it is them → made and added), and the plan is written in
+  it. Nothing has to exist first. That screen was unreachable too for a one-project person, and it is the answer for
+  anybody who wants to plan something new rather than bring a repo.
+
+A case in `bots-code.test.ts` holds both pages' row and the step it opens. 2,699 pass; `code-routes`' hook timing
+out as it boots the real server is the pre-existing one named in the 17 Nov entry.
+
+**Still open:** reached this way the picker keeps its first-run words ("Which projects should I work on?", "Pick one
+to start"), which read oddly to somebody who already has one. Moving BETWEEN projects still means going Back to an
+overview that a one-project person has never seen — a switcher where the project's name is would put adding and
+moving in the same place. And a plan still cannot exist before its repo: `code_intake.project_id` is the primary key
+AND a foreign key to `code_projects`, every row of which needs a real repo (`installation_id`, `repo_id`,
+`full_name`, `default_branch`, all NOT NULL), so "Plan it" refuses until a home is named. Making a repo from that
+screen is the way through, which is why it had to be reachable; planning first and attaching after would mean a
+draft intake of its own, with the home asked for at **Start building** — the first moment GitHub is touched.
+
+## 20 Nov: LINGO — PICKING A LANGUAGE NOW GIVES YOU A LESSON
+
+**The fault.** Pick a language and you got nothing to learn, for ever. Not a thin course — nothing. The path (24
+units, `course.ts`) and the thing that writes a unit for a pair of languages (`lessons.ts`, 17 Nov) were both built,
+tested and on main. They were simply never reached: `walk()` is the only thing that walks the path, `walk()` only
+runs inside `POST /v1/lingo/session`, and the territory card would not open the set screen while a course had no
+words in it — it offered **"Start by talking"** instead. So the one screen that builds the first unit was the one
+screen the card refused to open. No words, so no lesson; no lesson, so no words.
+
+That card rule was right when it was written, before the path existed and an empty course really did have nothing to
+ask. `c252e11` added the path and touched 16 files; `lingoPage.ts` was not one of them. `tests/lingo-screens.test.ts`
+pinned the old behaviour, and `lingo-walkthrough` missed it by calling `POST /session` directly instead of going
+through a screen — so nothing was red.
+
+**What it does now.** `PUT /v1/lingo/course` starts the first unit for a NEW course and does not wait for it, and the
+answer to "what's it for?" navigates straight into the first exercise rather than back to a card with another button
+on it. Three things that had to be true together:
+
+- **One build in the air per pair and unit** (`makingUnit`, `unitFor`). The course that starts it and the lesson
+  screen a second behind it are the same person, and each starting their own would pay twice for one unit. The claim
+  is made in the **same tick** as the call — an `await` before it is a gap in which the next caller sees nothing
+  running and starts a second build. `unitFor` is deliberately not `async` for that reason, and it hands back the
+  tracked promise so the claim is let go of before anybody has their answer.
+- **A session never blocks on a model call.** `walk()` asks whether the unit is being made and says so instead of
+  waiting: `{ exercises: [], building: true }`.
+- **A third empty on the set screen**, and the only one that ends by itself: **"Getting your first lesson ready"**.
+  "Nothing due" would say they were finished and "Nothing to learn yet" would send them off to chat for no reason —
+  both wrong for the ten seconds that matter most, which are somebody's first ten.
+- **That screen has no button and nothing to read.** There is nothing to decide, a button meaning "ask again" makes
+  somebody who is already waiting do the waiting's work, and the explanation of our model call is ours to carry.
+  Lingo mutters over it (`l.mutter`) and it **ends by itself**: the page listens on `lingo:<tag>` (a new topic in
+  `src/live/topics.ts`), the server publishes when the unit settles, and the open screen reloads into the first
+  exercise where he stands. Published **whichever way it went** — a screen with nothing to press must never wait on
+  a message that is not coming, so a unit that could not be written reloads into a fresh attempt and then the honest
+  empty. Named while it waits and at no other moment: a live event mid-set would pull the question out from under
+  somebody. No new client primitive was needed; `liveTopics` has been in both renderers all along.
+
+A failed or thin unit is still kept nowhere (`ENOUGH`), and a pair whose first attempt failed stops looking busy, so
+the next person gets a fresh attempt rather than a screen that waits for ever. Changing a level or the minutes a day
+on a course somebody is already on spends no call.
+
+`lingo-routes.test.ts` now passes `lessons: null` in its shared server, so the suite stops reaching for a real model
+(those 401s were pre-existing noise from the session route). Four new cases: the first lesson over the real routes
+mid-build and after, no second call per setting change, one build for two simultaneous arrivals, and a failed attempt
+tried again. **12,677 pass.** The one failure is `launch-motion`'s side-by-side case, pre-existing and checked by
+stashing. `docs/lingo.md` has a section on the path at last (9c) — it had none, since `c252e11` did not write one.
+
+**Still true and not this:** the sentence bank is unseeded, which now matters less than it did — the first day is the
+path's, not the spine's. Lingo is still behind `LINGO`, off.
 
 ## 17 Nov: THE SIGN-IN CARD HAS A SWITCH NOW, SO IT CAN BE UNDONE FROM HERE
 

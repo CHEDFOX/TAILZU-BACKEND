@@ -15,7 +15,7 @@ vi.hoisted(() => {
   process.env.NODE_ENV = "test";
 });
 
-const { MemoryLessonBank, ENOUGH, briefFor, tidyDraft, unitFor } = await import("../src/lingo/lessons.js");
+const { MemoryLessonBank, ENOUGH, briefFor, makingUnit, tidyDraft, unitFor } = await import("../src/lingo/lessons.js");
 const { UNITS, unitDone, after, placeOf } = await import("../src/lingo/course.js");
 
 const T0 = Date.UTC(2026, 10, 18, 9, 0, 0);
@@ -47,6 +47,45 @@ describe("writing a unit for a pair", () => {
     const second = await unitFor(bank, ctx, "es", "ta", "food");
     expect(second?.length).toBe(10);
     expect(m.calls.length, "the model is not asked twice for the same unit of the same pair").toBe(1);
+  });
+
+  /**
+   * ARRIVING WHILE IT IS BEING MADE. The two people most likely to is one person: whoever just started the course,
+   * and the lesson screen they land on a second later. Each starting their own call would pay twice for one unit
+   * and could keep the slower answer, so a build in flight is joined, and can be asked about rather than waited on.
+   */
+  it("is made once however many arrive at it together, and says while it is in the air", async () => {
+    const bank = new MemoryLessonBank();
+    let open = () => {};
+    const gate = new Promise<void>((r) => { open = r; });
+    let asked = 0;
+    const call = (async () => { asked++; await gate; return { json: draft(10), paise: 1, model: "stub" }; }) as never;
+    const ctx = { userId: "u1", budget: { maxPaise: 500 } as never, call };
+
+    expect(makingUnit("es", "ta", "numbers"), "nothing in the air before anybody asks").toBe(false);
+    const a = unitFor(bank, ctx, "es", "ta", "numbers");
+    const b = unitFor(bank, ctx, "es", "ta", "numbers");
+    try {
+      expect(makingUnit("es", "ta", "numbers"), "which is what lets a screen say so instead of hanging").toBe(true);
+      expect(makingUnit("es", "ta", "hello"), "and it is per unit, not per pair").toBe(false);
+    } finally {
+      open();
+    }
+    expect((await a)?.length).toBe(10);
+    expect((await b)?.length).toBe(10);
+    expect(asked, "one call for the two of them").toBe(1);
+    expect(makingUnit("es", "ta", "numbers"), "and it is let go of once it has landed").toBe(false);
+  });
+
+  /** A pair whose first attempt failed is not left looking busy: the next person gets a fresh attempt. */
+  it("stops looking busy when the attempt failed, so the next person tries again", async () => {
+    const bank = new MemoryLessonBank();
+    const m = stubModel(draft(10), false);
+    const ctx = { userId: "u1", budget: { maxPaise: 500 } as never, call: m.call };
+    expect(await unitFor(bank, ctx, "es", "ta", "yesno")).toBeNull();
+    expect(makingUnit("es", "ta", "yesno")).toBe(false);
+    expect(await unitFor(bank, ctx, "es", "ta", "yesno")).toBeNull();
+    expect(m.calls.length, "tried again rather than refused for ever").toBe(2);
   });
 
   it("tells the model the pair and the goal, and nothing about any person", async () => {

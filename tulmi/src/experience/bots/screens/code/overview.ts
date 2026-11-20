@@ -10,7 +10,7 @@ import {
 } from "../../kit.js";
 import {
   type Project, type Job, cut, MOSS, ago, type OverviewData, unreachable, short, startTask, codeAsk, setupBuddy, backButton, CODE,
-  CODE_BUSY, setupTop, taskBar, enterTop,
+  CODE_BUSY, setupTop, taskBar, enterTop, addProjectRow, outOfCode,
 } from "./parts.js";
 
 /** A project's "now": what its jobs are doing, or when it last shipped. */
@@ -47,8 +47,8 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
   }
   suggestions.push({ label: "What changed this week?", action: codeAsk(ctx, "What changed in my projects this week?") });
   const chipRow = row(suggestions.map((s) => box([text(s.label, { size: 13, lineHeight: 17, lines: 1 })], { borderWidth: 1, borderColor: C.outline, borderRadius: 18, paddingVertical: 8, paddingHorizontal: 14, flexShrink: 1 }, s.action)), { gap: 8, flexWrap: "wrap" });
-  const addRow = row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project · or start one from scratch", { size: 14, color: C.grey70, lineHeight: 19 })],
-    { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 }, open(SCREENS.codeStart, { step: "pick" }));
+  // The same row a project's own page carries, so the two cannot drift apart (parts.ts addProjectRow).
+  const addRow = addProjectRow();
 
   // The last getting-started step: he settles, in the same place as on the steps before.
   const stage = setup ? setupBuddy(ctx, "settle") : null;
@@ -63,7 +63,8 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
         ...(facts.length ? [row(facts.map((f) => meta(f)), { gap: 14, flexWrap: "wrap" })] : []),
       ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 8 }, open(SCREENS.code, { project: p.id }));
     });
-    const head = row([backButton(), botAvatar(CODE, 40), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+    // Xode's home, so Back is the way OUT of Xode rather than one step down whatever path they took to get here.
+    const head = row([backButton(outOfCode()), botAvatar(CODE, 40), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
       ...(stage ? [] : headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY }))], { gap: 10 });
     return page(ctx, {
       back: false, nav: "code", title: "Xode",
@@ -89,7 +90,9 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
     row(["Project", "Built with", "Now", "Tests"].map((h, j) => box([sectionLabel(h)], { flexGrow: [1.1, 0.6, 1.5, 1.2][j], flexBasis: 0, minWidth: 0 })), { gap: 14, paddingVertical: 10, paddingHorizontal: 18 }),
     ...rows.map((r, i) => row([...r.map((c, j) => box([c], { flexGrow: [1.1, 0.6, 1.5, 1.2][j], flexBasis: 0, minWidth: 0 })), icon("chevron", { size: 16, color: C.meta })],
       { gap: 14, paddingHorizontal: 18, minHeight: 58, borderTopWidth: 1, borderTopColor: C.divider }, open(SCREENS.code, { project: d.projects[i]!.id }))),
-    row([icon("plus", { size: 16, color: C.meta }), meta("Add a project · or start one from scratch", { size: 13 })], { gap: 10, paddingHorizontal: 18, minHeight: 50, borderTopWidth: 1, borderTopColor: C.divider }, open(SCREENS.codeStart, { step: "pick" })),
+    // Just the picker here: the header above carries "Start from scratch" as its own button, and a row that names
+    // both and does one is what sent people looking for a way to start something in a list of repos they own.
+    row([icon("plus", { size: 16, color: C.meta }), meta("Add a project", { size: 13 })], { gap: 10, paddingHorizontal: 18, minHeight: 50, borderTopWidth: 1, borderTopColor: C.divider }, open(SCREENS.codeStart, { step: "pick" })),
   ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" });
   const run = working[0];
   const recent = d.jobs.filter((j) => j.state === "done").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);

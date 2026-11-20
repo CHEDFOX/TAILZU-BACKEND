@@ -467,7 +467,7 @@ export class PlanEase {
    * either way, else the old `week` param, else today (tomorrow from 5 pm once today is done). `made` and `n`: after Done, the rows
    * made in the last 10 minutes say "Added: …" and are outlined.
    */
-  async day(userId: string, tzIn: number, dayIn?: unknown, o: { week?: unknown; made?: unknown; n?: unknown } = {}): Promise<PlanDayData> {
+  async day(userId: string, tzIn: number, dayIn?: unknown, o: { week?: unknown; made?: unknown; n?: unknown; weeks?: number } = {}): Promise<PlanDayData> {
     const tz = clampTz(tzIn);
     await Promise.all([this.seen(userId, tz), sourceSeen(userId, tz, this.now())]);
     const now = this.now();
@@ -517,7 +517,7 @@ export class PlanEase {
     return {
       v: 3, today, tomorrow, day, label, date,
       head: `${next.big}${saved ? ` · ${saved} min saved` : ""}`,
-      strip: stripOf(day, today, l.items),
+      strip: stripOf(day, today, l.items, o?.weeks ?? 1),
       needs: cards[0] ?? null,
       thread,
       empty: thread.length ? "" : emptyWords(label),

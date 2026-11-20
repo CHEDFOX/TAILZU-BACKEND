@@ -22,6 +22,7 @@ import {
   calendarReadLive, emptyState, headerBuddy, icon, labelled, listCard, listRow, messageText, meta, open, page, personBot,
   remindersLive, roundButton, row,
   secondaryButton, sectionLabel, seq, statusMark, switchMark, text, when,
+  canScrollX, scrollRow,
 } from "../../kit.js";
 import { line, permitStep } from "../firstRun/parts.js";
 import { CAL_BUSY, REMINDERS, remindersLines } from "../permitWords.js";
@@ -114,11 +115,17 @@ export function addedLine(_ctx: BotsCtx, d: PlanDayData): Node[] {
 
 // ------------------------------------------------------------------ the week strip
 
+/** How many weeks of days a strip that scrolls carries, and how wide one day is in it. Seven of these and their gaps
+ *  come to about the width of a phone, so the week shown fills it and the next one shows its edge. */
+const STRIP_WEEKS = 5;
+/** Seven of these and their gaps leave the week shown whole on a phone, with the edge of the next day past it. */
+const STRIP_CELL = 42;
+
 const keyDate = (k: string) => new Date(`${k}T00:00:00Z`);
 const longDay = (k: string) => { const t = keyDate(k); return `${WEEKDAYS_LONG[t.getUTCDay()]} ${t.getUTCDate()} ${MONTHS[t.getUTCMonth()]}`; };
 
 /** The week that holds the day shown: seven days, each opens its day; the arrows a week back or on, up to 8 weeks from this one. */
-export function stripNodes(d: PlanDayData): Node {
+export function stripNodes(d: PlanDayData, scroll = false): Node {
   const cell = (x: PlanDayData["strip"]["days"][number]): Node => {
     const on = x.key === d.day;
     return labelled(col([
@@ -126,13 +133,26 @@ export function stripNodes(d: PlanDayData): Node {
       text(x.n, { size: 15, weight: on || x.today ? 600 : 400, color: on ? C.paper : C.ink, lineHeight: 20 }),
       box([], { width: 4, height: 4, borderRadius: 2, backgroundColor: x.busy ? (on ? C.paper : OCHRE) : "transparent" }),
     ], {
-      flexGrow: 1, flexBasis: 0, minWidth: 0, alignItems: "center", gap: 2, paddingVertical: 7, borderRadius: 14, backgroundColor: on ? C.ink : C.paper,
+      ...(scroll ? { width: STRIP_CELL } : { flexGrow: 1, flexBasis: 0, minWidth: 0 }),
+      alignItems: "center", gap: 2, paddingVertical: 7, borderRadius: 14, backgroundColor: on ? C.ink : C.paper,
       ...(x.today && !on ? { borderWidth: 1, borderColor: C.line } : {}),
     }, goDay(x.key)), longDay(x.key));
   };
   const arrow = (to: string | null, dir: -1 | 1): Node => (to
     ? labelled(box([icon(dir < 0 ? "back" : "chevron", { size: 16, color: C.grey70 })], { width: 26, alignSelf: "stretch", alignItems: "center", justifyContent: "center" }, goDay(to)), dir < 0 ? "The week before" : "The week after")
     : box([], { width: 26 }));
+  // SWIPED, where the build can (ScrollX) and there is more than a week to swipe along. A scrolling cell cannot
+  // share the width out — flexGrow with nothing to grow into collapses the lot — so it is given one, sized so that
+  // the week shown fills the screen and the weeks after it are just off the edge, which is what says to push.
+  if (scroll) {
+    // NO ARROW ON THE RIGHT: the weeks after this one ARE the swipe, and the arrow would take the room that lets
+    // the next day show its edge — which is the only thing on a strip that says there is more of it. The left one
+    // stays, because the days run forward from the week shown and nothing but the arrow goes back.
+    return row([
+      arrow(d.strip.prev, -1),
+      scrollRow(d.strip.days.map(cell), { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
+    ], { gap: 2, alignItems: "stretch" });
+  }
   return row([arrow(d.strip.prev, -1), ...d.strip.days.map(cell), arrow(d.strip.next, 1)], { gap: 2, alignItems: "stretch" });
 }
 
@@ -412,7 +432,8 @@ export function planHomePhone(ctx: BotsCtx, d: PlanDayData | undefined) {
       homeHead(ctx, d, shownDay(ctx, d)),
       ...(!d ? [noRead()] : [
         ...addedLine(ctx, d),
-        stripNodes(d),
+        // Swiped on a phone that draws it; the window keeps its arrows, which suit a pointer better than a drag.
+        stripNodes(d, canScrollX(ctx)),
         ...(d.needs ? [needsPart(ctx, d.needs)] : []),
         dayPart(ctx, d),
         ...openPart(ctx, d),
@@ -458,6 +479,9 @@ export function planHomeDesk(ctx: BotsCtx, d: PlanDayData | undefined) {
 /** The query GET .../plan/day reads: tz, and only the params that are well formed (a day, a week, Done's key and count). */
 export function planDayQuery(ctx: BotsCtx): string {
   const q: string[] = [`tz=${ctx.tzOffsetMinutes}`];
+  // A strip that scrolls needs more than the seven days that fill the width exactly, or there is nothing to swipe
+  // along. Only for a build that draws it sideways (kit canScrollX); everybody else gets the week and the arrows.
+  if (canScrollX(ctx)) q.push(`weeks=${STRIP_WEEKS}`);
   const p = ctx.params;
   const day = String(p.day ?? "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(day)) q.push(`day=${encodeURIComponent(day)}`);

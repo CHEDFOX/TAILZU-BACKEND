@@ -29,6 +29,8 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 
 const { MemoryLingoStore } = await import("../src/lingo/store.js");
 const { MemorySentenceBank } = await import("../src/lingo/sentences.js");
+const { MemoryLessonBank } = await import("../src/lingo/lessons.js");
+const { live } = await import("../src/live/bus.js");
 const { registerLingoRoutes } = await import("../src/routes/bots/lingo.js");
 const { refOf } = await import("../src/lingo/session.js");
 const { EXERCISE_KINDS } = await import("../src/lingo/types.js");
@@ -37,7 +39,9 @@ const T0 = Date.UTC(2026, 0, 1);
 
 async function server(store = new MemoryLingoStore(), now = () => T0, bank?: unknown): Promise<FastifyInstance> {
   const app = Fastify();
-  registerLingoRoutes(app, { rateLimit: {}, bots: {}, store, now, ...(bank ? { bank: bank as never } : {}) });
+  // `lessons: null` so nothing here reaches for a real model: these tests are about the spine, the sets and the
+  // marking. The path's own routes are the describe at the bottom, which hands them a model door of its own.
+  registerLingoRoutes(app, { rateLimit: {}, bots: {}, store, now, lessons: null, ...(bank ? { bank: bank as never } : {}) });
   await app.ready();
   return app;
 }
@@ -418,5 +422,184 @@ describe("forgetting", () => {
     expect((await call(app, "DELETE", "/v1/lingo/course/es")).statusCode).toBe(200);
     expect(await store.course("u1", "es")).toBeNull();
     expect(await store.items("u1", "es")).toEqual([]);
+  });
+});
+
+/**
+ * THE FIRST LESSON, WHICH NOBODY USED TO GET.
+ *
+ * The path (src/lingo/course.ts) writes a unit for a pair the first time anybody reaches it, and walking it was the
+ * only thing that ever asked for one — from POST /session, which the territory would not open while a course had no
+ * words in it. So a new language sat at nothing for ever: no words, so no lesson; no lesson, so no words.
+ *
+ * Starting the course now starts the unit too, and does NOT wait for it: a model call is seconds, and the screen
+ * says what is happening instead of hanging on it.
+ */
+describe("the first lesson", () => {
+  const draft = (n: number) => ({ items: Array.from({ length: n }, (_, i) => ({ text: `hola ${i}`, meaning: `hello ${i}`, kind: "phrase" as const })) });
+
+  /** A model door that does not answer until it is let go, so the moment mid-build can be looked at. */
+  function heldModel(reply: unknown) {
+    let open = () => {};
+    const gate = new Promise<void>((r) => { open = r; });
+    const calls: string[] = [];
+    const call = async (input: { messages: Array<{ content: unknown }> }) => {
+      calls.push(String(input.messages[input.messages.length - 1]?.content ?? ""));
+      await gate;
+      // `null` is the model that could not do it: no json, which is what askJson reads as down.
+      return reply === null ? { paise: 0, model: "stub" } : { json: reply, paise: 1, model: "stub" };
+    };
+    return { call: call as never, calls, release: () => open() };
+  }
+
+  async function withPath(store: InstanceType<typeof MemoryLingoStore>, model: { call: never }) {
+    const app = Fastify();
+    registerLingoRoutes(app, {
+      rateLimit: {}, bots: {}, store, now: () => T0,
+      lessons: new MemoryLessonBank(), bank: new MemorySentenceBank() as never, call: model.call,
+    });
+    await app.ready();
+    return app;
+  }
+
+  it("is started as the course is, and the person is not left waiting on the model", async () => {
+    const store = new MemoryLingoStore();
+    const m = heldModel(draft(8));
+    const app = await withPath(store, m);
+
+    // Picking the language answers at once, with the unit still in the air.
+    const put = await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    expect(put.statusCode).toBe(200);
+    expect(m.calls.length, "the unit is asked for as the course starts").toBe(1);
+    expect((await store.items("u1", "es")).length, "and nothing is written before it lands").toBe(0);
+
+    // The set screen they land on a moment later: being made, not "nothing due" and not "nothing to learn yet".
+    const waiting = await call(app, "POST", "/v1/lingo/session", { target: "es" });
+    expect(waiting.statusCode).toBe(200);
+    expect(waiting.json().building).toBe(true);
+    expect(waiting.json().exercises).toEqual([]);
+    expect(m.calls.length, "and it does not start a second build of the same unit").toBe(1);
+
+    // It lands, and the first unit is theirs, with exercises to ask.
+    m.release();
+    await vi.waitFor(async () => {
+      const s = await call(app, "POST", "/v1/lingo/session", { target: "es" });
+      expect(s.json().building).toBeUndefined();
+      expect(s.json().exercises.length).toBeGreaterThan(0);
+    });
+    const mine = await store.items("u1", "es");
+    expect(mine.length).toBe(8);
+    expect(mine.every((i) => i.unit === "hello"), "the first unit of the path, not loose sentences").toBe(true);
+    expect(m.calls.length, "one call for the pair, ever").toBe(1);
+  });
+
+  /**
+   * THE SCREEN WITH NO BUTTON ON IT only works because it is told. Whichever way the unit went, the person's
+   * course topic is published, so the waiting screen reloads: into the first exercise if it landed, into a fresh
+   * attempt and then the honest empty if it did not. A screen with nothing to press must never be left waiting on
+   * a message that is not coming, so this is NOT only published on success.
+   */
+  it("tells the waiting screen when the unit has settled, whichever way it went", async () => {
+    for (const [what, reply] of [["landed", { items: [{ text: "hola", meaning: "hello", kind: "phrase" }] }], ["failed", null]] as const) {
+      const heard: string[] = [];
+      const stop = live.subscribe("u1", (e) => heard.push(e.topic));
+      const m = heldModel(reply);
+      const app = await withPath(new MemoryLingoStore(), m);
+      await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+      expect(heard, `${what}: nothing is said while it is still in the air`).toEqual([]);
+      m.release();
+      await vi.waitFor(() => expect(heard, what).toContain("lingo:es"));
+      stop();
+    }
+  });
+
+  /**
+   * THE NEXT UNIT IS WRITTEN UNDER THE CELEBRATION. Somebody has to write it, and it used to be the person, at the
+   * start of their next session, in front of a screen with nothing on it. Finishing a unit is a few seconds they
+   * are glad to spend, so the two are spent together — and Continue is held back until there is one to press.
+   */
+  it("starts the next unit as a unit is finished, and says when it is ready", async () => {
+    const store = new MemoryLingoStore();
+    const m = heldModel(draft(8));
+    const app = await withPath(store, m);
+
+    // Her first unit, held and said: finished, by course.ts's own reading.
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    m.release();
+    await vi.waitFor(async () => expect((await store.course("u1", "es"))?.target).toBe("es"));
+    const was = (await store.course("u1", "es"))!;
+    await store.setCourse("u1", { ...was, unit: "hello" }, T0);
+    await store.add("u1", "es", [
+      { item: "hola", gloss: "hello", kind: "word", source: "seed", unit: "hello" },
+      { item: "adios", gloss: "bye", kind: "word", source: "seed", unit: "hello" },
+    ], T0);
+    const mine = await store.items("u1", "es");
+    await store.save("u1", "es", mine.map((i) => ({
+      ...i, unit: "hello", spoken: 2,
+      memory: { ...i.memory, state: "review" as const, stability: 1000, difficulty: 5, reps: 3, lapses: 0, steps: 0, dueMs: T0 + 1e9, lastMs: T0 },
+    })), T0);
+    const now = (await store.course("u1", "es"))!;
+    await store.setCourse("u1", { ...now, unit: "hello", setAnswers: [{ item: "hola", kind: "say", verdict: "right" }] }, T0);
+
+    // A second model door, so what this set asks for can be told apart from the course's own first unit.
+    const m2 = heldModel(draft(8));
+    const app2 = Fastify();
+    registerLingoRoutes(app2, { rateLimit: {}, bots: {}, store, now: () => T0, lessons: new MemoryLessonBank(), bank: new MemorySentenceBank() as never, call: m2.call });
+    await app2.ready();
+
+    const set = await call(app2, "POST", "/v1/lingo/set", { target: "es" });
+    expect(set.statusCode).toBe(200);
+    expect(set.json().finished?.unit, "she finished the first unit").toBe("hello");
+    expect(m2.calls.length, "and the NEXT one was started as she was told so").toBe(1);
+    expect(m2.calls[0]).toContain("say who you are");          // unit 2's goal, in the brief
+
+    // Until it lands there is nothing to press, and the celebration goes on.
+    expect((await call(app2, "GET", "/v1/lingo/next?target=es")).json().ready).toBe(false);
+    m2.release();
+    await vi.waitFor(async () => {
+      expect((await call(app2, "GET", "/v1/lingo/next?target=es")).json()).toMatchObject({ ready: true, unit: "you" });
+    });
+  });
+
+  /** The set is the server's own record, so an app claiming a better one changes nothing. */
+  it("reads the set it wrote itself and ignores anything the app says about it", async () => {
+    const store = new MemoryLingoStore();
+    // Released at once: a build left in the air is a claim left in the module's map, and the next test joins it
+    // instead of starting its own (lessons.ts inFlight).
+    const m = heldModel(draft(8));
+    m.release();
+    const app = await withPath(store, m);
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    const was = (await store.course("u1", "es"))!;
+    await store.setCourse("u1", { ...was, setAnswers: [
+      { item: "hola", kind: "choose", verdict: "wrong" },
+      { item: "adios", kind: "choose", verdict: "wrong" },
+      { item: "gracias", kind: "choose", verdict: "wrong" },
+      { item: "por favor", kind: "choose", verdict: "wrong" },
+      { item: "si", kind: "choose", verdict: "wrong" },
+    ] }, T0);
+
+    const claimed = Array.from({ length: 5 }, (_, i) => ({ item: `x${i}`, kind: "talk", verdict: "right", learnedNow: true }));
+    const r = await call(app, "POST", "/v1/lingo/set", { target: "es", answers: claimed });
+    expect(r.json().result).toMatchObject({ asked: 5, right: 0, wrong: 5 });
+    expect(r.json().performance, "a set she got wrong is read as one").toBe("struggling");
+    expect(r.json().gesture.cheer, "and it is not celebrated").toBe(false);
+
+    // Emptied, so the same set cannot be closed off twice.
+    expect((await store.course("u1", "es"))?.setAnswers).toEqual([]);
+    expect((await call(app, "POST", "/v1/lingo/set", { target: "es" })).statusCode).toBe(400);
+  });
+
+  it("does not spend a call again on a course somebody is already on", async () => {
+    const store = new MemoryLingoStore();
+    const m = heldModel(draft(8));
+    const app = await withPath(store, m);
+    m.release();
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en" });
+    expect(m.calls.length).toBe(1);
+    // Changing the minutes a day, or the level, is not a new course.
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en", goalMin: 20 });
+    await call(app, "PUT", "/v1/lingo/course", { target: "es", from: "en", level: "a2" });
+    expect(m.calls.length, "the unit is written for a pair once and not per setting change").toBe(1);
   });
 });

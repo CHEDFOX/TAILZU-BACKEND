@@ -129,7 +129,9 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
     return page(ctx, {
       nav: "code", title: `Xode · ${name}`,
       body: [
-        row([backButton(), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        // Always one step under the list, because that is the only way in (code.ts loadHome). A place, not the
+        // last thing they happened to open.
+        row([backButton(open(SCREENS.code)), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
           ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, bookBtn, rules], { gap: 8 }),
         readCard,
         ...usageNote(ctx),
@@ -185,6 +187,7 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
   ], { width: 290, flexShrink: 0, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 16, paddingHorizontal: 18, gap: 12 });
   return page(ctx, {
     nav: "code", title: `Xode · ${name}`, maxWidth: 1100, gap: 18,
+    back: open(SCREENS.code),
     state: { task: "" },
     body: [
       row([

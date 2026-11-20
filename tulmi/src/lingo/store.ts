@@ -133,7 +133,7 @@ interface LearnerRow {
   target: string; from_lang: string; level: string; goal_min: number; calls: boolean; voice: string | null;
   streak_days: number; last_day: string | null; used_ms: number; updated_ms: number;
   why: string | null; why_note: string | null;
-  unit: string | null; last_answer_ms: number | null; tally: Learner["tally"] | null;
+  unit: string | null; last_answer_ms: number | null; tally: Learner["tally"] | null; set_answers: Learner["setAnswers"] | null;
 }
 
 interface ItemRow {
@@ -143,7 +143,7 @@ interface ItemRow {
   marks: LingoItem["marks"] | null;
 }
 
-const LEARNER_COLS = "target, from_lang, level, goal_min, calls, voice, streak_days, last_day, used_ms, updated_ms, why, why_note, unit, last_answer_ms, tally";
+const LEARNER_COLS = "target, from_lang, level, goal_min, calls, voice, streak_days, last_day, used_ms, updated_ms, why, why_note, unit, last_answer_ms, tally, set_answers";
 const ITEM_COLS = "item, kind, gloss, source, spoken, stability, difficulty, reps, lapses, steps, state, due_ms, last_ms, think_ms, unit, marks";
 
 const toLearner = (r: LearnerRow): Learner => ({
@@ -152,6 +152,7 @@ const toLearner = (r: LearnerRow): Learner => ({
   ...(r.why ? { why: r.why as Why } : {}), ...(r.why_note ? { whyNote: r.why_note } : {}),
   ...(r.unit ? { unit: r.unit } : {}), ...(r.last_answer_ms ? { lastAnswerMs: Number(r.last_answer_ms) } : {}),
   ...(r.tally ? { tally: r.tally } : {}),
+  ...(r.set_answers?.length ? { setAnswers: r.set_answers } : {}),
 });
 
 const toItem = (r: ItemRow): LingoItem => ({
@@ -186,6 +187,7 @@ export class SupabaseLingoStore implements LingoStore {
       used_ms: learner.usedMs, created_ms: now, updated_ms: now,
       why: learner.why ?? null, why_note: learner.whyNote ?? null,
       unit: learner.unit ?? null, last_answer_ms: learner.lastAnswerMs ?? null, tally: learner.tally ?? null,
+      set_answers: learner.setAnswers ?? null,
     };
     const { error } = await this.db.from("lingo_learners").upsert(row, { onConflict: "user_id,target" });
     if (error) throw new Error("lingo_learners write failed");

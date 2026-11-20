@@ -18,6 +18,7 @@ import {
   toast, refresh, oops, workMark, type JobData, write, jobPath, field, stopJob, type ChatCtx, threadFor, mine, theirs, reportable, MOSS, askCode,
   noProject, head, half, glyph, G, statusLine, linesOf, ASIDE, nothingHere,
 } from "./parts.js";
+import { toProject } from "../code/parts.js";
 
 /** A yes that the server may first answer with a question ({ needsApproval, approvalId }): say it again with the id. */
 function twoStep(path: string, ok: string): ActionSpec {
@@ -276,7 +277,7 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
   return page(ctx, {
     nav: "code", title: "Xode", gap: 18,
     body: [
-      withPushCheck(ctx, head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) })),
+      withPushCheck(ctx, head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, back: toProject(c.projectId), ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) })),
       // In the Xode flow the plan is the first message; else, a word on what the chat is for.
       ...(talk.length ? talk : plan ? [] : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
       ...(plan ? [plan, ...(handedOver ? notifyWhenDone(ctx) : []), stopConfirm()] : nextMoves(ctx, c, nextOf(turns, p))),
@@ -308,7 +309,8 @@ function jobPhone(ctx: BotsCtx, d: JobData) {
   return page(ctx, {
     nav: "code", title: job.task, gap: 22,
     body: [
-      withPushCheck(ctx, head({ title: job.task, sub: statusLine(job, ctx.live.now) })),
+      // A job is opened from the project, the overview, Work or a notice, and its parent is the same place each time.
+      withPushCheck(ctx, head({ title: job.task, sub: statusLine(job, ctx.live.now), back: toProject(job.projectId) })),
       labelled(stages(STAGES, stage, MOSS), `Step ${Math.min(stage + 1, 5)} of 5: ${STAGES[Math.min(stage, 4)]}`),
       workList(linesOf(d, 4)),
       ...(q ? [q] : []),
@@ -372,6 +374,8 @@ function jobDesk(ctx: BotsCtx, data: ChatData) {
   if (data.xode && !data.job && !data.xode.gate.open) return gatePage(ctx, c, data.xode.gate);
   return page(ctx, {
     nav: "code", title: data.job?.job.task ?? "Xode", maxWidth: 1400, fixed: true,
+    // Up to the project, as on the phone: the window's own back must not walk the trail either.
+    back: toProject(c.projectId),
     body: [row([chatPane(ctx, data, c), ...(data.job && data.job.agent?.report?.outcome !== "answer" ? [jobAside(ctx, data.job)] : [])], { alignItems: "stretch", flexGrow: 1, flexShrink: 1, minHeight: 0 })],
     state: { msg: "", said: null, earlier: false, earlierBefore: false, flowed: null },
   });

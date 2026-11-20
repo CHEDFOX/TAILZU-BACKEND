@@ -19,7 +19,7 @@
  *
  * The phone and the window alike; `page()` picks the frame.
  */
-import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, chips, col, divider, emptyState, grow, icon, listCard,
   listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
@@ -29,6 +29,7 @@ import { screen, type BotsScreen } from "../../registry.js";
 import { field, inputBox, isDesk, sendField } from "./parts.js";
 import { searchField, searchLine } from "../keybotParts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
+import { lingoTopic } from "../../../../live/topics.js";
 import type { Exercise } from "../../../../lingo/session.js";
 import type { Gesture, Mastery, Performance } from "../../../../lingo/set.js";
 import type { Learner } from "../../../../lingo/types.js";
@@ -49,7 +50,11 @@ export interface TerritoryData { courses: CourseView[] }
 export interface LanguageRow { tag: string; name: string; en: string }
 export interface PickerData { from: string | null; fromName: string | null; suggested: LanguageRow[]; languages: LanguageRow[] }
 /** A set, and what the language is called so a prompt can name it. */
-export interface SetData { exercises: Exercise[]; progress: Progress; mastery: Mastery; name?: string }
+export interface SetData {
+  exercises: Exercise[]; progress: Progress; mastery: Mastery; name?: string;
+  /** Their first unit is being written right now (POST /v1/lingo/session). Only ever sent with no exercises. */
+  building?: boolean;
+}
 
 const toast = (message: string, tone?: "error"): ActionRef => ({ kind: "toast", message, ...(tone ? { tone } : {}) });
 
@@ -92,9 +97,12 @@ function courseCard(ctx: BotsCtx, c: CourseView): Node {
     // No meter on a course with nothing in it: "0% of what you've met" is a measurement of nothing, drawn as a fact.
     ...(c.progress.items ? [meter(c.mastery.held, 1, { label: `${held}% of what you've met, you'd still have now`, color: look(ctx).color, height: 6 })] : []),
     meta(countsLine(c.progress), { size: 13 }),
-    // A course with nothing in it is offered the thing that actually works, not a lesson that has nothing to ask.
+    // A COURSE WITH NOTHING IN IT STILL GOES TO THE LESSON, because opening one is what makes the first unit for
+    // this pair (POST /v1/lingo/session walks the path). This used to offer the chat instead, from before the path
+    // existed, when an empty course really did have nothing to ask — and that was the whole reason a new language
+    // never got any lessons: the one screen that builds the first unit was the one screen the card never opened.
     c.progress.items === 0
-      ? primaryButton("Start by talking", open(SCREENS.chat, { slug: LINGO_SLUG }))
+      ? primaryButton("Start learning", open(SCREENS.lingoSet, { target: c.target }))
       : c.progress.due || c.progress.unseen
         ? primaryButton("Continue", open(SCREENS.lingoSet, { target: c.target }))
         : secondaryButton("Practise anyway", open(SCREENS.lingoSet, { target: c.target })),
@@ -166,6 +174,9 @@ function languageRow(l: LanguageRow, forFrom?: { target: string; name: string })
 
 // ===================================================================== a unit finished
 
+/** Whether the unit after this one can be asked for yet (GET /v1/lingo/next). */
+export interface NextUp { ready: boolean; unit?: string; goal?: string; at?: number; of?: number }
+
 export interface DoneData {
   unit: string;
   goal: string;
@@ -188,13 +199,18 @@ export interface DoneData {
  * The bot's gesture is THIS unit's own, so the first and the fourteenth do not feel identical, and the four units
  * that end a level get the big one.
  */
-export function doneScreen(ctx: BotsCtx, d: DoneData, target: string): Node[] {
+export function doneScreen(ctx: BotsCtx, d: DoneData, target: string, next?: NextUp): Node[] {
   const live = ctx.live.bots.find((b) => b.slug === LINGO_SLUG);
+  // THE NEXT UNIT IS BEING WRITTEN WHILE THIS IS ON SCREEN (routes/bots/lingo.ts, the set's end). So the moment
+  // runs on a LOOP rather than once, and Continue is not drawn yet: the few seconds a model takes are spent being
+  // congratulated instead of staring at a screen with nothing on it, which is where they used to be spent — at
+  // the start of the next session, with the unit made only once they had asked for it.
+  const waiting = !!next && !next.ready;
   const bot = canBuddy(ctx) ? [botBuddy({
     kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
     height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
     state: live?.working ? "working" : "idle", label: "Lingo",
-    ...botMoment(ctx, d.mark, "once"),
+    ...botMoment(ctx, d.mark, waiting ? "loop" : "once"),
   })] : [];
   const earlier = d.canDo.slice(0, -1);
   return [
@@ -207,7 +223,11 @@ export function doneScreen(ctx: BotsCtx, d: DoneData, target: string): Node[] {
           ...earlier.slice(-6).reverse().map((g) => row([icon("check", { size: 14, color: C.meta }), text(g, { size: 14, color: C.grey70, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" })),
         ], { gap: 8 })]
       : []),
-    primaryButton("Keep going", open(SCREENS.lingoSet, { target })),
+    // Stop for now is always there — waiting for the next unit must never be a room with no door — but Keep going
+    // arrives with the unit, so it never opens a set that has nothing to ask.
+    ...(waiting
+      ? [meta(`Lining up ${next?.goal ? "what's next" : "the next one"}…`, { size: 13 })]
+      : [primaryButton("Keep going", open(SCREENS.lingoSet, { target }))]),
     quietButton("Stop for now", open(SCREENS.lingo)),
   ];
 }
@@ -292,8 +312,11 @@ export function whyScreen(ctx: BotsCtx, target: string, name: string): Node[] {
   // exactly the assumption this app does not make.
   const from = String(ctx.params?.from ?? "");
   const fromName = String(ctx.params?.fromName ?? "");
+  // STRAIGHT INTO THE FIRST EXERCISE. Landing on the territory meant a card to read and another button to find
+  // before anything was learned; the answer to "what's it for?" is the last thing anybody wants to answer twice.
+  // `replace` so Back from the set goes to their languages and not round the picker again.
   const begin = (why: unknown, whyNote: unknown): ActionRef => call("PUT", `${PATH}/course`, { target, why, whyNote, ...(from ? { from } : {}) }, {
-    ok: seq(toast(`Learning ${name}`), { kind: "navigate", screenId: SCREENS.lingo, replace: true }),
+    ok: seq(toast(`Learning ${name}`), { kind: "navigate", screenId: SCREENS.lingoSet, params: { target }, replace: true }),
     fail: toast("Couldn't start that one. Try again in a moment.", "error"),
   });
   return [
@@ -491,10 +514,41 @@ function markRow(): Node {
   ], { gap: 8 }));
 }
 
+/**
+ * STILL BEING WRITTEN. A third empty, and the only one that ENDS BY ITSELF: they started the course a moment ago and
+ * the unit for their pair is being made (a model call, once per pair, ever).
+ *
+ * So it has no button and nothing to read. There is nothing for them to decide, and a button that only means "ask
+ * again" is the app putting its own not-knowing in front of the person — it makes somebody who is already waiting do
+ * the waiting's work. An explanation of our model call is ours to carry too, not theirs to read.
+ *
+ * What there is instead is Lingo, muttering over it: `l.mutter` is its own idling, conjugations under its breath
+ * with letter tiles drifting up, and it is exactly what is happening. The screen listens on the course's topic
+ * (src/live/topics.ts) and the server says when the unit has settled, so this swaps itself for the first exercise
+ * where it stands — the reload is quiet, and the exercise simply appears under him.
+ *
+ * A build that cannot draw him still says what is happening rather than nothing.
+ */
+function building(ctx: BotsCtx): Node[] {
+  if (!canBuddy(ctx)) return [emptyState({ pose: "think", title: "Getting your first lesson ready" })];
+  return [
+    col([
+      botBuddy({
+        kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
+        height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
+        state: "working", lookTo: "down", label: "Lingo",
+        ...botMoment(ctx, "l.mutter", "loop"),
+      }),
+      text("Getting your first lesson ready", { size: 16, weight: 600, align: "center" }),
+    ], { gap: 12, padding: 24, style: { alignItems: "center" } }),
+  ];
+}
+
 export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefined): Node[] {
   const exs = data?.exercises ?? [];
   if (!exs.length) {
-    // TWO DIFFERENT EMPTIES, and telling somebody the wrong one is how this screen read as broken. "Nothing due"
+    if (data?.building) return building(ctx);
+    // THREE DIFFERENT EMPTIES, and telling somebody the wrong one is how this screen read as broken. "Nothing due"
     // means they have met things and are holding them. A course with NOTHING IN IT has not earned that sentence:
     // they picked a language a minute ago and are being told they are up to date on a language they cannot speak.
     // It happens whenever the shared bank has no sentences for the pair yet, which is every pair nobody has poured
@@ -519,15 +573,52 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
       }),
     ];
   }
-  const first = exs[0]!;
-  return [
-    row([meta(`1 of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
-    meter(1, exs.length, { color: look(ctx).color, height: 4 }),
-    ...exerciseBody(first, target, data?.name?.trim() ?? ""),
+  const lang = data?.name?.trim() ?? "";
+  const last = exs.length - 1;
+
+  // THE APP REPORTS NOTHING. Every answer was marked and written into the set by the server as it was given
+  // (/v1/lingo/answer, migration 0109), so closing a set off sends which course and nothing else. An app that
+  // handed its own list back would be the one message in Lingo that could say "I was right".
+  const clear: ActionSpec[] = [{ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }];
+
+  /**
+   * THE END OF THE SET, and the only time the server is asked anything between the first exercise and the last.
+   * What comes back decides all three of: whether the bot celebrates (and it does NOT for a set that went badly —
+   * set.ts gestureFor), whether a unit was finished, and the shape of the next set, which the next session is
+   * asked for by name so the difficulty follows the person instead of starting fresh every time.
+   */
+  const finish = (): ActionRef => seq(
+    ...clear,
+    call("POST", `${PATH}/set`, { target }, {
+      assignTo: "done",
+      ok: seq(
+        { kind: "condition", if: { truthy: "done.gesture.cheer" }, then: { kind: "confetti" } },
+        {
+          kind: "condition", if: { truthy: "done.finished" },
+          then: { kind: "navigate", screenId: SCREENS.lingoDone, replace: true, params: { target, done: "$state.done.finished" } },
+          else: { kind: "navigate", screenId: SCREENS.lingoSet, replace: true, params: { target, shape: "$state.done.next" } },
+        },
+      ),
+      // Nothing is lost that mattered: each answer was marked and scheduled the moment it was given.
+      fail: toast("Couldn't close off that set. Every answer in it already counted.", "error"),
+    }),
+  );
+
+  /**
+   * THE WHOLE SET IS IN THE TREE and the one they are on is the one drawn. A set is a dozen exercises handed over
+   * at once (session.ts), so moving to the next is not a trip to the server — it used to refetch the session and
+   * draw ITS first exercise, which is why the counter read "1 of 12" for ever and no set ever ended.
+   */
+  const step = (ex: Exercise, i: number): Node => when({ eq: ["$state.i", i] }, col([
+    row([meta(`${i + 1} of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
+    meter(i + 1, exs.length, { color: look(ctx).color, height: 4 }),
+    ...exerciseBody(ex, target, lang),
     markRow(),
-    // The whole set is handed over at once, so Continue is the server's word on what comes next, not the app's guess.
-    when({ truthy: "mark" }, primaryButton("Next", seq({ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }, { kind: "refresh" }))),
-  ];
+    when({ truthy: "mark" }, primaryButton(i === last ? "Finish" : "Next",
+      i === last ? finish() : seq(...clear, { kind: "incrementState", path: "i", by: 1 }))),
+  ], { gap: 14 }));
+
+  return exs.map(step);
 }
 
 // ===================================================================== the screens
@@ -565,7 +656,12 @@ export const LINGO_SCREENS: BotsScreen[] = [
   }),
   screen<SetData>({
     id: SCREENS.lingoSet,
-    load: (ctx, deps) => deps.api<SetData>("POST", `${PATH}/session`, { target: String(ctx.params?.target ?? "") }),
+    // `shape` is what the LAST set earned (set.ts shapeNext), handed back by name so the difficulty follows the
+    // person. Without it every set is the first of a sitting and a struggling day is asked as much as a flying one.
+    load: (ctx, deps) => deps.api<SetData>("POST", `${PATH}/session`, {
+      target: String(ctx.params?.target ?? ""),
+      ...(ctx.params?.shape ? { shape: ctx.params.shape } : {}),
+    }),
     build: (ctx, data) => page(ctx, {
       nav: LINGO_SLUG,
       title: "Lingo",
@@ -574,7 +670,14 @@ export const LINGO_SCREENS: BotsScreen[] = [
       body: setScreen(ctx, String(ctx.params?.target ?? ""), data),
       // Mid-lesson is exactly when somebody wants a word, and Continue puts them back on this set.
       footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingoSet)],
-      state: { said: "", mark: null, say: "" },
+      // ONLY WHILE IT IS WAITING. The screen hears that the unit has settled and reloads into the first exercise,
+      // which is what lets the waiting screen have no button on it. Listening at any other time would mean a set
+      // could be pulled out from under somebody mid-exercise, so the topic is named on no other screen and at no
+      // other moment.
+      ...(data?.building ? { live: [lingoTopic(String(ctx.params?.target ?? ""))] } : {}),
+      // `i` is how far through the set they are. That is all the app keeps of a set: the answers themselves are
+      // the server's, written as they were marked.
+      state: { i: 0, said: "", mark: null, say: "" },
     }),
   }),
   screen({
@@ -588,24 +691,35 @@ export const LINGO_SCREENS: BotsScreen[] = [
       state: { why: "", note: "" },
     }),
   }),
-  screen({
+  screen<NextUp>({
     id: SCREENS.lingoDone,
-    build: (ctx) => page(ctx, {
-      nav: LINGO_SLUG,
-      title: "Done",
-      back: open(SCREENS.lingo),
-      backTitle: "Languages",
-      body: doneScreen(ctx, {
-        unit: String(ctx.params?.unit ?? ""),
-        goal: String(ctx.params?.goal ?? ""),
-        mark: String(ctx.params?.mark ?? "celebrate"),
-        at: Number(ctx.params?.at ?? 1),
-        of: Number(ctx.params?.of ?? 24),
-        canDo: String(ctx.params?.canDo ?? "").split("\u0000").filter(Boolean),
-      }, String(ctx.params?.target ?? "")),
-      footer: [askBar(ctx, String(ctx.params?.target ?? ""), SCREENS.lingo)],
-      state: { say: "" },
-    }),
+    // The one thing on this screen that changes: whether the unit being written under the celebration is done.
+    load: (ctx, deps) => deps.api<NextUp>("GET", `${PATH}/next?target=${encodeURIComponent(String(ctx.params?.target ?? ""))}`),
+    build: (ctx, data) => {
+      // The set's end hands the whole `finished` object over; the older shape, one param each, still reads.
+      const f = (ctx.params?.done ?? null) as Record<string, unknown> | null;
+      const at = f ?? (ctx.params ?? {});
+      const list = at["canDo"];
+      const target = String(ctx.params?.target ?? "");
+      return page(ctx, {
+        nav: LINGO_SLUG,
+        title: "Done",
+        back: open(SCREENS.lingo),
+        backTitle: "Languages",
+        body: doneScreen(ctx, {
+          unit: String(at["unit"] ?? ""),
+          goal: String(at["goal"] ?? ""),
+          mark: String(at["mark"] ?? "celebrate"),
+          at: Number(at["at"] ?? 1),
+          of: Number(at["of"] ?? 24),
+          canDo: Array.isArray(list) ? list.map(String) : String(list ?? "").split("\u0000").filter(Boolean),
+        }, target, data),
+        footer: [askBar(ctx, target, SCREENS.lingo)],
+        // Listening only while the next unit is being written, as on the set screen: this is what brings Continue.
+        ...(data && !data.ready ? { live: [lingoTopic(target)] } : {}),
+        state: { say: "" },
+      });
+    },
   }),
   screen({
     id: SCREENS.lingoSaid,

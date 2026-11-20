@@ -94,6 +94,11 @@ describe("the project brain in the home's words", () => {
     expect(health(brain)).toMatchObject({ line: "212 of 215 tests pass", passed: 212, total: 215, failingCount: 3 });
     expect(stackChips(brain)).toEqual(["Next.js", "Supabase", "TypeScript", "1,284 files"]);
     expect(firstTasks(brain).map((t) => t.label)).toEqual(["Fix the 3 failing tests", "Add tests to Checkout"]);
+    // ONLY ONE of them, however many busy untested files there are: three "Add tests to X" rows are three first
+    // tasks that are one first task, and they crowd out every other kind of start.
+    const untested = { ...brain, structure: { ...brain.structure, testing: { ...brain.structure!.testing!, untestedHot: ["src/a.tsx", "src/b.tsx", "src/c.tsx"] } } };
+    const labels = firstTasks(untested as never).map((t) => t.label).filter((l) => l.startsWith("Add tests"));
+    expect(labels.length).toBe(1);
     expect(testsLine({ status: "ready", structure: { fileCount: 3, testing: { frameworks: [], testFiles: 0, untestedHot: [] } } })).toBe("no tests yet · I can add some");
     expect(health({ status: "building" })).toBeNull();
     expect(isEmptyRepo({ status: "ready", structure: { fileCount: 0, note: "This repo has no commits yet." } })).toBe(true);
@@ -160,6 +165,45 @@ describe("the screens, for the phone and the window", () => {
       expect(json).toContain("/v1/bots/code/start");
       expect(json).toContain('"bots.code.rules"');
     });
+    /**
+     * OPENING XODE IS THE LIST, with one project or eight. It used to drop somebody with exactly one straight
+     * into that project, so a project's own page doubled as the bot's front door — it met them with one
+     * project's branch, book and rules, and the list, the only place carrying the two ways to another project,
+     * could not be reached until there were two.
+     */
+    it(`bots.code (${client}): opening it is the list, however many projects there are`, async () => {
+      const alone = { ...API, "GET /v1/code/projects": { projects: [project] } };
+      const one = await build("bots.code", client, {}, alone);
+      expect(one.lint).toEqual([]);
+      // The list, not that one project's page: none of its own things are here.
+      expect(one.json).not.toContain('"bots.code.rules"');
+      expect(one.json).not.toContain('"bots.code.book"');
+      // TWO WAYS ON, each saying what it does. A row naming both and opening only the picker — a list of repos
+      // they already own — left somebody with no repo to bring nowhere to go.
+      expect(one.words).toContain("Add a project");
+      expect(one.json).toContain('"screenId":"bots.code.start","params":{"step":"pick"}');
+      expect(one.json).toContain('"screenId":"bots.code.new"');
+      // A project's page is reached by naming the project, and that is where its own things live.
+      const inside = await build("bots.code", client, { project: P }, alone);
+      expect(inside.json).toContain('"bots.code.rules"');
+      expect(inside.words, "and it carries no way to add another: the list is one tap up").not.toContain("Add a project");
+    });
+
+    /**
+     * BACK IS A PLACE, NOT A TRAIL. Every screen here used to pop, so Back walked somebody out the way they came
+     * in — project, job, project, task, overview, project — when what they wanted was out of the bot.
+     */
+    it(`bots.code (${client}): the list leaves Xode, a project goes up to it, a job to its project`, async () => {
+      // On the phone the list is Xode's home, so its Back is the way out of the bot. The window leaves by its own
+      // nav down the side and draws no back bar on a bot's home at all.
+      const list = await build("bots.code", client, {});
+      if (client === "phone") expect(list.json, "the list's Back is the way out").toContain('"screenId":"bots.home"');
+      const inside = await build("bots.code", client, { project: P });
+      expect(inside.json, "a project is one step under the list").toContain('"screenId":"bots.code"');
+      const job = await build("bots.code.job", client, { id: J });
+      expect(job.json, "a job is reached from four places and goes up to the one parent it has").toContain(`"screenId":"bots.code","params":{"project":"${P}"}`);
+    });
+
     it(`bots.code.start meet / pick / read (${client})`, async () => {
       const meet = await build("bots.code.start", client, { step: "meet" }, { ...API, "GET /v1/code/github": { connected: false, installations: [] }, "POST /v1/code/github/connect": { installUrl: "https://github.com/apps/tailzu/installations/new?state=s" } });
       expect(meet.lint).toEqual([]);

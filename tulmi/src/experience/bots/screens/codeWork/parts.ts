@@ -15,6 +15,7 @@ import {
   picture,
 } from "../../kit.js";
 import { reportAnswer } from "../../reportAction.js";
+import { toProject } from "../code/parts.js";
 
 export const CODE = botLook("code");
 export const MOSS = CODE.color;
@@ -386,7 +387,9 @@ export function donePhone(ctx: BotsCtx, d: DoneData) {
   return page(ctx, {
     nav: "code", title: answer ? "Answered" : "Shipped", gap: 24,
     body: [
-      row([backButton(), text(j.job.task, { size: 15, color: C.meta, lineHeight: 20, lines: 1, style: { flexShrink: 1 } })], { gap: 4 }),
+      // Up to the project, not back down the trail: a job can be opened from the project, the overview, Work or a
+      // notice, and its parent is the same place whichever way they came (code/parts.ts).
+      row([backButton(toProject(j.job.projectId)), text(j.job.task, { size: 15, color: C.meta, lineHeight: 20, lines: 1, style: { flexShrink: 1 } })], { gap: 4 }),
       col([
         doneMark(96),
         text(answer ? "Answered." : "Shipped.", { size: 34, weight: 700, tracking: -0.8, lineHeight: 40, align: "center" }),
@@ -409,7 +412,7 @@ export function doneDesk(ctx: BotsCtx, d: DoneData) {
   return page(ctx, {
     nav: "code", title: answer ? "Answered" : "Shipped", gap: 26, maxWidth: 1040,
     body: [
-      row([backButton(), text(`${j.job.task} · `, { size: 15, color: C.meta, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }), mono(projectName(j.project), { size: 13 })], { gap: 4 }),
+      row([backButton(toProject(j.job.projectId)), text(`${j.job.task} · `, { size: 15, color: C.meta, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }), mono(projectName(j.project), { size: 13 })], { gap: 4 }),
       row([
         blip("done", 150),
         col([

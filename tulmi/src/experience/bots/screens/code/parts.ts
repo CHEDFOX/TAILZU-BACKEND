@@ -7,8 +7,46 @@ import type { BrainLite } from "../../../../botsCode/brain.js";
 import { start as momentStart, SENT_WORDS, failed, streamed, askMoment } from "../../askMoment.js";
 import {
   botLook, labelled, box, icon, back, row, text, C, type BotsCtx, col, title, FACE, page, emptyState, seq, call, SCREENS, keptOffline,
-  canBuddy, botBuddy, meta, grow,
+  canBuddy, botBuddy, meta, grow, open,
 } from "../../kit.js";
+
+/**
+ * THE TWO WAYS TO ANOTHER PROJECT, and they belong on a PROJECT'S OWN PAGE as much as on the overview.
+ *
+ * Somebody with one project never sees the overview: with exactly one, that project IS Xode's home (code.ts
+ * loadHome). So both ways used to sit on screens they could not reach, and the second project could not be added
+ * until there was a second project.
+ *
+ * TWO ACTIONS AND NOT ONE, because they are two different things and a single row cannot honestly do both. This
+ * was one row reading "Add a project · or start one from scratch" that opened the picker — which lists the repos
+ * on their GitHub and has no way to start anything. The window's own header has had them as two buttons all along.
+ *
+ *   Add a project      the picker: repos they already have. The same one the first project came through, and it
+ *                      is built to be come back to — one already added shows as "added" and opens instead.
+ *   From scratch       bots.code.new: they name a repo, X0 Bot MAKES it on their GitHub (POST /v1/code/repos/new,
+ *                      a blink on GitHub to check it is them) and it is added — then the plan is written in it.
+ *                      Nothing has to exist first, which is the answer for somebody who has no repo to bring.
+ */
+/**
+ * OUT OF XODE, and back to a project's own page: the two places Back ever means, inside this bot.
+ *
+ * Every screen here used to POP — `navigateBack` with nothing said about where. So Back walked somebody out the
+ * way they came in: project, job, project, task, overview, project… a trail the length of their visit, when what
+ * they wanted was out. A screen that says where its Back goes turns that trail into a tree, and the way out of
+ * the bot is never more than two taps from anywhere in it.
+ */
+export const outOfCode = (): ActionRef => open(SCREENS.home);
+/** A project's own page, which is the parent of every screen that is about one job, one PR or one set of rules. */
+export const toProject = (id: string): ActionRef => open(SCREENS.code, { project: id });
+
+export const addProjectRow = (): Node =>
+  col([
+    row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project", { size: 14, color: C.grey70, lineHeight: 19 })],
+      { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
+      open(SCREENS.codeStart, { step: "pick" })),
+    col([text("Or start one from scratch", { size: 13, weight: 500, lineHeight: 18 }), meta("A new repo, made from here", { size: 13 })],
+      { gap: 1, paddingHorizontal: 16, paddingVertical: 4 }, open(SCREENS.newProject)),
+  ], { gap: 6 });
 
 // ===================================================================== what the routes answer (as much as is read)
 export interface Project { id: string; fullName: string; defaultBranch: string; private: boolean; createdAt: number }

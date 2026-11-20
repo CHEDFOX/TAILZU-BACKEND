@@ -9,7 +9,7 @@ import {
 } from "../../kit.js";
 import {
   type Project, type PrStatus, unreachable, short, plural, clock, cut, mergeAction, toast, REFRESH, head, subLine, CODE, tag, MOSS,
-  withAside,
+  withAside, toProject,
 } from "./parts.js";
 
 export interface CarePull {
@@ -52,7 +52,7 @@ export function prCare(ctx: BotsCtx, d: CareData | undefined): ScreenResponse {
   const n = d.pull?.prNumber ?? d.pr?.number ?? (Number(ctx.params.pr) || 0);
   if (!d.branch || (!d.pull && !d.pr)) {
     return page(ctx, {
-      back: true, nav: "code", title: `PR #${n}`,
+      back: toProject(p.id), nav: "code", title: `PR #${n}`,
       body: [emptyState({ pose: "think", title: n ? `I'm not looking after PR #${n}` : "No pull request here", body: d.careOff ? "Looking after pull requests isn't switched on here yet." : "It may be closed, or not one of mine.", action: { label: `Back to ${name}`, onPress: open(SCREENS.code, { project: p.id }) } })],
     });
   }
