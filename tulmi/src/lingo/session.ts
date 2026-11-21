@@ -139,9 +139,41 @@ function shuffle<T>(xs: readonly T[], seed: string): T[] {
  * filler — a choice nobody can learn from is not a question.
  */
 function others(item: LingoItem, pool: readonly LingoItem[], seed: string): string[] {
-  const same = pool.filter((p) => p.item !== item.item && p.kind === item.kind);
-  const rest = pool.filter((p) => p.item !== item.item && p.kind !== item.kind);
-  return shuffle([...same, ...rest], seed).slice(0, 3).map((p) => p.item);
+  return beside(item, pool, seed).map((p) => p.item);
+}
+
+/**
+ * WHAT A NEW WORD IS SHOWN BESIDE, and it decides whether the question can be answered at all.
+ *
+ * The wrong answers were drawn from the whole course, met or not. On the first day that means eight brand-new
+ * words offered against each other: nothing on the screen is known, so nothing is identifiable and every question
+ * is a guess. It reads as an app that assumes you already speak the language, because it is one.
+ *
+ * MET WORDS COME FIRST. Put a new word among three it has already learned and the new one is identifiable by
+ * elimination — which is the whole mechanism by which immersion teaches without translating. Each new word then
+ * arrives leaning on the ones before it, and needs less telling as the course goes on.
+ *
+ * Still the same kind of thing first (a word against words), because a choice between a word and a whole phrase
+ * is answered by its shape rather than its meaning. Unmet words fill in behind, for the first lesson of all,
+ * where there is nothing met to stand beside.
+ */
+function beside(item: LingoItem, pool: readonly LingoItem[], seed: string): LingoItem[] {
+  const mine = pool.filter((p) => p.item !== item.item);
+  const met = (p: LingoItem) => p.memory.state !== "new";
+  const rank = [
+    mine.filter((p) => met(p) && p.kind === item.kind),
+    mine.filter((p) => met(p) && p.kind !== item.kind),
+    mine.filter((p) => !met(p) && p.kind === item.kind),
+    mine.filter((p) => !met(p) && p.kind !== item.kind),
+  ];
+  const out: LingoItem[] = [];
+  for (const group of rank) {
+    for (const p of shuffle(group, seed)) {
+      if (out.length >= 3) return out;
+      out.push(p);
+    }
+  }
+  return out;
 }
 
 /**
@@ -169,11 +201,9 @@ export function gapIn(text: string, item: string): string | null {
   return at < 0 ? null : text.slice(0, at) + GAP + text.slice(at + item.length);
 }
 
-/** Up to three other meanings to offer beside the right one, taken from the person's own course so they are plausible. */
+/** Up to three other meanings to offer beside the right one: the words they have MET first (see `beside`). */
 function distractors(item: LingoItem, pool: readonly LingoItem[], seed: string): string[] {
-  const same = pool.filter((p) => p.item !== item.item && p.kind === item.kind && p.gloss.trim());
-  const other = pool.filter((p) => p.item !== item.item && p.kind !== item.kind && p.gloss.trim());
-  return shuffle([...same, ...other], seed).slice(0, 3).map((p) => p.gloss);
+  return beside(item, pool.filter((p) => p.gloss.trim()), seed).map((p) => p.gloss);
 }
 
 /** One item turned into the exercise it has earned. */

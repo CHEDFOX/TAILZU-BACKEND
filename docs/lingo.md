@@ -347,6 +347,23 @@ walked it, and the territory card sent a course with no words to the chat instea
 reached, never made, and a new language sat at nothing for ever: no words, so no lesson; no lesson, so no words.
 The card opens the lesson now whatever the course holds, because opening one is what makes it.
 
+## 9d. What a new word is shown beside
+
+The wrong answers used to be drawn from the whole course, met or not. On the first day that means eight
+brand-new words offered against each other: nothing on the screen is known, nothing is identifiable, and every
+question is a guess between strangers. It reads as an app that assumes you already speak the language, because
+it is one.
+
+**A new word stands among the ones they have met** (`session.ts` `beside`). Put it beside three it has learned
+and the new one can be worked out by elimination — which is the whole mechanism by which immersion teaches a
+word without translating it. Each new word then leans on the ones before it, and needs less telling as the
+course goes on. Still the same kind of thing first, a word against words, because a choice between a word and a
+whole phrase is answered by its shape rather than its meaning; unmet words fill in behind, for the first lesson
+of all, where there is nothing met to stand beside.
+
+What this does NOT fix is the very first encounter, where nothing has been met and there is nothing to
+eliminate against. That wants the word shown before it is asked for — see the note in WORKING-ON.md.
+
 ## 10. The order a session is put in
 
 Which words to ask is the scheduler's business. **The order they are asked in is a different question with its own

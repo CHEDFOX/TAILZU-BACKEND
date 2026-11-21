@@ -138,6 +138,30 @@ describe("what a session reaches for", () => {
     expect(ex.options[ex.correct]).toBe("ga");
   });
 
+  /**
+   * A NEW WORD STANDS AMONG THE ONES THEY HAVE MET. The wrong answers used to come from the whole course, met or
+   * not, so the first lesson offered eight brand-new words against each other: nothing on the screen was known,
+   * nothing was identifiable, and every question was a guess. Put a new word among three it has learned and the
+   * new one can be worked out by elimination, which is how a word is taught without being told.
+   */
+  it("offers the meanings they have MET beside a new word, before any they have not", () => {
+    const seen = (g: string) => item({ item: `s-${g}`, gloss: g, memory: { ...freshMemory(T0), state: "review", stability: 40, difficulty: 5, reps: 4, lastMs: T0 } });
+    const fresh = (g: string) => item({ item: `f-${g}`, gloss: g });
+    const target = item({ item: "hola", gloss: "hello" });
+    const pool = [target, fresh("dog"), fresh("duck"), fresh("rain"), seen("bye"), seen("please"), seen("sorry")];
+    const ex = exerciseFor(target, pool, T0, "choose");
+    expect(ex.options).toContain("hello");
+    // The three it was met with are the three it knows; nothing it has never seen is on the screen.
+    expect([...ex.options].sort()).toEqual(["bye", "hello", "please", "sorry"]);
+  });
+
+  it("falls back to words they have not met, for the very first lesson where nothing is known", () => {
+    const target = item({ item: "hola", gloss: "hello" });
+    const pool = [target, item({ item: "a", gloss: "dog" }), item({ item: "b", gloss: "duck" })];
+    const ex = exerciseFor(target, pool, T0, "choose");
+    expect([...ex.options].sort()).toEqual(["dog", "duck", "hello"]);
+  });
+
   it("hands the words over shuffled for putting in order, and keeps every one", () => {
     const phrase = item({ item: "one two three four", kind: "phrase", gloss: "a phrase" });
     const ex = exerciseFor(phrase, [phrase], T0, "chips");
