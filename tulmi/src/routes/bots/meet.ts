@@ -4,8 +4,12 @@
  *
  *   GET    /v1/meet/overview                          the live, upcoming and recent meetings, the settings, today's minutes; for a space's
  *                                                     admin, their members' meetings too and who they may send the bot for
- *   POST   /v1/meet/join                              { url, title?, voice?, forUser? }: a bot sent into the call now (201); forUser, a
- *                                                     member's id: into that member's meeting, for them
+ *   POST   /v1/meet/join                              { url, title?, voice?, forUser?, day?, time?, tz?, botName? }: a bot sent into the
+ *                                                     call now (201), or booked for `day` ("YYYY-MM-DD") at `time` ("HH:MM") read in
+ *                                                     `tz` (the phone's offset in minutes); a time ten minutes off or nearer is joined
+ *                                                     at once, since Recall only holds a bot asked for further ahead. forUser, a
+ *                                                     member's id: into that member's meeting, for them. botName: the name it shows in
+ *                                                     the call, kept as theirs
  *   GET    /v1/meet/meetings/:id                      one meeting and what was asked of the bot in it (a member's, read only, for their admin)
  *   POST   /v1/meet/meetings/:id/leave                the bot leaves the call
  *   PUT    /v1/meet/meetings/:id                      { voice }: answers out loud, or in the chat, from now on
@@ -30,6 +34,7 @@ import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { getConfig } from "../../config.js";
+import { isDayKey, startOfDay } from "../../calendar/words.js";
 import { verifyRecall } from "../../meet/recall.js";
 import { stageHtml, stageHub } from "../../meet/stage.js";
 import type { MeetingDetail, MeetingView, MeetOverview, StageHub } from "../../meet/types.js";
@@ -38,7 +43,7 @@ import type { MeetSettings } from "../../meet/store.js";
 /** What the routes need of src/meet/service.ts's MeetService. */
 export interface MeetRoutesService {
   overview(userId: string, o: { calendar: boolean }): Promise<MeetOverview>;
-  join(userId: string, o: { url: string; title?: string; voice?: boolean; forUser?: string }): Promise<MeetingView>;
+  join(userId: string, o: { url: string; title?: string; voice?: boolean; forUser?: string; joinAt?: number; botName?: string }): Promise<MeetingView>;
   meeting(userId: string, id: string): Promise<MeetingDetail | null>;
   leave(userId: string, id: string): Promise<MeetingView>;
   setVoice(userId: string, id: string, on: boolean): Promise<MeetingView>;
@@ -67,6 +72,8 @@ const BASE = "/v1/meet";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
 const CLIP = /^[0-9a-f]{16}$/;
+/** A time of day, as the join card sends it. */
+const CLOCK = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const BODY_MAX = 256 * 1024;
 const SEEN_MAX = 2000;
 const PING_MS = 15_000;
@@ -126,10 +133,22 @@ export function registerMeetRoutes(app: FastifyInstance, deps: MeetRouteDeps): v
     // A member of a space the person is the admin of: the bot goes to that member's meeting, for them (the service checks whose).
     // The page sends its "For" chip as it is: "" (Me) is the person themselves, as no forUser is.
     if (b.forUser !== undefined && b.forUser !== "" && (typeof b.forUser !== "string" || !UUID.test(b.forUser))) return bad(reply, "forUser is someone's id.");
-    const input: { url: string; title?: string; voice?: boolean; forUser?: string } = { url: b.url.trim() };
+    if (b.botName !== undefined && (typeof b.botName !== "string" || b.botName.length > 40)) return bad(reply, "The name is too long.");
+    const input: { url: string; title?: string; voice?: boolean; forUser?: string; joinAt?: number; botName?: string } = { url: b.url.trim() };
     if (typeof b.title === "string") input.title = b.title;
     if (typeof b.voice === "boolean") input.voice = b.voice;
     if (typeof b.forUser === "string" && b.forUser) input.forUser = b.forUser;
+    if (typeof b.botName === "string") input.botName = b.botName.replace(/\s+/g, " ").trim();
+    // A day and a time to join at, read in the phone's own offset. Both or neither: a day without a time is no moment.
+    if (b.day !== undefined && b.day !== "") {
+      if (!isDayKey(b.day)) return bad(reply, "The day is a date like 2026-10-28.");
+      if (typeof b.time !== "string" || !CLOCK.test(b.time)) return bad(reply, "Say the time as 17:30.");
+      if (typeof b.tz !== "number" || !Number.isFinite(b.tz) || Math.abs(b.tz) > 16 * 60) return bad(reply, "tz is the phone's offset in minutes.");
+      const [h, m] = b.time.split(":");
+      const at = startOfDay(b.day, b.tz) + (Number(h) * 60 + Number(m)) * 60_000;
+      if (at <= (deps.now?.() ?? Date.now())) return bad(reply, "That time has passed.");
+      input.joinAt = at;
+    }
     try { return send(reply, { meeting: await got.s.join(got.user.id, input) }, 201); } catch (err) { return fail(reply, err); }
   });
 

@@ -422,6 +422,68 @@ Anything that changes, sends, deletes or pays is confirmed by the person first
 (`push.approval.*` in the control plane). What ran is in `assistant_audit`, with
 no message text.
 
+### A browser that belongs to the person (sites)
+
+Off by default (`CLOUD_BROWSER=false`), and off means no screen, no row and
+nothing kept. When on, somebody searches for a site by name in Connected apps,
+signs in to it themselves in a browser this server holds for them, and the bot
+reads what is behind that login — where the parcel is, what the bill is. It is
+**read only**: nothing in `src/sites/` can press, type or pay. The whole design
+is `docs/sites.md`, and it is worth reading before turning this on.
+
+1. **Migration.** `0098_site_sessions.sql`, which a deploy build runs by itself
+   (the Dockerfile's migrate stage) and which is already on the database if
+   `tulmi/supabase/LIVE_MIGRATION` is past 0098. Nothing to do by hand.
+2. **The key.** `CONNECTOR_TOKEN_KEY` must be set (step 2 of Connected apps
+   above). A session is encrypted with it exactly as a connector's token is;
+   with no key nothing is written at all and the sign-in fails loudly rather
+   than quietly keeping a secret in a table.
+3. **`WEB_BROWSER=local`.** This is the step that catches people out: the
+   switch below does nothing without it, because the panel needs a page HELD
+   open while somebody signs in and only the local engine can do that.
+   `WEB_BROWSER=cloudflare` cannot, having no Chrome of its own, and `off` (the
+   default) has no browser at all. A deploy build already carries Chromium
+   (`WITH_BROWSER=1` in `docker-compose.yml`), found on `PATH`, so nothing
+   needs `CHROME_PATH`. Building the image yourself without that arg, set
+   `CHROME_PATH` or put a `google-chrome` / `chromium` / `chromium-browser` on
+   `PATH`.
+4. `CLOUD_BROWSER=true`, then restart.
+
+**Check the boot log.** With the switch on and no local browser the server says
+so and carries on with sites off:
+
+```
+CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be "local" with Chrome): sites stay off.
+```
+
+Every sites route then answers 404 and Connected apps shows no row, which looks
+exactly like the feature not existing. If you see that line, it is step 3.
+
+Which sites are reachable is **the vetted catalog in `src/sites/catalog.ts`**
+plus anything in `CLOUD_BROWSER_SITES`. The catalog is what somebody can find
+by typing a name, and each entry carries that site's own sign-in page, so a
+search never sends anybody to a host nobody checked. `CLOUD_BROWSER_SITES` only
+ADDS hosts to that — empty adds none, which is the opposite of every other list
+in this config and is deliberate: a blank setting must never widen anything.
+Adding a site people can find is a change to that file, with a test beside it,
+not a line typed on a server.
+
+The other three:
+
+* `CLOUD_BROWSER_USERS` — a comma-separated list of account ids. Set, only
+  those accounts may use it; empty, the switch alone decides. **Use this
+  first**: let it run for a handful of accounts before everyone.
+* `CLOUD_BROWSER_WATCHES` — how many things one person may have watched at
+  once (6).
+* `CLOUD_BROWSER_EVERY_MIN` — the least minutes between two looks at the same
+  thing (20). A site that sees one look while a parcel is out reads as a
+  person; the same site seeing a heartbeat all day reads as a scraper, and a
+  shop that shuts a real person's account has cost them more than this feature
+  is worth.
+
+The phone needs no update: the sign-in panel is a page this server writes,
+drawn in the `LiveView` node the app already has.
+
 ### Apps people add by link
 
 Off by default (`CUSTOM_CONNECTORS=false`). When on, a person can paste any

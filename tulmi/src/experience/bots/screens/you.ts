@@ -14,6 +14,7 @@
  * Built with the kit (../kit.ts) the way screens/shell.ts builds bots.home; one id serves the phone and the window (ctx.client).
  */
 
+import { cloudBrowserOn, mayUseCloudBrowser } from "../../../sites/gate.js";
 import { sitesScreens } from "./sites.js";
 import { spaceScreens } from "./you/space.js";
 import { devicesScreens } from "./you/devicesPage.js";
@@ -517,6 +518,9 @@ function usedByNode(ctx: BotsCtx, names: string[], extra?: string): Node {
   ], { gap: 6 });
 }
 
+/** Whether this person gets the row to their own browser: the switch, and the list of who may use it (sites/gate.ts). */
+const browserFor = (ctx: BotsCtx): boolean => cloudBrowserOn() && mayUseCloudBrowser(ctx.user?.id ?? "");
+
 function appsPhone(ctx: BotsCtx, d: AppsData | undefined) {
   const head = [title("Connected apps"), meta("Bots only use what you allowed. Tap one to change it.", { size: 14, color: C.grey70 })];
   if (!d) return page(ctx, { back: true, nav: "you", title: "Connected apps", body: [...head, couldNot("your apps")] });
@@ -535,6 +539,14 @@ function appsPhone(ctx: BotsCtx, d: AppsData | undefined) {
       ...head,
       rows.length ? col([sectionLabel(`Connected · ${rows.length}`), listCard(rows)], { gap: 8 })
         : emptyState({ pose: "hello", title: "No apps yet", body: "Connect one and your bots can work in it for you." }),
+      // A shop or a service with no connector to offer: they sign in to it themselves, in a browser that is theirs
+      // (docs/sites.md). This is the only way in to it from the app; without it the screen exists and nothing reaches it.
+      ...(browserFor(ctx) ? [col([sectionLabel("Sites you sign in to"), listCard([listRow({
+        left: appIcon("Shopping"),
+        label: "Sign in to a site",
+        sub: "Shops and services with no app to connect — your orders, bills and parcels",
+        onPress: open(SCREENS.sites),
+      })])], { gap: 8 })] : []),
       ...(d.more.length ? [col([sectionLabel("Connect more"), listCard(d.more.slice(0, 4).map((a) => row([
         appIcon(a.category),
         col([text(a.name, { size: 15 }), meta(a.oneLine, { size: 12, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),

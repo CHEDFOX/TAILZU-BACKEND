@@ -6,13 +6,15 @@
  *
  *   on()            CLOUD_BROWSER. Off by default. Off means no screen, no row, nothing kept
  *   mayUse(userId)  CLOUD_BROWSER_USERS, when it names anyone. Empty means the switch alone decides
- *   siteAllowed()   CLOUD_BROWSER_SITES. **EMPTY MEANS NONE.** Every other list in this config is "empty means
+ *   siteAllowed()   the catalog (catalog.ts) and CLOUD_BROWSER_SITES. The env list is **EMPTY MEANS NONE**: it adds hosts and
+ *                   nothing more, so a blank one adds none. Every other list in this config is "empty means
  *                   everyone"; this one is the other way round on purpose. Nobody should be able to point a
  *                   signed-in browser at an arbitrary host because a setting was left blank
  *
  * The key matters too: the session is kept the way a connector's token is (connectors/crypto.ts) or it is not kept
  * at all, so with no CONNECTOR_TOKEN_KEY this is off however the switches are set.
  */
+import { catalogHosts } from "./catalog.js";
 import { getConfig } from "../config.js";
 
 function conf(): { on: boolean; users: string; sites: string; key: string | undefined } {
@@ -53,12 +55,20 @@ export function siteAllowed(host: string): boolean {
   if (!cloudBrowserOn()) return false;
   const h = host.trim().toLowerCase().replace(/\.$/, "");
   if (!h || h.includes("/") || h.includes(" ")) return false;
-  return listOf(conf().sites).some((a) => h === a || h.endsWith(`.${a}`));
+  return allowedSites().some((a) => h === a || h.endsWith(`.${a}`));
 }
 
-/** Every site this server allows at all, for a screen that lists them. */
+/**
+ * Every site this server allows at all: the ones a person can find by typing (catalog.ts, a reviewed list in
+ * code) and the ones an operator added on purpose (CLOUD_BROWSER_SITES). The switch still decides whether any of
+ * it exists, so CLOUD_BROWSER off is still nothing at all — what the catalog changes is that turning the switch
+ * on no longer needs a second list typed out before anybody can sign in to anything.
+ *
+ * The env list keeps its inverted meaning for what it covers: it adds hosts, and empty adds none.
+ */
 export function allowedSites(): string[] {
-  return cloudBrowserOn() ? listOf(conf().sites) : [];
+  if (!cloudBrowserOn()) return [];
+  return [...new Set([...catalogHosts(), ...listOf(conf().sites)])];
 }
 
 /** The host of a URL, lowercased and without a trailing dot; "" when it is not an http(s) address. */

@@ -20,7 +20,8 @@ process.env.CONNECTOR_TOKEN_KEY = Buffer.alloc(32, 7).toString("base64");
 
 const { Sites, SiteError } = await import("../src/sites/service.js");
 const { SiteStore } = await import("../src/sites/store.js");
-const { siteAllowed, hostOf } = await import("../src/sites/gate.js");
+const { siteAllowed, allowedSites, hostOf } = await import("../src/sites/gate.js");
+const { SITE_CATALOG, catalogHosts, searchSites } = await import("../src/sites/catalog.js");
 const { resetConfigForTests } = await import("../src/config.js");
 const { cardOf, looksSignedOut } = await import("../src/sites/read.js");
 import type { VisitOptions, VisitedPage } from "../src/web/browser/types.js";
@@ -48,7 +49,35 @@ describe("the gates", () => {
     expect(siteAllowed("SWIGGY.COM")).toBe(true);
     // The trick this is here to stop.
     expect(siteAllowed("swiggy.com.evil.net")).toBe(false);
-    expect(siteAllowed("zomato.com")).toBe(false);
+    // On neither list: not the catalog's, and not this server's own.
+    expect(siteAllowed("example.com")).toBe(false);
+    expect(siteAllowed("zomato.com.evil.net")).toBe(false);
+  });
+
+  it("the catalog is allowed without anybody listing it, and the env list still only adds", () => {
+    // zomato is nobody's CLOUD_BROWSER_SITES here: it is allowed because it is a reviewed entry in catalog.ts,
+    // which is what lets somebody find a site by typing its name. The switch still decides whether any of it exists.
+    expect(siteAllowed("zomato.com")).toBe(true);
+    expect(catalogHosts()).toContain("zomato.com");
+    expect(allowedSites()).toEqual(expect.arrayContaining([...catalogHosts(), "swiggy.com"]));
+  });
+
+  it("searching answers vetted entries only, each with that site's own sign-in page", () => {
+    const [hit] = searchSites("swiggy");
+    expect(hit).toMatchObject({ host: "swiggy.com", signIn: "https://www.swiggy.com/auth" });
+    // Every entry's sign-in is https and on the entry's own host, which is the whole promise of searching by name.
+    for (const e of SITE_CATALOG) {
+      const u = new URL(e.signIn);
+      expect(u.protocol).toBe("https:");
+      expect(u.hostname === e.host || u.hostname.endsWith(`.${e.host}`)).toBe(true);
+    }
+    // A name nobody vetted finds nothing: there is no query that reaches the open web.
+    expect(searchSites("evil.net")).toEqual([]);
+    expect(searchSites("http://anything")).toEqual([]);
+    // One letter is not a search; a box that answers before a word is typed is a list of places to type a password.
+    expect(searchSites("s")).toEqual([]);
+    // People search by what a thing is for, not only by its name.
+    expect(searchSites("train").map((e) => e.id)).toContain("irctc");
   });
 
   it("reads a host only out of an http(s) address", () => {

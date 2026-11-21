@@ -93,6 +93,11 @@ export interface MeetServiceDeps {
 }
 
 const DAY_MS = 24 * 60 * 60_000;
+/**
+ * How far ahead a bot must be asked for to be booked rather than sent now. Recall keeps a bot for a meeting asked for
+ * more than ten minutes ahead (calendar.ts FROM_MIN), so a nearer time would be a bot that may never come.
+ */
+const SCHEDULE_LEAD_MS = 10 * 60_000;
 const LIST_MAX = 200;
 const RECENT_MAX = 20;
 /** A space's admin sees each member's latest few meetings, and at most this many in all. */
@@ -252,20 +257,23 @@ export class MeetService {
     };
   }
 
-  async join(userId: string, input: { url: string; title?: string; voice?: boolean; forUser?: string }): Promise<MeetingView> {
+  async join(userId: string, input: { url: string; title?: string; voice?: boolean; forUser?: string; joinAt?: number; botName?: string }): Promise<MeetingView> {
     if (!this.recall) throw new MeetError(503, "The meeting bot isn't set up on this server.", "meet_off");
     const link = meetingOf(input?.url);
     if (!link) throw new MeetError(400, "That isn't a meeting link (Google Meet, Zoom, Teams or Webex).", "bad_link");
     if (typeof input.forUser === "string" && input.forUser && input.forUser !== userId) return this.joinFor(userId, input.forUser, link, input);
     if (!(await this.aiAllowed(userId))) throw new MeetError(403, AI_CONSENT_TEXT, "ai_consent_needed");
+    // The name it will show in the call, when the join card carried one: kept as the person's, so the next one has it too.
+    if (typeof input.botName === "string") await this.renameBot(userId, input.botName);
+    const at = this.scheduledFor(input.joinAt);
     const all = await this.store.list(userId, LIST_MAX);
-    // One bot a call: pasting the link again answers the bot already there.
-    const there = all.find((m) => LIVE_STATUSES.has(m.status) && m.url === link.url);
+    // One bot a call: pasting the link again answers the bot already there, or the one already waiting for that time.
+    const there = all.find((m) => m.url === link.url && (LIVE_STATUSES.has(m.status) || (at !== null && m.status === "scheduled")));
     if (there) return this.viewFor(userId, there);
     if (this.minutesIn(all) >= getConfig().MEET_DAILY_MINUTES) {
       throw new MeetError(429, "Today's meeting time is used up. It comes back over the next day.", "meet_cap");
     }
-    const { meeting, bot } = await this.prepare(userId, { link, title: input.title, voice: input.voice, source: "link" });
+    const { meeting, bot } = await this.prepare(userId, { link, title: input.title, voice: input.voice, source: "link", ...(at === null ? {} : { joinAt: at }) });
     await this.store.add(meeting);
     this.publish(userId);
     // Recall may answer 507 (no bot free) and be asked again for minutes: the person has the meeting at once, "joining".
@@ -1035,6 +1043,21 @@ export class MeetService {
    * The row of a meeting to ask about, and Recall's bot for it: the owner's settings (its voice, its name), and the owner's first name in
    * its introduction. One a space's admin sends for a member names the admin and the space.
    */
+  /**
+   * The time a bot is asked to join at, or null for now. Recall only holds a bot asked for more than ten minutes ahead
+   * (calendar.ts FROM_MIN), so a time nearer than that is joined at once rather than booked and missed.
+   */
+  private scheduledFor(at: number | undefined): number | null {
+    return typeof at === "number" && Number.isFinite(at) && at > this.now() + SCHEDULE_LEAD_MS ? at : null;
+  }
+
+  /** Keeps the name the bot shows in calls, when the join card carried a different one. */
+  private async renameBot(userId: string, name: string): Promise<void> {
+    const want = cleanText(name, 40);
+    const cur = await this.store.settings(userId);
+    if (want && want !== cur.botName) await this.store.saveSettings(userId, { ...cur, botName: want });
+  }
+
   private async prepare(userId: string, o: {
     link: MeetingLink; title?: string; voice?: boolean; source: "link" | "calendar"; eventKey?: string; joinAt?: number;
     byId?: string; spaceId?: string; owner?: string;
@@ -1049,7 +1072,7 @@ export class MeetService {
     const now = this.now();
     const meeting: Meeting = {
       id: randomUUID(), userId, botId: null, tokenHash: hashToken(token), url: o.link.url, platform: o.link.platform,
-      title: cleanText(o.title, 200), status: o.source === "calendar" ? "scheduled" : "joining", voice, source: o.source,
+      title: cleanText(o.title, 200), status: o.joinAt !== undefined && o.joinAt > now + SCHEDULE_LEAD_MS ? "scheduled" : "joining", voice, source: o.source,
       eventKey: o.eventKey ?? null, joinAt: o.joinAt ?? null, startedAt: null, endedAt: null, noteId: null, liveNotes: null, brief: null,
       participants: [], error: null, createdAt: now, updatedAt: now, spaceId: o.spaceId ?? null, byId: o.byId ?? null,
     };

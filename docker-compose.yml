@@ -29,8 +29,26 @@ services:
         # the largest thing in the image. This box has no graphics card, so Cycles renders on cores: a small preview is
         # seconds, a full frame is minutes, and an animation is 24 frames a second of those. Stills, in other words.
         WITH_BLENDER: "1"
+        # Chromium, for the browser that belongs to a person (docs/sites.md) and for reading a page that needs
+        # JavaScript. Both stay dark without it however the switches are set, so a deploy carries one.
+        WITH_BROWSER: "1"
       secrets:
         - app_env
+    # CHROME'S SANDBOX NEEDS THIS, and it is a real trade, so here is the whole of it.
+    #
+    # Chrome sandboxes a renderer by putting it in namespaces of its own, which Docker's default seccomp profile
+    # refuses ("Failed to move to new namespace ... Operation not permitted") — so without this Chrome dies at
+    # startup and sites, and any page that needs JavaScript, stay dark however the switches are set. The thing
+    # everybody reaches for instead is --no-sandbox, and it is worse HERE in particular: Chrome runs in THIS
+    # container, beside CONNECTOR_TOKEN_KEY and SUPABASE_DB_URL, and its whole job is opening sites nobody vetted
+    # while somebody is signed in to them. A renderer that falls to a hostile page should hit Chrome's own wall,
+    # not land next to the secrets.
+    #
+    # What it costs: this container keeps no syscall filter, which is part of what stands between it and the host.
+    # That is not free and this is not the end state — the browser belongs in a container of its own holding no
+    # secrets, which needs chrome.ts to take a DevTools address instead of launching a binary itself.
+    security_opt:
+      - seccomp:unconfined
     env_file:
       - tulmi/.env
     environment:

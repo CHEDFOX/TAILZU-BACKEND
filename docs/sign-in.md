@@ -91,9 +91,14 @@ and was not.
 The whole of the above is the server's half, and it is done: the protocol, the rules, the reader, the event,
 and `tests/agent-signin.test.ts`.
 
-What is not built is the drawing of it, in the desktop app and in whatever runs a browser later. Until a client
-draws cards, every planner that writes `FIELD` lines still produces a correct plain handover, which is the
-behaviour that shipped — so this can go out ahead of them.
+The desktop draws it (17 Nov). **The sign-in panel of a person's own browser does not, and deliberately.** One was
+built there and taken out again the same day: a panel already shows the real page and the person can touch it, so
+a card of named boxes under it was a second form over the first — and the whole reason a sign-in happens in that
+browser is that it happens on the site's own page. A card earns its place in the desktop, where the agent is
+driving an app the person is not looking at. It does not earn it where they are looking straight at the page.
+
+What that leaves for a browser surface: the page, drawn large, on a card of its own. If this is ever revisited,
+the thing to beat is not "no card" — it is "the page, legible".
 
 ## The session behind it
 

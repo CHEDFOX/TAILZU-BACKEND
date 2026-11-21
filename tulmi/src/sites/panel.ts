@@ -44,6 +44,9 @@ const ONE_EACH = true;
  *
  * Handing the app's own bearer token to a page that is about to load a shop's sign-in would be the opposite trade.
  */
+/** How often the page is read to see whether they are through. A poll is twice a second; this is not. */
+const LOOK_EVERY_MS = 2_500;
+
 const TICKET_BYTES = 32;
 
 export type Hold = (o: { url: string; state?: SiteState; viewport?: { width: number; height: number }; allow?: RegExp[] }) => Promise<HeldPage>;
@@ -74,6 +77,14 @@ interface Live {
   width: number;
   height: number;
   ended: PanelEnd | null;
+  /** When the page was last read, so noticing they are in costs one DOM read every few seconds and not every poll. */
+  lookedAt: number;
+  /**
+   * Whether this page has ever looked like a sign-in page. NOTHING CLOSES UNTIL IT HAS. A page still opening does
+   * not look like a sign-in either, and a panel that shut on that would save a signed-out session over a good one
+   * and call it success — the same mistake the watcher made once (docs/sites.md).
+   */
+  sawSignIn: boolean;
 }
 
 export interface PanelsDeps {
@@ -105,14 +116,21 @@ export class Panels {
     if (ONE_EACH) for (const p of this.live.values()) if (p.userId === userId) await this.shut(p, "cancelled");
 
     const page = await this.d.hold({ url, viewport: { width: 412, height: 915 }, allow: this.allowFor(site) })
-      .catch(() => { throw new SiteError("no_browser", "I can't open that right now.", 503); });
+      .catch((err: unknown) => {
+        // WHY IT WOULD NOT OPEN, SAID OUT LOUD. The person is told something vague on purpose — a sign-in that
+        // failed is not the place to explain a server — but this was the only copy, and dropping it left a 503
+        // with nothing in the log at all: the one thing anybody needs to fix it, caught and thrown away. Chrome's
+        // own startup lines travel in that message now (web/browser/chrome.ts), so this prints the real cause.
+        console.warn(`[sites] the panel could not open ${site}: ${err instanceof Error ? err.message : String(err)}`);
+        throw new SiteError("no_browser", "I can't open that right now.", 503);
+      });
 
     const at = this.now();
     const p: Live = {
       id: randomUUID(), userId, site, page,
       ticket: randomBytes(TICKET_BYTES).toString("base64url"),
       gate: new FrameGate(), life: new PanelLife(at),
-      frame: "", width: 412, height: 915, ended: null,
+      frame: "", width: 412, height: 915, ended: null, lookedAt: at, sawSignIn: false,
     };
     page.onFrame((jpeg, meta) => {
       const now = this.now();
@@ -178,8 +196,33 @@ export class Panels {
     const p = this.mine(id, userId);
     if (p.ended) return this.view(p);
     const over = p.life.over(this.now(), false);
-    if (over) await this.shut(p, over);
+    if (over) { await this.shut(p, over); return this.view(p); }
+    await this.noticeSignedIn(p);
     return this.view(p);
+  }
+
+  /**
+   * NOTICING THEY ARE IN, instead of asking. The panel used to carry an "I'm signed in" button whose whole job was
+   * to make the server look at the page; the server can look by itself, so it does, and the button is gone.
+   *
+   * Two things keep this honest. It will not close a panel that has never looked like a sign-in page — a page part
+   * way through opening looks like nothing, and shutting on that would write a signed-out session over a good slip
+   * and report success. And it reads the page every LOOK_EVERY_MS rather than every poll, because a poll is twice a
+   * second while a page is moving and a DOM read is not free.
+   *
+   * The idle and total cuts stay as they were: this notices the ordinary ending, not every ending.
+   */
+  private async noticeSignedIn(p: Live): Promise<void> {
+    const now = this.now();
+    if (now - p.lookedAt < LOOK_EVERY_MS) return;
+    p.lookedAt = now;
+    const look = await p.page.look().catch(() => null);
+    if (!look) return;
+    const out = looksSignedOut({ ...look, text: "", state: { cookies: [] } });
+    if (out) { p.sawSignIn = true; return; }
+    if (!p.sawSignIn) return;
+    await this.keep(p);
+    await this.shut(p, "said_done");
   }
 
   /**

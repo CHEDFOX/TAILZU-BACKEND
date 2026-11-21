@@ -50,9 +50,12 @@ A shop that shuts a real person's account has cost them more than this feature i
    one look while a parcel is out reads as a person; the same site seeing a heartbeat all day reads as a scraper.
 2. **Never sooner than `CLOUD_BROWSER_EVERY_MIN`** (20), whoever asks.
 3. **At most `CLOUD_BROWSER_WATCHES`** (6) things open per person.
-4. **`CLOUD_BROWSER_SITES` is empty by default and empty means NONE.** Every other list in the config is "empty
-   means everyone"; this one is inverted on purpose. Nobody should be able to point a signed-in browser at an
-   arbitrary host because a setting was left blank.
+4. **An arbitrary host is never reachable.** What a signed-in browser may be pointed at is the vetted catalog in
+   `src/sites/catalog.ts` plus whatever an operator added in `CLOUD_BROWSER_SITES` — and that env list keeps its
+   inverted meaning: it *adds* hosts, and empty adds none. Every other list in the config is "empty means
+   everyone"; this one is the other way round on purpose, so a blank setting can never widen anything. The
+   catalog is code rather than configuration for the same reason `web/search/catalog.ts` is: a list that decides
+   where somebody types a password is a reviewed change with a test beside it, not a line on a server.
 
 ## Being signed out
 
@@ -92,6 +95,20 @@ because a page can carry words meant for the reader rather than the person — i
 since text faded to nothing is still text in `innerText`. The model is told to report what the page shows, and
 is given nothing it could act on even if it were talked into wanting to.
 
+## Finding a site
+
+A person types a name, not an address. The name is what picks the host: searching answers entries from
+`src/sites/catalog.ts` and nothing else, and Sign in opens the page that entry names, so there is no query that
+reaches the open web and no result whose domain the person has to read and judge. That judgement is the one
+phishing relies on them making badly, and the whole value of typing "Swiggy" is that they never have to make it.
+
+An entry's `signIn` is the site's own sign-in page, read from the site. The host is shown under the name — not to
+be approved, but so that what they are about to sign in to is never a surprise. A site that moves its sign-in is
+an edit to that file, which is a pull request somebody reads.
+
+The catalog is short on purpose and grows one reviewed site at a time. A host an operator wants that is not worth
+a catalog entry goes in `CLOUD_BROWSER_SITES` instead.
+
 ## The panel
 
 The one place a person touches their cloud browser, and it exists for a reason that cannot be designed around:
@@ -106,12 +123,15 @@ On top of that `FrameGate`: 4 frames a second while a page merely fidgets (a spi
 held to 4), 12 for the second after a touch because that is when a person is watching, and when frames outrun the
 cap the newest is kept and the rest dropped — an old frame is not worth sending late.
 
-**It ends on a signal**, never a countdown: the page stopped looking like a sign-in page, or they said they were in,
-or they left. The idle cut (90s) and the ceiling (5 min) are backstops for somebody who walked away. A quick
+**It ends on a signal**, never a countdown: the page stopped looking like a sign-in page, or they left. The idle cut (90s) and the ceiling (5 min) are backstops for somebody who walked away. A quick
 sign-in is over in seconds; a slow one gets as long as it needs.
 
-**"I'm signed in" is checked, not believed.** If the page is still a sign-in page the panel stays open — closing
-there would save a signed-out session over a good one, which is the exact mistake the watcher made once.
+**Nobody says they are in; the panel notices.** There was a button whose whole job was to make the server look at
+the page, and the server can look by itself — every few seconds, not every poll, because a DOM read is not free.
+Two things keep it honest. It will not close a panel that has never looked like a sign-in page: a page part way
+through opening looks like nothing either, and shutting on that would write a signed-out session over a good slip
+and call it success — the exact mistake the watcher made once. And the idle and total cuts stay as they were, for
+somebody who walked away.
 
 ### On the phone, and why it is not an app component
 
@@ -141,6 +161,17 @@ own password box. Which is also why nothing here has to know which box on the pa
 secret. Autocorrect, autofill, capitals and spellcheck are all off, because a suggestion would type something into
 a field nothing on this side can see the name of.
 
+**And nothing else is on the screen.** No box to type in, no buttons: the page fills the card, a tap on it raises
+the keyboard, and the way out is the screen's own back. What is left is the site, which is the point.
+
+**There is no card of our own.** A panel once drew the page's boxes again underneath it, named and typed
+(docs/sign-in.md). It went: the person is already looking at the real form and can touch it, so our copy was a
+second form over the first, and the reason the whole sign-in happens in this browser is that it happens on the
+site's own page. What is left is the page, a keyboard, and the two buttons.
+
+**The card is the page itself**, on a card: the sign-in sits on one elongated sheet with the page behind it
+blurred, to the app's own numbers (`app/src/sdui/components/blur.tsx`, `kit.ts` `sheetPage`).
+
 **A tap is sent in the page's own pixels.** The frame is drawn at whatever size fits the phone; the browser is
 412 x 915. Send the drawn numbers and every tap lands short and up-left, which on a sign-in page is the wrong field
 or the wrong button. One handler does both jobs: a finger that moved under 10px is a tap, a dragged one is a scroll.
@@ -160,8 +191,10 @@ the page reader, the `site_read` role, the service and its manners (`service.ts`
 
 **Not built yet:**
 
-* **The routes and the screens.** Nothing in the app can reach this. It needs `GET/POST /v1/sites`, the Activity
-  cards from the mock, and a way to add a site.
+* ~~**The routes and the screens.**~~ Built: `routes/bots/botsSites.ts`, `bots.sites` and the panel screen, and a
+  way to add a site — a search over the catalog (`GET .../sites/search?q=`) that answers vetted entries only,
+  each carrying that site's own sign-in page, reached from Connected apps. The Activity cards from the mock are
+  still to come.
 * **The clock.** `dueNow()` answers which things are due; nothing calls it on a schedule yet.
 * **The phone's half of the panel.** The server side is done (`sites/panel.ts`, `sites/frames.ts`, `engine.hold()`,
   the routes); what is missing is the component that draws the frames and sends the taps. It lives in `app/**`, so

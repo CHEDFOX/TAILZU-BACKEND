@@ -51,10 +51,7 @@ export interface PanelPageOptions {
 const WORDS = {
   safe: "You're typing on the real site. We keep the slip that keeps you signed in, never your password.",
   hint: "Type here",
-  done: "I'm signed in",
-  cancel: "Not now",
   opening: "Opening…",
-  checking: "Checking…",
   lost: "That sign-in has closed.",
 };
 
@@ -79,9 +76,9 @@ function script(o: PanelPageOptions): string {
   var page = { w: ${o.width}, h: ${o.height} };
   var QUIET = ${QUIET_MS}, BUSY = ${BUSY_MS}, BUSY_FOR = ${BUSY_FOR_MS}, SLOP = ${TAP_SLOP};
   var base = "/v1/botsapp/bots/sites/panel/t/" + encodeURIComponent(TICKET);
-  var img = document.getElementById("f"), box = document.getElementById("t");
-  var note = document.getElementById("n"), doneBtn = document.getElementById("d"), cancelBtn = document.getElementById("c");
-  var lastTouch = null, over = false, told = false, timer = null, checking = false;
+  var img = document.getElementById("f"), box = document.getElementById("t"), back = document.getElementById("bg");
+  var note = document.getElementById("n");
+  var lastTouch = null, over = false, told = false, timer = null;
 
   /** UP to the app: the WebView's bridge on the phone, the window's own preload in the desktop app. */
   function up(m) {
@@ -97,14 +94,19 @@ function script(o: PanelPageOptions): string {
   /** Every answer from every call lands here, so one place decides it is over and one place says so, once. */
   function take(v) {
     if (!v || typeof v !== "object") return;
-    if (typeof v.frame === "string" && v.frame) img.src = "data:image/jpeg;base64," + v.frame;
+    if (typeof v.frame === "string" && v.frame) {
+      var pic = "data:image/jpeg;base64," + v.frame;
+      img.src = pic;
+      // The same picture behind the card, blurred by the stylesheet: the page it is standing on is the page itself.
+      if (back) back.src = pic;
+    }
     if (typeof v.width === "number" && v.width > 0) page.w = v.width;
     if (typeof v.height === "number" && v.height > 0) page.h = v.height;
     if (typeof v.message === "string" && v.message) say(v.message);
     if (v.ended && !told) {
       told = true; over = true;
       if (timer) clearTimeout(timer);
-      box.disabled = true; doneBtn.disabled = true;
+      box.disabled = true;
       // "Checking…" must not be the last thing they see under a panel that worked, if the app is slow to move on.
       if (!v.message) say("");
       up({ t: "panel", ended: String(v.ended), signedIn: v.signedIn === true, message: v.message || "" });
@@ -165,10 +167,12 @@ function script(o: PanelPageOptions): string {
     var dy = Math.round((a.y - b.y) * (page.h / a.h));
     if (dy !== 0) touch({ scroll: Math.max(-2000, Math.min(2000, dy)) });
   }
+  /** The keyboard comes up because a tap focuses the unseen box — and only inside the gesture, as iOS insists. */
+  function wake() { if (!over) { try { box.focus({ preventScroll: true }); } catch (e) { try { box.focus(); } catch (e2) {} } } }
   img.addEventListener("touchstart", down, { passive: true });
-  img.addEventListener("touchend", upAt, { passive: true });
+  img.addEventListener("touchend", function (e) { upAt(e); wake(); }, { passive: true });
   img.addEventListener("mousedown", down);
-  img.addEventListener("mouseup", upAt);
+  img.addEventListener("mouseup", function (e) { upAt(e); wake(); });
 
   // ---------------------------------------------------------------- the keyboard
   // Emptied before the call goes out, never after: the box must not hold a password while a request is in flight.
@@ -182,25 +186,6 @@ function script(o: PanelPageOptions): string {
     else if (e.key === "Tab") { e.preventDefault(); touch({ key: "Tab" }); }
     // Backspace in an empty box is the one key the box cannot tell us about through its text.
     else if (e.key === "Backspace" && !box.value) touch({ key: "Backspace" });
-  });
-
-  // ---------------------------------------------------------------- the two buttons
-  doneBtn.addEventListener("click", function () {
-    if (over || checking) return;
-    checking = true; say(${js(WORDS.checking)});
-    // Checked, not believed: the server keeps the panel open if the page still looks signed out, and says so.
-    call("POST", base + "/done").then(function (v) {
-      checking = false;
-      if (!v) { say(${js(WORDS.lost)}); return; }
-      if (v.signedIn !== true && !v.message) say("");
-      take(v);
-    });
-  });
-  cancelBtn.addEventListener("click", function () {
-    if (told) return;
-    told = true; over = true;
-    if (timer) clearTimeout(timer);
-    call("DELETE", base).then(function () { up({ t: "panel", ended: "cancelled", signedIn: false, message: "" }); });
   });
 
   // The app shows a spinner until this; a panel whose first frame never comes gets LiveView's own error state.
@@ -238,36 +223,40 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
 <style>
   :root { --ink:#0A0A0A; --paper:#FFFFFF; --meta:#5C5C5C; --line:#E6E4E1; --shade:#F4F2EF; }
   * { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-  html, body { height:100%; background:var(--paper); color:var(--ink);
+  html, body { height:100%; background:var(--shade); color:var(--ink);
     font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
-  body { display:flex; flex-direction:column; overscroll-behavior:none; }
-  #h { padding:8px 14px; font-size:12px; color:var(--meta); border-bottom:1px solid var(--line); }
+  /* The sign-in stands on a card, and behind the card is the same page blurred — the app's own overlay, to its
+     own numbers (app/src/sdui/components/blur.tsx: blur(10px) saturate(1.05) under a white veil). The backdrop
+     bleeds past every edge so the blur has something to take from and never shows a soft border of its own. */
+  #bg { position:fixed; left:-28px; top:-28px; width:calc(100% + 56px); height:calc(100% + 56px);
+    object-fit:cover; filter:blur(10px) saturate(1.05); }
+  #veil { position:fixed; inset:0; background:rgba(255,255,255,0.42); }
+  body { display:flex; flex-direction:column; overscroll-behavior:none;
+    padding:calc(26px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(26px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+  /* Elongated: it takes the height it is given, as the window's sheet does (experience/bots/kit.ts sheetPage). */
+  #card { position:relative; flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:hidden;
+    background:var(--paper); border:1px solid var(--line); border-radius:24px;
+    box-shadow:0 24px 60px rgba(10,10,10,.10), 0 2px 8px rgba(10,10,10,.04); }
+  #h { padding:10px 14px; font-size:12px; color:var(--meta); border-bottom:1px solid var(--line); }
   #h b { color:var(--ink); font-weight:600; }
-  #s { flex:1 1 auto; min-height:0; background:var(--shade); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  #s { flex:1 1 auto; min-height:0; background:var(--paper); display:flex; align-items:center; justify-content:center; overflow:hidden; }
   #f { max-width:100%; max-height:100%; display:block; background:var(--paper); touch-action:none; user-select:none; -webkit-user-drag:none; }
   #n { display:none; padding:10px 14px 0; font-size:13px; }
-  #k { border-top:1px solid var(--line); padding:12px; display:flex; flex-direction:column; gap:10px; }
-  #t { border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:15px; color:var(--ink); background:var(--paper); width:100%; }
-  #b { display:flex; gap:10px; }
-  button { font:inherit; border-radius:12px; padding:12px 16px; border:1px solid var(--line); background:var(--paper); color:var(--ink); }
-  #d { flex:1 1 auto; background:var(--ink); color:var(--paper); border-color:var(--ink); font-weight:600; }
-  button[disabled] { opacity:.5; }
+  /* Present, focusable, and not to be seen or read out as a box of its own: the page above is the whole screen. */
+  #t { position:absolute; bottom:0; left:0; width:1px; height:1px; opacity:0; border:0; padding:0; font-size:16px; }
 </style>
 </head><body>
+<img id="bg" alt=""${first ? ` src="${esc(first)}"` : ""}>
+<div id="veil"></div>
+<div id="card">
 <div id="h">${esc(WORDS.safe)} &middot; <b>${esc(o.site)}</b></div>
 <div id="s"><img id="f" alt="${esc(o.site)}"${first ? ` src="${esc(first)}"` : ""}></div>
 <p id="n"></p>
-<div id="k">
-  <!-- type="text", not "password", on purpose. The box is empty between keystrokes either way, so a password one
-       would hide nothing that is ever there; what it WOULD do is invite the WebView's own "save this password?"
-       machinery and, on some keyboards, a different layout — risking the whole flow to remove a character that is
-       on screen for one frame, the same frame a normal password field shows it for. -->
-  <input id="t" type="text" inputmode="text" placeholder="${esc(WORDS.hint)}"
-    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
-  <div id="b">
-    <button id="d" type="button">${esc(WORDS.done)}</button>
-    <button id="c" type="button">${esc(WORDS.cancel)}</button>
-  </div>
+<!-- THE KEYBOARD, UNSEEN. It is the only thing here that can take a keystroke — the page above is a picture, and
+     a picture has no keyboard — so it stays, with nothing to look at. A tap on the page gives it the focus, which
+     is what raises the phone's keyboard, and every character goes straight through to the real page. -->
+<input id="t" type="text" inputmode="text" aria-label="${esc(WORDS.hint)}"
+  autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
 </div>
 <script>${body}</script>
 </body></html>`;

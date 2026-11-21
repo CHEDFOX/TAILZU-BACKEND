@@ -124,6 +124,7 @@ function fakePage(o: { signedIn?: boolean } = {}) {
     async key(k) { did.push(`key ${k}`); },
     async scroll(d) { did.push(`scroll ${d}`); },
     async look() {
+      did.push("look");
       return o.signedIn
         ? { finalUrl: "https://swiggy.com/account", title: "Your account", elements: [] }
         : { finalUrl: "https://swiggy.com/login", title: "Sign in", elements: [{ id: "e1", role: "secret" }] };
@@ -143,11 +144,57 @@ describe("the panel", () => {
     resetConfigForTests();
   };
 
+  describe("noticing they are in, instead of asking", () => {
+    const rig = async (o: { signedIn?: boolean } = {}) => {
+      envOn();
+      let at = 1_000_000;
+      const f = fakePage(o);
+      const store = new SiteStore(null);
+      const panels = new Panels({ hold: async () => f.page, store, now: () => at });
+      const v = await panels.open(U, "https://swiggy.com/login");
+      return { f, panels, store, id: v.id, on: (ms: number) => { at += ms; } };
+    };
+
+    it("closes itself and keeps the session once the sign-in page is behind them", async () => {
+      const { f, panels, store, id, on } = await rig();
+      // Still on the sign-in page: nothing happens, however long it is polled.
+      on(5_000);
+      expect((await panels.poll(id, U)).ended).toBeUndefined();
+      // Through it.
+      f.setIn(true);
+      on(5_000);
+      expect((await panels.poll(id, U)).ended).toBe("said_done");
+      expect(await store.login(U, "swiggy.com")).not.toBeNull();
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    // THE GUARD. A page part way through opening does not look like a sign-in either, and closing on that would
+    // write a signed-out session over a good slip and call it success.
+    it("will not close a panel that has never looked like a sign-in page", async () => {
+      const { panels, store, id, on } = await rig({ signedIn: true });
+      for (let i = 0; i < 4; i++) { on(5_000); expect((await panels.poll(id, U)).ended).toBeUndefined(); }
+      expect(await store.login(U, "swiggy.com")).toBeNull();
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+
+    it("reads the page every few seconds, not on every poll", async () => {
+      const { f, panels, id, on } = await rig();
+      const looks = () => f.did.filter((d) => d === "look").length;
+      await panels.poll(id, U); await panels.poll(id, U); await panels.poll(id, U);
+      expect(looks()).toBe(0);
+      on(5_000);
+      await panels.poll(id, U);
+      expect(looks()).toBe(1);
+      vi.unstubAllEnvs(); resetConfigForTests();
+    });
+  });
+
   it("opens only on a site the server allows", async () => {
     envOn();
     const f = fakePage();
     const panels = new Panels({ hold: async () => f.page, store: new SiteStore(null) });
-    await expect(panels.open(U, "https://zomato.com/login")).rejects.toThrow(/can't sign in/i);
+    // On neither list: not a catalog entry (src/sites/catalog.ts) and not this server's CLOUD_BROWSER_SITES.
+    await expect(panels.open(U, "https://example.com/login")).rejects.toThrow(/can't sign in/i);
     const v = await panels.open(U, "https://swiggy.com/login");
     expect(v.site).toBe("swiggy.com");
     vi.unstubAllEnvs(); resetConfigForTests();
