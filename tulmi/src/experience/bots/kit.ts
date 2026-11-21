@@ -19,7 +19,7 @@
 import type { ActionRef, ActionSpec, BlockName, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
 import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
-import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
+import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, SITE_VIEW_COMPONENT, type LiveViewProps, type SiteViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import {
   BOT_CROWD_COMPONENT, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
@@ -1625,6 +1625,23 @@ export function liveView(p: LiveViewProps, o: { sendPath?: string; onResult?: Ac
     style: { backgroundColor: C.paper, overflow: "hidden", ...(p.height ? { height: p.height } : {}), ...o.style },
     ...(o.sendPath ? { bind: { send: o.sendPath } } : {}),
     ...(o.onResult || o.onError ? { on: { ...(o.onResult ? { onResult: o.onResult } : {}), ...(o.onError ? { onError: o.onError } : {}) } } : {}),
+  };
+}
+
+/** A build that draws SiteView: a real site, signed in on the phone and read there (shared/types/sdui.ts 3e). */
+export const canSiteView = (ctx: BotsCtx): boolean => ctx.can.has(SITE_VIEW_COMPONENT);
+
+/**
+ * A real site on the phone (SiteView). Signing in: on.onComplete with { site, url } once they are through. Reading:
+ * drawn unseen, on.onResult with the page's words once, on.onError if it cannot.
+ */
+export function siteView(p: SiteViewProps, o: { onComplete?: ActionRef; onResult?: ActionRef; onError?: ActionRef; style?: Style } = {}): Node {
+  const on = { ...(o.onComplete ? { onComplete: o.onComplete } : {}), ...(o.onResult ? { onResult: o.onResult } : {}), ...(o.onError ? { onError: o.onError } : {}) };
+  return {
+    type: "SiteView",
+    props: { ...p },
+    style: { backgroundColor: C.paper, overflow: "hidden", ...o.style },
+    ...(Object.keys(on).length ? { on } : {}),
   };
 }
 

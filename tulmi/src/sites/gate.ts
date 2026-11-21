@@ -71,6 +71,17 @@ export function allowedSites(): string[] {
   return [...new Set([...catalogHosts(), ...listOf(conf().sites)])];
 }
 
+/**
+ * THE ONE NAME A SITE IS KEPT UNDER: the allowed entry a host belongs to ("www.swiggy.com" is "swiggy.com"), or the host
+ * itself when none covers it. A sign-in on www. and a watch on m. are the same person on the same site, and keeping
+ * them under one name is what lets a watch find the sign-in.
+ */
+export function siteOf(host: string): string {
+  const h = host.trim().toLowerCase().replace(/\.$/, "");
+  const hit = allowedSites().filter((a) => h === a || h.endsWith(`.${a}`)).sort((a, b) => b.length - a.length)[0];
+  return hit ?? h;
+}
+
 /** The host of a URL, lowercased and without a trailing dot; "" when it is not an http(s) address. */
 export function hostOf(url: string): string {
   try {

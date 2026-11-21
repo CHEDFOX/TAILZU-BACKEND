@@ -76,7 +76,7 @@ const TAKE_STORAGE = `function () {
  * The ids are e1..eN in document order, the same shape the planner reads everywhere else, so a page and a Mac
  * window arrive at the model looking the same.
  */
-const READ_PAGE = `function () {
+export const READ_PAGE = `function () {
   var MAX_EL = 250, MAX_TEXT = 20000, MAX_LABEL = 120;
   var seen = 0, els = [];
   function visible(el) {

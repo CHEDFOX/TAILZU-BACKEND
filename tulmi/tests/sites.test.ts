@@ -217,3 +217,95 @@ describe("the card the model gives back", () => {
     expect(looksSignedOut(page())).toBe(false);
   });
 });
+
+describe("signed in on the phone", () => {
+  // The model, stood in for at its own seam: what it was asked, and a card back.
+  const model = () => {
+    const asked: string[] = [];
+    const call = (async (req: { messages: Array<{ content: unknown }> }) => {
+      asked.push(JSON.stringify(req.messages));
+      return { json: { title: "Behrouz Biryani", line: "Out for delivery, 10 min away", stages: [{ name: "Placed", done: true }, { name: "On the way", done: true }, { name: "Delivered", done: false }] }, paise: 1, model: "fake" };
+    }) as never;
+    return { asked, read: { maxPaise: 50, call } };
+  };
+  const phoneRig = () => {
+    const visits: string[] = [];
+    const store = new SiteStore(null);
+    let at = 1_000_000;
+    const m = model();
+    const sites = new Sites({ visit: async (o) => { visits.push(o.url); return page(); }, store, read: m.read, now: () => at });
+    return { sites, store, visits, m, tick: (ms: number) => { at += ms; } };
+  };
+  const PAGE = { finalUrl: "https://swiggy.com/my-account/orders", title: "My orders", text: "Behrouz Biryani — Out for delivery", elements: [] };
+
+  it("keeps the fact of the sign-in and nothing of the session", async () => {
+    const { sites, store } = phoneRig();
+    await sites.connectedOnPhone(U, "swiggy.com", "Rahul");
+    const login = await store.login(U, "swiggy.com");
+    expect(login?.profile).toEqual({ cookies: [], onPhone: true });
+    expect(login?.who).toBe("Rahul");
+    expect((await sites.logins(U)).map((l) => l.site)).toEqual(["swiggy.com"]);
+  });
+
+  // The server cannot read a login it holds no session for — and must not try: a visit with nothing in it reads a
+  // signed-out page, and counting that as a refusal would sign the person out of something they are signed in to.
+  it("is never visited by the server's own browser", async () => {
+    const { sites, store, visits } = phoneRig();
+    await sites.connectedOnPhone(U, "swiggy.com");
+    const w = await sites.watch(U, PAGE.finalUrl, "Dinner");
+    expect((await sites.checkOne(w)).outcome).toBe("skipped");
+    expect(visits).toEqual([]);
+    expect((await store.login(U, "swiggy.com"))?.fails).toBe(0);
+  });
+
+  it("turns what the phone read into a card, through the model", async () => {
+    const { sites, store, m } = phoneRig();
+    await sites.connectedOnPhone(U, "swiggy.com", "Rahul");
+    const w = await sites.watch(U, PAGE.finalUrl, "Dinner");
+    const r = await sites.phoneRead(U, w.id, PAGE);
+    expect(r.outcome).toBe("read");
+    expect(r.card).toMatchObject({ title: "Behrouz Biryani", line: "Out for delivery, 10 min away" });
+    expect(m.asked[0]).toContain("Out for delivery");
+    // And it is still held on the phone: a read must never turn it into a server login with an empty session.
+    expect((await store.login(U, "swiggy.com"))?.profile).toEqual({ cookies: [], onPhone: true });
+  });
+
+  // THE MANNERS ARE THE SERVER'S. An app that asks too often costs a database read, never a model call.
+  it("answers a read before it is due with what it has, and asks the model nothing", async () => {
+    const { sites, m, tick } = phoneRig();
+    await sites.connectedOnPhone(U, "swiggy.com");
+    const w = await sites.watch(U, PAGE.finalUrl, "Dinner");
+    await sites.phoneRead(U, w.id, PAGE);
+    expect(m.asked).toHaveLength(1);
+    tick(60_000);
+    const again = await sites.phoneRead(U, w.id, PAGE);
+    expect(again.outcome).toBe("early");
+    expect(again.card).toMatchObject({ title: "Behrouz Biryani" });
+    expect(m.asked).toHaveLength(1);
+    tick(EVERY);
+    expect((await sites.phoneRead(U, w.id, PAGE)).outcome).toBe("read");
+    expect(m.asked).toHaveLength(2);
+  });
+
+  it("three sign-in pages in a row stop the watch, and the screen asks them to sign in again", async () => {
+    const { sites, store, tick } = phoneRig();
+    await sites.connectedOnPhone(U, "swiggy.com");
+    const w = await sites.watch(U, PAGE.finalUrl, "Dinner");
+    const signedOut = { ...PAGE, finalUrl: "https://swiggy.com/auth", title: "Login" };
+    for (let i = 0; i < 3; i++) { expect((await sites.phoneRead(U, w.id, signedOut)).outcome).toBe("signed_out"); tick(EVERY); }
+    expect((await sites.logins(U))[0]).toMatchObject({ site: "swiggy.com", needsSignIn: true });
+    expect((await store.watch(w.id))?.state).toBe("stopped");
+  });
+
+  it("reads only for the person who owns the watch, and only a login that is on the phone", async () => {
+    const { sites } = phoneRig();
+    await sites.connectedOnPhone(U, "swiggy.com");
+    const w = await sites.watch(U, PAGE.finalUrl, "Dinner");
+    await expect(sites.phoneRead("someone-else", w.id, PAGE)).rejects.toThrow(/not something I am watching/);
+
+    const kept = phoneRig();
+    await kept.sites.signIn(U, "swiggy.com", { cookies: [{ name: "sid", value: "x" }] });
+    const w2 = await kept.sites.watch(U, PAGE.finalUrl, "Dinner");
+    await expect(kept.sites.phoneRead(U, w2.id, PAGE)).rejects.toThrow(/not signed in on your phone/);
+  });
+});
