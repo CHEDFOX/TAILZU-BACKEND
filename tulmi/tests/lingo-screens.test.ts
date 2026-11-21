@@ -17,7 +17,7 @@ import { lintTree } from "../src/experience/bots/lint.js";
 import { SCREENS } from "../src/experience/bots/ids.js";
 import { botRoute } from "../src/experience/bots/ids.js";
 import {
-  LINGO_SCREENS, doneScreen, leaving, picker, saidScreen, setScreen, territory, whyScreen, whyWords,
+  END, LINGO_SCREENS, doneScreen, leaving, picker, saidScreen, setScreen, territory, whyScreen, whyWords,
   type CourseView, type PickerData, type SetData,
 } from "../src/experience/bots/screens/bots/lingoPage.js";
 import { freshMemory } from "../src/lingo/schedule.js";
@@ -394,6 +394,44 @@ describe("a set, from the first exercise to the last", () => {
     expect(s).toContain('"truthy":"done.finished"');
     expect(s).toContain(SCREENS.lingoDone);
     expect(s).toContain('"shape":"$state.done.next"');
+  });
+
+  /**
+   * THE END OF A SET IS THE REWARD, and the only one: no points, no gems, no score. So the words have to be worth
+   * something, and what makes them worth something is naming what happened — "gracias is yours now" is true and
+   * new, where "Nice set" would have been said whatever they did.
+   */
+  describe("what it says at the end", () => {
+    const ending = json(setScreen(ctx(), "es", set()));
+
+    it("names the word that became theirs, before anything else", () => {
+      expect(ending).toContain("is yours now");
+      expect(ending).toContain('"bind":{"content":"done.result.learned.0"}');
+    });
+
+    it("falls back to what was said out loud, then to the band's own line", () => {
+      expect(ending).toContain("said out loud. That is the part that stays.");
+      expect(ending).toContain('"gte":["done.result.spoken",2]');
+      for (const p of ["flying", "solid", "shaky", "struggling"]) expect(ending, p).toContain(`"done.performance","${p}"`);
+      expect(ending, "a bad set is told what the next one does, not how it went").toContain("Next set is the ones you missed, and nothing new.");
+    });
+
+    /**
+     * NEVER ABOUT THE PERSON. Person praise is the one kind the evidence is clear about — it is what leaves
+     * somebody helpless at the first failure — and the next bad set breaks the promise it makes.
+     */
+    it("praises the set, the word and the work — never the person", () => {
+      const praise = [...Object.values(END).map((w) => `${w.head} ${w.body}`), "is yours now", "said out loud"].join(" ").toLowerCase();
+      for (const them of ["natural", "clever", "smart", "genius", "talented", "you are good", "so good at"]) {
+        expect(praise, them).not.toContain(them);
+      }
+    });
+
+    it("hides the exercises once the set is over, and offers the next one", () => {
+      expect(ending).toContain('"falsy":"done"');
+      expect(ending).toContain("Keep going");
+      expect(ending).toContain("Stop for now");
+    });
   });
 
   it("every step passes the kit's own check", () => {

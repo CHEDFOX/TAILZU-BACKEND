@@ -485,6 +485,24 @@ rather than "the unit exists", so an attempt that failed releases the screen ins
 Coarse on purpose. A person can feel the difference between four bands, and no honest reading of twelve answers
 supports more than that.
 
+### The words at the end are the reward
+
+There are no points, no gems and no score here, on purpose: a reward made contingent on doing the thing reliably
+weakens the wanting to do it, and somebody chasing a number is not chasing the language. So the words have to be
+worth something, and what makes them worth something is that they NAME WHAT HAPPENED.
+
+"Nice set" is worth nothing — it would have been said whatever they did. "gracias is yours now, said out loud and
+held" is worth something: it is true, it is theirs, and it is new. In order of what is worth saying: a word that
+crossed into **learned**, then what was **said out loud**, then the band's own line, which says what the next set
+does rather than how they did.
+
+**Never about the person.** Not "you're a natural", not "you're good at this". Person praise is the one kind the
+evidence is clear about — it is what leaves somebody helpless at the first failure, worse than saying nothing —
+and it is a promise the next bad set breaks. The set, the word and the work get praised; the person does not.
+
+A bad set is told what the next one does ("the ones you missed, and nothing new") and nothing else. No
+brightness it can see is untrue.
+
 ### The celebration is scaled, and a bad set gets none
 
 | Performance | What the bot does | Scale |
