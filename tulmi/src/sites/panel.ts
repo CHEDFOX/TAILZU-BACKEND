@@ -227,6 +227,25 @@ export class Panels {
   }
 
   /**
+   * THE BROWSER TAKES THE SHAPE OF THE SPACE IT IS DRAWN IN. A panel opens at a phone's size because that is the
+   * only size anybody knows before the page is up; the page then measures the box it actually has and says so.
+   * Without this the browser is 412x915 and the box is nearer 360x520, so every frame is drawn at little over
+   * half size — a sign-in page nobody can read and nothing anybody can reliably tap.
+   *
+   * The width is kept near a phone's on purpose: it is what makes a site lay itself out for a phone at all.
+   */
+  async size(id: string, userId: string, width: number, height: number): Promise<PanelView> {
+    const p = this.mine(id, userId);
+    if (p.ended) return this.view(p);
+    const w = Math.max(320, Math.min(480, Math.round(width)));
+    const h = Math.max(360, Math.min(1200, Math.round(height)));
+    if (w === p.width && h === p.height) return this.view(p);
+    p.width = w; p.height = h;
+    await p.page.resize(w, h).catch(() => {});
+    return this.view(p);
+  }
+
+  /**
    * They say they are in. Checked rather than believed: if the page is still a sign-in page the panel stays open,
    * because closing here would save a signed-out session over a good one — the same mistake the watcher made once.
    */

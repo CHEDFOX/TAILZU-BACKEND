@@ -24,6 +24,7 @@ import {
   checkPath, loadPanel, loadSites, panelOrigin, readLine, signOutPath, watchPath,
   type PanelOpened, type SiteCard, type SiteWatchView, type SitesView,
 } from "../sites.js";
+import { catalogSite } from "../../../sites/catalog.js";
 import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
 import { field, inputBox, refresh, toast } from "./bots/parts.js";
@@ -91,9 +92,14 @@ function loginRow(ctx: BotsCtx, site: string, who: string | undefined, needsSign
   });
 }
 
-/** "Sign in": opens the panel screen for that site. The panel itself is made by the screen's own load, not by this tap. */
+/**
+ * "Sign in": opens the panel screen at the site's OWN sign-in page where the catalog knows it (src/sites/catalog.ts),
+ * and at the site itself where it does not. A shop's front page is not a sign-in: it is a page with a sign-in
+ * somewhere on it, and leaving somebody to find it in a 412-wide window is leaving them to do our job.
+ */
 function signInButton(site: string): Node {
-  return button("Sign in", { kind: "navigate", screenId: SCREENS.sitePanel, params: { url: `https://${site}/` } }, { kind: "secondary", size: "md" });
+  const url = catalogSite(site)?.signIn ?? `https://${site}/`;
+  return button("Sign in", { kind: "navigate", screenId: SCREENS.sitePanel, params: { url } }, { kind: "secondary", size: "md" });
 }
 
 /** How many results the field shows. The catalog is short on purpose, and a long list of sign-ins is not a thing to scroll. */
