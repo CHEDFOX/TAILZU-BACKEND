@@ -15,8 +15,8 @@
  */
 import type { ActionRef, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, C, RADIUS, back, box, button, call, canLive, card, col, divider, emptyState, listCard, listRow, liveView, meta,
-  page, row, SCREENS, sectionLabel, seq, text,
+  type BotsCtx, C, RADIUS, back, box, button, call, canLive, canSiteView, card, col, divider, emptyState, listCard, listRow, liveView, meta,
+  page, row, SCREENS, sectionLabel, seq, siteView, text,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import {
@@ -24,7 +24,9 @@ import {
   checkPath, loadPanel, loadSites, panelOrigin, readLine, signOutPath, watchPath,
   type PanelOpened, type SiteCard, type SiteWatchView, type SitesView,
 } from "../sites.js";
-import { catalogSite } from "../../../sites/catalog.js";
+import { SIGN_IN_HANDOFFS, catalogFor, catalogSite } from "../../../sites/catalog.js";
+import { hostOf, siteAllowed, siteOf } from "../../../sites/gate.js";
+import { FIND_LOGIN, PAGE_SHAPE, READ_PAGE } from "../../../sites/phone.js";
 import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
 import { field, inputBox, refresh, toast } from "./bots/parts.js";
@@ -79,16 +81,24 @@ function watchCard(w: SiteWatchView, now: number): Node {
  * A row whose slip has stopped working offers the panel instead of "Forget": the thing it needs is a sign-in, and
  * making them forget first and find the site again would be a worse version of the same two taps.
  */
-function loginRow(ctx: BotsCtx, site: string, who: string | undefined, needsSignIn: boolean): Node {
+function loginRow(ctx: BotsCtx, l: SitesView["logins"][number], watched: boolean): Node {
+  const { site, who } = l;
   const forget = button("Forget", call("DELETE", signOutPath(site), undefined, {
     ok: seq(toast(`Forgotten ${site}`), refresh),
     fail: oops("Couldn't forget that site. Try again."),
   }), { kind: "quiet", size: "md" });
+  // KEEPING AN EYE ON THEIR ORDERS, once they are signed in on the phone: the site's own orders page, read there.
+  // Offered only where the catalog knows that page, and only while nothing on the site is being watched already.
+  const orders = l.onPhone && !watched && canSiteView(ctx) ? catalogFor(site)?.orders : undefined;
+  const watch = orders ? button("Watch orders", call("POST", `${SITES_API}/watch`, { url: orders, label: "Your orders" }, {
+    ok: seq(toast("I'll keep an eye on your orders."), refresh),
+    fail: oops("Couldn't start watching just now."),
+  }), { kind: "secondary", size: "md" }) : undefined;
   return listRow({
-    label: site,
-    sub: needsSignIn ? SIGN_IN_AGAIN : who || "Signed in",
+    label: catalogFor(site)?.name ?? site,
+    sub: l.needsSignIn ? SIGN_IN_AGAIN : who || (l.onPhone ? "Signed in on this phone" : "Signed in"),
     chevron: false,
-    right: needsSignIn && canLive(ctx) ? signInButton(site) : forget,
+    right: l.needsSignIn && (canLive(ctx) || canSiteView(ctx)) ? signInButton(site) : watch ?? forget,
   });
 }
 
@@ -98,7 +108,7 @@ function loginRow(ctx: BotsCtx, site: string, who: string | undefined, needsSign
  * somewhere on it, and leaving somebody to find it in a 412-wide window is leaving them to do our job.
  */
 function signInButton(site: string): Node {
-  const url = catalogSite(site)?.signIn ?? `https://${site}/`;
+  const url = (catalogSite(site) ?? catalogFor(site))?.signIn ?? `https://${site}/`;
   return button("Sign in", { kind: "navigate", screenId: SCREENS.sitePanel, params: { url } }, { kind: "secondary", size: "md" });
 }
 
@@ -114,7 +124,7 @@ const FOUND = 6;
  * entry names. The host is shown under the name — not to be judged, but so that what they are about to sign in
  * to is never a surprise.
  */
-function findBlock(): Node[] {
+function findBlock(onPhone = false): Node[] {
   const search = call("GET", `${SITES_API}/search?q=$state.q`, undefined, {
     assignTo: "found", fail: toast("Couldn't search just now."),
   });
@@ -155,7 +165,9 @@ function findBlock(): Node[] {
       ...meta("Nothing by that name. The sites you can sign in to here are the ones we have checked.", { size: 13, color: C.idle, lines: 2 }),
       visibleIf: { all: [{ truthy: "found.q" }, { falsy: "found.results.0.id" }] },
     } as Node,
-    meta("Connecting opens the site's own page in a browser that is yours, and you sign in there. Only the slip that keeps you signed in is kept — never your password.", { size: 12, color: C.idle, lines: 3 }),
+    meta(onPhone
+      ? "Connecting opens the site's own sign-in, here on your phone. You stay signed in on this phone, and your password never reaches us."
+      : "Connecting opens the site's own page in a browser that is yours, and you sign in there. Only the slip that keeps you signed in is kept — never your password.", { size: 12, color: C.idle, lines: 3 }),
   ];
 }
 
@@ -183,8 +195,11 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
 
   if (d.logins.length) {
     body.push(sectionLabel("Signed in"));
-    body.push(listCard(d.logins.map((l) => loginRow(ctx, l.site, l.who, l.needsSignIn === true))));
-    body.push(meta("Only the slip that keeps you signed in is kept. Never your password.", { size: 12, color: C.idle, lines: 2 }));
+    const watched = new Set(open.map((w) => w.site));
+    body.push(listCard(d.logins.map((l) => loginRow(ctx, l, watched.has(l.site)))));
+    body.push(meta(d.logins.every((l) => l.onPhone)
+      ? "You stay signed in on this phone, as in any browser. Nothing of it leaves the phone — only what a page says, to make the card."
+      : "Only the slip that keeps you signed in is kept. Never your password.", { size: 12, color: C.idle, lines: 3 }));
   } else {
     body.push(sectionLabel("Signed in"));
     body.push(meta(d.canAdd.length ? "Nothing yet." : NONE_ALLOWED, { size: 13, color: C.idle, lines: 2 }));
@@ -192,9 +207,69 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
 
   // Finding a site by name, and signing in at its own page. Only offered to a build that can draw a panel: a
   // "Sign in" that opens a screen the app cannot render is a dead end with a name on it.
-  if (canLive(ctx)) body.push(...findBlock());
+  if (canLive(ctx) || canSiteView(ctx)) body.push(...findBlock(canSiteView(ctx)));
+
+  // THE PHONE'S READERS: one unseen SiteView for each watch whose turn it is, on a site held on this phone. The
+  // server keeps the manners (phoneRead answers an early read from what it has), so this only says who reads.
+  if (canSiteView(ctx)) {
+    const onPhone = new Set(d.logins.filter((l) => l.onPhone && !l.needsSignIn).map((l) => l.site));
+    for (const w of open.filter((x) => x.due && x.url && onPhone.has(x.site)).slice(0, READERS)) body.push(reader(w));
+  }
 
   return page(ctx, { title: "Sites", body, back: back(), state: { q: "", found: {} } });
+}
+
+// ===================================================================== signed in on the phone (SiteView)
+
+/** At most this many pages read at once on one screen: each is a real page load on their phone. */
+const READERS = 2;
+
+/** The scripts the phone runs on a site, from this server, so they change when it deploys (src/sites/phone.ts). */
+const SCRIPTS = { shape: PAGE_SHAPE, findLogin: FIND_LOGIN, read: READ_PAGE };
+
+/**
+ * One unseen read of a watched page, on the phone. What it read goes straight to the server as the body ($event is
+ * the read, whole), which makes the card; the list is read again once it has. A read that fails is left for the next
+ * time the screen opens — nothing retries in a loop on somebody's phone.
+ */
+function reader(w: SiteWatchView): Node {
+  const send: ActionRef = {
+    kind: "callEndpoint", method: "POST", path: `${watchPath(w.id)}/read`, body: "$event",
+    onSuccess: refresh,
+  } as ActionRef;
+  return siteView({ mode: "read", url: w.url!, site: w.site, hosts: [w.site], scripts: SCRIPTS }, { onResult: send });
+}
+
+/**
+ * THE SITE'S OWN SIGN-IN, ON THEIR PHONE. The page is the site's, full size, with their keyboard and their SMS code
+ * filling itself in; the WebView keeps what the site sets, so they stay signed in there. When the phone sees the
+ * sign-in give way to a signed-in page it tells us the host — that, and nothing else, is what "connected" is here.
+ *
+ * Only a site this server allows: the address comes from the catalog (the search's Connect, or a row's Sign in), and
+ * a screen opened with anything else draws a line, not a browser.
+ */
+function phoneSignIn(ctx: BotsCtx, url: string): ScreenResponse {
+  const host = hostOf(url);
+  const site = host ? siteOf(host) : "";
+  if (!site || !url.startsWith("https://") || !siteAllowed(site)) {
+    return page(ctx, { title: "Sign in", body: [emptyState({ title: "Couldn't start", body: PANEL_NO_OPEN })], back: back() });
+  }
+  const entry = catalogFor(site);
+  const name = entry?.name ?? site;
+  const connected = call("POST", `${SITES_API}/connected`, { site }, {
+    ok: seq(toast(`Connected to ${name}`), { kind: "navigateBack" }, refresh),
+    fail: oops("Couldn't save that just now. Try again."),
+  });
+  return page(ctx, {
+    title: name,
+    body: [
+      siteView({
+        mode: "signin", url, home: `${new URL(url).origin}/`, site: host,
+        hosts: [site, ...SIGN_IN_HANDOFFS], scripts: SCRIPTS,
+      }, { onComplete: connected, style: { flexGrow: 1, minHeight: 560, borderRadius: RADIUS.list } }),
+    ],
+    back: back(),
+  });
 }
 
 // ===================================================================== the panel: their own browser, drawn
@@ -214,6 +289,8 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
  * the password would throw away the whole reason this happens in the browser that keeps the cookie.
  */
 function panelPage(ctx: BotsCtx, d: PanelOpened | undefined): ScreenResponse {
+  // A build that can hold the sign-in itself does: the session stays on the phone and no browser is held here.
+  if (canSiteView(ctx)) return phoneSignIn(ctx, String(ctx.params.url ?? ""));
   if (!canLive(ctx)) return page(ctx, { title: "Sign in", body: [emptyState({ title: "Not on this phone", body: PANEL_NO_DRAW })], back: back() });
   if (!d || !d.ticket) return page(ctx, { title: "Sign in", body: [emptyState({ title: "Couldn't start", body: PANEL_NO_OPEN })], back: back() });
   const made = panelHtml({
@@ -251,7 +328,8 @@ export const sitesScreens: BotsScreen[] = [
     id: SCREENS.sitePanel,
     // The load OPENS the browser. Only for a build that can draw it: otherwise the page below says so, and no real
     // Chrome page is held in the cloud for a phone that would show a blank box.
-    load: (ctx, deps) => (canLive(ctx) ? loadPanel(deps, ctx.user?.id, String(ctx.params.url ?? "")) : Promise.resolve(undefined)),
+    // A build with SiteView signs in on the phone, so nothing is opened here for it.
+    load: (ctx, deps) => (!canSiteView(ctx) && canLive(ctx) ? loadPanel(deps, ctx.user?.id, String(ctx.params.url ?? "")) : Promise.resolve(undefined)),
     build: (ctx, d) => panelPage(ctx, d),
   }),
 ];

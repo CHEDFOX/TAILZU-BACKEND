@@ -931,6 +931,10 @@ export interface SiteWatchView {
   card?: SiteCard;
   /** When it was last read, so a stale card never looks live. Epoch ms. */
   readAt?: number;
+  /** An open one's page, for the phone's reader (a site held on the phone is read there, never here). */
+  url?: string;
+  /** An open one whose turn it is: the phone reads it now. */
+  due?: boolean;
 }
 
 /** A site the person is signed in to, as a screen draws it. */
@@ -942,6 +946,8 @@ export interface SiteLoginView {
   usedAt?: number;
   /** The site has started turning us away: they are asked to sign in again. */
   needsSignIn?: boolean;
+  /** Signed in on their phone, in the app's own WebView: the session is there and nowhere else. */
+  onPhone?: boolean;
 }
 
 /** Everything the sites screens draw, from one read. */

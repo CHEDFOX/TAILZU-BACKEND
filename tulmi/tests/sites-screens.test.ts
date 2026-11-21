@@ -156,6 +156,28 @@ describe("the routes", () => {
     await app.close();
   });
 
+  it("takes a sign-in on the phone as a host name, and a read as words — never a session", async () => {
+    const { app, store } = await server();
+    const c = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/connected", headers: as(U),
+      // Anything that looks like a session is simply not read: there is no field for it.
+      payload: { site: "swiggy.com", who: "Rahul", cookies: [{ name: "sid", value: "stolen" }], state: { cookies: ["x"] } } });
+    expect(c.statusCode).toBe(200);
+    expect((await store.login(U, "swiggy.com"))?.profile).toEqual({ cookies: [], onPhone: true });
+    expect(c.json().view.logins).toEqual([expect.objectContaining({ site: "swiggy.com", who: "Rahul" })]);
+
+    const w = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/watch", headers: as(U), payload: { url: "https://swiggy.com/my-account/orders", label: "Dinner" } });
+    const id = (w.json().view.watches as Array<{ id: string }>)[0]!.id;
+    const r = await app.inject({ method: "POST", url: `/v1/botsapp/bots/sites/watch/${id}/read`, headers: as(U),
+      payload: { url: "https://swiggy.com/my-account/orders", title: "My orders", text: "Out for delivery", elements: [{ id: "e1", role: "link", label: "Track" }] } });
+    expect(r.statusCode).toBe(200);
+    // No model in this server, so no card — but it was taken as a read, and the watch is still open.
+    expect(["read", "failed"]).toContain(r.json().outcome);
+
+    const bad = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/connected", headers: as(U), payload: { site: "example.com" } });
+    expect(bad.statusCode).toBe(400);
+    await app.close();
+  });
+
   it("THERE IS NO ROUTE THAT HANDS THIS SERVER A LOGIN", async () => {
     const { app } = await server();
     // A session is only ever made by the person signing in themselves. Any route that took one as JSON would be the
@@ -356,5 +378,103 @@ describe("bots.sites: the way in to a sign-in", () => {
 
     const off = await drawWith(PHONE, { "GET /v1/botsapp/bots/sites": fresh });
     expect(off.labels).not.toContain("Connect a site");
+  });
+});
+
+// ===================================================================== signed in on the phone (SiteView)
+
+describe("signed in on the phone (SiteView)", () => {
+  const PHONE_CAN = [...PHONE, "LiveView", "SiteView"];
+
+  it("the sign-in is the site's own page, held on the phone, and opens no browser here", async () => {
+    const d = await panel(PHONE_CAN, {}, "https://www.swiggy.com/auth");
+    expect(lintTree(d.s.root!)).toEqual([]);
+    expect(d.calls.filter((k) => k.startsWith("POST"))).toEqual([]);
+    expect(d.views).toHaveLength(0);
+    const sv = d.nodes.filter((n) => n.type === "SiteView");
+    expect(sv).toHaveLength(1);
+    const p = sv[0]!.props as Record<string, unknown>;
+    expect(p).toMatchObject({ mode: "signin", url: "https://www.swiggy.com/auth", home: "https://www.swiggy.com/", site: "www.swiggy.com" });
+    // The site and the sign-ins it hands off to, and nothing else.
+    expect(p.hosts).toEqual(["swiggy.com", "accounts.google.com", "appleid.apple.com"]);
+    const scripts = p.scripts as Record<string, string>;
+    expect(scripts.shape).toContain("signIn");
+    expect(scripts.findLogin).toContain("clicked");
+    expect(scripts.read.length).toBeGreaterThan(200);
+    // Done is a host name to the server: no cookie, no $event, nothing the page could put in.
+    const done = JSON.stringify(sv[0]!.on?.onComplete);
+    expect(done).toContain("/v1/botsapp/bots/sites/connected");
+    expect(done).toContain('"site":"swiggy.com"');
+    expect(done).not.toContain("$event");
+  });
+
+  it("an address off the list draws a line, not a browser", async () => {
+    const d = await panel(PHONE_CAN, {}, "https://evil.example/login");
+    expect(d.nodes.some((n) => n.type === "SiteView")).toBe(false);
+    const none = await panel(PHONE_CAN, {}, "javascript:alert(1)");
+    expect(none.nodes.some((n) => n.type === "SiteView")).toBe(false);
+  });
+
+  const HELD = {
+    most: 6, canAdd: ["swiggy.com"],
+    logins: [{ site: "swiggy.com", usedAt: 1_000_000, onPhone: true }],
+    watches: [
+      { id: "w1", site: "swiggy.com", label: "Your orders", state: "open", url: "https://www.swiggy.com/my-account/orders", due: true },
+      { id: "w2", site: "swiggy.com", label: "Later", state: "open", url: "https://www.swiggy.com/my-account/orders", due: false },
+    ],
+  };
+
+  it("a watch whose turn it is gets an unseen reader on the phone, and its read goes to the server whole", async () => {
+    const s = await buildBotsScreen({
+      screenId: "bots.sites", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+      can: new Set(PHONE_CAN), desk: { pages: false, notes: false },
+    }, fakeDeps({ api: { "GET /v1/botsapp/bots/sites": HELD } }));
+    expect(lintTree(s.root!)).toEqual([]);
+    const readers = walk(s.root!).filter((n) => n.type === "SiteView");
+    expect(readers).toHaveLength(1);
+    expect(readers[0]!.props).toMatchObject({ mode: "read", url: "https://www.swiggy.com/my-account/orders", hosts: ["swiggy.com"] });
+    expect(readers[0]!.on?.onResult).toMatchObject({ kind: "callEndpoint", method: "POST", path: "/v1/botsapp/bots/sites/watch/w1/read", body: "$event" });
+  });
+
+  it("no reader for a site held by the server, or for a build without SiteView", async () => {
+    const serverHeld = { ...HELD, logins: [{ site: "swiggy.com", usedAt: 1 }] };
+    const a = await buildBotsScreen({
+      screenId: "bots.sites", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+      can: new Set(PHONE_CAN), desk: { pages: false, notes: false },
+    }, fakeDeps({ api: { "GET /v1/botsapp/bots/sites": serverHeld } }));
+    expect(walk(a.root!).some((n) => n.type === "SiteView")).toBe(false);
+    const b = await buildBotsScreen({
+      screenId: "bots.sites", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+      can: new Set([...PHONE, "LiveView"]), desk: { pages: false, notes: false },
+    }, fakeDeps({ api: { "GET /v1/botsapp/bots/sites": HELD } }));
+    expect(walk(b.root!).some((n) => n.type === "SiteView")).toBe(false);
+  });
+
+  it("once signed in on the phone, they are offered to keep an eye on their orders, at the site's own orders page", async () => {
+    const s = await buildBotsScreen({
+      screenId: "bots.sites", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Rahul" },
+      can: new Set(PHONE_CAN), desk: { pages: false, notes: false },
+    }, fakeDeps({ api: { "GET /v1/botsapp/bots/sites": { ...HELD, watches: [] } } }));
+    const nodes = walk(s.root!);
+    const texts = nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content ?? ""));
+    expect(texts).toContain("Watch orders");
+    expect(texts).toContain("Swiggy");
+    expect(JSON.stringify(nodes.flatMap((n) => Object.values(n.on ?? {})))).toContain("https://www.swiggy.com/my-account/orders");
+  });
+});
+
+describe("the routes, on the phone", () => {
+  it("a watch on www. finds a sign-in kept under the site's own name", async () => {
+    const app = Fastify();
+    const sites = new Sites({ store: new SiteStore(null) });
+    registerSitesRoutes(app, RL as never, { sites });
+    await app.ready();
+    const c = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/connected", headers: as(U), payload: { site: "www.swiggy.com" } });
+    expect(c.statusCode).toBe(200);
+    expect(c.json().view.logins).toEqual([expect.objectContaining({ site: "swiggy.com", onPhone: true })]);
+    const w = await app.inject({ method: "POST", url: "/v1/botsapp/bots/sites/watch", headers: as(U), payload: { url: "https://www.swiggy.com/my-account/orders", label: "Your orders" } });
+    expect(w.statusCode).toBe(200);
+    expect(w.json().view.watches[0]).toMatchObject({ site: "swiggy.com", url: "https://www.swiggy.com/my-account/orders", due: true });
+    await app.close();
   });
 });

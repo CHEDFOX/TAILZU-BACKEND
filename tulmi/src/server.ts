@@ -586,19 +586,22 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
 // happening, so "where is my order" works on a site with no API. Read only — nothing in there can press, type or spend.
 // Every route answers 404 while CLOUD_BROWSER is off, which is the default, and with no local Chrome there is no visitor
 // and the whole thing stays dark however the switches are set.
+//
+// Signing in happens on the person's PHONE now, in the app's own WebView, and the phone reads the pages and sends the
+// words (docs/sites.md "Signed in on the phone"). That needs no browser here at all, so the routes stand whenever the
+// switch is on. A local Chrome, where there is one, still serves the old in-app panel for a build that cannot draw a
+// SiteView, and reads any login that was kept here rather than on a phone.
 {
-  const visit = cloudBrowserOn() ? getVisitor() : null;
-  if (visit) {
-    const sites = new Sites({ visit, read: { maxPaise: SITE_READ_PAISE } });
-    // The panel needs a page HELD open while a person looks at it, which only the local engine can do; `hold` is
-    // absent otherwise and the sign-in routes answer 503 rather than pretending.
+  if (cloudBrowserOn()) {
+    const visit = getVisitor();
+    const sites = new Sites({ ...(visit ? { visit } : {}), read: { maxPaise: SITE_READ_PAISE } });
     const hold = getHolder();
     const panels = hold ? new Panels({ hold }) : undefined;
     registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
-    const stopSites = startSitesClock({ sites, log: app.log });
+    // The clock only has something to do with a browser of its own: logins held on a phone are read by the phone.
+    const stopSites = visit ? startSitesClock({ sites, log: app.log }) : () => {};
     app.addHook("onClose", async () => { stopSites(); await panels?.closeAll(); });
-  } else if (cloudBrowserOn()) {
-    app.log.warn("CLOUD_BROWSER is on but there is no local browser (WEB_BROWSER must be \"local\" with Chrome): sites stay off.");
+    if (!visit) app.log.info("sites: no local browser, so sign-in and reading happen on the phone only");
   }
 }
 registerBotsKeybotRoutes(app, botsAreaDeps);

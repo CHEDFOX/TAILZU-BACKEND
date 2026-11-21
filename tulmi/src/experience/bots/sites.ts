@@ -35,9 +35,12 @@ export interface SiteWatchView {
   state: "open" | "done" | "stopped" | "lost";
   card?: SiteCard;
   readAt?: number;
+  /** An open one's page and whether it is its turn: the phone's reader opens it (SiteView, read). */
+  url?: string;
+  due?: boolean;
 }
 
-export interface SiteLoginView { site: string; who?: string; usedAt?: number; needsSignIn?: boolean }
+export interface SiteLoginView { site: string; who?: string; usedAt?: number; needsSignIn?: boolean; onPhone?: boolean }
 
 export interface SitesView {
   logins: SiteLoginView[];
@@ -133,6 +136,7 @@ export function cleanSites(raw: unknown): SitesView {
         ...(str(l.who, 80) ? { who: str(l.who, 80) } : {}),
         ...(num(l.usedAt) ? { usedAt: num(l.usedAt) } : {}),
         ...(l.needsSignIn === true ? { needsSignIn: true as const } : {}),
+        ...(l.onPhone === true ? { onPhone: true as const } : {}),
       };
     }).filter((l) => l.site),
     watches: watches.map((x) => {
@@ -143,6 +147,8 @@ export function cleanSites(raw: unknown): SitesView {
         id: str(w.id, 64), site: str(w.site, 120), label: str(w.label, 80),
         state: (["open", "done", "stopped", "lost"].includes(String(w.state)) ? String(w.state) : "open") as SiteWatchView["state"],
         ...(num(w.readAt) ? { readAt: num(w.readAt) } : {}),
+        ...(/^https:\/\//.test(str(w.url, 2000)) ? { url: str(w.url, 2000) } : {}),
+        ...(w.due === true ? { due: true as const } : {}),
         ...(c && str(c.title, 80) ? {
           card: {
             title: str(c.title, 80), line: str(c.line, 120),

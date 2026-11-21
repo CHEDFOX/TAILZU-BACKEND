@@ -30,8 +30,23 @@ export interface SiteEntry {
   name: string;
   /** The host the session belongs to: what store.ts keeps a cookie jar under. */
   host: string;
-  /** The site's own sign-in page. The panel opens exactly this. */
+  /**
+   * Where the phone starts to sign in: the site's own sign-in page, or — for a site that keeps its sign-in in a drawer
+   * on the home page — the home page. It is only ever a START. The phone checks it really is a sign-in (phone.ts
+   * PAGE_SHAPE) and, if not, presses the site's own "Sign in" (FIND_LOGIN), so an address that has moved since it
+   * was written here degrades to one extra step instead of a 404.
+   *
+   * Seen working in a phone's browser on 21 Nov 2026: amazon (its home opens a sign-in sheet), flipkart and
+   * swiggy (straight to the form), bluedart (home, then its own "Sign in"). Amazon's old /ap/signin is a 404
+   * without its query string, and bluedart's /login is not a sign-in — both caught by testing, not by reading.
+   */
   signIn: string;
+  /**
+   * The site's own list of the person's orders, to keep an eye on once they are signed in ("Keep an eye on my
+   * orders"). Only where the site has one address for it: a site whose orders page carries the person's id in the
+   * address, or that has no such page, has none, and is offered no watch.
+   */
+  orders?: string;
   /** What it is for, shown beside the name. */
   category: string;
   /** Other ways it is typed, lower case. Searching is by name, host and these. */
@@ -45,17 +60,17 @@ export interface SiteEntry {
 export const SITE_CATALOG: readonly SiteEntry[] = [
   {
     id: "amazon-in", name: "Amazon", host: "amazon.in", category: "Shopping",
-    signIn: "https://www.amazon.in/ap/signin",
+    signIn: "https://www.amazon.in/", orders: "https://www.amazon.in/gp/css/order-history",
     aliases: ["amazon", "amazon india", "amzn", "orders", "parcel", "delivery"],
   },
   {
     id: "flipkart", name: "Flipkart", host: "flipkart.com", category: "Shopping",
-    signIn: "https://www.flipkart.com/account/login",
+    signIn: "https://www.flipkart.com/account/login", orders: "https://www.flipkart.com/account/orders",
     aliases: ["flipkart", "orders", "parcel", "delivery"],
   },
   {
     id: "swiggy", name: "Swiggy", host: "swiggy.com", category: "Food",
-    signIn: "https://www.swiggy.com/auth",
+    signIn: "https://www.swiggy.com/auth", orders: "https://www.swiggy.com/my-account/orders",
     aliases: ["swiggy", "food", "order food", "instamart"],
   },
   {
@@ -70,7 +85,7 @@ export const SITE_CATALOG: readonly SiteEntry[] = [
   },
   {
     id: "bluedart", name: "Blue Dart", host: "bluedart.com", category: "Parcels",
-    signIn: "https://www.bluedart.com/login",
+    signIn: "https://www.bluedart.com/",
     aliases: ["blue dart", "bluedart", "courier", "parcel", "shipment"],
   },
 ];
@@ -102,4 +117,15 @@ export function searchSites(q: string, limit = 8): SiteEntry[] {
 }
 
 export const catalogSite = (host: string): SiteEntry | undefined => SITE_CATALOG.find((e) => e.host === norm(host));
+/** The entry a host belongs to, subdomains included ("www.swiggy.com" is Swiggy's). */
+export const catalogFor = (host: string): SiteEntry | undefined => {
+  const h = norm(host).replace(/\.$/, "");
+  return SITE_CATALOG.find((e) => h === e.host || h.endsWith(`.${e.host}`));
+};
+
+/**
+ * Where a site's sign-in may hand off to, as well as the site: the sign-in pages people actually use to get into
+ * a shop with — Google's and Apple's. The phone lets the page go to these and nowhere else.
+ */
+export const SIGN_IN_HANDOFFS: readonly string[] = ["accounts.google.com", "appleid.apple.com"];
 export const catalogHosts = (): string[] => SITE_CATALOG.map((e) => e.host);
