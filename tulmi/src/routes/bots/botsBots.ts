@@ -5,6 +5,8 @@
  *   POST   /v1/botsapp/bots/chat/:slug { message | picks } -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
  *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
+ *   /v1/botsapp/talk...                                 TALK, the one screen's one thread, where every bot answers: routes/bots/botsTalk.ts
+ *   GET    /v1/botsapp/activities?tz=                  -> { schedules, now, done }        what the work turned into: routes/bots/botsActivities.ts
  *   GET    /v1/botsapp/bots/sessions/:slug             -> { sessions }                    the bot's thread, newest first
  *   POST   /v1/botsapp/bots/sessions/:slug             -> { session }                     the + : a new session, whatever is open
  *   GET    /v1/botsapp/bots/session/:id                -> { session, turns, proposal?, made? }  one session, oldest first; with the
@@ -53,6 +55,9 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { BotError, isBotError, type Bots } from "../../bots/index.js";
 import { bearerKey, looksLikeKey, maskKey, prefixOf } from "../../bots/keys.js";
 import { getConfig } from "../../config.js";
+import { refFromBody } from "../../front/attachments.js";
+import type { AttachmentRef } from "../../front/types.js";
+import type { Front } from "../../front/index.js";
 import { defaultGuard } from "../../guard/index.js";
 import { botsAreaParts, shareAsk, shareLine, shareMessage, type BotsAreaParts } from "../../botsBots/index.js";
 import { THREAD_KEEP } from "../../botsBots/sessions.js";
@@ -73,6 +78,8 @@ import { registerCalendarRoutes } from "./botsCalendar.js";
 import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
+import { registerTalkRoutes } from "./botsTalk.js";
+import { registerActivitiesRoutes } from "./botsActivities.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
 import { registerPlanCallJudge } from "./planCallJudge.js";
@@ -122,7 +129,45 @@ export function apiOrigin(): string {
  * so a bot shared into a space reads it there as it does in its chat; and `chatShared`, exactly what the chat itself gives the bot, for
  * a reply typed into a notification (routes/bots/botsNotifyReply.ts).
  */
-export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): {
+/**
+ * The files on a chat message, read the front door's way. At most four, as `POST /v1/ask` allows; the bytes come with
+ * the message the first time and the ref alone is enough after (the reader keeps what it read by SHA-256). A ref that
+ * is not the right shape is skipped rather than failing the message — a bad attachment should not lose the words.
+ */
+async function readChatFiles(
+  read: Front["readFiles"], userId: string, body: unknown, question: string, signal?: AbortSignal,
+): Promise<Array<{ name: string; kind: string; text: string }>> {
+  const raw = (body as { attachments?: unknown } | null)?.attachments;
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const refs: AttachmentRef[] = [];
+  const data = new Map<string, Buffer>();
+  for (const a of raw.slice(0, CHAT_FILES)) {
+    const got = refFromBody(a);
+    if (!got.ok || refs.some((x) => x.id === got.input.ref.id)) continue;
+    refs.push(got.input.ref);
+    if (got.input.data) data.set(got.input.ref.id, got.input.data);
+  }
+  if (!refs.length) return [];
+  const out = await read(userId, refs, data, question, { maxPaise: CHAT_FILES_PAISE, ...(signal ? { signal } : {}) })
+    .catch(() => null);
+  return (out?.files ?? []).map((f) => ({ name: f.name, kind: f.kind, text: f.text }));
+}
+
+/** At most four files on one message, and what reading them may cost — the front door's own numbers. */
+const CHAT_FILES = 4;
+const CHAT_FILES_PAISE = 60;
+
+export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: {
+  parts?: BotsAreaParts; events?: EventStore;
+  /**
+   * READS FILES ATTACHED TO A CHAT MESSAGE, the front door's way (front/index.ts readFiles: once, by SHA-256, only the
+   * part that answers the question, never a file the secret scan flags). A bot's own chat never read a file before —
+   * `attached` is documented as "already read (the front door reads them)" — so this is the one thing a message with a
+   * photo on it needs, and it is the SAME reader, not a second one. Absent (FRONT_DOOR off): a message's files are
+   * ignored and its words are asked as they always were.
+   */
+  readFiles?: Front["readFiles"];
+} = {}): {
   sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
   chatShared: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
 } {
@@ -137,6 +182,12 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // The widgets, a notification's buttons and its reply (routes/bots/widgets.ts): they read and answer through Spaces' parts.
   registerWidgetRoutes(app, deps, spacesArea, { plan: parts.ease });
   registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Plan Ease: the work calendar's link, captures, bills (routes/bots/planIn.ts)
+  // TALK: the one screen's one thread (routes/bots/botsTalk.ts, docs/talk-door.md). It answers nothing itself: every message
+  // goes through POST /v1/shell/ask, and this keeps the pair of turns so the thread reads as one conversation.
+  registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads });
+  // ACTIVITIES: what the work turned into, derived on every read from the feed, Talk's threads and the routines
+  // (routes/bots/botsActivities.ts over botsBots/activities.ts). Nothing stored, nothing decided here.
+  registerActivitiesRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions });
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
   // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).
@@ -192,13 +243,18 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     try {
       const out = await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
         const slug = param(req, "slug").toLowerCase(), body = bodyOf(req.body);
+        const found = deps.bots ? await deps.bots.resolve(s.user.id, slug).catch(() => null) : null;
         // An answer to a drawing (a choice of several, a form: experience/bots/show.ts) comes as picks; the chat turns them into words.
         const picks = body.picks && typeof body.picks === "object" ? body.picks as Picks : undefined;
         // With Spaces off a bot reads nothing a space shared (botsBots/spacesSwitch.ts).
         const shared = spacesOn() ? await spacesArea.items.forBot(s.user.id, slug).catch(() => []) : [];
         // A message can name the session it belongs to; with none, it joins the one last touched (sessions.ts current).
         const session = String(body.session ?? "") || null;
-        const r = await parts.chat!.send(s.user.id, slug, body.message, stop, shared, live, { ...(picks ? { picks } : {}), ...(session ? { session } : {}) });
+        // FILES ON THE MESSAGE (the insert key beside the box: experience/bots/screens/bots/parts.ts chatBar). Read the
+        // front door's way and handed to the bot as `attached`, beside what the person's spaces shared — a bot without
+        // the `files` skill is given none, and nothing is read for it.
+        const files = o.readFiles && found?.def.skills.files ? await readChatFiles(o.readFiles, s.user.id, req.body, String(body.message ?? ""), stop) : [];
+        const r = await parts.chat!.send(s.user.id, slug, body.message, stop, [...shared, ...files], live, { ...(picks ? { picks } : {}), ...(session ? { session } : {}) });
         const said = r.turns.find((t) => t.role === "me")?.text ?? String(body.message);
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
         await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: said, paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
@@ -229,6 +285,23 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   app.post(`${AREA}/sessions/:slug`, RL, run(true, async (user, req) => ({
     session: await parts.sessions.open(user.id, param(req, "slug").toLowerCase(), String(bodyOf(req.body).title ?? "")),
   })));
+
+  /**
+   * CARRYING ONE ON. It becomes the one last touched, which is the one Talk opens on and the one that words said with
+   * no session named join (sessions.ts current). Nothing is made, nothing is closed, and nothing else moves.
+   *
+   * This is how the threads screen goes back into a conversation WITHOUT the tab root taking a param: Talk is a tab
+   * root (ids.ts) and a tab root is reached by switching to it, which carries nothing, so the way to say "this one"
+   * is to make it the current one here and let Talk read what is current.
+   */
+  app.post(`${AREA}/session/:id/here`, RL, run(true, async (user, req) => {
+    const id = param(req, "id");
+    // get() matches on user_id, so naming someone else's session finds nothing and touches nothing.
+    const session = await parts.sessions.get(user.id, id);
+    if (!session) throw new BotError("not_found", "There is no such session.", 404);
+    await parts.sessions.touch(user.id, id);
+    return { ok: true, session: id };
+  }));
 
   /** One session: what was said in it, oldest first. The screen draws a dotted line wherever the gap is longer than GAP_MS. */
   app.get(`${AREA}/session/:id`, RL, run(true, async (user, req) => {

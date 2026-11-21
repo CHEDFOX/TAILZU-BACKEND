@@ -385,7 +385,7 @@ describe("Offline and the outbox on screen", () => {
 
   it("the bootstrap's offline flags: Home becomes Offline while the connection is down; elsewhere a line", () => {
     expect(BOTS_OFFLINE_FLAGS).toEqual({
-      "offline.screenId": "bots.offline", "offline.roots": ["bots.home"],
+      "offline.screenId": "bots.offline", "offline.roots": ["bots.talk", "bots.activities"],
       "offline.bar": "You're offline · I'll keep working and catch you up", "offline.bar.font": FACE.regular, "offline.sentToast": "Sent. The answers are in Activity.",
     });
   });

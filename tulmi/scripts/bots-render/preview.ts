@@ -34,6 +34,9 @@ import path from "node:path";
 process.env.PUBLIC_ORIGIN = "https://api.local";
 // Spaces is off on the server until it is ready (SPACES_ENABLED); the renders draw it, as the screens were designed. Set it to false to see it off.
 process.env.SPACES_ENABLED ??= "true";
+// Reading files is a deployment, not a build (MEDIA_INGEST; DEPLOY.md "Media and files"), and the attach is drawn only where the
+// server can serve it (experience/bots/media.ts canUpload). A render is for reviewing the screens as designed, so it is on here too.
+process.env.MEDIA_INGEST ??= "true";
 process.env.BOTS_APP = "true";
 for (const k of ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "SUPABASE_ANON_KEY"]) process.env[k] ||= "preview";
 process.env.SUPABASE_URL ||= "http://127.0.0.1:1";

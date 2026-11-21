@@ -755,8 +755,9 @@ const EnvSchema = z.object({
   FRONT_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(1500),
   /**
    * MEDIA AND FILES INGESTION (src/media, docs/media.md): a person attaches a PDF, an office file, a spreadsheet, a picture, a recording, a video or a zip,
-   * and a question about it is answered from the part of it that matters. Off by default: it needs migration 0035, and with it off the front door's
-   * attachment registry keeps its "coming soon" for those kinds and every /v1/files route answers 404 { code: "media_off" }.
+   * and a question about it is answered from the part of it that matters. Off by default: it needs migration 0036_media.sql (NOT 0035,
+   * which is the Code bot's brain refs and has nothing to do with this), and with it off the front door's attachment registry keeps its
+   * "coming soon" for those kinds and every /v1/files route answers 404 { code: "media_off" }.
    *
    * MEDIA_WORKER_URL / MEDIA_WORKER_SECRET: the Python worker (media-worker/) that reads office files (MarkItDown), hard PDFs (Docling), makes pictures
    * smaller and cuts a video into key frames and a sound track (ffmpeg). https, or http on a private address; every call is HMAC-signed with the secret

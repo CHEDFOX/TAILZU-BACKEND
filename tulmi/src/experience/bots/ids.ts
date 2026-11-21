@@ -11,7 +11,9 @@ import type { ActionSpec } from "../../../../shared/types/sdui.js";
 export const SCREENS = {
   // screens/shell.ts: Home and around it, first run, system states
   home: "bots.home",                 // Main / DeskHome (built: the reference screen)
-  activity: "bots.activity",         // Activity / DeskActivity
+  activity: "bots.activity",         // Activity / DeskActivity: the ledger, by day, with receipts — a page now, not the tab
+  start: "bots.start",               // START SOMETHING: the bots as a launcher, grouped by kind, opened by the + on Activities (screens/bots/botsStart.ts)
+  activities: "bots.activities",     // ACTIVITIES, the second tab: what your work is doing, its bots drawn joined, and the schedules (screens/bots/activities.ts)
   activityItem: "bots.activity.item", // One ask from Activity: what was asked, a few numbers, ask again (params: id, message, bot, at)
   ask: "bots.ask",                   // Ask / DAsk, DeskAsk (a minimal answer page is built; replace it)
   search: "bots.search",             // Search / DSearch
@@ -57,6 +59,7 @@ export const SCREENS = {
   // screens/bots.ts: the bots themselves
   bot: "bots.bot",                   // BotPage / DBotPage (params: slug)
   talk: "bots.talk",                 // The bot you just talk to: the usual chat, as a TAB ROOT, so it takes no params
+  talkThreads: "bots.talk.threads",  // Talk's conversations: carry one on, or start a fresh one (screens/bots/talkThreads.ts)
   make: "bots.make",                 // MakeBot / DMakeBot
   edit: "bots.edit",                 // BotEdit / DBotEdit (params: slug)
   keys: "bots.keys",                 // BotKeys / DBotKeys (params: slug)

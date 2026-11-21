@@ -96,6 +96,14 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
     "GET /v1/bots/gym-bot": { bot: GYM },
     "GET /v1/bots/gym-bot/memory": { facts: ["You like 7 am sessions", "Go easy on the left knee", "Flying to Pune on Thursday", "Gym in HSR Layout opens at 6 am"].map((text, i) => ({ id: `f${i}`, text, createdAt: FIXED_NOW - i * DAY })), summary: "", turns: 14 },
     "GET /v1/bots/gym-bot/connectors": { connectors: [{ id: "google-calendar", name: "Google Calendar", status: "connected" }] },
+    // THE BOT'S PAGE IS ITS CONVERSATIONS now (experience/bots/screens/bots/botSessions.ts): each names itself from
+    // its first words and keeps where it got to.
+    [`GET ${A}/sessions/gym-bot`]: {
+      sessions: [
+        { id: "ses-1", bot: "gym-bot", title: "Plan my next week", frame: null, startedAt: FIXED_NOW - 2 * DAY, touchedAt: FIXED_NOW - HOUR },
+        { id: "ses-2", bot: "gym-bot", title: "Swap Thursday for a run", frame: null, startedAt: FIXED_NOW - 9 * DAY, touchedAt: FIXED_NOW - 8 * DAY },
+      ],
+    },
     [`GET ${A}/chat/gym-bot?limit=6`]: { turns: GYM_TURNS.slice(-4) },
     [`GET ${A}/chat/gym-bot?limit=30`]: chat,
     [`GET ${A}/chat/gym-bot?limit=2`]: { turns: GYM_TURNS.slice(-2) },

@@ -14,6 +14,9 @@ import { reportAnswer } from "../../reportAction.js";
 import { said } from "../../said.js";
 import { showNodes } from "../../show.js";
 import type { Shown } from "../../../../show/types.js";
+import type { BotSession } from "./botSessions.js";
+import { insertCard, insertKey, INSERT_PATHS } from "../../ask.js";
+import { canUpload, uploadChip } from "../../media.js";
 
 /** This area's routes (routes/bots/botsBots.ts). */
 export const A = "/v1/botsapp/bots";
@@ -108,10 +111,16 @@ export function field(id: string, path: string, placeholder: string, o: { onSubm
     },
   };
 }
-export function inputBox(children: Node[], o: { ink?: boolean; radius?: number; pad?: number } = {}): Node {
+/**
+ * `grow`: fill the row this box is in. A box beside something fixed — Talk's bar, next to the insert key — is sized by
+ * its CONTENT without it, so it stops short of the edge and the words inside wrap early. `field()` carries flexGrow of
+ * its own and so disguises this; a MentionField does not, and Talk shipped a bar two thirds of the width it wanted.
+ */
+export function inputBox(children: Node[], o: { ink?: boolean; radius?: number; pad?: number; grow?: boolean } = {}): Node {
   return row(children, {
     gap: 8, borderWidth: o.ink ? 1.5 : 1, borderColor: o.ink ? C.ink : C.line, borderRadius: o.radius ?? 16, paddingLeft: o.pad ?? 14, paddingRight: 6,
     paddingVertical: 4, minHeight: 48, backgroundColor: C.paper,
+    ...(o.grow ? { flexGrow: 1, flexShrink: 1, minWidth: 0 } : {}),
   });
 }
 /** A field with a send button: Enter or the button runs `send` when it has words. */
@@ -143,7 +152,7 @@ export function colourDot(name: string, o: { chosen: boolean; taken?: string; on
  * A bot's text as blocks: paragraphs, and runs of "- " lines as a card with the bot's colour on its edge (the boards' plan table).
  * `lists: false`: the lists are left out, because what the bot drew shows them (a choice, a table, the steps: show/types.ts lists).
  */
-function answerBlocks(textIn: string, color: string, size = 14, o: { lists?: boolean } = {}): Node[] {
+export function answerBlocks(textIn: string, color: string, size = 14, o: { lists?: boolean } = {}): Node[] {
   const out: Node[] = [];
   const lines = textIn.replace(/\r/g, "").split("\n");
   let para: string[] = [];
@@ -225,7 +234,7 @@ export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<ty
 const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, backgroundColor: C.divider }), meta(label, { size: 12 }), box([], { height: 1, flexGrow: 1, backgroundColor: C.divider })], { gap: 10 });
 
 /** "Share" under a bot's answer: to a space or a person, as a copy (screens/spaces.ts bots.share); only Report while Spaces is off. */
-function answerShare(ctx: BotsCtx, slug: string, t: Turn, botName = slug): Node {
+export function answerShare(ctx: BotsCtx, slug: string, t: Turn, botName = slug): Node {
   const first = t.text.replace(/[*#>`]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "Answer";
   // Report: App Review 1.2 and 4.7.1, what a bot makes can be reported (reportAction.ts).
   return row([
@@ -260,10 +269,19 @@ export function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, 
 }
 
 /** Sends what is typed at `path` to the bot (POST .../chat/:slug), then shows it. */
-export function sendToBot(slug: string, path = "say", then?: ActionRef, ctx?: BotsCtx): ActionRef {
+export function sendToBot(slug: string, path = "say", then?: ActionRef, ctx?: BotsCtx, o: { attach?: boolean } = {}): ActionRef {
   // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
-  const send = call("POST", `${A}/chat/${enc(slug)}`, { message: SENT_WORDS }, {
-    ok: seq(setState("sending", false), then ?? refresh, ...momentDone()),
+  const send = call("POST", `${A}/chat/${enc(slug)}`, {
+    message: SENT_WORDS,
+    // The files the person inserted go with the words; the route reads them before the bot sees them.
+    ...(o.attach ? { attachments: `$state.${INSERT_PATHS.attach}` } : {}),
+  }, {
+    ok: seq(
+      setState("sending", false),
+      ...(o.attach ? [{ kind: "clearState", path: INSERT_PATHS.attach } as ActionSpec, { kind: "clearState", path: INSERT_PATHS.shots } as ActionSpec] : []),
+      then ?? refresh,
+      ...momentDone(),
+    ),
     fail: failed({ busy: "sending", from: path, then: said("Couldn't send that. Try again.") }),
   });
   return seq(...momentStart({ message: `$state.${path}`, from: path, busy: "sending" }), ctx ? streamed(ctx, send as ActionSpec) : send);
@@ -274,16 +292,39 @@ export const askBot = (slug: string, message: string): ActionRef => seq(
   call("POST", `${A}/chat/${enc(slug)}`, { message }, { ok: open(SCREENS.chat, { slug }), fail: toast("Couldn't send that. Try again.", true) }),
 );
 
+/**
+ * THE BOX A BOT IS ASKED IN, with the insert key beside it.
+ *
+ * The key and its card are the ask bar's own (ask.ts insertKey / insertCard), not a second way of doing the same
+ * thing: a photo, the camera, a file, a screenshot or the clipboard reach a bot's chat exactly as they reach Talk.
+ * A build that cannot upload gets no key, as it never had one.
+ *
+ * `attachments` rides with the words (`$state.attach`), and the chat route reads the files the front door's way
+ * before the bot sees them (routes/bots/botsBots.ts) — a bot's own chat never read a file before this.
+ */
 export function chatBar(ctx: BotsCtx, slug: string, name: string, placeholder?: string, then?: ActionRef): Node {
+  const up = canUpload(ctx);
+  const field = sendField("say", "say", placeholder ?? (isDesk(ctx) ? `Ask ${name}…  or hold Fn and speak` : `Ask ${name}…`), sendToBot(slug, "say", then, ctx, { attach: up }), { desk: isDesk(ctx) });
+  const key = insertKey(ctx, "say");
   return col([
     askMoment(ctx, { slug, color: ctx.live.bots.find((b) => b.slug === slug)?.color ?? lookOf(slug).color, kind: botKind(slug), busy: "sending", line: `${name} is on it…` }),
-    sendField("say", "say", placeholder ?? (isDesk(ctx) ? `Ask ${name}…  or hold Fn and speak` : `Ask ${name}…`), sendToBot(slug, "say", then, ctx), { desk: isDesk(ctx) }),
+    // A file on its way keeps its chip above the row it belongs to, as it does on the ask bar.
+    ...(up ? [uploadChip(INSERT_PATHS.attach, { wide: true })] : []),
+    key.length ? row([...key, field], { gap: 10, alignItems: "flex-end" }) : field,
+    ...insertCard(ctx, "say"),
   ], { gap: 8 });
 }
+
+/** What a screen with a chat bar starts with, so the insert card has somewhere to put what it picks. */
+export const CHAT_BAR_STATE: Record<string, unknown> = {
+  say: "", [INSERT_PATHS.attach]: [] as unknown[], [INSERT_PATHS.shots]: [] as unknown[], [INSERT_PATHS.open]: false, up: null,
+};
 
 // ===================================================================== bots.bot and bots.chat
 export interface BotPageData {
   bot?: BotView; memory?: Memory; linked?: Linked[]; turns?: Turn[];
+  /** This bot's conversations, newest first: what its page is (screens/bots/botSessions.ts). */
+  sessions?: BotSession[];
   /** Counts for the Moves line, from GET /v1/bots/:slug; only the owner's own fitness bot with its switch on has one. */
   moves?: Moves;
 }

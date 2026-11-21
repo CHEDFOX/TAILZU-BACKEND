@@ -12,7 +12,7 @@
 import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
 import { withoutAmounts } from "../../../shell/parse.js";
 import {
-  type BotsCtx, page, emptyState, toTab, row, labelled, box, icon, back, botAvatar, col, text, grow, open, SCREENS, listRow, meta, mono,
+  type BotsCtx, page, emptyState, row, labelled, box, icon, back, botAvatar, col, text, grow, open, SCREENS, listRow, meta, mono,
   headerBuddy, quietButton, body, C, chip, listCard, title, sectionLabel, notice, primaryButton, call, card, grid, divider, seq, button,
   infoChip, when, chips, statusMark, meter, roundButton, needsCard, type LiveBot, secondaryButton, blip, hasSpaces, canPersonBot,
 } from "../kit.js";
@@ -49,6 +49,11 @@ import { followPhoneScreens } from "./bots/followPhone.js";
 import { homeOn, planOn } from "../../../botsBots/planSwitch.js";
 import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./bots/planHome.js";
 import { planMakeScreens } from "./bots/planMake.js";
+import { loadTalk, talkPage, type TalkData } from "./bots/talkDoor.js";
+import { TALK_THREADS_PATH, talkThreadsPage, type TalkThreadsData } from "./bots/talkThreads.js";
+import { activitiesPage, type ActivitiesData } from "./bots/activities.js";
+import { botSessions, newSessionKey, SESSION_STATE, type BotSession } from "./bots/botSessions.js";
+import { botsStartPage } from "./bots/botsStart.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
@@ -77,11 +82,14 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
   // `o.slug` is for a page that is a TAB: a tab root is fetched with no params, so there is nowhere to read one from.
   const slug = o.slug ?? slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sky, about, mail, meet, cinema] = await Promise.all([
+  const [bot, memory, linked, chat, sessions, sky, about, mail, meet, cinema] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
     deps.api<{ turns: Turn[] }>("GET", `${A}/chat/${enc(slug)}?limit=${turnsLimit}`).then((r) => r.turns).catch(() => undefined),
+    // THIS BOT'S CONVERSATIONS: what its page is now (screens/bots/botSessions.ts). The store was built before any
+    // screen drew it (botsBots/sessions.ts), so this is the first read of it.
+    deps.api<{ sessions: BotSession[] }>("GET", `${A}/sessions/${enc(slug)}`).then((r) => r.sessions).catch(() => undefined),
     // The Oracle's own card: when and where they were born (routes/bots/oracle.ts).
     slug === "oracle" ? deps.api<OracleSkyView>("GET", "/v1/oracle/sky").catch(() => undefined) : Promise.resolve(undefined),
     // And whether its last card is owed: the person's name and gender, as the About you card reads them.
@@ -100,7 +108,7 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     ? await deps.api<{ moves: Moves | null }>("GET", `/v1/bots/${enc(slug)}/health/moves`).then((r) => r.moves).catch(() => undefined)
     : undefined;
   return {
-    bot, memory, linked, turns: chat, ...(moves ? { moves } : {}),
+    bot, memory, linked, turns: chat, ...(sessions ? { sessions } : {}), ...(moves ? { moves } : {}),
     ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}),
     ...(cinema ? { cinema } : {}),
   };
@@ -118,7 +126,7 @@ const isCinema = (d: BotPageData): boolean => d.bot?.slug === "cinema" && d.bot.
 function noBot(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
     back: true, title: "Bot", nav: "bots",
-    body: [emptyState({ pose: "think", title: "Couldn't open this bot", body: "It may have been deleted, or the connection dropped.", action: { label: "Back to your bots", onPress: toTab("bots") } })],
+    body: [emptyState({ pose: "think", title: "Couldn't open this bot", body: "It may have been deleted, or the connection dropped.", action: { label: "Back to your bots", onPress: open(SCREENS.start) } })],
   });
 }
 
@@ -138,7 +146,6 @@ function phoneHead(look: ReturnType<typeof lookOf>, name: string, line: string, 
 function botPhone(ctx: BotsCtx, d: BotPageData) {
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
-  const turns = (d.turns ?? []).slice(-2);
   const facts = d.memory?.facts ?? [];
   const edit = open(SCREENS.edit, { slug: bot.slug });
   const info: Node[] = [
@@ -150,21 +157,26 @@ function botPhone(ctx: BotsCtx, d: BotPageData) {
       mono(apiLine(bot.slug)),
     ], { gap: 8, paddingVertical: 14, paddingHorizontal: 16 }, open(SCREENS.keys, { slug: bot.slug }))]),
   ];
+  // THE PAGE IS THIS BOT'S CONVERSATIONS, not one running chat with a box under it (screens/bots/botSessions.ts).
+  // A box at the foot of a list asks "add to which one?"; the one way to begin is the round "+", and a conversation
+  // is carried on by tapping it. With none yet, what the bot is FOR and a few things to say, as before.
+  const sessions = botSessions(ctx, look, d.sessions);
   return page(ctx, {
     title: bot.name, nav: bot.slug,
+    state: { ...SESSION_STATE, ...(bot.skills.health ? HEALTH_PAGE_STATE : {}) },
     // A page that draws a health number is never kept on the device (kit page keep), so none of it reaches the phone's
     // AsyncStorage cache and from there the device backup and iCloud (docs: perms §4.6).
-    ...(bot.skills.health ? { keep: false as const, state: { ...HEALTH_PAGE_STATE } } : {}),
+    ...(bot.skills.health ? { keep: false as const } : {}),
     body: [
       phoneHead(look, bot.name, stateLine(ctx, bot), undefined, headerBuddy(ctx, bot.slug, { color: look.color, lookTo: "down", thinkWhen: ANSWERING })),
-      ...(turns.length
-        ? [col(chatTurns(ctx, bot, turns), { gap: 14 }), ...(d.turns && d.turns.length > 2 ? [quietButton("See the whole chat", open(SCREENS.chat, { slug: bot.slug }), { size: "md" })] : [])]
+      ...(sessions.length
+        ? sessions
         : [col([body(bot.purpose, { color: C.grey70 }), row(starters(bot.slug, bot.purpose).map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })], { gap: 12 })]),
       listCard([...movesLine(ctx, bot, d.moves), ...info]),
       // The numbers come in while the page is open, and only then: ask: false never prompts (docs: perms §4.3).
       ...healthRefresh(ctx, bot),
     ],
-    footer: [chatBar(ctx, bot.slug, bot.name)],
+    footer: [newSessionKey(ctx, bot.slug)],
   });
 }
 
@@ -387,7 +399,7 @@ function storeDesk(ctx: BotsCtx, d: Shop | undefined) {
   return page(ctx, {
     title: "Find a bot", nav: "bots", maxWidth: 1120, state: { filter: "all", q },
     body: [
-      row([col([row([text("Your bots", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("bots")), title("Find a bot", { size: 26 })], { gap: 4 }), grow(), box([search], { width: 340 })], { alignItems: "flex-end", gap: 16 }),
+      row([col([row([text("Your bots", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, open(SCREENS.start)), title("Find a bot", { size: 26 })], { gap: 4 }), grow(), box([search], { width: 340 })], { alignItems: "flex-end", gap: 16 }),
       row([chips(FILTERS, "filter"), grow(), meta("Every bot asks before it uses an app or spends money.", { size: 12 })], { gap: 12 }),
       ...(d ? [row([
         col([
@@ -736,12 +748,33 @@ export const botsScreens: BotsScreen[] = [
     load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : ["mail", "meet", "cinema"].includes(slugParam(ctx)) ? 1 : 6, { mail: true, meet: true, cinema: true }),
     build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isCinema(d) ? cinemaPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
-  // THE BOT YOU JUST TALK TO, as a tab. Its slug is fixed here because a tab root is fetched with no params, and its
-  // page is the plain chat — there is no other page for it to have.
-  screen<OraclePageData>({
+  /**
+   * TALK: THE ONE SCREEN, and the tab the app opens on (screens/bots/talkDoor.ts, docs/talk-door.md).
+   *
+   * It used to be the plain chat with the one generalist bot. It is now the thread every bot answers in: a message goes
+   * through the door (`POST /v1/botsapp/talk` -> the front door), and the answer lands here with whatever the bot drew
+   * under it. A tab root is fetched with no params, so there is nothing to read one from and nothing it needs.
+   */
+  /**
+   * ACTIVITIES, the second tab (screens/bots/activities.ts): what the work turned into, derived from what is already
+   * kept (botsBots/activities.ts). A tab root takes no params.
+   */
+  // START SOMETHING: the bots as a launcher (screens/bots/botsStart.ts). Reads nothing — the live bots are on ctx.
+  screen({ id: SCREENS.start, build: (ctx) => botsStartPage(ctx) }),
+  screen<ActivitiesData>({
+    id: SCREENS.activities,
+    load: (_ctx, deps) => deps.api<ActivitiesData>("GET", "/v1/botsapp/activities").catch(() => ({ down: true })),
+    build: (ctx, d) => activitiesPage(ctx, d),
+  }),
+  screen<TalkData>({
     id: SCREENS.talk,
-    load: (ctx, deps) => loadBot(ctx, deps, 30, { slug: "talk" }),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : chatPage(ctx, d, { root: true })),
+    load: loadTalk,
+    build: (ctx, d) => talkPage(ctx, d),
+  }),
+  screen<TalkThreadsData>({
+    id: SCREENS.talkThreads,
+    load: (_ctx, deps) => deps.api<TalkThreadsData>("GET", TALK_THREADS_PATH).catch(() => ({ down: true })),
+    build: (ctx, d) => talkThreadsPage(ctx, d),
   }),
   screen<OraclePageData>({
     id: SCREENS.chat,

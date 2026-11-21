@@ -499,7 +499,7 @@ registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJ
 // The overload guards (src/guard) are on the routes that spend money either way; GET /v1/admin/guard shows them.
 // Media and files (src/media, docs/media.md): a PDF, an office file, a spreadsheet, a picture, a recording, a video or a zip is read once and a question about it is
 // answered from the few chunks that matter. Off unless MEDIA_INGEST is true: the attachment registry then keeps its "coming soon" for those kinds and /v1/files answers
-// 404 media_off. Bytes go to R2, text and chunks to migration 0035's tables, office files and hard PDFs to the worker (media-worker/).
+// 404 media_off. Bytes go to R2, text and chunks to migration 0036_media.sql's tables, office files and hard PDFs to the worker (media-worker/).
 const media = createMedia({ log: app.log });
 // The projects' code copies (code/project/copies.ts): one unused for a month goes, and past the disk cap the longest unused. Looked at every six hours.
 if (code?.copies) {
@@ -571,7 +571,12 @@ const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsParts = botsAreaParts({ bots, connectors });
 // A routine's answer goes into the same chat the app's own shows (above).
 routineChat = botsParts.chat;
-const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
+// `readFiles`: a file attached to a bot's chat is read exactly as one attached to Ask is — the SAME reader, so there is
+// one set of caps, one secret scan and one cache by SHA-256 (front/index.ts). Null while FRONT_DOOR is off, and then a
+// chat message's files are simply ignored and its words asked as before.
+const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, {
+  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}),
+});
 // Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
 // account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
 // plan can only be shared with someone you already share a space with) and the same meter the You tab shows. Every route answers

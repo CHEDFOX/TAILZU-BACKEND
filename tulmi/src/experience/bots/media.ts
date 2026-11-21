@@ -18,7 +18,11 @@ import { box, C, col, icon, labelled, meta, row, seq, statusMark, text, when, wh
 /** The most a file may be: the upload route's own limit (media/types.ts CAP_MAX); each kind has a lower cap it words itself. */
 const UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
 
-export const canUpload = (ctx: BotsCtx): boolean => ctx.can.has(FILE_UPLOAD_CAPABILITY);
+/**
+ * FileUpload is the BUILD's ability; `ctx.files` is this server's (MEDIA_INGEST, botsBots/mediaSwitch.ts). Both, or the
+ * attach is drawn and then refused with 404 media_off once the file has been picked.
+ */
+export const canUpload = (ctx: BotsCtx): boolean => ctx.can.has(FILE_UPLOAD_CAPABILITY) && ctx.files !== false;
 export const canPlay = (ctx: BotsCtx): boolean => ctx.can.has(AUDIO_PLAY_CAPABILITY);
 /** Speaking inside the app is the phone's; the window has its own (Fn, `dictate`). */
 export const canRecord = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(VOICE_RECORD_CAPABILITY);

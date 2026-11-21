@@ -409,7 +409,8 @@ describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs",
     // Nothing between sign-in and Home, onboarded or not, reviewer or not.
     for (const o of [{ onboarded: false }, { onboarded: true }, { onboarded: false, isReviewer: true }]) {
       const b = buildBootstrap({ botsApp: true, onboardV2: true, ...o });
-      expect(b.initialScreenId).toBe("bots.home");
+      // Talk is what the app opens on now (docs/talk-door.md); nothing comes between sign-in and it (App Review 4).
+      expect(b.initialScreenId).toBe("bots.talk");
       expect(b.flags?.["boot.firstRunGateIds"]).not.toContain("bots.name-it");
     }
     const off = buildBootstrap({ onboarded: false, onboardV2: true });

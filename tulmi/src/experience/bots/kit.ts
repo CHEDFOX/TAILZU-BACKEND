@@ -45,7 +45,7 @@ import { botRoute, SCREENS } from "./ids.js";
 import { failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
-export { icon, peekKey, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
+export { icon, peekKey, shapes, statusMark, tabGlyph, botsMark, botsGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
 export { blipUrl, headUrl, BLIP_POSES, type BlipPose } from "./art.js";
 export { SCREENS, botRoute } from "./ids.js";
 export { percent, whenWords } from "../../you/usage.js";
@@ -95,6 +95,12 @@ export interface BotsCtx {
    * is on, so a test's ctx draws Spaces as it always did.
    */
   spaces?: boolean;
+  /**
+   * False while reading files is switched off (MEDIA_INGEST, botsBots/mediaSwitch.ts): no screen offers an attach, because
+   * /v1/files would answer 404 media_off after the person had already picked their file (kit canUpload). Absent is on, so a
+   * test's ctx draws the attach as it always did.
+   */
+  files?: boolean;
 }
 
 // ===================================================================== theme
@@ -200,6 +206,19 @@ export function text(content: string, o: TextOpts = {}): Node {
     },
   };
 }
+
+/**
+ * TEXT THAT STARTS WITH "@", MEANT AS THE CHARACTER AND NOT A CATALOG KEY.
+ *
+ * Both renderers read a prop beginning with "@" as a key into the bootstrap's copy, and a key they do not have BLANKS
+ * the prop (TAILZU-FRONTEND Renderer.tsx, the window's theme.js label). So "@Mom", "@plan" or an email address written
+ * as a literal came out as nothing at all. They also both read a leading "\@" as the character itself, exactly as "$"
+ * is escaped in an action's text — this writes that backslash.
+ *
+ * Use it for any text the SERVER writes that may begin with "@". Text that comes from a person (a message, a name) is
+ * bound, not a literal, and the renderers never look up a bound value, so it needs nothing.
+ */
+export const atText = (s: string): string => (s.startsWith("@") ? `\\${s}` : s);
 
 /** Page title: 26/700, tracking -0.5 (the window's Home uses 32). */
 export const title = (content: string, o: TextOpts = {}): Node =>
@@ -509,8 +528,35 @@ export function writeOn(content: string, o: { size: number; lineHeight: number; 
 }
 
 /** The Tailzu mark, alive (LiveMark): a ring dot lit in each working bot's colour; a tap runs `onPress`. */
-export function liveMark(size: number, lit: string[], onPress?: ActionRef): Node {
-  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: onPress ? "X0 Bot. Ask anything" : "X0 Bot" }, ...(onPress ? { on: { onPress } } : {}) };
+export function liveMark(size: number, lit: string[], onPress?: ActionRef, label?: string): Node {
+  return {
+    type: "LiveMark",
+    props: { size, lit: lit.slice(0, 8), label: label ?? (onPress ? "X0 Bot. Ask anything" : "X0 Bot") },
+    ...(onPress ? { on: { onPress } } : {}),
+  };
+}
+
+/**
+ * THE APP'S MARK IN A HEADER, AND WHAT IT OPENS: your people and your spaces.
+ *
+ * The mark used to open nothing — it only squished and followed your finger. It is the one thing in every header, it
+ * is made of dots, and a person in this app is drawn as their own tiny bot and never as initials (docs/spaces.md), so
+ * it is the honest place for the people half of the product now that neither a tab nor a pill is going spare
+ * (docs/talk-door.md).
+ *
+ * WITH SPACES SWITCHED OFF it opens nothing at all, as it always did: with `SPACES_ENABLED` false nobody is connected
+ * to anybody, so there is nothing behind it to show (botsBots/spacesSwitch.ts).
+ *
+ * It lights as it always has — a dot per working bot, in that bot's colour. Lighting it for people waiting on you
+ * instead would need a read of the spaces on the app's landing screen, which is the one screen worth not adding a
+ * call to; that is a separate decision, not a side effect of this one.
+ */
+export function appMark(ctx: BotsCtx, size: number, lit: string[] = []): Node {
+  const open2 = hasSpaces(ctx) ? open(SCREENS.spaces) : undefined;
+  const label = open2 ? "Your people and spaces" : "X0 Bot";
+  if (canHead(ctx)) return liveMark(size, lit, open2, label);
+  const mark = tailzuMark(size);
+  return open2 ? labelled(box([mark], { flexShrink: 0 }, open2), label) : mark;
 }
 
 /** A compact bar over the top of the page that comes in once the page has scrolled past `at` (page()'s `pinned`). */
@@ -952,6 +998,31 @@ export function segmented(options: Array<{ label: string; value: string }>, path
 }
 
 /**
+ * A PILL SWITCHER BETWEEN TWO SCREENS THAT ARE ONE SURFACE (Talk and Xode: docs/talk-door.md).
+ *
+ * Not `segmented`, and the difference is the point. A segmented control picks a VALUE on the page you are on, so the
+ * page stays and its state changes. These pills cross between two SCREENS: Talk's thread and Xode's projects are
+ * different pages, each with its own load, its own cache and its own state, and pretending otherwise — drawing both
+ * trees into one screen behind a `visibleIf` — would make every open of Talk fetch Xode's projects too.
+ *
+ * So the pill you are on is drawn filled and does nothing, and the other one navigates. It reads as one surface with a
+ * switch on it, which is what it is, and it costs one screen fetch, which a switcher should.
+ *
+ * `here` marks the pill you are on. A pill with no action and no `here` is drawn quiet and does nothing (a surface the
+ * build or the switches cannot reach).
+ */
+export function pillSwitch(items: Array<{ label: string; here?: boolean; onPress?: ActionRef; label2?: string }>, style: Style = {}): Node {
+  return row(items.map((it) => labelled(box([
+    text(it.label, { size: 13, weight: 500, lineHeight: 17, align: "center", color: it.here ? C.ink : it.onPress ? C.grey70 : C.idle }),
+  ], {
+    paddingVertical: 7, paddingHorizontal: 16, borderRadius: 10, flexShrink: 0,
+    ...(it.here ? { backgroundColor: C.paper } : {}),
+  }, it.here ? undefined : it.onPress), it.label2 ?? (it.here ? `${it.label}, where you are` : it.label))), {
+    padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2, alignSelf: "flex-start", flexShrink: 0, ...style,
+  });
+}
+
+/**
  * A switch's look (40 x 24, ink when on, #e0e0e0 when off), following a state path. Not pressable itself. `on`: when it shows on
  * (default: the path is truthy; "Plan something"'s Must not miss: { eq: ["d.imp", "must"] }).
  */
@@ -1231,8 +1302,13 @@ export function seq(...actions: Array<ActionRef | undefined>): ActionRef {
 
 // ===================================================================== frames
 
+/**
+ * THE SAME ORDER THE BOOTSTRAP SENDS (experience/bots/index.ts botsNav): Talk, Bots, Activity. A page draws its own tab
+ * bar, so this list and that one have to agree — a bar whose order differs from the shell's is a bar that lies about
+ * where you are, and the first tap on the tab you appear to be on does nothing.
+ */
 const TABS: Array<{ id: TabId; title: string }> = [
-  { id: "bots", title: "Bots" }, { id: "talk", title: "Talk" }, { id: "activity", title: "Activity" },
+  { id: "talk", title: "Talk" }, { id: "activity", title: "Activities" },
 ];
 
 /** The phone's tab bar: three living icons with their words, live state from ctx.live. Last child of a top-level page. */

@@ -1,5 +1,57 @@
 # Being built right now (read before you start)
 
+## 20 Nov: TALK IS THE APP NOW — one screen, one thread, every bot answering in it
+
+The app opened on a grid of bots. On a phone that grid is a list you scroll — eight living tiles one to a row, then
+chips for the rest, then the routines and the notes strip — and every job began with a decision nobody should have to
+make: *whose* job is this? So `bots.talk` is the first tab and what the app opens on. You say what you need, and
+whichever bot it belongs to answers **in the thread**. The Bots tab keeps the grid, because a bot's own PAGE — a trip,
+a day's plan, a mailbox — is a place and not a message.
+
+**It is not a second brain, and that is the whole point.** Every message goes through the door that already exists
+(`POST /v1/shell/ask` -> `POST /v1/ask`: the front door's rules, its pick of a bot, its guards, its budgets, its
+routine drafts, its Activity row). `routes/bots/botsTalk.ts` adds the two things a chat needs that the door never had:
+ONE THREAD (both turns kept under the `talk` slug whoever answered, with `by` saying which bot did and `did` what it
+left to do), and THE TWO MARKS.
+
+**"/" names a bot, "@" names a person** (`botsBots/talkWords.ts`, pure, no model). "/" is the bot and not the command
+because a bot's own saved commands are already `/name` INSIDE that bot — at the door there is no bot whose commands
+those could be. A `/word` that is not one of the person's own bots is **left in the words exactly as typed**, so the
+bot that answers expands it as its own command, as it always has. "@" sends an id; the server checks it is someone they
+still share a space with and reads the NAME off that list, never off the body, then says it to the bot as one plain
+line at the END of the words. Nothing writes `to_id` (docs/social.md section 5).
+
+**The screen draws nothing new.** Every part of a turn is something the app already draws: the words
+(`answerBlocks`), what the bot itself chose to draw from its own answer (`showNodes`, docs/show.md), what the everyday
+tools found (`findsCards`), a routine to save (`routineCard`), and the job / pay / waits cards — which moved out of the
+Ask screen into `screens/shell/doorCards.ts` so both screens draw ONE implementation. New: each answer says which bot
+gave it, and a drawing's taps go back through the DOOR (`ShowOpts.path`) rather than to the bot that drew the choice.
+
+**`POST /v1/ask` takes `draw` now**, reaching a BOT's answer only. `show` was asked for only where an answer is drawn
+and the front door was not such a place; Talk is. The front door's own roads keep their visual ladder, and an API
+caller, a routine and a voice call still pay for no drawing.
+
+**Xode is a pill, not a turn.** It answers with a project, a branch and a pull request and must know which project
+first — that is a place. `kit.ts pillSwitch` navigates rather than hiding two screens behind a `visibleIf`, which
+would make every open of Talk fetch Xode's projects too.
+
+**Two things found on the way, both real bugs, both fixed:**
+
+1. **A literal "@" drew as NOTHING.** Both renderers read a prop beginning with "@" as a key into the bootstrap's copy,
+   and a key they do not have blanks the prop — so `@Mom`, an email address and Talk's own "@" mark all came out empty.
+   They now read a leading `\@` as the character, exactly as `$` is escaped in an action's text (`kit.ts atText`;
+   phone `Renderer.tsx` + `fill.ts`, window `sdui/theme.js`).
+2. **Home's asks had to move with the landing**, the AI permission above all: nothing may be sent to a model before it
+   is answered, so a Talk that landed people and never asked would have met them with a refusal and no way to clear it.
+   Talk draws Home's own notices with Home's own code. Still asked once — the answer is the server's.
+
+An older build (no `MentionCommands`) gets the plain message box, sending through the same door. **Plain language is
+the whole way in on every build**; the marks are faster, never the only way.
+
+12,715 backend pass (the 20 new in `tests/talk-door.test.ts`), 1,252 phone (the one `launch-motion` failure is the
+pre-existing one, checked by stashing), 1,570 window. docs/talk-door.md has the whole design and what still needs a
+live check — chiefly whether the door's pick is good enough to carry the whole app, which it now has to be.
+
 ## 20 Nov: EVERY ACCOUNT HAS A USERNAME NOW, AND THE ABOUT YOU CARD ASKS FOR IT INSTEAD OF A NAME
 
 The first step towards adding people one at a time. Today the only way two people are connected is a space they share

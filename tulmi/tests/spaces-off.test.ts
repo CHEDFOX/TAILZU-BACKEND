@@ -161,7 +161,8 @@ describe("the screens", () => {
         expect((await draw(id, client, { params })).s.screenId, id).toBe(id);
         switchOff();
         const off = await draw(id, client, { params });
-        expect(off.s.screenId, id).toBe("bots.home");
+        // The landing is Talk now, and Home is no longer a tab (docs/talk-door.md).
+        expect(off.s.screenId, id).toBe("bots.talk");
         expect(spacesReads(off.paths), id).toEqual([]);
         switchOn();
       }

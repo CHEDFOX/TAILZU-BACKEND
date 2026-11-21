@@ -52,6 +52,9 @@ import type { FakeOpts } from "../../src/experience/bots/fixtures.js";
 process.env.PUBLIC_ORIGIN = "https://api.local";
 // Spaces is off on the server until it is ready (SPACES_ENABLED); the renders draw it, as the screens were designed. Set it to false to see it off.
 process.env.SPACES_ENABLED ??= "true";
+// Reading files is a deployment, not a build (MEDIA_INGEST; DEPLOY.md "Media and files"), and the attach is drawn only where the
+// server can serve it (experience/bots/media.ts canUpload). A render is for reviewing the screens as designed, so it is on here too.
+process.env.MEDIA_INGEST ??= "true";
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TULMI = path.resolve(HERE, "../..");
@@ -198,7 +201,13 @@ export const LOOK_COMPONENTS = ["PersonBot", "FontBricolage"];
 export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "DeskTalkTo"];
 /** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles, the media actions, the new Spaces (and the
  *  "$state" params their navigation needs, ActionParams), and the call screen's pieces (BotCall: --without BotCall draws its record). */
-export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "BotCall"];
+// "ScrollX" is here because the real phone build declares it (TAILZU-FRONTEND app/src/sdui/registry.ts): without it the
+// check drew every sideways row in its fallback shape and the real one was never looked at. A sample that wants the
+// fallback asks for it by name (`without: ["ScrollX"]`).
+// "MentionField" and "MentionCommands" are here for ScrollX's reason, which Talk proved again: the real phone build
+// declares both, and without them the check drew Talk's bar in its PLAIN fallback shape — so the bar every real phone
+// actually gets was never once looked at, and shipped with the field not filling the row beside the "+".
+export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", "ScrollX", "MentionField", "MentionCommands", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "BotCall"];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer
@@ -254,20 +263,31 @@ async function settle(page: any, motion: boolean): Promise<void> {
 }
 
 /**
- * What spills: anything past the window's right edge, and anything below its foot that is not inside something that
- * scrolls (a footer or a tab bar pushed off the screen). The lines check.cjs prints for a board, for the app's render.
+ * What spills: anything past the window's right edge or below its foot that is NOT inside something that scrolls that
+ * way. The lines check.cjs prints for a board, for the app's render.
+ *
+ * Both axes are exempted, and the sideways one matters now that the phone list declares ScrollX: a row that scrolls
+ * sideways has content past the right edge BY DESIGN (that is what there is to scroll to), so flagging it made the
+ * check cry wolf on every such row. Only the axis that actually scrolls is forgiven — a tall thing inside a sideways
+ * scroller still spills downward, and the other way round.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function spills(page: any, rootSelector: string): Promise<string[]> {
   return page.evaluate(`(() => {
     const W = innerWidth, H = innerHeight, out = [];
-    const scrolls = (el) => { for (let a = el.parentElement; a; a = a.parentElement) { const o = getComputedStyle(a).overflowY; if (o === "auto" || o === "scroll") return true; } return false; };
+    const scrolls = (el, axis) => {
+      for (let a = el.parentElement; a; a = a.parentElement) {
+        const o = getComputedStyle(a)[axis === "x" ? "overflowX" : "overflowY"];
+        if (o === "auto" || o === "scroll") return true;
+      }
+      return false;
+    };
     for (const el of document.querySelectorAll(${JSON.stringify(rootSelector)} + " *")) {
       const b = el.getBoundingClientRect();
       if (!b.width || !b.height) continue;
       const what = el.tagName.toLowerCase() + ' "' + (el.textContent || "").trim().replace(/\\s+/g, " ").slice(0, 40) + '"';
-      if (b.right > W + 1) out.push(what + " right=" + Math.round(b.right));
-      else if (b.bottom > H + 1 && !scrolls(el)) out.push(what + " bottom=" + Math.round(b.bottom));
+      if (b.right > W + 1 && !scrolls(el, "x")) out.push(what + " right=" + Math.round(b.right));
+      else if (b.bottom > H + 1 && !scrolls(el, "y")) out.push(what + " bottom=" + Math.round(b.bottom));
       if (out.length >= 6) break;
     }
     return out;

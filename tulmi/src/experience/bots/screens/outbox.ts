@@ -30,7 +30,8 @@ const OUTBOX_SLOTS = 5;
  */
 export const BOTS_OFFLINE_FLAGS: Readonly<Record<string, unknown>> = {
   "offline.screenId": SCREENS.offline,
-  "offline.roots": [SCREENS.home],
+  // The roots Offline stands in for: the two tabs (experience/bots/index.ts botsNav).
+  "offline.roots": [SCREENS.talk, SCREENS.activities],
   "offline.bar": "You're offline · I'll keep working and catch you up",
   "offline.bar.font": FACE.regular,
   "offline.sentToast": "Sent. The answers are in Activity.",

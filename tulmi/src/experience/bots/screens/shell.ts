@@ -71,7 +71,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     // ONE `state` KEY, and the ask bar's folded into it. It was briefly a second `state` in the spread below, which
     // (being later in the same literal) REPLACED this one — and with it every reading the arrival and About-you cards
     // stand on, so both drew nothing. A key that is already here is merged here.
-    tab: "bots", title: "Your bots",
+    back: true, title: "Your bots",
     state: { ...n.state, ...(updates ? HOME_UPDATES_STATE : thought ? HOME_THOUGHT_STATE : {}), ...(updates || thought ? {} : ASK_BAR_STATE) },
     pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
@@ -113,7 +113,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
 
   if (ctx.client === "desktop") {
     return page(ctx, {
-      tab: "bots", title: "Your bots", gap: 20, maxWidth: 1100, pinned,
+      back: true, title: "Your bots", gap: 20, maxWidth: 1100, pinned,
       state: { draft: "", ...n.state },
       body: [
         head,
@@ -161,7 +161,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   }
 
   return page(ctx, {
-    tab: "bots", title: "Your bots", gap: 16, state: n.state, pinned, pullBot: homePull(ctx),
+    back: true, title: "Your bots", gap: 16, state: n.state, pinned, pullBot: homePull(ctx),
     body: [
       head,
       ...n.leaving,
@@ -237,7 +237,7 @@ function tasksPhone(ctx: BotsCtx, d: TasksData | undefined) {
   const rest = (d?.rows ?? []).filter((r) => r.mark !== "needs");
   const upCount = d?.upcoming.todos?.length ?? 0;
   return page(ctx, {
-    tab: "bots", title: "Tasks", gap: 16, state: { tview: "today" },
+    back: true, title: "Tasks", gap: 16, state: { tview: "today" },
     body: [
       row([
         col([title("Tasks"), meta(tasksLine(d), { size: 13 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),

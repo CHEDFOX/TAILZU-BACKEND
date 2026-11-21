@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Node, SvgShape } from "../../shared/types/sdui.js";
 import {
   blip, botAvatar, button, chips, deskPage, FACE, listCard, listRow, meter, page, percent, phonePage, usageMeter, whenWords, duration, segmented,
-  statusMark, switchRow, tabGlyph, text, timeline, title, C, botStage, dottedButton, liveWords, roamFor, ROAM, col, row, vanish, botCrowd,
+  statusMark, switchRow, tabGlyph, botsMark, botsGlyph, shapes, text, timeline, title, C, botStage, dottedButton, liveWords, roamFor, ROAM, col, row, vanish, botCrowd,
   mentionField, voiceStop,
 } from "../src/experience/bots/kit.js";
 import { ctxFor, sampleLive } from "../src/experience/bots/fixtures.js";
@@ -48,14 +48,17 @@ describe("status marks (STYLE.md)", () => {
 
 describe("the living tab icons", () => {
   const live = sampleLive().tab;
-  it("Bots: open, the four bots pop in 60 ms apart in their colours; at rest only a working bot's dot has colour", () => {
-    const open = shapesOf(tabGlyph("bots", true, live));
+  // THE BOTS MARK IS NO LONGER A TAB'S ICON — there is no Bots tab (docs/talk-door.md) — but it still means "your
+  // bots" and still lives, at the head of the page the "+" opens (screens/bots/botsStart.ts).
+  it("the bots mark: a working bot's dot breathes in its colour, the rest are grey rings", () => {
+    const rest = shapesOf(botsMark(live));
+    expect(rest[0]).toMatchObject({ fill: "#4F7A3A", motion: "breathe" });
+    expect(rest.slice(1).every((s) => s.stroke === "#8a8a8a" && !s.fill)).toBe(true);
+    // Open, the four pop in 60 ms apart in their own colours.
+    const open = shapesOf(shapes(botsGlyph(true, live)));
     expect(open.map((s) => s.fill)).toEqual(["#4F7A3A", "#A9573A", "#8F6A1F", "#3E6E8E"]);
     expect(open.map((s) => s.delayMs ?? 0)).toEqual([0, 60, 120, 180]);
     expect(open.every((s) => s.motion === "pop")).toBe(true);
-    const rest = shapesOf(tabGlyph("bots", false, live));
-    expect(rest[0]).toMatchObject({ fill: "#4F7A3A", motion: "breathe" });
-    expect(rest.slice(1).every((s) => s.stroke === "#8a8a8a" && !s.fill)).toBe(true);
   });
   it("Activity: the black bead is the badge, the working bead breathes, done is a ring", () => {
     const rest = shapesOf(tabGlyph("activity", false, live));
@@ -126,8 +129,9 @@ describe("the frames", () => {
     expect(kids[0]!.type).toBe("Screen");
     expect(kids.at(-1)).toMatchObject({ type: "SafeArea", props: { edges: ["bottom"], inset: "max" } });
     const tabs = kids.at(-1)!.children!;
-    // The one you are on carries no action; the others switch.
-    expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "bots" }, { kind: "switchTab", tabId: "talk" }, null]);
+    // TWO TABS — Talk and Activities — the same as the bootstrap sends (experience/bots/index.ts botsNav): a bar
+    // whose order differs from the shell's is a bar that lies about where you are. The one you are on has no action.
+    expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "talk" }, null]);
     expect(checkTree(s.root!)).toEqual([]);
   });
   it("a phone page's footer (the ask bar, a composer) stays above the keyboard; the window has none to clear", () => {
@@ -145,12 +149,14 @@ describe("the frames", () => {
     expect(JSON.stringify(s)).toContain('"kind":"navigateBack"');
     expect(s.root!.children!.some((c) => c.props?.edges && (c.props.edges as string[]).includes("bottom"))).toBe(false);
   });
-  it("a window page: the sidebar (the three tabs, your bots, the desk's pages) and a main column", () => {
+  it("a window page: the sidebar (the two tabs, your bots, the desk's pages) and a main column", () => {
     const s = deskPage(ctxFor("bots.x", "desktop", live), { tab: "activity", body: [text("Hi")] });
     const [side, main] = s.root!.children!;
     expect(side!.style).toMatchObject({ width: 240, borderRightWidth: 1 });
     const words = JSON.stringify(side);
-    for (const w of ["Bots", "Activity", "You", "Your bots", "Xode", "Gym bot", "Make a bot", "Today", "Notes", "Settings"]) expect(words).toContain(w);
+    // Two tabs now (docs/talk-door.md). The window keeps a line per bot under "Your bots", so losing the Bots TAB
+    // costs the sidebar nothing: every bot is still one click away.
+    for (const w of ["Talk", "Activities", "Your bots", "Xode", "Gym bot", "Make a bot", "Today", "Notes", "Settings"]) expect(words).toContain(w);
     // Settings is the Bots app's own card (screens/you/settingsCard.ts), not the old desk page.
     expect(words).toContain('"screenId":"bots.settings"');
     expect(main!.style).toMatchObject({ overflowY: "auto", flexGrow: 1 });

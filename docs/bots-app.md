@@ -26,9 +26,12 @@ the window (`TAILZU-DESKTOP/src/app/sdui/`) draw them. Design source: `bots-desi
 desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it to those sign-ins while set.
 
 * **Off, or an older build: today's app, byte for byte** (tests/bots-app-boot.test.ts checks the bootstrap is identical).
-* **On:** the bootstrap sends the tabs `bots` / `activity` / `you` (screens `bots.home`, `bots.activity`, `bots.you`), lands on
-  `bots.home` (after the Bots app's own first run, below), adds the Geist fonts, flag `bots.app: true`, and warms the three tabs. The
-  screen route answers every `bots.*` id, and `home` (where every "go to the app" in today's flows points) becomes `bots.home`.
+* **On:** the bootstrap sends the tabs `talk` / `bots` / `activity` (screens `bots.talk`, `bots.home`, `bots.activity`), lands on
+  **`bots.talk`** — the one screen, where you say what you need and whichever bot it belongs to answers in the thread
+  ([talk-door.md](talk-door.md)) — adds the Geist fonts, flag `bots.app: true`, and warms the three tabs. The screen route answers
+  every `bots.*` id, and `home` (where every "go to the app" in today's flows points) resolves to the landing tab's screen.
+  Talk also carries the asks Home carries, the AI permission above all: moving the landing without moving them would have met
+  people with a refusal they had no way to clear (talk-door.md section 7).
 * **The first run** (screens/firstRun.ts): Welcome → Sign in → Code in the sign-in gate (`auth.screen` = `botsAuthTree()`), then
   straight to Home and its welcome: nothing is asked once they are in (App Review 4). The boot marks a signed-in account onboarded
   (routes/app/appScreens.ts), with the name Google or Apple sent saved on it when it has none (`providerNameToSave`; the same on
@@ -69,6 +72,8 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/deps.ts` | the real `BotsDeps` (routes/app/appScreens.ts builds one per request) |
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
 | `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
+| `…/bots/screens/bots/talkDoor.ts` | **Talk, the one screen the app opens on** (`bots.talk`): one thread every bot answers in, the Talk/Xode pills, the "/" and "@" field. It draws nothing new — the words, what the bot itself drew (`show.ts`), the finds, the routine card and the job/pay/waits cards are all the app's own. [talk-door.md](talk-door.md) |
+| `…/bots/screens/shell/doorCards.ts` | what an answer left to do, as cards: a Xode job to watch, a payment to press, changes waiting for a yes. Shared by Talk's thread and the Ask screen, so there is one of each |
 | `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11); its add form is also "Plan something"'s for an older build (`planAddForm`) |
 | `…/bots/screens/bots/planHome.ts` | Plan Ease's home, the threaded day (`bots.plan` with `PLAN_V2_HOME`): the header's walking bot and +, the week strip, the thread, one Needs-you card ([plan-ease.md](plan-ease.md) section 2) |
 | `…/bots/screens/bots/planMake.ts` | "Plan something" (`bots.plan.make`): the card, Check, Change, Done, and the box that fills it ([plan-ease.md](plan-ease.md) section 10) |

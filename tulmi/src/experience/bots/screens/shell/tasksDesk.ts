@@ -101,7 +101,7 @@ export function tasksDesk(ctx: BotsCtx, d: TasksData | undefined) {
     return col(kids, { borderRadius: 18, borderWidth: 1, borderColor: C.line });
   })()], { gap: 10 })] : [];
   return page(ctx, {
-    tab: "bots", title: "Tasks", gap: 18, maxWidth: 1100, state: { tview: "today", ...(needs[0] ? { sel: needs[0].id } : {}) },
+    back: true, title: "Tasks", gap: 18, maxWidth: 1100, state: { tview: "today", ...(needs[0] ? { sel: needs[0].id } : {}) },
     body: [
       row([
         col([title("Tasks"), meta(tasksLine(d), { size: 14, lineHeight: 19 })], { gap: 4 }),

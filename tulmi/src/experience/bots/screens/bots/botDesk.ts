@@ -8,8 +8,9 @@ import {
   headerBuddy, quietButton, secondaryButton,
 } from "../../kit.js";
 import {
-  type BotView, type Linked, link, type BotPageData, lookOf, dotLine, plural, chatTurns, askBot, chatBar, ANSWERING, write, A, enc,
+  type BotView, type Linked, link, type BotPageData, lookOf, dotLine, plural, askBot, ANSWERING, write, A, enc,
 } from "./parts.js";
+import { botSessions, newSessionKey, SESSION_STATE } from "./botSessions.js";
 
 export const liveOf = (ctx: BotsCtx, slug: string): LiveBot | undefined => ctx.live.bots.find((b) => b.slug === slug);
 
@@ -70,16 +71,20 @@ export function botDesk(ctx: BotsCtx, d: BotPageData) {
       meta("Same rules as here. Your memory stays with you.", { size: 12 }),
     ], true)]),
   ], { width: 300, flexShrink: 0, paddingLeft: 24, borderLeftWidth: 1, borderLeftColor: C.divider, gap: 18 });
+  // THE MAIN COLUMN IS THIS BOT'S CONVERSATIONS, as it is on the phone (screens/bots/botSessions.ts): a list of what
+  // you have talked to it about, and the round "+" to begin another. No box at the foot — on a list, a box asks "add
+  // to which one?".
+  const sessions = botSessions(ctx, look, d.sessions);
   const chat = col([
-    col(turns.length
-      ? chatTurns(ctx, bot, turns, { days: true })
+    col(sessions.length
+      ? sessions
       : [col([body(bot.purpose, { color: C.grey70 }), row(starters(bot.slug, bot.purpose).map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })], { gap: 12 })],
     { gap: 16, maxWidth: 640, width: "100%" }),
     grow(),
-    box([chatBar(ctx, bot.slug, bot.name)], { maxWidth: 640, width: "100%" }),
+    box([newSessionKey(ctx, bot.slug)], { maxWidth: 640, width: "100%" }),
   ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 20, minHeight: 520 });
   return page(ctx, {
-    title: bot.name, nav: bot.slug, maxWidth: 1040,
+    title: bot.name, nav: bot.slug, maxWidth: 1040, state: { ...SESSION_STATE },
     body: [
       row([
         botAvatar(look, 48),

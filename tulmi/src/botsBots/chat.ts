@@ -40,9 +40,30 @@ export interface ChatTurnRow {
   role: "me" | "bot";
   text: string;
   /** A bot turn's links to finish in another app, the changes waiting for a yes, what it cost, and what was drawn under its words. */
-  extra: { opens?: Array<{ label: string; url: string }>; approvals?: Array<{ taskId: string; connector: string; preview: string }>; paise?: number; show?: Shown };
+  extra: {
+    opens?: Array<{ label: string; url: string }>; approvals?: Array<{ taskId: string; connector: string; preview: string }>; paise?: number; show?: Shown;
+    /**
+     * WHO ANSWERED, where that is not the thread's own bot. Only Talk's thread has this (docs/talk-door.md): it is one
+     * conversation that every bot answers in, so a turn has to say which one did, or the chat could not draw it. Every
+     * other thread is one bot's and leaves it off, exactly as before.
+     */
+    by?: TurnBy;
+    /** What the answer left to do, as the door reported it: the cards the chat draws under the words. */
+    did?: TurnDid;
+    /** The person the message was for ("@Mom"), as it was shown when it was sent. A name, never an id. */
+    forName?: string;
+  };
   at_ms: number;
 }
+
+/** The bot that answered one turn of a thread that is not its own. */
+export interface TurnBy { slug: string; name: string; color: string }
+
+/**
+ * What an answer left to do: a Xode job to watch, a payment to press, what the everyday tools found, changes waiting for
+ * a yes, a routine to save. Ids and counts only — the cards are drawn from them, and nothing here is words a model wrote.
+ */
+export interface TurnDid { job?: string; upi?: string; finds?: string; needs?: number; routine?: string }
 
 export interface ChatTurn {
   id: string;
@@ -56,6 +77,12 @@ export interface ChatTurn {
   paise: number;
   /** What was drawn under a bot turn's words, checked again as it is read (a row is data too). */
   show?: Shown;
+  /** Which bot answered, on a thread that is not one bot's (Talk's). Absent everywhere else. */
+  by?: TurnBy;
+  /** What the answer left to do: the cards the chat draws under the words. */
+  did?: TurnDid;
+  /** The person this turn was for, by name. */
+  forName?: string;
 }
 
 /** What the person picked and typed in a drawing (experience/bots/show.ts): the bot turn it answers, and the screen's values. */
@@ -66,12 +93,45 @@ export const CHAT_KEEP = 200;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The one word a slug, a colour or an id may be, read back off a row: a row is data, like anything else kept. */
+const word = (v: unknown, re: RegExp, most: number): string => {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.length <= most && re.test(s) ? s : "";
+};
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const COLOUR_RE = /^#[0-9a-fA-F]{6}$/;
+const ID_RE = /^[A-Za-z0-9_-]+$/;
+
+/** Who answered, as the row kept it: nothing is drawn from it unless all three parts are what they should be. */
+function byOf(v: unknown): TurnBy | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const slug = word(o.slug, SLUG_RE, 40), color = word(o.color, COLOUR_RE, 7);
+  const name = typeof o.name === "string" ? o.name.replace(/\s+/g, " ").trim().slice(0, 40) : "";
+  return slug && name && color ? { slug, name, color } : null;
+}
+
+/** What the answer left to do, as the row kept it: each part only where it is still the shape its card reads. */
+function didOf(v: unknown): TurnDid | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const job = word(o.job, ID_RE, 64), finds = word(o.finds, ID_RE, 64), routine = typeof o.routine === "string" ? o.routine.slice(0, 4000) : "";
+  const upi = typeof o.upi === "string" && /^upi:\/\//i.test(o.upi) ? o.upi.slice(0, 1000) : "";
+  const needs = Number.isFinite(o.needs) ? Math.max(0, Math.min(99, Math.round(o.needs as number))) : 0;
+  const did: TurnDid = { ...(job ? { job } : {}), ...(upi ? { upi } : {}), ...(finds ? { finds } : {}), ...(needs ? { needs } : {}), ...(routine ? { routine } : {}) };
+  return Object.keys(did).length ? did : null;
+}
+
 function turnOf(r: ChatTurnRow): ChatTurn {
   const show = r.role === "bot" ? keptShown(r.extra?.show) : null;
+  const by = r.role === "bot" ? byOf(r.extra?.by) : null;
+  const did = r.role === "bot" ? didOf(r.extra?.did) : null;
+  const forName = typeof r.extra?.forName === "string" ? r.extra.forName.replace(/\s+/g, " ").trim().slice(0, 40) : "";
   return {
     id: r.id, role: r.role, text: r.text, at: Number(r.at_ms) || 0,
     ...(r.session_id ? { session: r.session_id } : {}),
     opens: r.extra?.opens ?? [], approvals: r.extra?.approvals ?? [], paise: r.extra?.paise ?? 0, ...(show ? { show } : {}),
+    ...(by ? { by } : {}), ...(did ? { did } : {}), ...(forName ? { forName } : {}),
   };
 }
 
@@ -145,6 +205,47 @@ export class BotChat {
   }
 
   /**
+   * ONE TURN OF TALK'S THREAD, KEPT AFTER THE DOOR HAS ANSWERED (docs/talk-door.md).
+   *
+   * Talk is not a bot's chat: a message there goes through the front door, which picks the bot, does the work and gives
+   * back what it did (routes/bots/botsTalk.ts). The asking has happened by the time this is called, so this does NOT ask
+   * a model, does not read the history and does not touch a budget — it keeps the pair of turns so the one thread can be
+   * drawn, with `by` saying which bot answered and `did` what it left to do.
+   *
+   * Both turns go in under the slug Talk's thread is kept under, whoever answered, because that is what makes it ONE
+   * conversation: the person's next message is read against the whole thread and not against whichever bot spoke last.
+   */
+  async keepDoor(userId: string, slug: string, o: {
+    /** `show` is whatever the door handed back: it goes through the checker here, as a drawing read off a row does. */
+    said: string; text: string; by?: TurnBy | null; did?: TurnDid | null; show?: unknown; forName?: string; session?: string | null;
+  }): Promise<ChatTurn[]> {
+    const said = String(o.said ?? "").trim().slice(0, LIMITS.message);
+    if (!said) throw new BotError("bad_request", "Type what you want first.");
+    const bot = slug.toLowerCase();
+    const at = this.now();
+    const session = await this.sessionFor(userId, bot, said, o.session);
+    const forName = String(o.forName ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+    const show = keptShown(o.show);
+    const by = byOf(o.by);
+    const did = didOf(o.did);
+    const mine: ChatTurnRow = {
+      id: randomUUID(), user_id: userId, bot, session_id: session, role: "me", text: said,
+      extra: { ...(forName ? { forName } : {}) }, at_ms: at,
+    };
+    const theirs: ChatTurnRow = {
+      id: randomUUID(), user_id: userId, bot, session_id: session, role: "bot", text: String(o.text ?? "").slice(0, LIMITS.message), at_ms: at + 1,
+      extra: { ...(by ? { by } : {}), ...(did ? { did } : {}), ...(show ? { show } : {}), ...(forName ? { forName } : {}) },
+    };
+    await this.turns.insert(mine);
+    // The answer's turn is kept even when it has no words of its own: a job started or a payment filled in IS the answer,
+    // and its card is on that turn. A turn with neither words nor anything done is the one case there is nothing to keep.
+    const empty = !theirs.text.trim() && !by && !did && !show;
+    if (!empty) await this.turns.insert(theirs);
+    await this.sessions.touch(userId, session, said);
+    return empty ? [turnOf(mine)] : [turnOf(mine), turnOf(theirs)];
+  }
+
+  /**
    * A bot turn that no message asked for: what Plan Ease said when a call was answered (botsBots/planCall.ts), or a routine's answer
    * (routines/service.ts `told`). The chat page then shows how it began, and the history gives the person's next words ("move it")
    * their subject. `quiet` leaves the push alone.
@@ -201,6 +302,18 @@ export class BotChat {
       for (const o of t.opens) if (!out.some((x) => x.url === o.url)) out.push({ ...o, at: t.at, said: asked });
     }
     return out.slice(0, limit);
+  }
+
+  /**
+   * What the person picked and typed in a drawing, as their words — for a caller that then sends them itself.
+   *
+   * Talk needs this: a choice drawn under one of its turns has to go back through the DOOR (the bot that drew it is not
+   * the thread's slug, and might not be the one that should answer what was picked), and the door takes a message. So
+   * the picks become words here, exactly as they do for a bot's own chat, and the door reads them like anything typed
+   * (docs/show.md section 3).
+   */
+  async wordsOfPicks(userId: string, slug: string, picks: Picks): Promise<string> {
+    return this.picked(userId, slug.toLowerCase(), picks);
   }
 
   /** What the person picked and typed in a drawing of one of their own turns with this bot, as their words. */

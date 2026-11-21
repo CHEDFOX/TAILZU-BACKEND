@@ -84,9 +84,12 @@ describe("bots.home", () => {
     expect(words.some((w) => /this week|saved/.test(w))).toBe(false);
     for (const w of ["Good evening, Aanya", HOME_LINE, "Needs you · Xode",
       "Round the cart total per item, or once at the end?", "Per item", "At the end", "You decide",
-      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Talk", "Activity"]) {
+      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot"]) {
       expect(words, w).toContain(w);
     }
+    // NO TAB BAR: Home is a pushed page now, not a tab root (docs/talk-door.md). The bar is what put a switchTab on
+    // this screen, so its absence is the thing to assert — not a word, which can appear for its own reasons.
+    expect(presses(s.root!).filter((a) => a.kind === "switchTab")).toEqual([]);
     // The phone draws one bot a row now, up to HOME_TILES, so the fixtures' bots ALL fit and there is nothing left
     // for a chip. moreBots draws nothing when the grid shows everything, so the section is simply absent.
     expect(words).not.toContain("More bots");
