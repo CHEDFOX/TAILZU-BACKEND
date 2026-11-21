@@ -121,7 +121,8 @@ export class Panels {
         // failed is not the place to explain a server — but this was the only copy, and dropping it left a 503
         // with nothing in the log at all: the one thing anybody needs to fix it, caught and thrown away. Chrome's
         // own startup lines travel in that message now (web/browser/chrome.ts), so this prints the real cause.
-        console.warn(`[sites] the panel could not open ${site}: ${err instanceof Error ? err.message : String(err)}`);
+        const why = err instanceof Error ? `${(err as { code?: string }).code ?? err.name}: ${err.message}` : String(err);
+        console.warn(`[sites] the panel could not open ${site}: ${why}`);
         throw new SiteError("no_browser", "I can't open that right now.", 503);
       });
 
