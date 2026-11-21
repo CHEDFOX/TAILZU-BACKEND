@@ -566,8 +566,6 @@ export class BrowserEngine {
       const cookies = Array.isArray(o.state?.cookies) ? o.state!.cookies : [];
       if (cookies.length) await page.send("Network.setCookies", { cookies }).catch(() => {});
 
-      await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, 30_000);
-
       let onFrame: ((jpeg: string, meta: { width: number; height: number }) => void) | null = null;
       stops.push(page.on("Page.screencastFrame", (p) => {
         const data = String((p as { data?: string }).data ?? "");
@@ -577,8 +575,24 @@ export class BrowserEngine {
         const md = (p as { metadata?: { deviceWidth?: number; deviceHeight?: number } }).metadata ?? {};
         if (data && onFrame) onFrame(data, { width: Number(md.deviceWidth ?? view.width), height: Number(md.deviceHeight ?? view.height) });
       }));
+
+      // THE SCREENCAST STARTS BEFORE THE NAVIGATION, and that order is the whole of it.
+      //
+      // Asked for after Page.navigate, Chrome answers "Not attached to an active page" — every time, on every
+      // site. Navigating away from about:blank puts the page in another renderer, and while that swap is in
+      // flight the page handler has no frame to screencast, so the call arrives at nothing. Asked for first, it
+      // is set up on a page that is certainly there and Chrome carries it across the swap: a navigation to
+      // github.com answers 14 frames, which is what proved this rather than reading about it.
+      //
+      // It is also better for the person: frames come while the page is loading instead of after it.
+      //
       // quality 60 is plenty for reading a form on a phone, and a third of the bytes of 90.
       await page.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: view.width, maxHeight: view.height, everyNthFrame: 1 });
+
+      // A main document the allowlist refused leaves a page that is there and empty; say so rather than hold a
+      // panel open on nothing.
+      const went = await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, 30_000);
+      if (went?.errorText) throw new BrowserError("navigation_failed", `${u.host}: ${went.errorText}`);
 
       const held: HeldPage = {
         onFrame(cb) { onFrame = cb; },
