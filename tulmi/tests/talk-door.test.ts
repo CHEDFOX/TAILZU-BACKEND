@@ -298,6 +298,23 @@ describe("Talk's screen", () => {
     expect(s).toContain('"path":"toWho","value":"$state.draft.toId"');
   });
 
+  it("the mark is the way to your people and spaces — and opens nothing while Spaces is off", async () => {
+    // The mark used to open nothing at all. It is the one thing in every header and it is made of dots, which is how
+    // this app draws a person, so it is where People went once neither a tab nor a pill was going spare.
+    const { spacesOn } = await import("../src/botsBots/spacesSwitch.js");
+    const on = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>));
+    if (spacesOn()) {
+      expect(on).toContain("Your people and spaces");
+      expect(on).toContain(SCREENS.spaces);
+    }
+    // Switched off, nobody is connected to anybody, so there is nothing behind it: no label, no navigate, no tap.
+    const off = await buildBotsScreen({
+      screenId: SCREENS.talk, client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Aanya" },
+      can: { has: () => true } as unknown as Set<string>, desk: { pages: false, notes: true }, spaces: false,
+    }, fakeDeps({ api: TALK_EMPTY_API as Record<string, unknown> }));
+    expect(JSON.stringify(off)).not.toContain("Your people and spaces");
+  });
+
   it("has the two pills, Talk where you are and Xode a tap away", async () => {
     const s = await build(TALK_API as Record<string, unknown>);
     const json = JSON.stringify(s);

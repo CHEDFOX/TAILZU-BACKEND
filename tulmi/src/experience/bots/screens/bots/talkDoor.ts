@@ -32,7 +32,7 @@ import type { ChatTurn } from "../../../../botsBots/chat.js";
 import { TALK_COMMANDS, slashBots } from "../../../../botsBots/talkWords.js";
 import {
   type BotsCtx, page, col, row, text, meta, grow, C, open, SCREENS, seq, chip, atText,
-  emptyState, botLook, botKind, canPersonBot, canHead, liveMark, tailzuMark, roundButton,
+  emptyState, botLook, botKind, canPersonBot, appMark, roundButton,
   pillSwitch, mentionField, hasSpaces,
 } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
@@ -351,18 +351,19 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
  */
 function head(ctx: BotsCtx): Node {
   const desk = ctx.client === "desktop";
-  const alive = canHead(ctx);
   const size = desk ? 34 : 30;
   const working = ctx.live.bots.filter((b) => b.working).map((b) => b.color);
-  const m = alive ? liveMark(size, working) : tailzuMark(size);
   const quiet = (glyph: "search" | "person", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 36 : 34, light: true, label });
   return row([
-    m,
+    // The mark is the way to your people and your spaces (kit appMark). The person button on the right is YOU; this
+    // one is everyone else.
+    appMark(ctx, size, working),
     pillSwitch([
       { label: "Talk", here: true },
       // Xode keeps its own page: a project, a branch and a job are a place, not a message (see this file's head).
       { label: "Xode", onPress: open(SCREENS.code), label2: "Xode, your code" },
-    ]),
+    // A little clear of the mark: against it the track read as one lump with the logo.
+    ], { marginLeft: 8 }),
     grow(),
     quiet("search", open(SCREENS.search), "Search everything"),
     quiet("person", open(SCREENS.you), "Profile and settings"),

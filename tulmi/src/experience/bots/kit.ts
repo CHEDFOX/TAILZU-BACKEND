@@ -522,8 +522,35 @@ export function writeOn(content: string, o: { size: number; lineHeight: number; 
 }
 
 /** The Tailzu mark, alive (LiveMark): a ring dot lit in each working bot's colour; a tap runs `onPress`. */
-export function liveMark(size: number, lit: string[], onPress?: ActionRef): Node {
-  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: onPress ? "X0 Bot. Ask anything" : "X0 Bot" }, ...(onPress ? { on: { onPress } } : {}) };
+export function liveMark(size: number, lit: string[], onPress?: ActionRef, label?: string): Node {
+  return {
+    type: "LiveMark",
+    props: { size, lit: lit.slice(0, 8), label: label ?? (onPress ? "X0 Bot. Ask anything" : "X0 Bot") },
+    ...(onPress ? { on: { onPress } } : {}),
+  };
+}
+
+/**
+ * THE APP'S MARK IN A HEADER, AND WHAT IT OPENS: your people and your spaces.
+ *
+ * The mark used to open nothing — it only squished and followed your finger. It is the one thing in every header, it
+ * is made of dots, and a person in this app is drawn as their own tiny bot and never as initials (docs/spaces.md), so
+ * it is the honest place for the people half of the product now that neither a tab nor a pill is going spare
+ * (docs/talk-door.md).
+ *
+ * WITH SPACES SWITCHED OFF it opens nothing at all, as it always did: with `SPACES_ENABLED` false nobody is connected
+ * to anybody, so there is nothing behind it to show (botsBots/spacesSwitch.ts).
+ *
+ * It lights as it always has — a dot per working bot, in that bot's colour. Lighting it for people waiting on you
+ * instead would need a read of the spaces on the app's landing screen, which is the one screen worth not adding a
+ * call to; that is a separate decision, not a side effect of this one.
+ */
+export function appMark(ctx: BotsCtx, size: number, lit: string[] = []): Node {
+  const open2 = hasSpaces(ctx) ? open(SCREENS.spaces) : undefined;
+  const label = open2 ? "Your people and spaces" : "X0 Bot";
+  if (canHead(ctx)) return liveMark(size, lit, open2, label);
+  const mark = tailzuMark(size);
+  return open2 ? labelled(box([mark], { flexShrink: 0 }, open2), label) : mark;
 }
 
 /** A compact bar over the top of the page that comes in once the page has scrolled past `at` (page()'s `pinned`). */
@@ -978,14 +1005,14 @@ export function segmented(options: Array<{ label: string; value: string }>, path
  * `here` marks the pill you are on. A pill with no action and no `here` is drawn quiet and does nothing (a surface the
  * build or the switches cannot reach).
  */
-export function pillSwitch(items: Array<{ label: string; here?: boolean; onPress?: ActionRef; label2?: string }>): Node {
+export function pillSwitch(items: Array<{ label: string; here?: boolean; onPress?: ActionRef; label2?: string }>, style: Style = {}): Node {
   return row(items.map((it) => labelled(box([
     text(it.label, { size: 13, weight: 500, lineHeight: 17, align: "center", color: it.here ? C.ink : it.onPress ? C.grey70 : C.idle }),
   ], {
     paddingVertical: 7, paddingHorizontal: 16, borderRadius: 10, flexShrink: 0,
     ...(it.here ? { backgroundColor: C.paper } : {}),
   }, it.here ? undefined : it.onPress), it.label2 ?? (it.here ? `${it.label}, where you are` : it.label))), {
-    padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2, alignSelf: "flex-start", flexShrink: 0,
+    padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2, alignSelf: "flex-start", flexShrink: 0, ...style,
   });
 }
 

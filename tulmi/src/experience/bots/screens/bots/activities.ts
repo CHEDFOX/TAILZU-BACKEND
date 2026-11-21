@@ -18,7 +18,7 @@ import type { Node } from "../../../../../../shared/types/sdui.js";
 import type { Activity, ActivityBot, ActivitySchedule } from "../../../../botsBots/activities.js";
 import {
   type BotsCtx, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, emptyState, botAvatar,
-  statusMark, roundButton, labelled, title as pageTitle, canHead, liveMark, tailzuMark, RADIUS, botLook,
+  statusMark, roundButton, labelled, title as pageTitle, appMark, RADIUS, botLook,
 } from "../../kit.js";
 import { shapes } from "../../glyphs.js";
 import { refresh } from "./parts.js";
@@ -117,7 +117,8 @@ export function activitiesPage(ctx: BotsCtx, d: ActivitiesData | undefined): Ret
   const empty = !now.length && !done.length && !schedules.length;
 
   const head = row([
-    canHead(ctx) ? liveMark(desk ? 34 : 30, now.filter((a) => a.state === "working").flatMap((a) => a.bots.map((b) => b.color)).slice(0, 4)) : tailzuMark(desk ? 34 : 30),
+    // The same mark as Talk's, and the same way to your people and spaces (kit appMark).
+    appMark(ctx, desk ? 34 : 30, now.filter((a) => a.state === "working").flatMap((a) => a.bots.map((b) => b.color)).slice(0, 4)),
     pageTitle("Activities", { size: desk ? 24 : 22 }),
     grow(),
     roundButton("search", open(SCREENS.search), { size: desk ? 36 : 34, light: true, label: "Search everything" }),
