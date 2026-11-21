@@ -636,7 +636,10 @@ export class BrowserEngine {
     } catch (err) {
       await letGo();
       if (err instanceof BrowserError) throw err;
-      if (err instanceof CdpError) throw new BrowserError(err.code === "closed" ? "crashed" : "navigation_failed", err.method);
+      // The method ALONE is not why. A CdpError already says whether Chrome answered with an error, said nothing
+      // in time, or had gone — and that sentence was being replaced by the name of the call, which is the one
+      // thing the caller could already guess. Both travel now.
+      if (err instanceof CdpError) throw new BrowserError(err.code === "closed" ? "crashed" : "navigation_failed", `${err.message} [${err.code}]`);
       throw err;
     }
   }
