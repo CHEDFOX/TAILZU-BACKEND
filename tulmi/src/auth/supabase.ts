@@ -13,6 +13,43 @@ import { DEVICE_TOKEN_PREFIX, deviceTokens } from "./deviceTokens.js";
 let client: SupabaseClient | null = null;
 let verifier: SupabaseClient | null = null;
 
+/**
+ * HOW LONG A VERIFIED JWT IS TRUSTED WITHOUT ASKING SUPABASE AGAIN. The same minute, for the same reason, as a device
+ * token's (auth/deviceTokens.ts CACHE_MS): "so a terminal's requests do not each read the table".
+ *
+ * A SCREEN IS NOT ONE REQUEST. Every Bots screen builds by calling the app's own routes in-process on the person's
+ * behalf (experience/bots/deps.ts: fastify inject, carrying their `authorization`), so opening one costs 1 + N
+ * verifications — around eleven on Home. Each was a network round-trip to Supabase before the screen could start
+ * being built, which is most of what "navigation feels slow" was.
+ *
+ * Only SUCCESSES are kept, and never past the token's own `exp`. A failure is never cached, so a token that becomes
+ * valid works on the next try rather than after a minute.
+ *
+ * THE COST, said plainly: a token revoked elsewhere keeps working on this instance for up to a minute — exactly the
+ * window the device tokens already accept, and the JWT's own expiry is still honoured to the second.
+ */
+export const VERIFY_CACHE_MS = 60_000;
+/** Bounded so a flood of distinct tokens cannot grow it without limit; oldest out first. */
+const VERIFY_CACHE_MAX = 1_000;
+const verified = new Map<string, { user: AuthedUser; until: number }>();
+
+/** The second of a JWT's three parts, as milliseconds, or 0 when it cannot be read. Already verified by Supabase. */
+function expiryOf(token: string): number {
+  const part = token.split(".")[1];
+  if (!part) return 0;
+  try {
+    const json = JSON.parse(Buffer.from(part.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8")) as { exp?: unknown };
+    return typeof json.exp === "number" && Number.isFinite(json.exp) ? json.exp * 1000 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Forget every verified token. For tests, and for a sign-out that must bite on this instance at once. */
+export function forgetVerifiedTokens(): void {
+  verified.clear();
+}
+
 /** Returns the service-role Supabase client, or null if metering is disabled. */
 export function supabase(): SupabaseClient | null {
   const cfg = getConfig();
@@ -133,13 +170,20 @@ export async function resolveUser(
   const sb = verifyClient();
   if (!sb) return null;
 
+  // digest() hands back a Buffer, which is identity-keyed in a Map: the hex of it is the key.
+  const key = digest(token).toString("hex");
+  const now = Date.now();
+  const hit = verified.get(key);
+  if (hit && hit.until > now) return hit.user;
+  if (hit) verified.delete(key);
+
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return null;
 
   const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>;
   const metaName = [meta.full_name, meta.name].find((v): v is string => typeof v === "string" && !!v.trim());
   const provider = typeof data.user.app_metadata?.provider === "string" ? data.user.app_metadata.provider : undefined;
-  return {
+  const user: AuthedUser = {
     id: data.user.id,
     email: data.user.email ?? undefined,
     emailConfirmed: !!data.user.email_confirmed_at,
@@ -149,6 +193,17 @@ export async function resolveUser(
     ...(provider ? { provider } : {}),
     ...(metaName ? { providerName: metaName.trim().slice(0, 120) } : {}),
   };
+  // Never past the token's own expiry, so a cached answer can never outlive the JWT it came from.
+  const exp = expiryOf(token);
+  const until = exp > 0 ? Math.min(now + VERIFY_CACHE_MS, exp) : now + VERIFY_CACHE_MS;
+  if (until > now) {
+    if (verified.size >= VERIFY_CACHE_MAX) {
+      const oldest = verified.keys().next();
+      if (!oldest.done) verified.delete(oldest.value);
+    }
+    verified.set(key, { user, until });
+  }
+  return user;
 }
 
 /**
