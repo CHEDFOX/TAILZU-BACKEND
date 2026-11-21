@@ -86,12 +86,26 @@ describe("the widgets' palettes", () => {
         expect(outline!).toBeLessThan(hollow!);
       });
 
-      it("sets words at 4.5:1 on the ground and on the surface they sit on", () => {
+      /**
+       * NOT 4.5:1. That is the AA floor for normal text on a page you are reading; this is small type, glanced at, on a
+       * surface that may be dimmed or stripped to luminance. `meta` and `dim` sat at 5.5 and 4.5 on the grey they are
+       * set on — passing, and still thin. AAA (7:1) is the floor here, and `meta` is held a step above it so the two
+       * stay apart. Measured on the WORSE of the ground and `surface`, because a word on an avatar's disc is the case
+       * that was failing while the ground looked fine.
+       */
+      it("sets words well past the AA floor, on the ground AND on the surface they sit on", () => {
         for (const role of TEXT) {
           if (!roles[role]) continue;
-          expect(contrast(roles[role]!, roles.ground!), `${role} on ground`).toBeGreaterThanOrEqual(4.5);
-          expect(contrast(roles[role]!, roles.surface!), `${role} on surface`).toBeGreaterThanOrEqual(4.5);
+          const want = role === "meta" ? 9 : role === "dim" ? 7 : 4.5;
+          const worst = Math.min(contrast(roles[role]!, roles.ground!), contrast(roles[role]!, roles.surface!));
+          expect(worst, `${role} ${roles[role]} worst of ground/surface: ${worst.toFixed(2)}:1, wants ${want}`).toBeGreaterThanOrEqual(want);
         }
+      });
+
+      it("keeps the words in order: ink over meta over dim, so weight still says which is which", () => {
+        const w = (r: string): number => Math.min(contrast(roles[r]!, roles.ground!), contrast(roles[r]!, roles.surface!));
+        expect(w("ink")).toBeGreaterThan(w("meta"));
+        expect(w("meta")).toBeGreaterThan(w("dim"));
       });
     });
   }

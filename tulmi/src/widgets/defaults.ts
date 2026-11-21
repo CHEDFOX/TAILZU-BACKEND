@@ -193,8 +193,8 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
       // widget is read at a glance, over a wallpaper, often dimmed — at #262626 / #E6E6E6 the rules between rows, the
       // stage bar's track and a card's edge simply were not there. It stays a HAIRLINE (2.4:1) rather than going to the
       // 3:1 a control boundary wants, because `line` does both jobs on iOS and 48 of its uses are rules.
-      colors: { ground: "#0A0A0A", pale: "#FFFFFF", mark: "#FFFFFF", accent: "#FFFFFF", meta: "#A3A3A3", line: "#4F4F4F", surface: "#171717" },
-      light: { ground: "#FFFFFF", pale: "#0A0A0A", mark: "#0A0A0A", accent: "#0A0A0A", meta: "#5C5C5C", line: "#A7A7A7", surface: "#F5F5F5" },
+      colors: { ground: "#0A0A0A", pale: "#FFFFFF", mark: "#FFFFFF", accent: "#FFFFFF", meta: "#B8B8B8", line: "#4F4F4F", surface: "#171717" },
+      light: { ground: "#FFFFFF", pale: "#0A0A0A", mark: "#0A0A0A", accent: "#0A0A0A", meta: "#434343", line: "#A7A7A7", surface: "#F5F5F5" },
       alpha: { dim: 0.64, rule: 0.15 },
       styles: {
         primary: { fg: "#0A0A0A", bg: "#FFFFFF" },
