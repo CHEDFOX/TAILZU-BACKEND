@@ -286,6 +286,23 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     session: await parts.sessions.open(user.id, param(req, "slug").toLowerCase(), String(bodyOf(req.body).title ?? "")),
   })));
 
+  /**
+   * CARRYING ONE ON. It becomes the one last touched, which is the one Talk opens on and the one that words said with
+   * no session named join (sessions.ts current). Nothing is made, nothing is closed, and nothing else moves.
+   *
+   * This is how the threads screen goes back into a conversation WITHOUT the tab root taking a param: Talk is a tab
+   * root (ids.ts) and a tab root is reached by switching to it, which carries nothing, so the way to say "this one"
+   * is to make it the current one here and let Talk read what is current.
+   */
+  app.post(`${AREA}/session/:id/here`, RL, run(true, async (user, req) => {
+    const id = param(req, "id");
+    // get() matches on user_id, so naming someone else's session finds nothing and touches nothing.
+    const session = await parts.sessions.get(user.id, id);
+    if (!session) throw new BotError("not_found", "There is no such session.", 404);
+    await parts.sessions.touch(user.id, id);
+    return { ok: true, session: id };
+  }));
+
   /** One session: what was said in it, oldest first. The screen draws a dotted line wherever the gap is longer than GAP_MS. */
   app.get(`${AREA}/session/:id`, RL, run(true, async (user, req) => {
     const id = param(req, "id");

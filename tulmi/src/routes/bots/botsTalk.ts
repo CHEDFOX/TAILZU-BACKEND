@@ -94,14 +94,27 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
     const s = await who(req, reply);
     if (!s) return reply;
     try {
-      const want = Number((req.query as { limit?: unknown } | undefined)?.limit ?? TURNS);
+      const q = req.query as { limit?: unknown; session?: unknown } | undefined;
+      const want = Number(q?.limit ?? TURNS);
       const limit = Number.isFinite(want) ? Math.max(1, Math.min(Math.round(want), TURNS)) : TURNS;
-      const [turns, open, people] = await Promise.all([
-        s.chat.recent(s.user.id, TALK_SLUG, limit),
-        parts.sessions.list(s.user.id, TALK_SLUG, 1).then((l) => l[0] ?? null).catch(() => null),
+      // TALK IS ONE CONVERSATION AT A TIME, not everything ever said.
+      //
+      // This read was chat.recent, which selects on { user_id, bot } and knows nothing about sessions — so every turn
+      // came back whatever conversation it belonged to, and "/new" only LOOKED fresh: its own answer carries no turns,
+      // and the next read put all of them back. A new thread you cannot see is not a new thread.
+      //
+      // So the turns are the session's (chat.ofSession): the one asked for, else the one last touched. With no session
+      // at all — nobody has said anything here yet — it falls back to the thread, which is then empty anyway.
+      const asked = typeof q?.session === "string" && q.session ? q.session : "";
+      const [open, people] = await Promise.all([
+        asked ? Promise.resolve(null) : parts.sessions.list(s.user.id, TALK_SLUG, 1).then((l) => l[0] ?? null).catch(() => null),
         peopleList(s.user.id),
       ]);
-      return reply.send({ turns, session: open?.id ?? null, people, commands: TALK_COMMANDS });
+      // An id that is not this person's simply has no turns: ofSession matches on user_id as well, so nothing of
+      // anyone else's can be read by naming it.
+      const id = asked || open?.id || "";
+      const turns = id ? await s.chat.ofSession(s.user.id, id, limit) : await s.chat.recent(s.user.id, TALK_SLUG, limit);
+      return reply.send({ turns, session: id || null, people, commands: TALK_COMMANDS });
     } catch (err) { return fail(req, reply, err); }
   });
 

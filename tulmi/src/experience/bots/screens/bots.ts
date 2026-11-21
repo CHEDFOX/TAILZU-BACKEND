@@ -50,6 +50,7 @@ import { homeOn, planOn } from "../../../botsBots/planSwitch.js";
 import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./bots/planHome.js";
 import { planMakeScreens } from "./bots/planMake.js";
 import { loadTalk, talkPage, type TalkData } from "./bots/talkDoor.js";
+import { TALK_THREADS_PATH, talkThreadsPage, type TalkThreadsData } from "./bots/talkThreads.js";
 import { activitiesPage, type ActivitiesData } from "./bots/activities.js";
 import { botSessions, newSessionKey, SESSION_STATE, type BotSession } from "./bots/botSessions.js";
 import { botsStartPage } from "./bots/botsStart.js";
@@ -769,6 +770,11 @@ export const botsScreens: BotsScreen[] = [
     id: SCREENS.talk,
     load: loadTalk,
     build: (ctx, d) => talkPage(ctx, d),
+  }),
+  screen<TalkThreadsData>({
+    id: SCREENS.talkThreads,
+    load: (_ctx, deps) => deps.api<TalkThreadsData>("GET", TALK_THREADS_PATH).catch(() => ({ down: true })),
+    build: (ctx, d) => talkThreadsPage(ctx, d),
   }),
   screen<OraclePageData>({
     id: SCREENS.chat,

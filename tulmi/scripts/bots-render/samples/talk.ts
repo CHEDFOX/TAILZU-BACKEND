@@ -121,6 +121,21 @@ export const TALK_API: Record<string, unknown> = {
   [`GET /v1/everyday/finds/${TALK_FINDS}`]: finds,
 };
 
+/**
+ * TALK'S CONVERSATIONS (screens/bots/talkThreads.ts): what the head's balloons open. The newest is the one Talk is in;
+ * the others are put down and pickable up, which is the whole reason the screen exists.
+ */
+export const TALK_THREADS_API: Record<string, unknown> = {
+  "GET /v1/botsapp/bots/sessions/talk": {
+    sessions: [
+      { id: "s-talk-1", title: "Three days in Goa", frame: null, startedAt: N - 2 * 3600_000, touchedAt: N - 20 * 60_000 },
+      { id: "s-talk-2", title: "Riya's mehendi — what to send", frame: null, startedAt: N - 30 * 3600_000, touchedAt: N - 26 * 3600_000 },
+      { id: "s-talk-3", title: "The caterer's advance", frame: null, startedAt: N - 4 * DAY, touchedAt: N - 4 * DAY },
+      { id: "s-talk-4", title: "Cart rounds 99.5 down", frame: null, startedAt: N - 9 * DAY, touchedAt: N - 8 * DAY },
+    ],
+  },
+};
+
 /** An empty thread: the starters, the two marks, and nothing else — what a new account opens the app on. */
 export const TALK_EMPTY_API: Record<string, unknown> = {
   "GET /v1/botsapp/talk?limit=40": { turns: [], session: null, people, commands: [{ name: "new", line: "Start a new thread" }] },

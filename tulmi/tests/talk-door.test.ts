@@ -144,7 +144,11 @@ describe("the Talk door", () => {
     const threads = { contacts: async () => ({ people: [{ userId: "u-mom", name: "Mom", spaces: ["s1"], bot: null }] }) } as never;
     registerTalkRoutes(app, { rateLimit: RL, ...NONE, bots }, { chat: parts.chat, sessions: parts.sessions, threads });
     const say = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/v1/botsapp/talk", headers: who, payload });
-    const read = () => app.inject({ method: "GET", url: "/v1/botsapp/talk?limit=40", headers: who });
+    // `session` names one conversation to read instead of whichever is current (routes/bots/botsTalk.ts).
+    const read = (o: { session?: string } = {}) => app.inject({
+      method: "GET", headers: who,
+      url: `/v1/botsapp/talk?limit=40${o.session ? `&session=${encodeURIComponent(o.session)}` : ""}`,
+    });
     return { app, asked, say, read, chat: parts.chat! };
   }
 
@@ -205,7 +209,7 @@ describe("the Talk door", () => {
     expect((await t.read()).json().turns).toEqual([]);
   });
 
-  it('"/new" starts a fresh thread and asks nothing', async () => {
+  it('"/new" starts a fresh thread and asks nothing — and the thread really is fresh', async () => {
     const t = served();
     await t.say({ message: "first" });
     const before = (await t.read()).json().session;
@@ -213,9 +217,19 @@ describe("the Talk door", () => {
     const r = await t.say({ message: "/new" });
     expect(r.json()).toMatchObject({ started: true });
     expect(t.asked).toHaveLength(asked);
-    // A new conversation; nothing was deleted.
     expect(r.json().session).not.toBe(before);
-    expect(((await t.read()).json().turns as unknown[]).length).toBe(2);
+
+    // THE FRESH THREAD IS EMPTY. This asserted 2 — the turns of the conversation just put down — because the read was
+    // chat.recent, which knows nothing of sessions and handed back every turn whatever it belonged to. So "/new" only
+    // LOOKED fresh: its own answer carries no turns, and the very next read put the old ones back.
+    const now = (await t.read()).json();
+    expect(now.turns).toEqual([]);
+    expect(now.session).not.toBe(before);
+
+    // AND NOTHING WAS DELETED: the conversation put down is still there, named.
+    const old = (await t.read({ session: before })).json();
+    expect((old.turns as unknown[]).length).toBe(2);
+    expect(old.session).toBe(before);
   });
 
   it("an empty message is refused, and the thread and the people come back together", async () => {

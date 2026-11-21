@@ -141,6 +141,25 @@ answer. A turn with neither words nor anything done is the one case there is not
 Sessions work as they do everywhere (`botsBots/sessions.ts`): a message joins the one last touched, `/new` opens
 another, and nothing is deleted. Clearing is the person's own to do.
 
+**Talk shows one conversation, not everything ever said.** The read is `chat.ofSession` — the session asked for, else
+the one last touched. It was `chat.recent`, which selects on `{ user_id, bot }` and knows nothing of sessions, so
+every turn came back whatever conversation it belonged to and `/new` only *looked* fresh: its own answer carries no
+turns, and the very next read put the old ones back. A new thread you cannot see is not a new thread.
+
+### Your conversations (`bots.talk.threads`, `screens/bots/talkThreads.ts`)
+
+The balloons in Talk's head. Every Talk conversation, newest first, each openable where it stopped — because one
+conversation at a time only works if there is a way to put one down and pick it up again, and `/new` was the only way
+to start another with nothing anywhere saying so.
+
+Nothing new is drawn: the rows are `botSessions.ts`, the same ones a bot's page uses, with the same picture, the same
+"today / yesterday / Tue", and the same round `+`. Sessions were already served at `GET AREA/sessions/:slug`; what was
+missing was only ever the way in.
+
+**Carrying one on does not push a screen.** Talk is a TAB ROOT and a tab root is reached by switching to it, which
+carries no params (`ids.ts`). So a row makes its session the one last touched (`POST AREA/session/:id/here`) and
+switches to Talk, which reads whatever is current — the same rule that decides where new words land.
+
 ## 6. The door
 
 ```
@@ -158,10 +177,12 @@ chat.keepDoor       both turns on the thread, with `by`, `did` and the drawing
 
 | Route | |
 |---|---|
-| `GET /v1/botsapp/talk?limit=` | the thread oldest first, the open session, who "@" offers, and Talk's own commands |
+| `GET /v1/botsapp/talk?limit=&session=` | one conversation oldest first — the one named, else the one last touched — who "@" offers, and Talk's own commands |
 | `POST /v1/botsapp/talk` | one message, done, and kept |
 | `POST /v1/botsapp/talk/new` | a fresh thread; nothing is deleted |
 | `DELETE /v1/botsapp/talk` | start it over |
+| `GET /v1/botsapp/bots/sessions/talk` | the conversations, newest first (the shared sessions route) |
+| `POST /v1/botsapp/bots/session/:id/here` | carry that one on: it becomes the one last touched. Nothing made, nothing closed |
 
 **A refusal keeps nothing.** When the door says no — the day's allowance spent, overloaded, stopped — its own answer
 goes back as it is and the thread is untouched. A thread holding the person's words with no answer under them reads as

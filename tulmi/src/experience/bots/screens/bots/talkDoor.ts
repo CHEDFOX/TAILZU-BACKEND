@@ -356,7 +356,7 @@ function head(ctx: BotsCtx): Node {
   const desk = ctx.client === "desktop";
   const size = desk ? 34 : 30;
   const working = ctx.live.bots.filter((b) => b.working).map((b) => b.color);
-  const quiet = (glyph: "search" | "person", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 36 : 34, light: true, label });
+  const quiet = (glyph: "search" | "person" | "balloons", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 36 : 34, light: true, label });
   return row([
     // The mark is the way to your people and your spaces (kit appMark). The person button on the right is YOU; this
     // one is everyone else.
@@ -368,6 +368,10 @@ function head(ctx: BotsCtx): Node {
     // A little clear of the mark: against it the track read as one lump with the logo.
     ], { marginLeft: 8 }),
     grow(),
+    // THE WAY TO THE OTHER CONVERSATIONS. Talk is one at a time, and until this there was no way to put one down and
+    // pick it up later, nor to see what had been talked about — "/new" was the only way to start another and nothing
+    // said so (screens/bots/talkThreads.ts).
+    quiet("balloons", open(SCREENS.talkThreads), "Your conversations"),
     quiet("search", open(SCREENS.search), "Search everything"),
     quiet("person", open(SCREENS.you), "Profile and settings"),
   ], { gap: 10, alignItems: "center", paddingBottom: desk ? 8 : 10 });

@@ -72,7 +72,7 @@ export function newSessionKey(ctx: BotsCtx, slug: string): Node {
 }
 
 /** One conversation: the picture it made where it has one, its name, and when it was last picked up. */
-function sessionRow(ctx: BotsCtx, bot: LiveBot | { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, s: BotSession): Node {
+function sessionRow(ctx: BotsCtx, bot: LiveBot | { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, s: BotSession, onPick?: (id: string) => ActionRef): Node {
   const when = whenWord(s.touchedAt, ctx.live.now, ctx.tzOffsetMinutes);
   return row([
     s.frame
@@ -85,19 +85,26 @@ function sessionRow(ctx: BotsCtx, bot: LiveBot | { color: string; icon: Paramete
     icon("chevron", { size: 16, color: C.meta }),
   ], {
     gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: C.line, alignItems: "center",
-  }, open(SCREENS.session, { s: s.id }));
+    // A bot's conversation opens on its own page. Talk's carries on in Talk, which is a tab and takes no params, so
+    // it hands its own action instead (screens/bots/talkThreads.ts).
+  }, onPick ? onPick(s.id) : open(SCREENS.session, { s: s.id }));
 }
 
 /**
  * The conversations with this bot. Nothing at all where it has none: a new bot's page should say what the bot is for
  * and offer the "+", not an empty list with a heading over it.
  */
-export function botSessions(ctx: BotsCtx, bot: LiveBot | { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, sessions: readonly BotSession[] | undefined): Node[] {
+export function botSessions(
+  ctx: BotsCtx,
+  bot: LiveBot | { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string },
+  sessions: readonly BotSession[] | undefined,
+  o: { label?: string; onPick?: (id: string) => ActionRef } = {},
+): Node[] {
   const list = (sessions ?? []).filter((s) => s && typeof s.id === "string");
   if (!list.length) return [];
   return [col([
-    row([sectionLabel("Your conversations"), grow(), meta(String(list.length), { size: 12 })], { alignItems: "center" }),
-    ...list.map((s) => sessionRow(ctx, bot, s)),
+    row([sectionLabel(o.label ?? "Your conversations"), grow(), meta(String(list.length), { size: 12 })], { alignItems: "center" }),
+    ...list.map((s) => sessionRow(ctx, bot, s, o.onPick)),
   ], { gap: 10 })];
 }
 

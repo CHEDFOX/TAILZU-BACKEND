@@ -59,6 +59,7 @@ export const SCREENS = {
   // screens/bots.ts: the bots themselves
   bot: "bots.bot",                   // BotPage / DBotPage (params: slug)
   talk: "bots.talk",                 // The bot you just talk to: the usual chat, as a TAB ROOT, so it takes no params
+  talkThreads: "bots.talk.threads",  // Talk's conversations: carry one on, or start a fresh one (screens/bots/talkThreads.ts)
   make: "bots.make",                 // MakeBot / DMakeBot
   edit: "bots.edit",                 // BotEdit / DBotEdit (params: slug)
   keys: "bots.keys",                 // BotKeys / DBotKeys (params: slug)
