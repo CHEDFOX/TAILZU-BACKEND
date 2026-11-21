@@ -324,7 +324,9 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
   const withKey = (field: Node): Node => (key.length ? row([...key, field], { gap: 10, alignItems: "flex-end" }) : field);
   if (canMarks(ctx)) {
     const field = mentionField({
-      life: "talk.compose", placeholder: "Say what you need…  / a bot, @ someone", draftPath: DRAFT, maxLength: 2000,
+      // SHORT ENOUGH FOR ONE LINE. The field is multiline, so a placeholder that does not fit wraps and the bar stands
+      // two lines tall before a word is typed, with the insert key stranded beside it. "/ a bot, @ someone" did that.
+      life: "talk.compose", placeholder: "Say it…  / a bot, @ someone", draftPath: DRAFT, maxLength: 2000,
       // "/" NAMES A BOT HERE, so picking one is a chip on the message and not that bot's things to share (pick: "bot").
       pick: "bot",
       bots: slashList(ctx),
@@ -335,7 +337,8 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
       commands: TALK_COMMANDS.map((c) => ({ name: c.name, line: c.line })),
       words: { people: "People", bots: "Ask a bot", empty: "Nothing here yet" },
     }, send(ctx, { words: `$state.${DRAFT}.text`, from: DRAFT, bot: `$state.${DRAFT}.bot`, to: `$state.${DRAFT}.toId`, ...(up ? { attach: true } : {}) }));
-    return [moment, ...chipAbove, withKey(inputBox([field], { radius: 24, pad: 4 })), ...insertCard(ctx, box)];
+    const filled = col([field], { flexGrow: 1, flexShrink: 1, minWidth: 0 });
+    return [moment, ...chipAbove, withKey(inputBox([filled], { radius: 24, pad: 4, grow: true })), ...insertCard(ctx, box)];
   }
   // An older build: the box it already draws, sending to the same door. Plain language is the whole way in there — the
   // marks are a faster way of saying something, never the only way, so nothing is out of reach without them.

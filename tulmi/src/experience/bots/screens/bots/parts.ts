@@ -111,10 +111,16 @@ export function field(id: string, path: string, placeholder: string, o: { onSubm
     },
   };
 }
-export function inputBox(children: Node[], o: { ink?: boolean; radius?: number; pad?: number } = {}): Node {
+/**
+ * `grow`: fill the row this box is in. A box beside something fixed — Talk's bar, next to the insert key — is sized by
+ * its CONTENT without it, so it stops short of the edge and the words inside wrap early. `field()` carries flexGrow of
+ * its own and so disguises this; a MentionField does not, and Talk shipped a bar two thirds of the width it wanted.
+ */
+export function inputBox(children: Node[], o: { ink?: boolean; radius?: number; pad?: number; grow?: boolean } = {}): Node {
   return row(children, {
     gap: 8, borderWidth: o.ink ? 1.5 : 1, borderColor: o.ink ? C.ink : C.line, borderRadius: o.radius ?? 16, paddingLeft: o.pad ?? 14, paddingRight: 6,
     paddingVertical: 4, minHeight: 48, backgroundColor: C.paper,
+    ...(o.grow ? { flexGrow: 1, flexShrink: 1, minWidth: 0 } : {}),
   });
 }
 /** A field with a send button: Enter or the button runs `send` when it has words. */

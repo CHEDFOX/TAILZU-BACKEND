@@ -204,7 +204,10 @@ export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "
 // "ScrollX" is here because the real phone build declares it (TAILZU-FRONTEND app/src/sdui/registry.ts): without it the
 // check drew every sideways row in its fallback shape and the real one was never looked at. A sample that wants the
 // fallback asks for it by name (`without: ["ScrollX"]`).
-export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", "ScrollX", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "BotCall"];
+// "MentionField" and "MentionCommands" are here for ScrollX's reason, which Talk proved again: the real phone build
+// declares both, and without them the check drew Talk's bar in its PLAIN fallback shape — so the bar every real phone
+// actually gets was never once looked at, and shipped with the field not filling the row beside the "+".
+export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", "ScrollX", "MentionField", "MentionCommands", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "BotCall"];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer
