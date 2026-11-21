@@ -529,7 +529,7 @@ export class BrowserEngine {
     const stops: Array<() => void> = [];
     let contextId: string | undefined;
     let released = false;
-    const view = o.viewport ?? { width: 412, height: 915 };
+    const view = { ...(o.viewport ?? { width: 412, height: 915 }) };
 
     const letGo = async (): Promise<void> => {
       if (released) return;
@@ -615,6 +615,15 @@ export class BrowserEngine {
         },
         async scroll(dy) {
           await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: view.width / 2, y: view.height / 2, deltaX: 0, deltaY: dy }, 5_000).catch(() => {});
+        },
+        async resize(w, h) {
+          view.width = Math.max(240, Math.min(1200, Math.round(w)));
+          view.height = Math.max(320, Math.min(2000, Math.round(h)));
+          await page.send("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height, deviceScaleFactor: 2, mobile: true }).catch(() => {});
+          // The cast is capped at the old size until it is asked again, and a cast that outlives the metrics
+          // sends frames of a page that is no longer that shape.
+          await page.send("Page.stopScreencast").catch(() => {});
+          await page.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: view.width, maxHeight: view.height, everyNthFrame: 1 }).catch(() => {});
         },
         async look() {
           const r = await page.send<{ result?: { value?: { title: string; url: string; elements: VisitElement[] } } }>(

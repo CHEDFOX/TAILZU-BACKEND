@@ -123,6 +123,7 @@ function fakePage(o: { signedIn?: boolean } = {}) {
     async type(t) { did.push(`type ${t}`); },
     async key(k) { did.push(`key ${k}`); },
     async scroll(d) { did.push(`scroll ${d}`); },
+    async resize(w, h) { did.push(`resize ${w}x${h}`); },
     async look() {
       did.push("look");
       return o.signedIn
@@ -187,6 +188,28 @@ describe("the panel", () => {
       expect(looks()).toBe(1);
       vi.unstubAllEnvs(); resetConfigForTests();
     });
+  });
+
+  it("makes the browser the shape of the box it is drawn in", async () => {
+    envOn();
+    const f = fakePage();
+    const panels = new Panels({ hold: async () => f.page, store: new SiteStore(null) });
+    const v = await panels.open(U, "https://swiggy.com/login");
+    expect([v.width, v.height]).toEqual([412, 915]);
+
+    // What a phone really has room for, once the card and its margins are taken out.
+    const sized = await panels.size(v.id, U, 358, 523);
+    expect([sized.width, sized.height]).toEqual([358, 523]);
+    expect(f.did).toContain("resize 358x523");
+
+    // Said twice, done once.
+    await panels.size(v.id, U, 358, 523);
+    expect(f.did.filter((d) => d.startsWith("resize"))).toHaveLength(1);
+
+    // The width is held near a phone's, because that is what makes a site lay out for one.
+    const wide = await panels.size(v.id, U, 1400, 900);
+    expect(wide.width).toBe(480);
+    vi.unstubAllEnvs(); resetConfigForTests();
   });
 
   it("opens only on a site the server allows", async () => {
