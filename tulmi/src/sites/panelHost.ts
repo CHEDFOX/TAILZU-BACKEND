@@ -188,6 +188,28 @@ function script(o: PanelPageOptions): string {
     else if (e.key === "Backspace" && !box.value) touch({ key: "Backspace" });
   });
 
+  /**
+   * THE BROWSER IS MADE THE SHAPE OF THIS BOX. A panel opens at a phone's size because nothing knows better
+   * before the page is up, and it is then drawn into whatever room the card has — on this phone about 360 by
+   * 520, where a 412 by 915 browser comes out at little over half size. Measured once the layout has settled and
+   * again if the window changes, so the page is drawn at its own size and a tap lands where it is aimed.
+   *
+   * The width is left near a phone's by the server (320-480): it is what makes a site lay out for a phone at all.
+   */
+  var saidSize = "";
+  function tellSize() {
+    if (over) return;
+    var r = img.parentNode.getBoundingClientRect();
+    var w = Math.round(r.width), h = Math.round(r.height);
+    if (w < 200 || h < 200) return;
+    var key = w + "x" + h;
+    if (key === saidSize) return;
+    saidSize = key;
+    call("POST", base + "/size", { width: w, height: h }).then(take);
+  }
+  setTimeout(tellSize, 60);
+  window.addEventListener("resize", function () { setTimeout(tellSize, 150); });
+
   // The app shows a spinner until this; a panel whose first frame never comes gets LiveView's own error state.
   up({ t: "ready" });
   timer = setTimeout(tick, BUSY);
@@ -240,7 +262,7 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
   #h { padding:10px 14px; font-size:12px; color:var(--meta); border-bottom:1px solid var(--line); }
   #h b { color:var(--ink); font-weight:600; }
   #s { flex:1 1 auto; min-height:0; background:var(--paper); display:flex; align-items:center; justify-content:center; overflow:hidden; }
-  #f { max-width:100%; max-height:100%; display:block; background:var(--paper); touch-action:none; user-select:none; -webkit-user-drag:none; }
+  #f { width:100%; height:100%; object-fit:contain; object-position:top center; display:block; background:var(--paper); touch-action:none; user-select:none; -webkit-user-drag:none; }
   #n { display:none; padding:10px 14px 0; font-size:13px; }
   /* Present, focusable, and not to be seen or read out as a box of its own: the page above is the whole screen. */
   #t { position:absolute; bottom:0; left:0; width:1px; height:1px; opacity:0; border:0; padding:0; font-size:16px; }

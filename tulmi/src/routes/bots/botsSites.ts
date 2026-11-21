@@ -16,6 +16,8 @@
  *   POST   /v1/botsapp/bots/sites/panel { url }        -> PanelView   open their browser at a site's sign-in
  *   GET    /v1/botsapp/bots/sites/panel/:id            -> PanelView   the newest frame, and whether it is over
  *   POST   /v1/botsapp/bots/sites/panel/:id/touch      -> PanelView   { tap:{x,y} } | { type } | { key } | { scroll }
+ *   POST   /v1/botsapp/bots/sites/panel/:id/size       -> PanelView   { width, height }: the browser made the shape of the box
+ *                                                                     the panel is really drawn in, so the page is not shrunk
  *   POST   /v1/botsapp/bots/sites/panel/:id/done       -> PanelView   "I'm signed in": checked, kept, closed
  *   DELETE /v1/botsapp/bots/sites/panel/:id            -> PanelView   they gave up
  *
@@ -157,6 +159,8 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
 
   app.post(`${AREA}/sites/panel/:id/touch`, RL, run(async (user, req) => needPanels().touch(param(req, "id"), user.id, oneTouch(req))));
 
+  app.post(`${AREA}/sites/panel/:id/size`, RL, run(async (user, req) => { const z = oneSize(req); return needPanels().size(param(req, "id"), user.id, z.width, z.height); }));
+
   app.post(`${AREA}/sites/panel/:id/done`, RL, run(async (user, req) => needPanels().done(param(req, "id"), user.id)));
 
   app.delete(`${AREA}/sites/panel/:id`, RL, run(async (user, req) => needPanels().cancel(param(req, "id"), user.id)));
@@ -194,6 +198,7 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
   const TICKET = `${AREA}/sites/panel/t/:ticket`;
   app.get(TICKET, RL, byTicket(async (panels, id, userId) => panels.poll(id, userId)));
   app.post(`${TICKET}/touch`, RL, byTicket(async (panels, id, userId, req) => panels.touch(id, userId, oneTouch(req))));
+  app.post(`${TICKET}/size`, RL, byTicket(async (panels, id, userId, req) => { const z = oneSize(req); return panels.size(id, userId, z.width, z.height); }));
   app.post(`${TICKET}/done`, RL, byTicket(async (panels, id, userId) => panels.done(id, userId)));
   app.delete(TICKET, RL, byTicket(async (panels, id, userId) => panels.cancel(id, userId)));
 
@@ -204,6 +209,15 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
  * One touch a call, and only a shape we recognise: a panel takes a tap, some text, a named key or a scroll, and
  * nothing else is passed through to a real browser. Shared by both ways in, so neither can drift into taking more.
  */
+/** The size the panel is actually drawn at, in CSS pixels, as its own page measured it. */
+function oneSize(req: FastifyRequest): { width: number; height: number } {
+  const b = body(req);
+  const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.round(v) : 0);
+  const width = n(b.width), height = n(b.height);
+  if (width < 200 || height < 200) throw new SiteError("bad_size", "That isn't a size.", 400);
+  return { width, height };
+}
+
 function oneTouch(req: FastifyRequest): { tap?: { x: number; y: number }; type?: string; key?: "Enter" | "Backspace" | "Tab"; scroll?: number } {
   const b = body(req);
   const tap = (b.tap ?? null) as { x?: unknown; y?: unknown } | null;

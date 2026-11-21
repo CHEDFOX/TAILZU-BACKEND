@@ -529,7 +529,7 @@ export class BrowserEngine {
     const stops: Array<() => void> = [];
     let contextId: string | undefined;
     let released = false;
-    const view = o.viewport ?? { width: 412, height: 915 };
+    const view = { ...(o.viewport ?? { width: 412, height: 915 }) };
 
     const letGo = async (): Promise<void> => {
       if (released) return;
@@ -566,8 +566,6 @@ export class BrowserEngine {
       const cookies = Array.isArray(o.state?.cookies) ? o.state!.cookies : [];
       if (cookies.length) await page.send("Network.setCookies", { cookies }).catch(() => {});
 
-      await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, 30_000);
-
       let onFrame: ((jpeg: string, meta: { width: number; height: number }) => void) | null = null;
       stops.push(page.on("Page.screencastFrame", (p) => {
         const data = String((p as { data?: string }).data ?? "");
@@ -577,8 +575,24 @@ export class BrowserEngine {
         const md = (p as { metadata?: { deviceWidth?: number; deviceHeight?: number } }).metadata ?? {};
         if (data && onFrame) onFrame(data, { width: Number(md.deviceWidth ?? view.width), height: Number(md.deviceHeight ?? view.height) });
       }));
+
+      // THE SCREENCAST STARTS BEFORE THE NAVIGATION, and that order is the whole of it.
+      //
+      // Asked for after Page.navigate, Chrome answers "Not attached to an active page" — every time, on every
+      // site. Navigating away from about:blank puts the page in another renderer, and while that swap is in
+      // flight the page handler has no frame to screencast, so the call arrives at nothing. Asked for first, it
+      // is set up on a page that is certainly there and Chrome carries it across the swap: a navigation to
+      // github.com answers 14 frames, which is what proved this rather than reading about it.
+      //
+      // It is also better for the person: frames come while the page is loading instead of after it.
+      //
       // quality 60 is plenty for reading a form on a phone, and a third of the bytes of 90.
       await page.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: view.width, maxHeight: view.height, everyNthFrame: 1 });
+
+      // A main document the allowlist refused leaves a page that is there and empty; say so rather than hold a
+      // panel open on nothing.
+      const went = await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, 30_000);
+      if (went?.errorText) throw new BrowserError("navigation_failed", `${u.host}: ${went.errorText}`);
 
       const held: HeldPage = {
         onFrame(cb) { onFrame = cb; },
@@ -601,6 +615,15 @@ export class BrowserEngine {
         },
         async scroll(dy) {
           await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: view.width / 2, y: view.height / 2, deltaX: 0, deltaY: dy }, 5_000).catch(() => {});
+        },
+        async resize(w, h) {
+          view.width = Math.max(240, Math.min(1200, Math.round(w)));
+          view.height = Math.max(320, Math.min(2000, Math.round(h)));
+          await page.send("Emulation.setDeviceMetricsOverride", { width: view.width, height: view.height, deviceScaleFactor: 2, mobile: true }).catch(() => {});
+          // The cast is capped at the old size until it is asked again, and a cast that outlives the metrics
+          // sends frames of a page that is no longer that shape.
+          await page.send("Page.stopScreencast").catch(() => {});
+          await page.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: view.width, maxHeight: view.height, everyNthFrame: 1 }).catch(() => {});
         },
         async look() {
           const r = await page.send<{ result?: { value?: { title: string; url: string; elements: VisitElement[] } } }>(

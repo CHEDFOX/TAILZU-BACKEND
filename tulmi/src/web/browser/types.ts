@@ -124,6 +124,11 @@ export interface HeldPage {
   type(text: string): Promise<void>;
   key(name: "Enter" | "Backspace" | "Tab"): Promise<void>;
   scroll(dy: number): Promise<void>;
+  /**
+   * The browser made a different shape, because the space it is drawn in is not the shape it was opened at. A
+   * page squeezed into a window half its height is drawn at half size, which is a sign-in nobody can read.
+   */
+  resize(width: number, height: number): Promise<void>;
   /** Where it is now and what is on it, to tell a sign-in page from the page behind it. */
   look(): Promise<Pick<VisitedPage, "finalUrl" | "title" | "elements">>;
   /** The session as it stands. Taken when they are through, and not before. */
