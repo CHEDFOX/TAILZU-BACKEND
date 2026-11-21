@@ -381,8 +381,17 @@ export function dayOf(now: number, tzOffsetMinutes: number): string {
 /** The streak after finishing a session today: the same day changes nothing, the next day adds one, a gap starts again. */
 export function streakAfter(learner: Learner, today: string): { streakDays: number; lastDay: string } {
   if (learner.lastDay === today) return { streakDays: learner.streakDays, lastDay: today };
-  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
-  return { streakDays: learner.lastDay === yesterday ? learner.streakDays + 1 : 1, lastDay: today };
+  const back = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+  // ONE MISSED DAY DOES NOT END IT; TWO DO. A streak that breaks on the first bad day punishes exactly the people
+  // it is meant to keep — somebody who was ill, or travelling, or just had a day — and what they lose is not the
+  // number but the reason to come back at all: a run broken by one day is most discouraging to the person who
+  // blames themselves for it. Every app that keeps streaks kind does it with a freeze of some sort; this is the
+  // same forgiveness without a thing to buy, spend or remember.
+  //
+  // The count stays DAYS THEY TURNED UP — a missed day is forgiven, never counted — so the number keeps meaning
+  // what it says. Two missed days is a new run, because a streak that forgives everything counts nothing.
+  const kept = learner.lastDay === back(1) || learner.lastDay === back(2);
+  return { streakDays: kept ? learner.streakDays + 1 : 1, lastDay: today };
 }
 
 /**

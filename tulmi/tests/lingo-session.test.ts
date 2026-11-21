@@ -247,3 +247,35 @@ describe("what is kept", () => {
     expect(await store.courses("u1")).toEqual([]);
   });
 });
+
+/**
+ * THE STREAK, AND WHAT IT FORGIVES. It was unforgiving: one missed day and the run went back to 1, which punishes
+ * exactly the person it is meant to keep. A run broken by a single day is most discouraging to somebody who blames
+ * themselves for it, and what they lose is not the number but the reason to come back at all.
+ */
+describe("the streak", () => {
+  const who = (over: Partial<Learner> = {}): Learner => ({
+    target: "es", from: "en", level: "a1", goalMin: 10, calls: false, voice: null,
+    streakDays: 0, lastDay: null, usedMs: T0, updatedMs: T0, ...over,
+  });
+
+  it("counts a day once, however many sets they do in it", () => {
+    expect(streakAfter(who({ streakDays: 4, lastDay: "2026-11-20" }), "2026-11-20")).toEqual({ streakDays: 4, lastDay: "2026-11-20" });
+  });
+
+  it("goes on from yesterday", () => {
+    expect(streakAfter(who({ streakDays: 4, lastDay: "2026-11-19" }), "2026-11-20").streakDays).toBe(5);
+  });
+
+  it("survives ONE missed day: the run goes on, and the day missed is never counted", () => {
+    expect(streakAfter(who({ streakDays: 4, lastDay: "2026-11-18" }), "2026-11-20").streakDays).toBe(5);
+  });
+
+  it("but not two, because a streak that forgives everything counts nothing", () => {
+    expect(streakAfter(who({ streakDays: 9, lastDay: "2026-11-17" }), "2026-11-20").streakDays).toBe(1);
+  });
+
+  it("starts at one for somebody who has never been", () => {
+    expect(streakAfter(who(), "2026-11-20")).toEqual({ streakDays: 1, lastDay: "2026-11-20" });
+  });
+});
