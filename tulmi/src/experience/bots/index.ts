@@ -31,6 +31,7 @@ import { routinesScreens } from "./screens/routines.js";
 import { workScreens } from "./screens/work.js";
 import { joinTopics, topicsForScreen } from "../../live/topics.js";
 import { isSpacesScreen, spacesOn } from "../../botsBots/spacesSwitch.js";
+import { filesOn } from "../../botsBots/mediaSwitch.js";
 
 export { isBotsScreen, screen, type BotsScreen } from "./registry.js";
 export { botsDepsFor, emptyDeps, type BotsServices } from "./deps.js";
@@ -153,6 +154,8 @@ export interface BotsRequest {
   platform?: BotsCtx["platform"];
   /** Is Spaces on (SPACES_ENABLED)? Absent: the server's switch. */
   spaces?: boolean;
+  /** Is reading files on (MEDIA_INGEST)? Absent: the server's switch. */
+  files?: boolean;
 }
 
 /**
@@ -165,11 +168,13 @@ export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise
   // Spaces switched off: a link, a widget row or a notification into one of its screens opens the app's landing
   // (Talk), with none of its params. It used to open Home, which is no longer a tab.
   const spaces = req.spaces ?? spacesOn();
+  // Reading files off: an attach button would only send the person to 404 media_off, so no screen draws one (canUpload).
+  const files = req.files ?? filesOn();
   const away = !spaces && isSpacesScreen(req.screenId);
   const screenId = away ? "bots.talk" : req.screenId;
   const ctx: BotsCtx = {
     screenId, client: req.client, params: away ? {} : req.params ?? {}, live, user: req.user, can: req.can,
-    ...(req.blocks?.size ? { blocks: req.blocks } : {}), desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }),
+    ...(req.blocks?.size ? { blocks: req.blocks } : {}), desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }), ...(files ? {} : { files: false }),
   };
   const def = BOTS_SCREENS.get(screenId);
   if (!def) return comingSoon(ctx);

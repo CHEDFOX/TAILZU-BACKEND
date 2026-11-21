@@ -95,6 +95,12 @@ export interface BotsCtx {
    * is on, so a test's ctx draws Spaces as it always did.
    */
   spaces?: boolean;
+  /**
+   * False while reading files is switched off (MEDIA_INGEST, botsBots/mediaSwitch.ts): no screen offers an attach, because
+   * /v1/files would answer 404 media_off after the person had already picked their file (kit canUpload). Absent is on, so a
+   * test's ctx draws the attach as it always did.
+   */
+  files?: boolean;
 }
 
 // ===================================================================== theme

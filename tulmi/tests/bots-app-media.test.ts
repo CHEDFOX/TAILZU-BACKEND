@@ -9,13 +9,16 @@
  *   - Keylessbord's voices play their sample (playAudio, one at a time, the speed picked), and only for a build with AudioPlay
  *   - over HTTP: a sample is the person's to hear only when signed in, only an offered voice, made once
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 
 vi.hoisted(() => {
   process.env.OPENROUTER_API_KEY = "k";
   process.env.GROQ_API_KEY = "k";
   process.env.NODE_ENV = "test";
+  // Drawing an attach needs MEDIA_INGEST as well as FileUpload (experience/bots/media.ts canUpload): a build that can
+  // pick a file and a server that can read one. Every test below is about the attach, so this file runs with it on.
+  process.env.MEDIA_INGEST = "true";
 });
 
 vi.mock("../src/auth/supabase.js", async (orig) => {
@@ -34,6 +37,7 @@ const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const views = await import("../src/keybot/views.js");
 const { registerVoiceSampleRoute, sampleLine } = await import("../src/routes/writing/voiceSample.js");
+const { resetConfigForTests } = await import("../src/config.js");
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
 const PROJECT = "55555555-5555-4555-8555-555555555555";
@@ -218,5 +222,34 @@ describe("GET /v1/keybot/voices/:id/sample", () => {
     expect(first.json().message).toBe("Couldn't play that voice right now. Try again.");
     const again = await app.inject({ method: "GET", url: "/v1/keybot/voices/nova/sample", headers: { authorization: "Bearer u1" } });
     expect(again.statusCode).toBe(200);
+  });
+});
+
+// ===================================================================== the switch
+
+/**
+ * FileUpload is the BUILD's ability. Reading a file is the SERVER's (MEDIA_INGEST). Drawing the attach from the first
+ * alone sent the person to pick a file and then answered 404 media_off, which is a dead end they did everything right to
+ * reach — so the attach is simply absent until both are true.
+ */
+describe("the attach follows the server's switch too", () => {
+  afterEach(() => { vi.unstubAllEnvs(); resetConfigForTests(); });
+
+  it("is not drawn at all while reading files is switched off", async () => {
+    vi.stubEnv("MEDIA_INGEST", "false");
+    resetConfigForTests();
+    const s = await build("bots.ask", "phone");
+    // Still a sound page: it loses the attach, it does not lose the ask.
+    expect(lintTree(s.root!)).toEqual([]);
+    expect(kinds(s.root!)).not.toContain("uploadFile");
+    expect(texts(s.root!).some((t) => /not switched on/i.test(t))).toBe(false);
+  });
+
+  it("is drawn again once it is on, with the build's own ability still required", async () => {
+    vi.stubEnv("MEDIA_INGEST", "true");
+    resetConfigForTests();
+    expect(kinds((await build("bots.ask", "phone")).root!)).toContain("uploadFile");
+    // No FileUpload: on or off, a build that cannot pick a file is never offered one.
+    expect(kinds((await build("bots.ask", "phone", {}, ["BotsKit"])).root!)).not.toContain("uploadFile");
   });
 });

@@ -52,6 +52,9 @@ import type { FakeOpts } from "../../src/experience/bots/fixtures.js";
 process.env.PUBLIC_ORIGIN = "https://api.local";
 // Spaces is off on the server until it is ready (SPACES_ENABLED); the renders draw it, as the screens were designed. Set it to false to see it off.
 process.env.SPACES_ENABLED ??= "true";
+// Reading files is a deployment, not a build (MEDIA_INGEST; DEPLOY.md "Media and files"), and the attach is drawn only where the
+// server can serve it (experience/bots/media.ts canUpload). A render is for reviewing the screens as designed, so it is on here too.
+process.env.MEDIA_INGEST ??= "true";
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TULMI = path.resolve(HERE, "../..");

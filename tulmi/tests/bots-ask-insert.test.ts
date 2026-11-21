@@ -10,7 +10,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true"; });
+vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true";
+  // The insert key is an attach, so it needs MEDIA_INGEST as well as FileUpload (experience/bots/media.ts canUpload).
+  process.env.MEDIA_INGEST = "true"; });
 
 const { askBar, ASK_BAR_STATE } = await import("../src/experience/bots/ask.js");
 const { ctxFor, sampleLive, fakeDeps } = await import("../src/experience/bots/fixtures.js");
