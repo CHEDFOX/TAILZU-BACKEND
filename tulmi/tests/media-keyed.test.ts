@@ -14,8 +14,8 @@ process.env.NODE_ENV = "test";
 import { loadMediaRegistry, registerMediaRoutes } from "../src/routes/app/media.js";
 
 // /media/k/<key> is what the sign-in email's <img> points at. Pasted into
-// Supabase by hand, that HTML cannot wait for someone to upload a mark: with
-// nothing under the key, the mark that ships with the code answers instead,
+// Supabase by hand, that HTML cannot wait for someone to upload an icon: with
+// nothing under the key, the icon that ships with the code answers instead,
 // and an upload, once there is one, takes over.
 
 let app: FastifyInstance;
@@ -30,9 +30,11 @@ beforeAll(async () => {
 });
 afterAll(async () => { await app.close(); await fs.rm(dir, { recursive: true, force: true }); });
 
-describe("the email's mark", () => {
-  it("is served from the code when nothing is uploaded under email.mark", async () => {
-    const r = await app.inject({ method: "GET", url: "/media/k/email.mark" });
+describe("the email's icon", () => {
+  // Both names answer, with the same file: `email.icon` is what the templates
+  // say now, `email.mark` is what an older copy of the HTML still says.
+  it.each(["email.icon", "email.mark"])("%s is served from the code when nothing is uploaded under it", async (key) => {
+    const r = await app.inject({ method: "GET", url: `/media/k/${key}` });
     expect(r.statusCode).toBe(200);
     expect(r.headers["content-type"]).toContain("image/png");
     expect(String(r.headers["cache-control"])).toContain("max-age=3600");
