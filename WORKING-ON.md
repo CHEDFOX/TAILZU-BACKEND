@@ -1,5 +1,25 @@
 # Being built right now (read before you start)
 
+## 22 Nov: CONNECTING AN APP THAT ASKS FOR A PASTED LINK NOW SAYS WHERE THE LINK IS MADE
+
+The box said "Paste the link from the app" and nothing else. For Zapier — the one `auth: "url"` app in the catalog — the link
+is made at mcp.zapier.com, on a page nothing here can send anyone to automatically. That is the whole reason that auth kind
+exists, and the screen was asking for something nobody could know how to get.
+
+`ConnectorDef.linkHelp` ({ how, at }) carries the words and the page, so it is per app and not Zapier written into a screen:
+a later Make or Pipedream entry just fills in its own. The route passes it only for a "url" app that has one, and the screen
+draws the line under the box with a button, "Open mcp.zapier.com", named after the host so nobody taps it blind. The host is
+read back with `new URL()` and only over https — a linkHelp that is not a link we would open gets the words and no button.
+
+Rendered and looked at (`scripts/bots-render/showcase.ts --only app-connect~zapier`), which needed a sample for a "url" app:
+there is one now, as the `zapier` variant of bots.app-connect. Its `bots` list is deliberately empty — a bot there sends the
+screen asking for that bot's share, which the You answers do not have.
+
+12,701 pass. The two failures are the usual unrelated pair: `launch-motion`'s side-by-side case and `web-browser`'s
+Chrome-process check.
+
+Nothing is switched on by this: CONNECTORS is still off, and so is every id.
+
 ## 20 Nov: A SPACE'S ADMIN HAS NO AUTOMATIC ACCESS TO ANYTHING OF ANYONE'S
 
 Third step of docs/social.md, and it deletes far more than it adds. Making a space never justified reading what the people in it

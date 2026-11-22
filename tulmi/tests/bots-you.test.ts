@@ -95,11 +95,20 @@ const ANSWERS: Record<string, unknown> = {
     bots: [{ slug: "plan", name: "Plan Ease", colour: "", purpose: "Plans your day", builtin: true, linked: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Workouts", builtin: false, linked: false }],
     can: ["Read your events"], cant: ["Share your calendar"],
   },
+  // A "url" app: the link is made on the vendor's own site, so the page has to say where (catalog.ts linkHelp).
+  "GET /v1/you/apps/zapier": {
+    app: {
+      id: "zapier", name: "Zapier", category: "Automation", oneLine: "Reach thousands of apps.", auth: "url", provider: null,
+      connected: false, level: "look", lastUsedAt: null,
+      linkHelp: { how: "Sign in at mcp.zapier.com, make a server, and copy the link it gives you.", at: "https://mcp.zapier.com" },
+    },
+    bots: [], can: ["Run the actions you set up"], cant: ["Anything you have not set up there"],
+  },
 };
 
 const IDS: Array<[string, Record<string, string>?]> = [
   ["bots.you"], ["bots.usage"], ["bots.budget"], ["bots.billing"], ["bots.notify"], ["bots.privacy"], ["bots.delete-account"], ["bots.apps"],
-  ["bots.app-connect", { id: "google-calendar" }], ["bots.settings"],
+  ["bots.app-connect", { id: "google-calendar" }], ["bots.app-connect", { id: "zapier" }], ["bots.settings"],
 ];
 
 const build = (screenId: string, client: "phone" | "desktop", api: Record<string, unknown> | undefined, params?: Record<string, string>) =>
@@ -537,5 +546,29 @@ describe("the tab ring", () => {
       // No answer: as before, the jobs' spend against deps.budgetPaise().
       expect((await loadLive(fakeDeps(), IST)).spend.budgetPaise).toBe(50_000);
     } finally { setSpendSource(null); }
+  });
+});
+
+describe("connecting an app that asks for a pasted link", () => {
+  it("says where the link is made and offers the page, because nothing here can send them there", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.app-connect", client, ANSWERS, { id: "zapier" });
+      expect(lintTree(s.root!), client).toEqual([]);
+      const t = texts(s.root);
+      expect(t, client).toContain("Its link");
+      expect(t, client).toContain("Sign in at mcp.zapier.com, make a server, and copy the link it gives you.");
+      // A button that opens the page it names, and names the host it opens.
+      expect(t, client).toContain("Open mcp.zapier.com");
+      expect(JSON.stringify(s.root), client).toContain('"kind":"openUrl","url":"https://mcp.zapier.com"');
+    }
+  });
+
+  it("an app that signs in the usual way is told none of it", async () => {
+    const s = await build("bots.app-connect", "phone", ANSWERS, { id: "google-calendar" });
+    const t = texts(s.root);
+    expect(t).not.toContain("Its link");
+    expect(t.some((w) => w.startsWith("Open mcp."))).toBe(false);
+    // Its own sign-in still opens a page: that openUrl is the OAuth one, carrying the link the route names.
+    expect(JSON.stringify(s.root)).toContain('"kind":"openUrl","url":"$state.link.authorizeUrl"');
   });
 });
