@@ -11,12 +11,13 @@
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
-  back, box, C, call, col, divider, emptyState, FACE, grow, icon, listCard, listRow, meta, notice, open, page, primaryButton,
+  back, botCard, box, C, call, canMove, col, divider, emptyState, FACE, grow, icon, listCard, listRow, meta, notice, open, page, primaryButton,
   quietButton, row, SCREENS, secondaryButton, sectionLabel, seq, switchRow, text, title, when, whenEq, type BotsCtx, type PersonLookSpec, hasSpaces,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { REASON_WORDS } from "../../../botsBots/safety.js";
 import { personMark } from "./spaces/parts.js";
+import { cardBack } from "./firstRun/parts.js";
 import { ASK_PATH, PLAN_SHARE_API, loadShare, type PlanShareView } from "../planShare.js";
 
 const A = "/v1/botsapp/bots";
@@ -134,18 +135,66 @@ function noteField(path: string, placeholder: string): Node {
   }], { borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.paper });
 }
 
+/**
+ * A BOT GOT IT WRONG — the card under an answer's "Report" (reportAction.ts).
+ *
+ * The eight reasons on the page below are written for reporting a PERSON: hate, harassment, self-harm, something
+ * illegal. Asking which of those applies to a bot that gave a wrong flight time is asking the wrong question, and it
+ * is a wall between a person who wants to say one sentence and our hearing it. So this asks one thing, in their
+ * words, and nothing else is required.
+ *
+ * It is still a report: it goes into the same queue, with the answer kept as they saw it, which is what App Review
+ * 1.2 and 4.7.1 are about. What changes is where the mail lands (chatreport@, not the safety mailbox) and that it
+ * reads as feedback rather than a case with an account at the end of it.
+ */
+function answerCard(ctx: BotsCtx, d: Preview) {
+  const id = idParam(ctx);
+  const bot = d.person.name || "the bot";
+  const send: ActionSpec = call("POST", `${A}/reports`, {
+    kind: "answer", id, bot, text: d.text, note: "$state.note",
+  }, {
+    ok: seq(toast("Thanks — that helps."), back()),
+    fail: toast("Couldn't send that. Try again.", true),
+  });
+  const steps: Node[] = [
+    col([
+      title("Bots are learning", { size: 22 }),
+      text("Mistakes are part of the process. Help us make them better.", { size: 14, lineHeight: 20, color: C.grey70 }),
+      // Clear of the Back above it, which the card draws in its corner.
+    ], { gap: 6, paddingHorizontal: 20, paddingTop: 14 }),
+    // What is being reported, so nobody sends this about the wrong answer.
+    ...(d.text ? [col([
+      meta(`${bot} said`, { size: 11 }),
+      text(d.text, { size: 13.5, lineHeight: 19, color: C.grey70, lines: 4 }),
+    ], { gap: 4, padding: 14, borderRadius: 16, backgroundColor: C.surface, marginHorizontal: 20 })] : []),
+    col([noteField("note", "What went wrong?")], { paddingHorizontal: 20 }),
+    col([primaryButton("Send", send, { wide: true })], { paddingHorizontal: 20, paddingBottom: 18, paddingTop: 2 }),
+  ];
+  const body = canMove(ctx)
+    // THE WAY OUT IS DRAWN HERE (firstRun/parts.ts cardBack). An overlay card is a modal over the chat, and the apps
+    // add the swipe and the phone's own back on top of this — but a build that has neither would be stuck without it.
+    ? [botCard([cardBack(back(), "Close"), ...steps], {
+        kind: "custom", color: C.ink, stageHeight: 92, overlay: true, label: "Tell us what went wrong",
+        // The card is a modal over the chat, so without this there is no back and no swipe on either phone.
+        onLeave: back(),
+      })]
+    // A build without the living card gets the same words on a plain one, with the page's own Back above it.
+    : [col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, paddingTop: 16, maxWidth: 520, alignSelf: "center" })];
+  return page(ctx, { back: !canMove(ctx), title: "Report an answer", nav: "you", maxWidth: 720, state: { note: "" }, body });
+}
+
 function reportPage(ctx: BotsCtx, d: Preview | undefined) {
   const kind = String(ctx.params.kind ?? "");
   if (!d) return couldNot(ctx, "This report", "It may have been taken out already, or you can't see it any more.");
+  // An answer is its own card: one question, in their words (answerCard above).
+  if (d.kind === "answer") return answerCard(ctx, d);
   const id = idParam(ctx), thread = idParam(ctx, "thread");
   const who = d.person.name || "them";
-  const heading = d.kind === "message" ? "Report a message" : d.kind === "item" ? "Report something shared" : d.kind === "answer" ? "Report an answer" : `Report ${who}`;
-  // A bot's answer: what the person saw goes with the report (reportAction.ts), since it lives only in their own chat.
-  const answer = d.kind === "answer" ? { text: d.text, bot: d.person.name } : {};
+  const heading = d.kind === "message" ? "Report a message" : d.kind === "item" ? "Report something shared" : `Report ${who}`;
   const canBlock = !!d.person.userId && !d.person.blockedByYou;
   const send: ActionSpec = {
     kind: "condition", if: { falsy: "reason" }, then: toast("Pick why you're reporting it"),
-    else: call("POST", `${A}/reports`, { kind: d.kind || kind, id, ...(thread ? { thread } : {}), ...answer, reason: "$state.reason", note: "$state.note", block: "$state.block" }, {
+    else: call("POST", `${A}/reports`, { kind: d.kind || kind, id, ...(thread ? { thread } : {}), reason: "$state.reason", note: "$state.note", block: "$state.block" }, {
       ok: seq(toast("Thanks. We'll look at it within 24 hours."), back()),
       fail: toast("Couldn't send the report. Try again.", true),
     }),
@@ -161,7 +210,7 @@ function reportPage(ctx: BotsCtx, d: Preview | undefined) {
   return page(ctx, {
     back: true, title: heading, nav: "you", maxWidth: 720, state: { reason: "", note: "", block: false },
     body: [
-      col([title(heading), meta(d.kind === "answer" ? "We look at every report within 24 hours, and use it to stop answers like this." : `We look at every report within 24 hours. ${d.kind === "person" ? who : "They"} won't be told who reported it.`, { size: 13 })], { gap: 4 }),
+      col([title(heading), meta(`We look at every report within 24 hours. ${d.kind === "person" ? who : "They"} won't be told who reported it.`, { size: 13 })], { gap: 4 }),
       col([
         text(d.what, { size: 15, weight: 600, lineHeight: 20 }),
         ...(d.text ? [text(d.text, { size: 14, lineHeight: 20, color: C.grey70, lines: 4 })] : []),

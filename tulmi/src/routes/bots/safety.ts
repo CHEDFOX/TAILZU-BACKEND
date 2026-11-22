@@ -78,7 +78,8 @@ export function registerSafetyRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
     return { ...(await safety.preview(user.id, { kind: q.kind, id: q.id, thread: q.thread })), reasons: Object.entries(REASON_WORDS).map(([id, label]) => ({ id, label })) };
   }));
   app.post(`${AREA}/reports`, tight(20), run(async (user, req, reply) => {
-    const r = await safety.report({ id: user.id, name: shownName(user) }, bodyOf(req.body));
+    // The address goes with an answer report so whoever reads it can write back (botsBots/safety.ts mail).
+    const r = await safety.report({ id: user.id, name: shownName(user), ...(user.email ? { email: user.email } : {}) }, bodyOf(req.body));
     reply.code(r.again ? 200 : 201);
     return { ...r, message: r.blocked ? "Thanks. We'll look at it within 24 hours, and you've blocked them." : "Thanks. We'll look at it within 24 hours." };
   }));

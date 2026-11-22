@@ -45,6 +45,13 @@ export const ACT_WITHIN_MS = 24 * 3600_000;
 export const REPORTS_A_DAY = 20;
 /** Where reports are mailed: the owner's support inbox. */
 const SAFETY_EMAIL = (process.env.SAFETY_REPORTS_EMAIL || "support@x0bot.com").trim();
+/**
+ * WHERE A REPORTED ANSWER GOES, which is not where a reported PERSON goes. "This bot got it wrong" and "this person is
+ * harassing me" are the same button to the app and two different jobs to whoever opens the mail: one is product
+ * feedback to read in a batch, the other is a safety case with a 24-hour clock and an account at the end of it. Mixing
+ * them buries the second under the first.
+ */
+const CHAT_EMAIL = (process.env.CHAT_REPORTS_EMAIL || "chatreport@x0bot.com").trim();
 /** Where the admin acts on them (the control console, GET /admin, its Reports tab). */
 const ADMIN_URL = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/admin`;
 
@@ -91,7 +98,7 @@ export class Safety {
     private readonly items: SharedItems,
     private readonly now: () => number = Date.now,
     o: {
-      outbox?: MailOutbox; rows?: PagedTable<ReportRow>; publish?: Publish; log?: Log; to?: string;
+      outbox?: MailOutbox; rows?: PagedTable<ReportRow>; publish?: Publish; log?: Log; to?: string; chatTo?: string;
       /** Things shared from a bot in a space (grants.ts): taking out a card of one takes its access away too. */
       grants?: Grants | null;
       /** The admin's "suspend": the account can't sign in again. Returns whether it worked. Null: not possible on this server. */
@@ -104,6 +111,7 @@ export class Safety {
     this.outbox = o.outbox ?? spaces.outbox;
     this.log = o.log;
     this.to = cleanEmail(o.to ?? SAFETY_EMAIL) || "support@x0bot.com";
+    this.chatTo = cleanEmail(o.chatTo ?? CHAT_EMAIL) || "chatreport@x0bot.com";
     this.suspendAccount = o.suspend ?? null;
     this.grants = o.grants ?? null;
   }
@@ -111,6 +119,8 @@ export class Safety {
   private readonly outbox: MailOutbox;
   private readonly log?: Log;
   private readonly to: string;
+  /** Where a reported ANSWER goes (CHAT_REPORTS_EMAIL). */
+  private readonly chatTo: string;
   private readonly suspendAccount: ((userId: string) => Promise<boolean>) | null;
 
   // ------------------------------------------------------------------ people
@@ -217,7 +227,11 @@ export class Safety {
 
   // ------------------------------------------------------------------ reporting
 
-  async report(user: { id: string; name: string }, b: Record<string, unknown>): Promise<{ report: { id: string; dueBy: number }; blocked: boolean; again: boolean }> {
+  async report(user: { id: string; name: string; email?: string }, b: Record<string, unknown>): Promise<{ report: { id: string; dueBy: number }; blocked: boolean; again: boolean }> {
+    // A REPORTED ANSWER NEEDS NO REASON. The card asks one thing — what went wrong, in their words — because a person
+    // who has just been given a wrong answer knows what was wrong with it and does not know which of eight boxes it is
+    // (those eight are written for reporting a PERSON: hate, harassment, self-harm). Everything else still picks one.
+    if (b.kind === "answer" && !isReason(b.reason)) b = { ...b, reason: "other" };
     if (!isReason(b.reason)) throw new BotError("bad_request", "Pick why you're reporting it.");
     const reason = b.reason;
     const t = await this.target(user.id, { kind: b.kind, id: b.id, thread: b.thread, text: b.text, asked: b.asked, bot: b.bot });
@@ -239,7 +253,7 @@ export class Safety {
       id = row.id; dueBy = row.due_ms;
       // The log says that one came in and when it is due; never what was said.
       this.log?.warn({ report: id, kind: t.kind, reason, dueBy: utc(dueBy) }, "safety: report received, act within 24 hours");
-      await this.mail(row, t).catch((err) => this.log?.warn({ report: id, error: (err as Error)?.name }, "safety: report mail not queued"));
+      await this.mail(row, t, user.email).catch((err) => this.log?.warn({ report: id, error: (err as Error)?.name }, "safety: report mail not queued"));
     }
     let blocked = false;
     if (b.block === true && t.reportedId && t.reportedId !== user.id) {
@@ -249,7 +263,27 @@ export class Safety {
     return { report: { id, dueBy }, blocked, again: !!same };
   }
 
-  private async mail(r: ReportRow, t: Target): Promise<void> {
+  private async mail(r: ReportRow, t: Target, email?: string): Promise<void> {
+    // A REPORTED ANSWER IS FEEDBACK, NOT A CASE. It goes to its own mailbox, and it does not tell whoever opens it to
+    // suspend an account or take content down for everyone: a bot is no one's account and the answer lives only in
+    // that person's own chat. What it carries is the thing worth reading — their words, and the answer as they saw it.
+    if (r.kind === "answer") {
+      await this.outbox.queue({
+        to: this.chatTo, kind: "chat_report", ref: r.id,
+        subject: `X0 Bot: ${r.reported_name} got something wrong`.slice(0, 200),
+        text: [
+          `Someone reported an answer in their chat.`,
+          `Bot: ${r.reported_name}`,
+          r.note ? `What they said:\n${r.note}` : `They sent no words with it.`,
+          ...(t.text ? [`The answer, as they saw it:\n${t.text.slice(0, 4000)}`] : []),
+          `From: ${r.reporter_name}${email ? ` <${email}>` : ""} (${r.reporter_id})`,
+          `When: ${utc(Number(r.created_ms))}`,
+          `Turn: ${r.ref}`,
+          `Report id: ${r.id}`,
+        ].join("\n\n"),
+      });
+      return;
+    }
     await this.outbox.queue({
       to: this.to, kind: "safety_report", ref: r.id,
       subject: `X0 Bot report: ${REASON_WORDS[r.reason]} (act by ${utc(r.due_ms)})`.slice(0, 200),

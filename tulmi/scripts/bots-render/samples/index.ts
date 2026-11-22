@@ -81,6 +81,11 @@ export const SAMPLES: Sample[] = [
   { id: S.talk, area: "shell", api: TALK_API },
   { id: S.talk, area: "shell", variant: "empty", api: TALK_EMPTY_API },
   { id: S.talkThreads, area: "shell", api: TALK_THREADS_API },
+  // THE REPORT CARD under a bot's answer (screens/safety.ts answerCard): it reads its params, so there is nothing to answer.
+  {
+    id: S.report, area: "shell", params: { kind: "answer", bot: "Plan Ease", text: "The 7:05 from Mumbai is \u20b94,180 each, and the caterer takes the advance by UPI." },
+    api: {},
+  },
   // ACTIVITIES, the second tab: a two-bot activity drawn joined, a job on its own, a missed call, and the schedules.
   { id: S.activities, area: "shell", api: ACTIVITIES_API },
   // START SOMETHING: the bots as a launcher, with every built-in set up so each group is full and the one with three

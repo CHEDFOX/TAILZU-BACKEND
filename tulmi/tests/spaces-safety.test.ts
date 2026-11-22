@@ -39,6 +39,7 @@ vi.mock("../src/push/index.js", () => ({
 
 const { Spaces } = await import("../src/botsBots/spaces.js");
 const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
+const { REASON_WORDS } = await import("../src/botsBots/safety.js");
 const { MemoryPaged, resetSpaceTablesForTests } = await import("../src/botsBots/spaceRows.js");
 const { resetAreaTablesForTests } = await import("../src/botsBots/rows.js");
 const { registerSpacesRoutes, spaceParts } = await import("../src/routes/bots/botsSpaces.js");
@@ -462,13 +463,50 @@ describe("reporting a bot's answer", () => {
     expect((await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", bot: "Plan Ease", reason: "other" })).status).toBe(400);
   });
 
-  it("the report screen takes the answer from its own params, with no block switch", async () => {
+  /**
+   * THE CARD, NOT THE PAGE. The eight reasons are written for reporting a PERSON — hate, harassment, self-harm — and
+   * asking which of those applies to a bot that gave a wrong flight time is the wrong question and a wall in front of
+   * someone who wants to say one sentence. So an answer gets its own card: what the bot said, one box, Send.
+   */
+  it("the report card asks one thing, carries the answer, and needs no reason", async () => {
     const r = await buildBotsScreen({ screenId: "bots.report", client: "phone", params: { kind: "answer", bot: "Plan Ease", text: "Skip the doctor." }, tzOffsetMinutes: IST, user: { id: A_ }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api: {} }));
     expect(lintTree(r.root!)).toEqual([]);
     const s = JSON.stringify(r.root);
-    expect(s).toContain("Report an answer");
+    expect(s).toContain("Bots are learning");
+    expect(s).toContain("Mistakes are part of the process. Help us make them better.");
+    // The answer it is about travels with it, so nobody sends this about the wrong one.
     expect(s).toContain("Skip the doctor.");
-    expect(s).not.toContain("Also block");
     expect(s).toContain('"kind":"answer"');
+    // One box, and nothing it makes them pick first.
+    expect(s).not.toContain("Why are you reporting it?");
+    expect(s).not.toContain("Also block");
+    for (const word of Object.values(REASON_WORDS)) expect(s).not.toContain(word);
+  });
+
+  it("goes to the chat mailbox as feedback, not to safety as a case, and needs no reason", async () => {
+    const s = await served();
+    // No `reason` at all: the card does not ask for one.
+    const r = await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", id: "turn-9", bot: "Plan Ease", text: "Skip the doctor, it's nothing.", note: "that is dangerous" });
+    expect(r.status).toBe(201);
+
+    const mail = await s.outbox.byRef("chat_report", r.body.report.id);
+    expect(mail).toMatchObject({ to_email: "chatreport@x0bot.com", status: "queued" });
+    expect(mail!.body_text).toContain("that is dangerous");
+    expect(mail!.body_text).toContain("Skip the doctor, it's nothing.");
+    expect(mail!.body_text).toContain("Plan Ease");
+    // Who sent it, so it can be answered.
+    expect(mail!.body_text).toContain(A_);
+    // It must not read as a safety case: there is no account behind a bot to suspend.
+    expect(mail!.body_text).not.toContain("suspend");
+    expect(mail!.body_text).not.toContain("Act on it within 24 hours");
+    // And nothing was put in the safety mailbox for it.
+    expect(await s.outbox.byRef("safety_report", r.body.report.id)).toBeFalsy();
+  });
+
+  it("still asks for a reason everywhere else, so the safety queue keeps its triage", async () => {
+    const s = await served();
+    const { chat } = await s.home();
+    const msg = await s.say(R_, chat, "you are all idiots");
+    expect((await s.call("POST", `${AREA}/reports`, A_, { kind: "message", id: msg, thread: chat })).status).toBe(400);
   });
 });
