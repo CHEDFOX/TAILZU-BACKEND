@@ -184,6 +184,42 @@ up and nowhere else. The list behind it is cached as it always was; this is abou
 never sent a panel and never opens one either — a real Chrome page held in the cloud for a phone that would show a
 blank box is worse than a line saying so. The page's "Not now" closes it, ahead of the idle clock.
 
+## Signed in on the phone
+
+The panel streamed a desktop browser in the cloud to the phone. On real sites it lost twice over: the pages drew at
+a desktop size nobody could touch, and a datacenter address is what shops' bot checks are built to stop. So for a
+build that declares **`SiteView`**, the sign-in and the reading both happen **on the phone**, in a real WebView, and
+the panel is only what an older build gets.
+
+**The sign-in is the site's own page, on their phone.** `bots.site.signin` draws a `SiteView` (shared/types/sdui.ts
+3e) at the catalog's `signIn` address: full size, their own keyboard, the SMS code filling itself in. Unlike
+LiveView this WebView *keeps* what the site sets, so they stay signed in there the way any browser does. It may go
+only to the site and the sign-ins it hands off to (`SIGN_IN_HANDOFFS`: Google, Apple), and the host is always shown.
+
+**It always lands on the sign-in.** The catalog's address is only a start. The phone looks at the page every two
+seconds (`phone.ts` `PAGE_SHAPE`); if it is not a sign-in, it presses the site's own "Sign in" (`FIND_LOGIN`), and
+failing that tries the site's home once. Checked on real sites in a phone-sized Chromium (21 Nov 2026): Swiggy and
+Flipkart open straight to the form; Blue Dart's home, then its own "Sign in", opens its drawer.
+
+**Nobody says they are in; the phone notices** — with the panel's guard: never "signed in" until a sign-in has been
+on screen, then two quiet looks in a row with no "Sign in" left on the page (`siteViewCore.ts` `signInStep`). Then
+it calls `POST /sites/connected { site }`: **a host name, never a session.** The server keeps the fact
+(`{ cookies: [], onPhone: true }`), under the site's one name (`gate.ts` `siteOf`: www.swiggy.com is swiggy.com).
+
+**Reading is the phone's too.** Once connected, the sites screen offers "Watch orders" where the catalog knows the
+site's orders page (`orders`). A watch whose turn it is gets an unseen `SiteView` in read mode on the sites screen:
+it opens the page with the session already on the phone, reads it by the server's own walk (`READ_PAGE`, the same
+code), and posts the words to `POST /sites/watch/:id/read`. From there it is the server's read exactly: signed out
+or not, three strikes, the model's card. **The manners stay here:** a read before the watch is due is answered from
+what the server already has, with no model call, and the screen only draws readers for watches that are due.
+
+**The scripts live on the server**, passed in the node's props, so how a page is looked at and read changes when
+this server deploys. Every message back from the page is untrusted, parsed and capped on the phone and capped again
+by the route; the most a lying page can do is fake a read of itself for the one person looking at it.
+
+**Forget** removes the fact here; the site's own sign-in stays in the phone's WebView until they sign out on the
+site, as in any browser.
+
 ## What is built, and what is not
 
 **Built:** the switch and its gates (`gate.ts`), the store (`store.ts`, migration **0098**), `engine.visit()`,

@@ -1267,6 +1267,33 @@ export const LIVE_VIEW_COMPONENT = "LiveView";
 /** Declared by a build that keeps an outbox (see above). */
 export const OUTBOX_CAPABILITY = "Outbox";
 
+//   SiteView   a REAL site, signed in on the phone (SiteViewProps; tulmi docs/sites.md "Signed in on the phone"). Unlike
+//              LiveView its WebView KEEPS what the site sets, so the person signs in once, on the site's own page, and stays
+//              signed in there as any browser would. The session never leaves the phone. The page may go only to `hosts`
+//              (exact or a subdomain) and the current host is always shown. It runs the server's `scripts`, each an
+//              expression: `shape` to see what kind of page this is, `findLogin` to press the site's own "Sign in",
+//              `read` to read the page by the server's own walk.
+//                mode "signin"  drawn full size at `url`; when a sign-in has been on screen and has given way to a signed-in
+//                               page, on.onComplete runs with $event = { site, url } — a host name, never a session.
+//                mode "read"    never seen: opens `url`, reads it, on.onResult runs with $event = { url, title, text, elements },
+//                               once; on.onError when it cannot (a load error, or nothing in 25 s).
+
+/** Declared in capabilities.components by a build that draws SiteView. */
+export const SITE_VIEW_COMPONENT = "SiteView";
+
+export interface SiteViewProps {
+  mode: "signin" | "read";
+  /** Where to start: the site's own sign-in page, or, to read, the page to read. https only. */
+  url: string;
+  /** The site's home, tried once when the start is not a sign-in and has nothing to press. */
+  home?: string;
+  /** The host shown to the person. */
+  site: string;
+  /** Host names the page itself may go to: the site's, and the social sign-ins it hands off to. */
+  hosts: string[];
+  scripts: { shape: string; findLogin: string; read: string };
+}
+
 export interface LiveViewProps {
   url?: string;
   html?: string;

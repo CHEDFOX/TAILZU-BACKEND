@@ -18,6 +18,12 @@ import type { SiteCard } from "../../../shared/types/api.js";
 
 /** The cookies and storage of ONE site, as the browser handed them over. Never anything else. */
 export interface SiteProfile {
+  /**
+   * SIGNED IN ON THE PHONE. The person signed in inside the app's own WebView and the session stayed there, as a
+   * browser's does: this row holds no cookie and no storage, only the fact. The server never reads a site for a
+   * login like this — the phone does, and sends the words (service.ts phoneRead).
+   */
+  onPhone?: true;
   cookies: unknown[];
   /** localStorage and sessionStorage per origin, as [origin, key, value] rows. Half a session lives here. */
   storage?: Array<[string, string, string]>;
@@ -79,9 +85,13 @@ export class SiteStore {
         .sort((a, b) => (b.usedAt ?? 0) - (a.usedAt ?? 0));
     }
     const { data } = await this.db.from("site_profiles")
-      .select("site, who, used_at, fails").eq("owner_id", ownerId).order("used_at", { ascending: false });
+      .select("site, blob, who, used_at, fails").eq("owner_id", ownerId).order("used_at", { ascending: false });
+    // Only whether it is held on the phone is kept from the slip: the list never carries cookies anywhere.
+    const onPhone = (blob: unknown): boolean => {
+      try { return (JSON.parse(decrypt(String(blob))) as SiteProfile).onPhone === true; } catch { return false; }
+    };
     return (data ?? []).map((r) => ({
-      site: String(r.site), profile: { cookies: [] }, fails: Number(r.fails ?? 0),
+      site: String(r.site), profile: { cookies: [], ...(onPhone(r.blob) ? { onPhone: true as const } : {}) }, fails: Number(r.fails ?? 0),
       ...(r.who ? { who: String(r.who) } : {}), ...(ms(r.used_at as string) ? { usedAt: ms(r.used_at as string) } : {}),
     }));
   }

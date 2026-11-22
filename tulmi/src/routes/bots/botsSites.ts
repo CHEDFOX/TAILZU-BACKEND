@@ -6,6 +6,9 @@
  *   GET    /v1/botsapp/bots/sites/search?q=            -> { results }  the sites they can find by name, each with that site's
  *                                                                      OWN sign-in page (src/sites/catalog.ts). Nothing off the
  *                                                                      catalog is ever answered, so no query reaches the open web
+ *   POST   /v1/botsapp/bots/sites/connected { site, who? }   -> { view }    signed in on the phone: a host name, never a session
+ *   POST   /v1/botsapp/bots/sites/watch/:id/read { url, title, text, elements } -> { outcome, view }
+ *                                                     what a watched page said, read on the phone; no sooner than it is due
  *   POST   /v1/botsapp/bots/sites/watch { url, label } -> { view }    start watching a thing on a site they are signed in to
  *   DELETE /v1/botsapp/bots/sites/watch/:id            -> { view }    stop watching it
  *   POST   /v1/botsapp/bots/sites/check/:id            -> { view }    look now, if the floor allows (the pull-to-refresh)
@@ -43,7 +46,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SitesView } from "../../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
-import { allowedSites, cloudBrowserOn, mayUseCloudBrowser, watchLimits } from "../../sites/gate.js";
+import { allowedSites, cloudBrowserOn, hostOf, mayUseCloudBrowser, watchLimits } from "../../sites/gate.js";
 import { searchSites } from "../../sites/catalog.js";
 import type { Panels } from "../../sites/panel.js";
 import { SiteError, type Sites } from "../../sites/service.js";
@@ -103,6 +106,31 @@ export function registerSitesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o:
     const signedIn = new Set((await o.sites.logins(user.id)).map((l) => l.site));
     // `q` comes back so the screen can tell a search that found nothing from one nobody has run yet.
     return { q, results: searchSites(q).map((e) => ({ id: e.id, name: e.name, host: e.host, signIn: e.signIn, category: e.category, connected: signedIn.has(e.host) })) };
+  }));
+
+  // SIGNED IN ON THE PHONE (service.ts connectedOnPhone). A host name and, if the page showed one, a name to call
+  // the account by. Nothing else is read from the body: there is no session in it to read.
+  app.post(`${AREA}/sites/connected`, RL, run(async (user, req) => {
+    const b = body(req);
+    const site = hostOf(`https://${str(b.site, 120)}/`);
+    await o.sites.connectedOnPhone(user.id, site, str(b.who, 60) || undefined);
+    return { view: await view(user.id) };
+  }));
+
+  // WHAT A PAGE SAID, read on the phone (service.ts phoneRead): its address, its title, its words and its elements,
+  // each held to the size the server's own reader keeps.
+  app.post(`${AREA}/sites/watch/:id/read`, RL, run(async (user, req) => {
+    const b = body(req);
+    const elements = Array.isArray(b.elements) ? (b.elements as unknown[]).slice(0, 400).flatMap((e) => {
+      const x = (e ?? {}) as Record<string, unknown>;
+      const id = str(x.id, 12), role = str(x.role, 16);
+      if (!id || !role) return [];
+      return [{ id, role, ...(str(x.label, 120) ? { label: str(x.label, 120) } : {}) }];
+    }) : [];
+    const read = await o.sites.phoneRead(user.id, param(req, "id"), {
+      finalUrl: str(b.url, URL_MAX), title: str(b.title, 200), text: str(b.text, 20_000), elements,
+    });
+    return { outcome: read.outcome, view: await view(user.id) };
   }));
 
   app.post(`${AREA}/sites/watch`, RL, run(async (user, req) => {

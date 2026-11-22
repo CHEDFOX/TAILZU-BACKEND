@@ -22,7 +22,7 @@
  */
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { FrameGate, PanelLife, END_WORDS, type PanelEnd } from "./frames.js";
-import { hostOf, mayUseCloudBrowser, siteAllowed } from "./gate.js";
+import { hostOf, mayUseCloudBrowser, siteAllowed, siteOf } from "./gate.js";
 import { looksSignedOut } from "./read.js";
 import { SiteError } from "./service.js";
 import { siteStore, type SiteProfile, type SiteStore } from "./store.js";
@@ -275,7 +275,7 @@ export class Panels {
     for (const h of SOCIAL_HOSTS) await p.page.forgetHost(h).catch(() => undefined);
     const state = await p.page.state().catch(() => null);
     if (!state) return;
-    await this.store.saveLogin(p.userId, p.site, state as SiteProfile).catch(() => undefined);
+    await this.store.saveLogin(p.userId, siteOf(p.site), state as SiteProfile).catch(() => undefined);
   }
 
   private async shut(p: Live, why: PanelEnd): Promise<void> {
