@@ -86,9 +86,14 @@ describe("RUNTIME", () => {
     const vps = await config({});
     delete process.env.GROQ_API_KEY;
     expect(() => vps.getConfig()).toThrow(/GROQ_API_KEY/);
+    // OpenAI's recogniser goes through OpenRouter by default, on the OpenRouter key: no OpenAI key is needed for it.
     const vps2 = await config({ STT_PROVIDER: "openai" });
     delete process.env.OPENAI_API_KEY;
-    expect(() => vps2.getConfig()).toThrow(/OPENAI_API_KEY/);
+    expect(() => vps2.getConfig()).not.toThrow();
+    // Sent to OpenAI itself, it still needs one.
+    const vps3 = await config({ STT_PROVIDER: "openai", OPENAI_STT_VIA_OPENROUTER: "false" });
+    delete process.env.OPENAI_API_KEY;
+    expect(() => vps3.getConfig()).toThrow(/OPENAI_API_KEY/);
   });
 
   it("still asks a Worker for what the jobs need: the model's key, and a way to sign in to Supabase", async () => {
