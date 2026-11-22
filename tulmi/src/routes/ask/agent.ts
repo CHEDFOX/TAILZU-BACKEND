@@ -31,6 +31,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { AI_CONSENT_CODE, AI_CONSENT_TEXT, aiAllowed } from "../../privacy/aiGate.js";
 import type { AudioFormat } from "../../../../shared/types/api.js";
 import { planStream } from "../../agent/llm.js";
 import { type AgentImage, type Refusal, readPicture, audioFormatOf, readStepRequest, EventSink } from "../../agent/protocol.js";
@@ -138,6 +139,11 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     // and a picture to the day's pictures.
     const quota = await enforceQuota(user, { agentAudio: !!audio, picture: !!image });
     if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
+
+    // NO YES TO AI SERVICES, NO STEP (privacy/aiGate.ts). Said here, before the stream, in the gate's own words — the desktop
+    // shows a refusal's message on Ask's card. Left to the run, every model on the ladder was refused in a millisecond and the
+    // card said "Ask can't think right now", so a person who had only to flip one switch was told to wait for nothing.
+    if (!(await aiAllowed())) return reply.code(403).send({ code: AI_CONSENT_CODE, message: AI_CONSENT_TEXT });
 
     // The run ledger's eye on this step: how it ends (and the receipt that
     // says so, before a terminal that ends the run), what the apps did, and

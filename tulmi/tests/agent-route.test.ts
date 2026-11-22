@@ -222,6 +222,19 @@ describe("refused before the stream starts", () => {
     expect(llm.calls).toHaveLength(0);
   });
 
+  // Without a yes to AI services every model on the ladder is refused in a millisecond, and the card used to say "Ask can't think right
+  // now" — a wait for nothing, when one switch fixes it. The desktop shows a refusal's message on the card, so this is that switch's name.
+  it("403 ai_consent_needed, in the gate's words, when they have not said yes — not 'can't think'", async () => {
+    const { installAiCheck, AI_CONSENT_TEXT } = await import("../src/privacy/aiGate.js");
+    installAiCheck(async () => false);
+    try {
+      const res = await app.inject({ method: "POST", url: "/v1/agent", headers: { authorization: "Bearer someone" }, payload: step({ utterance: "where is export?" }) });
+      expect(res.statusCode).toBe(403);
+      expect(res.json()).toEqual({ code: "ai_consent_needed", message: AI_CONSENT_TEXT });
+      expect(llm.calls).toHaveLength(0);
+    } finally { installAiCheck(null); }
+  });
+
   it("400 when the multipart request field is not JSON", async () => {
     const res = await app.inject({ method: "POST", url: "/v1/agent", ...form("{not json") });
     expect(res.statusCode).toBe(400);
