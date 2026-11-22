@@ -2328,6 +2328,23 @@ export function getConfig(): AppConfig {
   if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
   if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   if (env.RECALL_API_KEY && !env.RECALL_WEBHOOK_SECRET) console.warn("[config] RECALL_API_KEY without RECALL_WEBHOOK_SECRET: the meeting bot can join calls, but Recall's status webhook is refused (it cannot be checked). Add the workspace verification secret (whsec_…) from Recall's dashboard.");
+
+  /**
+   * THE APP'S OWN OUTGOING MAIL, which is NOT the mail bot above. That one is a person's business mailbox, kept on the
+   * worker and reached per owner; this is the server writing to someone itself — a space invite, a safety report, a
+   * reported answer — through Postal (botsBots/mail.ts).
+   *
+   * They are different credentials on the same mail server, and that is the whole reason for this line: with the key
+   * missing nothing fails. The report files, the app says thanks, the mail waits in the outbox, and the first anyone
+   * knows of it is wondering why nobody has ever reported anything.
+   *
+   * Only with BOTS on, which is what the R2 and worker lines above do with MEDIA_INGEST. No key at all is a perfectly
+   * good way to run this server — a dev box, CI, anyone who wants no mail — and a warning for that is noise. It is
+   * only worth saying once something exists that WILL queue mail and then sit there.
+   */
+  if (env.BOTS && !env.MAIL_API_KEY) {
+    console.warn("[config] MAIL_API_KEY is not set: the app sends no mail, so space invites, safety reports and reported answers wait in the outbox until it is. It is a SENDING key from the mail server's dashboard (Settings → Sending → the app → Keys) — not the mail bot's MAIL_WORKER_SECRET, which only reads a business's mailbox.");
+  }
   if (Boolean(env.SFU_APP_ID) !== Boolean(env.SFU_APP_SECRET)) console.warn("[config] SFU_APP_ID and SFU_APP_SECRET go together: without both there are no calls.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
