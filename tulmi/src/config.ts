@@ -272,6 +272,14 @@ const EnvSchema = z.object({
   // the price; whisper-1 is the legacy.
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_STT_MODEL: z.string().default("gpt-4o-mini-transcribe"),
+  /**
+   * OPENAI'S RECOGNISER, THROUGH OPENROUTER (pipeline/stt/openai.ts). OpenRouter serves OpenAI's own transcription models on the same
+   * /audio/transcriptions call (openai/gpt-4o-transcribe, openai/gpt-4o-mini-transcribe, openai/whisper-1), billed to OPENROUTER_API_KEY,
+   * the key every model call here already uses. So STT_PROVIDER=openai needs no OpenAI account of its own: on 22 Nov an OpenAI account with
+   * no credits answered every dictation 429, the SDK saw it as a reset mid-upload, and every word anyone said failed. Checked the same day
+   * against OpenRouter with webm, a language and a vocabulary prompt. false goes to api.openai.com on OPENAI_API_KEY, as before.
+   */
+  OPENAI_STT_VIA_OPENROUTER: bool(true),
   // Live dictation through OpenAI (STT_LIVE_PROVIDER=openai): the realtime
   // API in transcription mode. The mini model is the efficient one: about
   // half the price of gpt-4o-transcribe and faster to each word.
@@ -2267,7 +2275,7 @@ export function getConfig(): AppConfig {
   }
 
   // The selected STT provider must have its key. (The jobs Worker never transcribes speech: RUNTIME=worker is not asked for one.)
-  if (env.RUNTIME !== "worker" && env.STT_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
+  if (env.RUNTIME !== "worker" && env.STT_PROVIDER === "openai" && !env.OPENAI_API_KEY && env.OPENAI_STT_VIA_OPENROUTER === false) {
     throw new Error(
       "STT_PROVIDER=openai but OPENAI_API_KEY is missing. Add OPENAI_API_KEY, " +
         "or set STT_PROVIDER=groq and add GROQ_API_KEY.",
