@@ -97,9 +97,13 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
   }
   // Expiry is belt and braces. `active` should already be false by the time a
   // subscription lapses, but a missed webhook must not grant free months.
+  // A missed RENEWAL looks exactly like this too, though: the row still carries
+  // last period's date. So RevenueCat is asked before a payer is capped, as for
+  // a missing row; without a key that answer is null, which is what it was.
   if (data.expires_at && Date.parse(String(data.expires_at)) < Date.now()) {
-    cache.set(user.id, { at: Date.now(), value: null });
-    return null;
+    const live = await askRevenueCat(user.id);
+    cache.set(user.id, { at: Date.now(), value: live });
+    return live;
   }
   const value: Entitlement = {
     entitlement: String(data.entitlement),

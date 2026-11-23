@@ -186,9 +186,10 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
    * an open endpoint that grants entitlements is a free subscription for anyone
    * who finds the URL, so it fails closed.
    *
-   * Always answers 200 once authorised, even when an event is unusable.
-   * RevenueCat retries non-2xx for hours, and a malformed event will never
-   * become valid — retrying it forever buries the real ones.
+   * Answers 200 once authorised, even when an event is unusable: RevenueCat
+   * retries non-2xx for hours, and a malformed event will never become valid —
+   * retrying it forever buries the real ones. The one exception is an event we
+   * could use but failed to write, which is answered 500 so it comes again.
    *
    * Throttled per address, far above anything RevenueCat sends (a 429 is only
    * retried later), so the secret cannot be guessed at line rate.
@@ -213,7 +214,11 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     // Logged either way: a webhook that silently does nothing looks exactly like
     // one that worked, and this is how a missing subscription gets diagnosed.
     req.log.info({ rc: res, type: ev.type }, "[billing] revenuecat event");
-    return reply.send(res);
+    // An event we cannot use (no account of ours on it) will never become
+    // valid, so it is answered 200 and not retried. One we could not WRITE
+    // (no database client, a database error) is answered 500, as Razorpay's
+    // is: RevenueCat retries it, and a renewal is not lost to a blip.
+    return reply.code(res.ok || !res.userId ? 200 : 500).send(res);
   });
 
   /**

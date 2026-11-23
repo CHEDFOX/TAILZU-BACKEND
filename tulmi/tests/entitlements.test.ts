@@ -256,6 +256,61 @@ describe("applyRevenueCatEvent — buying from the desktop", () => {
   });
 });
 
+describe("getEntitlement — a row past its expiry", () => {
+  /**
+   * A RENEWAL whose webhook was lost leaves the row active with last period's
+   * date. Read with a fresh module each time, a fake row and a fake RevenueCat.
+   */
+  async function read(rc: Record<string, unknown> | null) {
+    process.env.REVENUECAT_API_KEY = "test-rc-key";
+    vi.resetModules();
+    vi.doMock("../src/auth/supabase.js", async (orig) => ({
+      ...((await orig()) as Record<string, unknown>),
+      supabase: () => ({
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { user_id: USER, entitlement: "TAILZU AIR", active: true, expires_at: new Date(Date.now() - 86_400_000).toISOString(), store: "APP_STORE" },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }),
+    }));
+    vi.doMock("../src/billing/razorpay.js", async (orig) => ({ ...((await orig()) as Record<string, unknown>), razorpayEntitlement: async () => null }));
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      asked.push(String(url));
+      return new Response(JSON.stringify({ subscriber: { entitlements: rc ?? {}, subscriptions: {} } }), { status: 200 });
+    });
+    try {
+      const mod = await import("../src/billing/entitlements.js");
+      return { got: await mod.getEntitlement({ id: USER } as never), asked };
+    } finally {
+      vi.unstubAllGlobals();
+      vi.doUnmock("../src/auth/supabase.js");
+      vi.doUnmock("../src/billing/razorpay.js");
+      delete process.env.REVENUECAT_API_KEY;
+      vi.resetModules();
+    }
+  }
+
+  it("asks RevenueCat before capping a payer whose renewal was missed", async () => {
+    const until = new Date(Date.now() + 29 * 86_400_000).toISOString();
+    const { got, asked } = await read({ "TAILZU AIR": { expires_date: until, store: "APP_STORE", product_identifier: "x0_air_monthly" } });
+    expect(asked).toEqual([`https://api.revenuecat.com/v1/subscribers/${USER}`]);
+    expect(got).toMatchObject({ entitlement: "TAILZU AIR", active: true, expiresAt: until });
+  });
+
+  it("still ends it when RevenueCat agrees it lapsed", async () => {
+    const { got, asked } = await read(null);
+    expect(asked).toHaveLength(1);
+    expect(got).toBeNull();
+  });
+});
+
 describe("where a subscription is managed", () => {
   // WHERE YOU BOUGHT IT DECIDES WHERE YOU CAN CHANGE IT, and one account is
   // reachable from a phone and a window at once. Apple lets nothing but Apple
