@@ -130,12 +130,17 @@ const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 /**
  * Art that ships with the code (tulmi/brand, copied into the image), for keys
  * named by something that cannot wait for an upload: the sign-in email names
- * `email.mark` in HTML pasted into Supabase, and a key nobody has uploaded to
+ * `email.icon` in HTML pasted into Supabase, and a key nobody has uploaded to
  * would show every new user a broken tile. An upload under the key still wins.
  */
 const BRAND_DIR = process.env.BRAND_DIR || path.join(process.cwd(), "brand");
 const BUNDLED_KEYED: Readonly<Record<string, { file: string; contentType: string }>> = Object.freeze({
-  "email.mark": { file: "email-mark.png", contentType: "image/png" },
+  // The app icon, rounded as a launcher would round it. Two names for one
+  // file: `email.icon` is what the templates ask for, and `email.mark` is the
+  // name the first templates used -- still answered, in case anyone clears
+  // the upload sitting under it.
+  "email.icon": { file: "email-icon.png", contentType: "image/png" },
+  "email.mark": { file: "email-icon.png", contentType: "image/png" },
 });
 
 // Inside MEDIA_DIR (see registryPath), so it is also reachable at
@@ -638,7 +643,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
    * months, so a content-addressed URL in it means the icon breaks the day
    * anyone re-uploads it, silently, in mail nobody on the team receives.
    *
-   * So: a redirect keyed by name. The template names `email.mark` forever and
+   * So: a redirect keyed by name. The template names `email.icon` forever and
    * this points it at whatever is currently under that key.
    *
    * Public and unauthenticated, like /media/* — it serves what an anonymous

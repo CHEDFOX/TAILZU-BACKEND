@@ -351,7 +351,8 @@ const ROLE_TABLE = {
     identity: "You read one message sent to X0 Bot and choose what it is, how long to answer, whether a visual helps, and how sure you are.",
     principles: ["core.intent", "core.unsure", "core.ask", "eff.cheap", "safe.data", "vis.show", "vis.skip", "vis.cheap", "out.json"],
     contract: '{"intent":chat|answer|code_question|code_task|design|research|plan|file_question|unclear,"length":short|medium|long,'
-      + '"visual":none|table|diagram|chart|component|page,"confidence":0..1,"clarify":{"question":"...","options":["..."]}|null}\n'
+      + '"visual":none|table|diagram|chart|component|page,"confidence":0..1,"clarify":{"question":"...","options":["..."]}|null,'
+      + '"projects":[]|["owner/name",...]}\n'
       + "code_question, code_task and design need a project; code_task changes its files, and showing or explaining its code is code_question. answer: general knowledge. research: fresh or cited facts from the web. plan: steps or a timeline. "
       + "file_question: about an attachment. unclear: nothing to go on. "
       + "visual: table for comparisons and specs, diagram for steps, flows and architecture, chart for numbers over time, component for a UI in a project, page for a new UI. "

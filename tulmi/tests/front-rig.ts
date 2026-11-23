@@ -18,7 +18,7 @@ export const ctx = (over: Partial<FrontCtx> = {}): FrontCtx => ({
 export const inProject = (over: Partial<FrontCtx> = {}): FrontCtx => ctx({ projectId: PROJECT, ...over });
 
 /** The small model's answer to "what is this message", as JSON. */
-export const decideJson = (o: Partial<{ intent: string; length: string; visual: string; confidence: number; clarify: { question: string; options: string[] } | null }> = {}) => ({
+export const decideJson = (o: Partial<{ intent: string; length: string; visual: string; confidence: number; clarify: { question: string; options: string[] } | null; projects: string[] }> = {}) => ({
   json: { intent: "answer", length: "medium", visual: "none", confidence: 0.8, clarify: null, ...o },
 });
 

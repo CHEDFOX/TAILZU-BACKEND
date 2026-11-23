@@ -139,9 +139,41 @@ function shuffle<T>(xs: readonly T[], seed: string): T[] {
  * filler — a choice nobody can learn from is not a question.
  */
 function others(item: LingoItem, pool: readonly LingoItem[], seed: string): string[] {
-  const same = pool.filter((p) => p.item !== item.item && p.kind === item.kind);
-  const rest = pool.filter((p) => p.item !== item.item && p.kind !== item.kind);
-  return shuffle([...same, ...rest], seed).slice(0, 3).map((p) => p.item);
+  return beside(item, pool, seed).map((p) => p.item);
+}
+
+/**
+ * WHAT A NEW WORD IS SHOWN BESIDE, and it decides whether the question can be answered at all.
+ *
+ * The wrong answers were drawn from the whole course, met or not. On the first day that means eight brand-new
+ * words offered against each other: nothing on the screen is known, so nothing is identifiable and every question
+ * is a guess. It reads as an app that assumes you already speak the language, because it is one.
+ *
+ * MET WORDS COME FIRST. Put a new word among three it has already learned and the new one is identifiable by
+ * elimination — which is the whole mechanism by which immersion teaches without translating. Each new word then
+ * arrives leaning on the ones before it, and needs less telling as the course goes on.
+ *
+ * Still the same kind of thing first (a word against words), because a choice between a word and a whole phrase
+ * is answered by its shape rather than its meaning. Unmet words fill in behind, for the first lesson of all,
+ * where there is nothing met to stand beside.
+ */
+function beside(item: LingoItem, pool: readonly LingoItem[], seed: string): LingoItem[] {
+  const mine = pool.filter((p) => p.item !== item.item);
+  const met = (p: LingoItem) => p.memory.state !== "new";
+  const rank = [
+    mine.filter((p) => met(p) && p.kind === item.kind),
+    mine.filter((p) => met(p) && p.kind !== item.kind),
+    mine.filter((p) => !met(p) && p.kind === item.kind),
+    mine.filter((p) => !met(p) && p.kind !== item.kind),
+  ];
+  const out: LingoItem[] = [];
+  for (const group of rank) {
+    for (const p of shuffle(group, seed)) {
+      if (out.length >= 3) return out;
+      out.push(p);
+    }
+  }
+  return out;
 }
 
 /**
@@ -169,11 +201,9 @@ export function gapIn(text: string, item: string): string | null {
   return at < 0 ? null : text.slice(0, at) + GAP + text.slice(at + item.length);
 }
 
-/** Up to three other meanings to offer beside the right one, taken from the person's own course so they are plausible. */
+/** Up to three other meanings to offer beside the right one: the words they have MET first (see `beside`). */
 function distractors(item: LingoItem, pool: readonly LingoItem[], seed: string): string[] {
-  const same = pool.filter((p) => p.item !== item.item && p.kind === item.kind && p.gloss.trim());
-  const other = pool.filter((p) => p.item !== item.item && p.kind !== item.kind && p.gloss.trim());
-  return shuffle([...same, ...other], seed).slice(0, 3).map((p) => p.gloss);
+  return beside(item, pool.filter((p) => p.gloss.trim()), seed).map((p) => p.gloss);
 }
 
 /** One item turned into the exercise it has earned. */
@@ -351,8 +381,17 @@ export function dayOf(now: number, tzOffsetMinutes: number): string {
 /** The streak after finishing a session today: the same day changes nothing, the next day adds one, a gap starts again. */
 export function streakAfter(learner: Learner, today: string): { streakDays: number; lastDay: string } {
   if (learner.lastDay === today) return { streakDays: learner.streakDays, lastDay: today };
-  const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
-  return { streakDays: learner.lastDay === yesterday ? learner.streakDays + 1 : 1, lastDay: today };
+  const back = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+  // ONE MISSED DAY DOES NOT END IT; TWO DO. A streak that breaks on the first bad day punishes exactly the people
+  // it is meant to keep — somebody who was ill, or travelling, or just had a day — and what they lose is not the
+  // number but the reason to come back at all: a run broken by one day is most discouraging to the person who
+  // blames themselves for it. Every app that keeps streaks kind does it with a freeze of some sort; this is the
+  // same forgiveness without a thing to buy, spend or remember.
+  //
+  // The count stays DAYS THEY TURNED UP — a missed day is forgiven, never counted — so the number keeps meaning
+  // what it says. Two missed days is a new run, because a streak that forgives everything counts nothing.
+  const kept = learner.lastDay === back(1) || learner.lastDay === back(2);
+  return { streakDays: kept ? learner.streakDays + 1 : 1, lastDay: today };
 }
 
 /**

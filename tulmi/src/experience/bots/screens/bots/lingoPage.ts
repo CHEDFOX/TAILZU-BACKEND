@@ -418,7 +418,7 @@ const WHY: Record<string, string> = {
 };
 
 /** How a set's end reads, by how it went. Nothing is celebrated that was not good: see set.ts gestureFor. */
-const END: Record<Performance, { head: string; body: string }> = {
+export const END: Record<Performance, { head: string; body: string }> = {
   flying: { head: "Nice set", body: "That was good. More new words next time, and more saying them." },
   solid: { head: "Good set", body: "Steady. Same again?" },
   shaky: { head: "Nearly there", body: "A few were close. Next set goes over those." },
@@ -576,6 +576,17 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
   const lang = data?.name?.trim() ?? "";
   const last = exs.length - 1;
 
+  /**
+   * THE END OF A SET, which is the last thing they see and therefore most of what they remember it by (order.ts
+   * keeps the peak-end rule for the exercises; this is the end itself). It used to roll straight into the next
+   * set, so a sitting had no end at all — and `setEnd`, written for this moment, had never had a caller.
+   */
+  const ended = when({ truthy: "done" }, col([
+    ...endWords(),
+    primaryButton("Keep going", { kind: "navigate", screenId: SCREENS.lingoSet, replace: true, params: { target, shape: "$state.done.next" } }),
+    quietButton("Stop for now", open(SCREENS.lingo)),
+  ], { gap: 14, paddingTop: 8 }));
+
   // THE APP REPORTS NOTHING. Every answer was marked and written into the set by the server as it was given
   // (/v1/lingo/answer, migration 0109), so closing a set off sends which course and nothing else. An app that
   // handed its own list back would be the one message in Lingo that could say "I was right".
@@ -594,9 +605,10 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
       ok: seq(
         { kind: "condition", if: { truthy: "done.gesture.cheer" }, then: { kind: "confetti" } },
         {
+          // A finished UNIT goes to its own celebration. A finished SET stays here and is said something about:
+          // `done` is in state now, so the screen draws the end instead of the exercises (endWords).
           kind: "condition", if: { truthy: "done.finished" },
           then: { kind: "navigate", screenId: SCREENS.lingoDone, replace: true, params: { target, done: "$state.done.finished" } },
-          else: { kind: "navigate", screenId: SCREENS.lingoSet, replace: true, params: { target, shape: "$state.done.next" } },
         },
       ),
       // Nothing is lost that mattered: each answer was marked and scheduled the moment it was given.
@@ -609,7 +621,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
    * at once (session.ts), so moving to the next is not a trip to the server — it used to refetch the session and
    * draw ITS first exercise, which is why the counter read "1 of 12" for ever and no set ever ended.
    */
-  const step = (ex: Exercise, i: number): Node => when({ eq: ["i", i] }, col([
+  const step = (ex: Exercise, i: number): Node => when({ all: [{ eq: ["i", i] }, { falsy: "done" }] }, col([
     row([meta(`${i + 1} of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
     meter(i + 1, exs.length, { color: look(ctx).color, height: 4 }),
     ...exerciseBody(ex, target, lang),
@@ -618,7 +630,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
       i === last ? finish() : seq(...clear, { kind: "incrementState", path: "i", by: 1 }))),
   ], { gap: 14 }));
 
-  return exs.map(step);
+  return [...exs.map(step), ended];
 }
 
 // ===================================================================== the screens
@@ -677,7 +689,9 @@ export const LINGO_SCREENS: BotsScreen[] = [
       ...(data?.building ? { live: [lingoTopic(String(ctx.params?.target ?? ""))] } : {}),
       // `i` is how far through the set they are. That is all the app keeps of a set: the answers themselves are
       // the server's, written as they were marked.
-      state: { i: 0, said: "", mark: null, say: "" },
+      // `done` is what the finished set came back as: while it is null the exercises are drawn, and once it is
+      // there the set's end is (setScreen `ended`).
+      state: { i: 0, said: "", mark: null, say: "", done: null },
     }),
   }),
   screen({
@@ -759,4 +773,45 @@ export const whyWords = (why: string): string => WHY[why] ?? "not quite";
 export function setEnd(p: Performance, g: Gesture): { head: string; body: string; cheer: boolean; scale: number } {
   const w = END[p];
   return { head: w.head, body: w.body, cheer: g.cheer, scale: g.scale };
+}
+
+/**
+ * WHAT IS SAID AT THE END OF A SET, and it is the only reward in here — there are no points, no gems and no score,
+ * on purpose: a reward made contingent on doing the thing reliably weakens the wanting to do it, and somebody
+ * chasing a number is not chasing the language.
+ *
+ * So the words have to be worth something, and what makes them worth something is that they NAME WHAT HAPPENED.
+ * "Nice set" is worth nothing: it would have been said whatever they did. "gracias is yours now" is worth
+ * something, because it is true, it is theirs, and it is new.
+ *
+ * NEVER ABOUT THE PERSON. Not "you're a natural", not "you're good at this". Person praise is the one kind the
+ * evidence is clear about — it is what leaves somebody helpless at the first failure, worse than saying nothing —
+ * and it is a promise the next bad set breaks. The set, the word and the work are what get praised here.
+ *
+ * In order of what is worth saying: a word that crossed into LEARNED (said out loud and held — the biggest thing
+ * that can happen in a sitting), then words said out loud at all, then the band's own line.
+ */
+function endWords(): Node[] {
+  const line = (t: string) => text(t, { size: 14, color: C.grey70, lineHeight: 19 });
+  const bound = (before: string, path: string, after: string) => row([
+    ...(before ? [line(before)] : []),
+    text("", { size: 14, weight: 600, lineHeight: 19, bind: path }),
+    ...(after ? [line(after)] : []),
+  ], { gap: 5, alignItems: "baseline", flexWrap: "wrap" });
+  return [
+    // The band's own head: the only part that is fixed, and none of it is about them.
+    ...(["flying", "solid", "shaky", "struggling"] as Performance[]).map((p) =>
+      when({ eq: ["done.performance", p] }, text(END[p].head, { size: 26, weight: 700, tracking: -0.5, lineHeight: 32 }))),
+    // A word that became theirs this set. The one thing worth interrupting anybody for.
+    when({ truthy: "done.result.learned.0" }, col([
+      bound("", "done.result.learned.0", "is yours now — said out loud, and held."),
+      when({ truthy: "done.result.learned.1" }, bound("And", "done.result.learned.1", "too.")),
+    ], { gap: 4 })),
+    // Else what they said out loud, which is the thing that makes a word stick.
+    when({ all: [{ falsy: "done.result.learned.0" }, { gte: ["done.result.spoken", 2] }] },
+      bound("", "done.result.spoken", "of them said out loud. That is the part that stays.")),
+    // Else the band's line, which says what the next set does rather than how they did.
+    ...(["flying", "solid", "shaky", "struggling"] as Performance[]).map((p) =>
+      when({ all: [{ eq: ["done.performance", p] }, { falsy: "done.result.learned.0" }, { lt: ["done.result.spoken", 2] }] }, line(END[p].body))),
+  ];
 }

@@ -73,18 +73,39 @@ function wayIn(name: string, glyph: "clip" | "camera" | "folder" | "computer" | 
  * file's bytes back, so this local copy is the only picture of it there is; a file with no picture leaves the source
  * undefined, the Image draws nothing, and the glyph underneath is what shows.
  */
-function chosen(i: number): Node {
+function chosen(i: number, size = 64): Node {
   return when({ truthy: `${ATTACH}.${i}` }, box([
-    icon("clip", { size: 17, color: C.meta }),
+    icon("clip", { size: size > 48 ? 17 : 13, color: C.meta }),
     {
       type: "Image", bind: { source: `${SHOTS}.${i}` },
       props: { contentFit: "cover" },
       style: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
     },
   ], {
-    width: 64, height: 64, borderRadius: 14, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
+    width: size, height: size, borderRadius: size > 48 ? 14 : 10, backgroundColor: C.surface, borderWidth: 1, borderColor: C.line,
     alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0,
   }));
+}
+
+/**
+ * WHAT IS ON THE ASK, ABOVE THE BAR. It used to be drawn in the card and nowhere else, on the reasoning that the
+ * card is where it was chosen — but the card is a modal you close to type, and the moment it shuts the composer
+ * looks exactly as it did before you picked anything. The file was on the ask and being sent; nothing said so.
+ *
+ * `uploadChip` could not say it either: it reads `up` and `sent`, and `uploadAdd` CLEARS `sent` once the file is
+ * on the list, so after a successful pick there is nothing left for it to draw.
+ *
+ * Small pictures, and the same "Clear" the card has, because taking ONE item out of a list is still not in the
+ * vocabulary (appendState adds, clearState empties, nothing removes an index).
+ */
+function onTheAsk(): Node {
+  return when({ truthy: `${ATTACH}.0` }, row([
+    ...Array.from({ length: MOST }, (_, i) => chosen(i, 40)),
+    grow(),
+    labelled(row([text("Clear", { size: 13, weight: 500, lineHeight: 17, color: C.meta })], { minHeight: 30, paddingHorizontal: 4 }),
+      "Take them all off"),
+  ], { gap: 6, flexWrap: "wrap", alignItems: "center", paddingHorizontal: 4 },
+  seq({ kind: "clearState", path: ATTACH }, { kind: "clearState", path: SHOTS })));
 }
 
 /**
@@ -188,10 +209,10 @@ export function askBar(client: Client, o: { placeholder?: string; path?: string;
     flexGrow: 1, flexShrink: 1, minWidth: 0,
   });
   return col([
-    // A file on its way, then the file on the ask, above the row it belongs to.
-    // A file ON ITS WAY keeps its chip above the bar (media.ts uploadChip reads `up`); what is already on the ask is
-    // drawn in the card, which is where it was chosen.
-    ...(inserts ? [uploadChip(ATTACH, { wide: true })] : []),
+    // A file on its way, then the files on the ask, above the row they belong to. The chip is the one ON ITS WAY
+    // (uploadChip reads `up`); the strip under it is what is already attached, which the card alone used to show —
+    // so closing the card left a composer that looked empty and an ask that was carrying a photo.
+    ...(inserts ? [uploadChip(ATTACH, { wide: true }), onTheAsk()] : []),
     key.length ? row([...key, bar], { gap: 10, alignItems: "flex-end" }) : bar,
     ctx
       ? askMoment(ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking your bots…", bubble: "surface" })

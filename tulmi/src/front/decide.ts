@@ -73,6 +73,10 @@ const AGENT_CHAT_PAISE = 500;
 /** The same for a deep question, which the strong tier takes from the start (its worst case is several times the cheap one's). */
 const AGENT_STRONG_PAISE = 1_500;
 
+/** How many of their projects the router is shown, and the most it may name for one goal. */
+const PROJECTS_SHOWN = 12;
+const PROJECTS_PICKED = 4;
+
 /** What the small model is held to. Strict: a field it was not asked for is a bad answer, and gets one repair. */
 export const DecideReply = z.object({
   intent: z.enum(INTENTS),
@@ -80,6 +84,12 @@ export const DecideReply = z.object({
   visual: z.enum(["none", ...VISUAL_KINDS]),
   confidence: z.number().min(0).max(1),
   clarify: z.object({ question: z.string().min(3).max(240), options: z.array(z.string().min(1).max(80)).min(2).max(3) }).strict().nullable(),
+  /**
+   * The projects this is about, by the names it was shown, the main one first. Left out for every message that
+   * is about none of them — and OPTIONAL, because it is only asked for when there are projects to pick from: a
+   * required field would make every reply to every other message a bad one, and buy a repair call for nothing.
+   */
+  projects: z.array(z.string().max(200)).max(PROJECTS_PICKED).optional(),
 }).strict();
 export type DecideReply = z.infer<typeof DecideReply>;
 
@@ -126,6 +136,17 @@ export function decideMessage(text: string, ctx: FrontCtx, rules: Pick<RuleRead,
     // In a project's chat, "this repo", "the app" and "it" are the project: said, so a question about it is not read as one about the world.
     `Project: ${ctx.projectId ? `yes, this is the chat of their code project${ctx.projectName ? ` ${oneLine(forModel(ctx.projectName), 80)}` : ""} ("this repo", "the app", "it" and its name mean the project; a question about the project itself, what it is, who it is for, what changed in it, where it is heading, is a code_question about it)` : "no"}.`,
     ...(ctx.projectId && ctx.projectAbout ? [`What the project is: ${oneLine(forModel(ctx.projectAbout), 220)}`] : []),
+    // IN NO PROJECT, BUT THEY HAVE SOME. Name them, so a message that is plainly about one is read as being about
+    // it: "the cart total is wrong" is a code_task in the shop, not a question about shopping. `projects` is how
+    // it says which, and saying nothing is a real answer — a question about none of them in particular, or one
+    // where two would fit equally, is better answered across all of them or asked back about.
+    ...(!ctx.projectId && ctx.projects?.length
+      ? [[
+          "Their code projects, to pick from if this message is about one:",
+          ...ctx.projects.slice(0, PROJECTS_SHOWN).map((p) => `- ${oneLine(forModel(p.name), 80)}${p.about ? `: ${oneLine(forModel(p.about), 160)}` : ""}`),
+          "`projects`: the names it is about, the main one first; several only when the one goal truly spans them; [] when it is about none of them, or you cannot tell.",
+        ].join("\n")]
+      : []),
     // What the chat said last: "do that", "the same for logout", "and why?" point at it.
     ...(ctx.lastAnswer ? [`The chat's last answer began:\n<<<\n${oneLine(forModel(ctx.lastAnswer), 400).replace(/>>>/g, "> > >")}\n>>>`] : []),
     `Device: ${ctx.device}. Mode: ${ctx.mode}.`,
@@ -198,6 +219,8 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   let length: Length | undefined;
   let hint: VisualKind | "none" | undefined;
   let modelClarify: Clarify | null = null;
+  /** The project names the router answered with, before they are matched to ids (step 3b). */
+  let modelProjects: string[] = [];
   // In a project's chat, words alone can't tell a question from a change ("what do you understand of the project", "this isn't a bug, just
   // explain"): the small model always reads the message there, and is not shown what the rules guessed. A reaction ("??", "why?") and a
   // hand-off ("ok, change it") are already known from the turn before, and keep the rules' answer; with no model to ask, the rules stand in.
@@ -211,6 +234,7 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
       length = got.read.length;
       hint = got.read.visual;
       modelClarify = usableClarify(got.read.clarify);
+      modelProjects = got.read.projects ?? [];
       reasons.push("model:tiny");
     } else {
       reasons.push(`model:skipped:${got.skipped}`);
@@ -221,6 +245,18 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   if (!hasProject && (intent === "code_question" || intent === "code_task")) { intent = "answer"; reasons.push("no_project"); }
   if (ctx.attachments.length) intent = "file_question";
   else if (intent === "file_question") intent = "answer";
+
+  // 3b. WHICH OF THEIR PROJECTS, when the message came from none. The router answered with names it was shown;
+  // they are matched back to ids here, exactly and case-blind, so a name it invented picks nothing rather than
+  // something near it. Only for the roads that are ABOUT a project — a chat about the weather names none.
+  const picked: string[] = [];
+  if (!ctx.projectId && ctx.projects?.length && modelProjects.length) {
+    const byName = new Map(ctx.projects.map((p) => [p.name.toLowerCase(), p.id]));
+    for (const name of modelProjects) {
+      const id = byName.get(name.trim().toLowerCase());
+      if (id && !picked.includes(id)) picked.push(id);
+    }
+  }
 
   // 4. The road, the shape and the money.
   const depth = intent === "research" ? rules.depth ?? "standard" : undefined;
@@ -289,6 +325,7 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
 
   return {
     intent, shape: { length, visual }, route, tier, budgetPaise, confidence, ...(clarify ? { clarify } : {}), via, ...(depth ? { depth } : {}),
+    ...(picked.length ? { projects: picked } : {}),
     language: rules.reaction?.language ?? rules.cls.language, ...(rules.followUp ? { followUp: rules.followUp.base } : {}),
     ...(rules.reaction ? { reask: rules.reaction.ask } : {}),
     ...(rules.handoff && intent === "code_task" ? { handoff: true } : {}), ...(rules.openEnded && intent === "code_task" ? { mode: "freeform" as const } : {}),

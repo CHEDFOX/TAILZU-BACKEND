@@ -17,41 +17,64 @@ person signing in again gets a link.
 
 ## The icon
 
-The `<img>` points at `https://api.x0bot.com/media/k/email.mark`, keyed by
+The `<img>` points at `https://api.tailzu.space/media/k/email.icon`, keyed by
 NAME rather than by content hash. This HTML is pasted into Supabase by hand and
 then sits there for months, so a hash in it would break the day anyone
 re-uploads the icon.
 
-The mark ships with the backend (`tulmi/brand/email-mark.png`: the app icon
-cropped to its mark, rounded, 128 px for a 32 px slot), so the URL answers from
-the first deploy with no upload. To change it, upload under the key, and that
-copy wins from then on:
+The art ships with the backend (`tulmi/brand/email-icon.png`: the app icon,
+rounded at 22.37% as a launcher rounds it, 224 px for a 56 px slot — the
+halftone needs that much to stay dots on a retina screen), so the URL answers
+from the first deploy with no upload. To change it, upload under the key, and
+that copy wins from then on:
 
 ```bash
-curl -X POST "https://api.x0bot.com/v1/media/upload?key=email.mark" \
-  -H "x-admin-secret: $ADMIN_SECRET" -F "file=@new-mark.png"
+curl -X POST "https://api.tailzu.space/v1/media/upload?key=email.icon" \
+  -H "x-admin-secret: $ADMIN_SECRET" -F "file=@new-icon.png"
 ```
 
-The mark stands alone, with `alt="X0 Bot"`: most clients block remote images
+`email.mark` is the name the first templates used. It still answers, with the
+same file, because an old copy of this HTML may be sitting in a Supabase
+project somewhere — but it has an upload in front of it (the old X0 Bot mark,
+three white squares on brown), so a template that names it shows that until
+someone clears or replaces it. New templates name `email.icon`.
+
+The icon stands alone, with `alt="X0"`: most clients block remote images
 until the reader allows them, and those draw the alt text in the image's place,
 so the mail still says who it is from at the moment it asks for trust.
 
 ## The look
 
-The phone app's look (`PHONE_LOOK` in `src/experience/phoneLook.ts`), and as
-little as a code needs: the mark, the code, one label under it,
-and one line at the foot. Amber only on the code, which is what is still in
-play for the next hour; everything else in cream stepped down. Two of the
-app's faces: the label face (IBM Plex Mono) for the code and its label, the
-UI face (Instrument Sans) for the foot.
+The sign-in screen's look — the one the reader is holding while they read this
+(`OB` in `src/experience/onboard/kit.ts`, and the `CodeEntry` props in
+`src/experience/onboard/auth.ts`) — and as little as a code needs: the icon,
+a heading, the code, one label under it, and one line at the foot.
+
+Not the screen's own heading, though it is set in the screen's face at the
+screen's size. "Enter the code I sent" works there because they tapped the
+button a second ago; sitting in an inbox days later it names neither who sent
+it nor what it opens, so the heading says both.
+
+The code is drawn as its box is drawn on that screen: the neon ring, white
+fill, ink edge, digits in the heading's face. Neon is the app's one live
+colour, and for the next hour the code is what is live; nothing else in the
+mail is coloured. One box around the whole code, never one per digit — a
+copied code must paste as the code, and iOS only offers it from Mail when it
+can read it as one run; the letter spacing separates the digits instead.
+
+Two of the app's faces: Bricolage Grotesque (`PHONE_FONT.grotesk`, cut to 800)
+for the heading and the digits, exactly as the screen sets them, and Instrument
+Sans (`PHONE_FONT.ui`) for the small print.
 
 | Role | App token | In the mail |
 | --- | --- | --- |
-| Ground | `ground` | `#0F0D0B` |
-| Ink | `ink` | `#F3E2C6` |
-| Labels, small print | `ink3`, cream at 50% | `#817869` |
-| Hairline | `rule`, cream at 7% | `#1F1C18` |
-| The code | `accent` | `#E8A23C` |
+| Ground | `OB.paper` | `#EFEDE8` |
+| The code box | `OB.white` | `#FFFFFF` |
+| Its edge, and all ink | `OB.ink` | `#1C1A17` |
+| The foot | `OB.ink2`, ink at 70% | `#5B5956` |
+| Labels, small print | `OB.muted`, ink at 56% | `#797773` |
+| Hairline | `OB.hair`, ink at 13% | `#D4D2CD` |
+| The ring around the code | `OB.neonSoft`, neon at 20% | `#CBF1BE` |
 
 ## Why the HTML looks like 2005
 
@@ -59,12 +82,12 @@ Email is not the web. There is no flexbox, no grid, no external stylesheet worth
 relying on, and no webfont that loads everywhere. Layout is nested tables,
 styling is inline attributes, and every colour is a flat hex: `rgba()` renders
 as black or as nothing across enough clients to be unusable, so the app's
-translucent inks are pre-flattened against the ground (the table above).
+translucent inks and its neon are pre-flattened against the ground (the table
+above).
 
 The fonts come from Google Fonts. Apple Mail, iOS Mail, Samsung Mail and
-Outlook for Mac load them; Gmail and Outlook on Windows do not, and each stack
-ends in a system face that keeps the same voice (Menlo or Consolas for the
-mono, the system sans for the UI face).
+Outlook for Mac load them; Gmail and Outlook on Windows do not, and both stacks
+end in the system sans, which keeps the voice if not the cut.
 
 ## The ground covers the whole screen
 
@@ -85,19 +108,20 @@ the screen's width: 960 px, 1240 px from tablet width, 1500 px from wide
 desktops, since a taller screen is a wider one. Checked at ten sizes from a
 375 x 667 phone to a 2560 x 1440 desktop, with and without viewport units.
 
-## Dark by design
+## Light by design
 
-The design is dark in light mode and in dark mode, and says so
-(`color-scheme: light dark`), which tells Apple Mail and Outlook that the
-palette is handled and they leave it alone. Outlook.com's dark mode is held by
-the `[data-ogsc]` / `[data-ogsb]` rules. Every colour is also restated on its
-element, because inherited colour is the first thing a dark-mode pass throws
-away.
+The sign-in screen is light, so the mail is. Saying `color-scheme: light` and
+nothing else tells Apple Mail and Outlook the palette is handled and they leave
+it alone rather than repainting it for dark mode. Outlook.com's dark mode is
+held by the `[data-ogsc]` / `[data-ogsb]` rules. Every colour is also restated
+on its element, because inherited colour is the first thing a dark-mode pass
+throws away.
 
 One client cannot be held: the Gmail app on iPhone in dark mode inverts every
-mail, dark ones included, so there it shows light with dark text. It stays
-readable, which is the point; the tricks that fight it (background images, blend
-modes) leave the text unreadable whenever they half-work.
+mail, so there it shows dark with pale text and the icon tile goes pale at its
+corners. It stays readable, which is the point; the tricks that fight it
+(background images, blend modes) leave the text unreadable whenever they
+half-work.
 
 ## After editing
 

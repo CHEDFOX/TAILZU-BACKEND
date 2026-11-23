@@ -230,7 +230,15 @@ export function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; 
         assignTo: "asked",
         onSuccess: seq(
           { kind: "setState", path: "asking", value: false },
-          { kind: "navigate", screenId: SCREENS.ask, params: { message: SENT_WORDS, answer: "$state.asked.result.text", id: "$state.asked.id" } },
+          // IT MAY HAVE STARTED A JOB. Asking Xode from outside a project used to be the only thing this box
+          // could do, because the roads that work need a project and nobody had named one. The front door picks
+          // it from the words now (front/decide.ts), so "fix the cart rounding" comes back with a job on a branch
+          // rather than an answer about it — and the person belongs on that job, not on the answer page.
+          {
+            kind: "condition", if: { truthy: "asked.shell.job" },
+            then: { kind: "navigate", screenId: SCREENS.codeJob, params: { id: "$state.asked.shell.job" } },
+            else: { kind: "navigate", screenId: SCREENS.ask, params: { message: SENT_WORDS, answer: "$state.asked.result.text", id: "$state.asked.id" } },
+          },
         ),
         onError: failed({ busy: "asking", ...(o.statePath ? { from: o.statePath } : {}), then: toast("Couldn't reach Xode. Try again.") }),
       }),
