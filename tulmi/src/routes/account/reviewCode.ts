@@ -39,6 +39,13 @@ export function registerReviewCodeRoute(
   app: FastifyInstance,
   opts: { rateLimit?: { max: number; timeWindow: number } } = {},
 ): void {
+  // Wrong pairs from EVERYONE, per quarter-hour. The per-address limit is no limit to a caller with many addresses (an IPv6
+  // /64, a proxy pool), and the code is one in a million: at 20 a quarter-hour the whole space is years of trying. The cost
+  // is that someone hammering the route can keep the reviewer out for fifteen minutes, which is the right way round for a
+  // door that mints a session.
+  const WRONG_MAX = 20;
+  const WRONG_WINDOW_MS = 15 * 60_000;
+  let wrong = { n: 0, until: 0 };
   app.post(
     "/v1/auth/review-code",
     opts.rateLimit ? { config: { rateLimit: opts.rateLimit } } : {},
@@ -62,9 +69,14 @@ export function registerReviewCodeRoute(
       // BOTH compared, always, even when the first has already failed. An early
       // return on the email turns "is this the review address?" into a question
       // anyone can ask, and answer, from the response time.
+      const now = Date.now();
+      if (wrong.until <= now) wrong = { n: 0, until: now + WRONG_WINDOW_MS };
+      if (wrong.n >= WRONG_MAX) return reply.code(429).send({ code: "invalid_code" });
+
       const emailOk = sameSecret(gotEmail, email);
       const codeOk = sameSecret(gotCode, code);
       if (!emailOk || !codeOk) {
+        wrong.n += 1;
         // The same answer the app shows for a mistyped code, so this path is
         // not distinguishable from the ordinary one by its failures either.
         return reply.code(401).send({ code: "invalid_code" });

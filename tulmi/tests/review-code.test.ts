@@ -134,3 +134,18 @@ describe("the review pair", () => {
     await app.close();
   });
 });
+
+describe("wrong pairs are counted for the whole server", () => {
+  it("after twenty wrong pairs from anyone, even the right pair waits out the quarter-hour", async () => {
+    configure("review@x0bot.com", "123456");
+    const app = await server();
+    for (let i = 0; i < 20; i++) {
+      const res = await app.inject({ method: "POST", url: "/v1/auth/review-code", payload: { email: "review@x0bot.com", code: String(100000 + i) } });
+      expect(res.statusCode).toBe(401);
+    }
+    const blocked = await app.inject({ method: "POST", url: "/v1/auth/review-code", payload: { email: "review@x0bot.com", code: "123456" } });
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json()).toEqual({ code: "invalid_code" });
+    await app.close();
+  });
+});
