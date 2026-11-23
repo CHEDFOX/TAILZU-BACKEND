@@ -20,6 +20,7 @@ import { oneLine } from "../code/work/model.js";
 import { sensitiveApp } from "../pipeline/sensitive.js";
 import { youStore } from "../you/store.js";
 import { contextStore, emptyKept, type ContextStore, type Kept, type KeptTurn, type Person } from "./store.js";
+import type { AskDo } from "../askDecide/index.js";
 
 export const TURNS_KEPT = 6;
 export const PEOPLE_KEPT = 30;
@@ -139,7 +140,7 @@ export async function keepAsk(userId: string, a: { input: DecideInput; decision:
  */
 export async function keepResult(
   userId: string,
-  run: { said: string; result: string; app?: string; private?: boolean },
+  run: { said: string; result: string; app?: string; private?: boolean; orNew?: AskDo },
   d: KeepDeps = {},
 ): Promise<boolean> {
   const said = norm(run.said);
@@ -147,8 +148,14 @@ export async function keepResult(
   if (!said || !result || run.private || sensitiveApp(run.app) || secretish(run.result) || !(await switchOn(userId, d))) return false;
   return change(userId, d, (k, now) => {
     const t = [...k.turns].reverse().find((x) => !x.result && now - x.at <= RESULT_WINDOW_MS && (norm(x.said) === said || (x.goal && norm(x.goal) === said)));
-    if (!t) return false;
-    t.result = result;
+    if (t) { t.result = result; return true; }
+    // ASKED STRAIGHT, NOT THROUGH THE ONE KEY'S BRAIN (Ask's own keys, or the brain off): there is no ask for the result to go on,
+    // and it used to be dropped — so every question to Ask started from nothing, and "what did I ask you first?" had no answer. With
+    // `orNew` the run is kept as an ask of its own, held to the same rules as any (nothing that looks like a secret, in what was said
+    // or in the answer).
+    if (!run.orNew || secretish(run.said)) return false;
+    k.turns.push({ id: randomUUID(), said: oneLine(run.said, SAID_MAX), did: run.orNew, at: now, result });
+    while (k.turns.length > TURNS_KEPT) k.summary = foldInto(k.summary, k.turns.shift()!);
     return true;
   });
 }

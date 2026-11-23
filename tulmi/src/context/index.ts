@@ -18,6 +18,7 @@ import { routineStore, type RoutineStore } from "../routines/index.js";
 import { clean, contextFor, routineWork, type BuiltContext, type OpenWork } from "./build.js";
 import { forgetAll, forgetPerson, forgetTurns, keepAsk, keepResult, type KeepDeps } from "./keep.js";
 import { contextStore, emptyKept, type ContextStore, type Kept } from "./store.js";
+import type { AskDo } from "../askDecide/index.js";
 
 export { contextFor, renderContext, routineWork, clean, ago, tzWords, CONTEXT_WAIT_MS, type BuiltContext, type ContextParts, type ContextOptions, type ContextSources, type YouFact, type FactStatus, type OpenWork } from "./build.js";
 export { keepAsk, keepResult, forgetAll, forgetPerson, forgetTurns, notKept, secretish, foldInto, foldPiece, rankPeople, TURNS_KEPT, PEOPLE_KEPT, SUMMARY_MAX, type KeepDeps } from "./keep.js";
@@ -78,7 +79,7 @@ export class PersonContext {
     return keepAsk(userId, { input, decision }, this.keep());
   }
 
-  keepResult(userId: string, run: { said: string; result: string; app?: string; private?: boolean }): Promise<boolean> {
+  keepResult(userId: string, run: { said: string; result: string; app?: string; private?: boolean; orNew?: AskDo }): Promise<boolean> {
     return keepResult(userId, run, this.keep());
   }
 

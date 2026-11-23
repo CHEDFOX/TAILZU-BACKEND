@@ -261,7 +261,9 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     if (context && sink.ending === "done" && !offLimits) {
       const runSaid = step.history?.find((t) => t.said)?.said ?? heard;
       const did = says || (step.step > 0 ? "done" : "");
-      if (runSaid && did) void context.keepResult(user.id, { said: runSaid, result: did, app: step.app, ...(step.privateWindow ? { private: true } : {}) }).catch((err) => req.log.warn({ err: (err as Error)?.message }, "context: result not kept"));
+      // orNew: a question put to Ask directly has no ask from the one key's brain to go on, and is kept as one of its own, so the next
+      // question has it in <context> (a continuing conversation rather than a string of first questions).
+      if (runSaid && did) void context.keepResult(user.id, { said: runSaid, result: did, app: step.app, orNew: "answer", ...(step.privateWindow ? { private: true } : {}) }).catch((err) => req.log.warn({ err: (err as Error)?.message }, "context: result not kept"));
     }
     if (result && result.path !== "refused") {
       if (result.path === "picture") recordPicture(user);

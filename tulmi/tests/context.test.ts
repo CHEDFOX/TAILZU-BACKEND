@@ -209,6 +209,29 @@ describe("what is learned", () => {
   });
 });
 
+describe("a question put to Ask directly", () => {
+  // Ask's own keys (or the brain off) have no decided ask for the run's result to go on. It used to be dropped, so each question to Ask
+  // started from nothing: "what did I ask you first?" had no answer. With orNew it is kept as an ask of its own.
+  it("is kept as an ask of its own, with its answer, so the next question has it", async () => {
+    const w = world();
+    expect(await keepResult(ME, { said: "what's the revenue target in this?", result: "The revenue target is 40 lakh.", orNew: "answer" }, w.deps)).toBe(true);
+    expect((await w.store.get(ME))!.turns.at(-1)).toMatchObject({ said: "what's the revenue target in this?", did: "answer", result: "The revenue target is 40 lakh." });
+  });
+  it("still goes on the ask it came from when there is one, rather than a second copy", async () => {
+    const w = world();
+    await ask(w, { words: "tell Riya hi", field: null }, { do: "send", to: "Riya" });
+    expect(await keepResult(ME, { said: "tell Riya hi", result: "Sent.", orNew: "answer" }, w.deps)).toBe(true);
+    expect((await w.store.get(ME))!.turns).toHaveLength(1);
+  });
+  it("is held to the same rules: nothing private, nothing from a sensitive app, nothing that looks like a secret", async () => {
+    const w = world();
+    expect(await keepResult(ME, { said: "what's on screen", result: "A page.", orNew: "answer", private: true }, w.deps)).toBe(false);
+    expect(await keepResult(ME, { said: "what's my password here", result: "hunter2", orNew: "answer" }, w.deps)).toBe(false);
+    expect(await keepResult(ME, { said: "my otp is 482913", result: "Noted.", orNew: "answer" }, w.deps)).toBe(false);
+    expect((await w.store.get(ME))?.turns ?? []).toHaveLength(0);
+  });
+});
+
 describe("privacy", () => {
   it("keeps nothing from dictation, a private field, X0 Bot's own window, a sensitive app, a secret, or with the switch off", async () => {
     const w = world();
