@@ -66,8 +66,11 @@ const FIELD_LABEL_MAX = 48;
 const CARD_WHY: readonly AgentHandoverWhy[] = ["login", "code"];
 const TYPE_MAX = 1000;
 const INSTRUCTION_MAX = 500;
-/** More SAYs or POINTs than this in one step is a model rambling. */
-const SAYS_MAX = 3;
+/**
+ * More SAYs than this in one step is a model rambling. Twelve, not three: Ask is also asked for words — tell me about this book, a
+ * poem, an explanation — and those are SAID, a sentence a line (the planner's rule 6). Three cut a poem off after its second line.
+ */
+const SAYS_MAX = 12;
 const POINTS_MAX = 6;
 const WHY_MAX = 120;
 /** A USE line's arguments, as written: past this it is not an argument list. */
@@ -201,6 +204,32 @@ const ID = /^([eo]\d{1,5})\b\s*/i;
 
 /** One line of the protocol, or null when the line is not one. `order` is
  *  how its model writes a place in the picture ("xy" unless told). */
+/**
+ * A SAY too long for one line, cut at its sentences instead of in the middle of a word. The card and the voice take a sentence at a
+ * time (SAY_MAX); a model that writes a paragraph as one SAY used to lose everything past the 240th character ("…shaping your ide").
+ * A sentence longer than that on its own is cut at its last space before the limit. Returns the SAY lines to read, in order.
+ */
+export function splitSay(raw: string): string[] {
+  const m = /^\s*SAY\b\s*:?\s*([\s\S]*)$/.exec(raw);
+  if (!m || m[1]!.length <= SAY_MAX) return [raw];
+  const out: string[] = [];
+  let cur = "";
+  const push = () => { if (cur.trim()) out.push(`SAY ${cur.trim()}`); cur = ""; };
+  for (const sentence of m[1]!.split(/(?<=[.!?…])\s+/)) {
+    let rest = sentence;
+    while (rest.length > SAY_MAX) {
+      push();
+      const cut = rest.lastIndexOf(" ", SAY_MAX) > SAY_MAX / 2 ? rest.lastIndexOf(" ", SAY_MAX) : SAY_MAX;
+      out.push(`SAY ${rest.slice(0, cut).trim()}`);
+      rest = rest.slice(cut);
+    }
+    if ((cur + " " + rest).trim().length > SAY_MAX) push();
+    cur = `${cur} ${rest}`;
+  }
+  push();
+  return out;
+}
+
 export function parseLine(raw: string, platform: Platform, opts: ParseOptions = {}): Line | null {
   let s = raw.trim();
   if (!s || s.startsWith("```")) return null;

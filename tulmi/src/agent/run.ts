@@ -51,8 +51,8 @@
  */
 import { randomUUID } from "node:crypto";
 import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
-import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
-import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
+import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, wantsWords, type GrammarAction } from "./grammar.js";
+import { LineReader, LineSplitter, parseLine, splitSay, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
 import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserPrompt } from "./llm.js";
 import { agentPictureContent, agentUserMessage, drawOrderFor } from "./prompt.js";
 import { stableBlock } from "../principles/roles.js";
@@ -216,7 +216,11 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
   // The run's mode is its first request's: an answer to a question it asked
   // ("the second one") does not turn a show run into a do run. A picture is
   // only ever shown.
-  const mode = ctx.image ? "show" : modeOf(history.find((t) => t.said)?.said ?? said, names);
+  const first = history.find((t) => t.said)?.said ?? said;
+  // Words asked for (a poem, a story, three names) with no text box waiting for them are the answer, said in the card: a show run, which
+  // never acts — not a do run that goes looking for a field to type them into (grammar.ts wantsWords).
+  const textWaiting = req.screen.elements.some((e) => e.focused && (e.role === "field" || e.role === "area" || e.role === "combo")) || !!req.screen.field;
+  const mode = ctx.image ? "show" : wantsWords(first, names) && !textWaiting ? "show" : modeOf(first, names);
   sink.emit({ t: "heard", text: said, mode });
   if (ctx.image) return answerPicture(ctx, deps, sink, { said, image: ctx.image, audioSeconds });
 
@@ -458,9 +462,17 @@ async function follow(
   const { reader, result } = f;
   const splitter = new LineSplitter();
 
+  // A SAY's own continuation: models write a poem, a list or a long answer as one SAY followed by plain lines. A plain line right after a
+  // SAY is that answer going on, and is said too; anywhere else a line that is not a command is still dropped (prose is never an action).
+  let afterSay = false;
   const take = async (raw: string, model: string) => {
-    const line = parseLine(raw, req.platform, { order: f.order(model) });
+    for (const piece of splitSay(raw)) await takeOne(piece, model);
+  };
+  const takeOne = async (raw: string, model: string) => {
+    let line = parseLine(raw, req.platform, { order: f.order(model) });
+    if (!line && afterSay && raw.trim() && !raw.trim().startsWith("```")) line = parseLine(`SAY ${raw.trim()}`, req.platform, { order: f.order(model) });
     if (!line) return;
+    afterSay = line.verb === "SAY";
     for (const out of reader.read(line)) {
       if ("emit" in out) sink.emit(out.emit);
       else if ("use" in out) await useTool(out.use, req, f.use, deps, sink);

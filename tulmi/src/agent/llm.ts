@@ -59,7 +59,8 @@ import { openrouter } from "../pipeline/openrouter.js";
 import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxTokensWithReasoning, reasoningRequired, type Effort } from "./reasoning.js";
 
-export const AGENT_MAX_TOKENS = 300;
+/** Room for a chat-sized answer (twelve SAY lines), not only a where-question's one line. Spent only when the answer needs it. */
+export const AGENT_MAX_TOKENS = 800;
 /** About 90 words of answer, a line each, with room for its points. */
 const VISION_MAX_TOKENS = 450;
 /** About 250 words, a step a line, in maths that tokenizes densely. */

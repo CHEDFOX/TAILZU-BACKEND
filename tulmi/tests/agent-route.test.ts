@@ -579,7 +579,7 @@ describe("the model ladder", () => {
     const [first, second] = streamCalls();
     for (const c of [first!, second!]) {
       expect(c.body.stream).toBe(true);
-      expect(c.body.max_tokens).toBe(300);
+      expect(c.body.max_tokens).toBe(800);
       expect(c.opts).toMatchObject({ maxRetries: 0, timeout: 500 });
       expect(c.opts!.signal).toBeInstanceOf(AbortSignal);
     }
@@ -1070,14 +1070,25 @@ describe("the picture part's caps", () => {
 
 describe("the text path, v2", () => {
   it("every SAY after the first is appended, here too", async () => {
-    llm.plan = ["SAY Your disk is full.\nSAY Free up some space.\nSAY Then save again.\nSAY A fourth is too many.\nDONE"];
+    // Twelve sentences at most on the text path (a poem, a book's summary); a thirteenth is a model rambling.
+    llm.plan = [["SAY Your disk is full.", "SAY Free up some space.", "SAY Then save again.", ...Array.from({ length: 9 }, (_, i) => `SAY More ${i + 1}.`), "SAY A thirteenth is too many.", "DONE"].join("\n")];
     const res = await post(step({ utterance: "what does this error mean?" }));
     expect(res.evs.slice(1)).toEqual([
       { t: "say", text: "Your disk is full." },
       { t: "say", text: "Free up some space.", append: true },
       { t: "say", text: "Then save again.", append: true },
+      ...Array.from({ length: 9 }, (_, i) => ({ t: "say", text: `More ${i + 1}.`, append: true })),
       { t: "done" },
     ]);
+  });
+
+  it("a poem written as one SAY and plain lines is said whole; a plain line anywhere else is still dropped", async () => {
+    llm.plan = ["SAY Rain taps softly on the pane,\nWashing rooftops, streets, and grain.\nClouds drift by.\nDONE"];
+    const res = await post(step({ utterance: "write me a short poem about rain" }));
+    expect(res.evs.filter((e) => e.t === "say").map((e) => (e as { text: string }).text)).toEqual(["Rain taps softly on the pane,", "Washing rooftops, streets, and grain.", "Clouds drift by."]);
+    llm.plan = ["Here is some prose.\nDONE"];
+    const prose = await post(step({ utterance: "what is this?" }));
+    expect(prose.evs.filter((e) => e.t === "say")).toHaveLength(0);
   });
 
   it("LOOK ends the step with a look, in either mode, and nothing after it is read", async () => {
