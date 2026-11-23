@@ -3,6 +3,40 @@
   "note": "Real open-source projects the reality check runs on. Each is pinned to a commit and cloned (shallow) into e2e/cache/clones; dependencies are installed once and hard-linked into every temporary checkout. 'measured' is written by `npm run e2e:repos -- verify` on this machine.",
   "repos": [
     {
+      "id": "tailzu",
+      "slug": "CHEDFOX/TAILZU-BACKEND",
+      "stack": "Our own backend: TypeScript, Fastify, vitest (~11,800 tests)",
+      "kind": "node-api",
+      "language": "typescript",
+      "pin": "037cfe9e2e499dae2e49f3451621ab32d986df76",
+      "depth": 1,
+      "workdir": "tulmi",
+      "install": {
+        "manager": "npm",
+        "cmd": "npm ci --no-audit --no-fund --loglevel=error",
+        "approxMB": 420
+      },
+      "installChecks": [
+        "^npm (install|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "npx vitest run",
+        "full": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "files": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^tests/.+\\.test\\.ts$",
+        "testDirs": [
+          "tests"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/",
+        "ignorePath": "^(docs/|README)",
+        "runnable": "^tests/.+\\.test\\.ts$"
+      },
+      "uiCapable": false
+    },
+    {
       "id": "express",
       "slug": "expressjs/express",
       "stack": "Node API",
