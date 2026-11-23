@@ -211,9 +211,6 @@ export const planFollowScreens: BotsScreen[] = [
   }),
 ];
 
-/** Opens one follow's page. */
-export const followAction = (id: string): ActionSpec => open(SCREENS.planFollow, { follow: id });
-
 // ------------------------------------------------------------------ the item page's part
 
 const WHY_WORDS: Record<string, string> = {

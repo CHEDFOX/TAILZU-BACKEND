@@ -31,9 +31,6 @@ export type { NeedsCard } from "./planNeeds.js";
 export type { WeekLine } from "./planDay.js";
 export type { PlanTravel } from "./planTravel.js";
 
-/** The route (routes/bots/botsBots.ts, next to plan/today): `?tz&day&week&made&n`, all of them optional. */
-export const PLAN_DAY = "/v1/botsapp/bots/plan/day";
-
 /** One step of the thread. Each draws as one row: [label] [the track] [content]. */
 export type ThreadStep =
   /**

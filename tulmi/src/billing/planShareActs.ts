@@ -24,9 +24,6 @@ import { no, ok, type ActResult } from "../widgets/act.js";
 import type { QuickItem } from "../widgets/items.js";
 import type { WidgetScope } from "../widgets/token.js";
 
-/** The one item kind these buttons answer: one ask, by its id. */
-export type PlanAskItem = Extract<QuickItem, { kind: "psa" }>;
-
 /**
  * The answer itself, as routes/bots/botsPlanShare.ts makes it: the same store, the same checks and the same push the card's
  * PUT uses. It throws a PlanShareError for everything it refuses, which widgets/act.ts turns into that status and those words.
