@@ -27,7 +27,7 @@ import { usdToPaise } from "../code/brain/money.js";
 import { asPerson } from "../privacy/aiGate.js";
 import { animaticPrint, castVoice, characterSheetPrompt, linePrint, spotPrint, spotPrompt, tonePrint, tonePrompt, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
 import { frameOf } from "./cut.js";
-import { animaticOf, blankShot, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
+import { animaticOf, blankShot, cannotMake, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
 import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
 import type { CatalogModel, JobModel } from "./models.js";
@@ -50,6 +50,16 @@ export const WRITING_MS = 10 * 60_000;
 export const BOARD_SPARE = 0.25;
 /** How many other cuts of one film we keep: three shapes, with and without captions, is more than anyone needs. */
 const EDITIONS_MAX = 5;
+/**
+ * What a failure says in the log. The name alone ("CinemaError", "Error") says nothing at all: a run where every reference sheet failed
+ * took three separate probes to find out that the model catalog had come back empty, because the one line written about it was the word
+ * "CinemaError". The message is cut short because it may carry a provider's prose.
+ */
+const why = (err: unknown): string => {
+  const e = err as { name?: string; code?: string; message?: string } | null;
+  const msg = typeof e?.message === "string" ? e.message.replace(/\s+/g, " ").slice(0, 200) : "";
+  return [e?.code ?? e?.name ?? "error", msg].filter(Boolean).join(": ");
+};
 /** How many of the sounds of what is seen a film gets, and how long each runs: a sound on every cut is a cartoon. */
 const SPOTS_MAX = 6, SPOT_SECONDS = 3;
 /** An enlargement: how much bigger, the largest film we can send as bytes, and how long we wait for it. */
@@ -536,7 +546,7 @@ export class CinemaService {
         try {
           await this.advance(f, models);
         } catch (err) {
-          this.d.log?.(`[cinema] a film could not move on: ${err instanceof Error ? err.name : "error"}`);
+          this.d.log?.(`[cinema] a film could not move on: ${why(err)}`);
         }
       }
     } finally {
@@ -593,8 +603,10 @@ export class CinemaService {
       this.track(f.id, async () => {
         try {
           await asPerson(f.ownerId, () => this.run(f, s, models));
+          await this.tried(f, key, false);
         } catch (err) {
-          this.d.log?.(`[cinema] ${s.kind} failed: ${err instanceof Error ? err.name : "error"}`);
+          this.d.log?.(`[cinema] ${stepKey(s)} failed: ${why(err)}`);
+          await this.tried(f, key, true);
         } finally {
           busy.delete(key);
           this.reserved.set(f.id, Math.max(0, (this.reserved.get(f.id) ?? 0) - hold));
@@ -603,11 +615,29 @@ export class CinemaService {
     }
   }
 
+  /**
+   * One more go at a piece of work, or one less. A take has always known when to stop; a sheet, a still and a voice-over did not, and a
+   * provider that refuses one of them refuses it on every tick - which is a film that says "drawing the storyboard" for ever while it
+   * pays for the same refusal again and again. Counted on the film, so a restart remembers, and cleared the moment the work succeeds.
+   */
+  private async tried(f: Film, key: string, failed: boolean): Promise<void> {
+    const had = f.tries?.[key] ?? 0;
+    if (!failed && !had) return;
+    await this.update(f.ownerId, f.id, (x) => {
+      const tries = { ...(x.tries ?? {}) };
+      if (failed) tries[key] = (tries[key] ?? 0) + 1;
+      else delete tries[key];
+      x.tries = tries;
+    });
+  }
+
   private async move(f: Film, status: Film["status"], hold: Film["hold"]): Promise<void> {
     const before = { status: f.status, hold: f.hold };
+    const cannot = status === "failed" ? cannotMake(f) : "";
     const out = await this.update(f.ownerId, f.id, (x) => {
       x.status = status;
       x.hold = hold;
+      if (cannot && !x.error) x.error = `We could not make ${cannot}. Change the words for it and try again.`;
     });
     const title = out.script?.bible.title || "Your film";
     const data = { f: out.id };
@@ -1492,7 +1522,7 @@ export class CinemaService {
   }
 
   private track(_filmId: string, work: () => Promise<void>): void {
-    const p = work().catch((err) => this.d.log?.(`[cinema] background work failed: ${err instanceof Error ? err.name : "error"}`));
+    const p = work().catch((err) => this.d.log?.(`[cinema] background work failed: ${why(err)}`));
     this.work.add(p);
     void p.finally(() => this.work.delete(p));
   }

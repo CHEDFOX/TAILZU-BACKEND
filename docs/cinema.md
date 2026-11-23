@@ -80,6 +80,14 @@ It is ffmpeg on frames that have already been paid for, so it is **free**, and i
 thing to watch once rather than keep, and it carries no music: music is made for the film, at the cut. A build whose ffmpeg cannot hold a
 still (`CinemaDeps.media.hold` absent) hands the storyboard over as it always did.
 
+**When something cannot be made at all** (`flow.ts STEP_TRIES`, `cannotMake`; `service.ts tried`). A take has always known when to stop
+(`qc.ts MAX_TRIES`). A reference sheet, a still and a voice-over did not: a provider that refuses one of them refuses it on **every
+tick**, so a film would sit on "Drawing the storyboard…" for ever, paying for the same refusal again and again, with nothing in the log
+but the name of an error class. A real run found this three times in one afternoon. Now each piece of work counts its own failures in a
+row on the film itself (`Film.tries`, so a restart remembers, cleared the moment it succeeds), and at three the film **fails and says
+which thing it could not make** - "We could not make a picture of Dadi. Change the words for it and try again." - which is something a
+person can act on.
+
 **How it moves.** `flow.ts steps(film)` is one pure function that looks at a film and says what to do now: make a sheet, a still, a voice-over,
 a take; ask how a take is going; check one; cut; or move the status. The service (`service.ts`) runs the steps every few seconds (`tick`), a
 few at a time, one of each per shot, as the film's owner. Because every decision is made again from the film's own data, a server that

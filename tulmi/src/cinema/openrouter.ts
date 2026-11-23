@@ -79,7 +79,10 @@ export async function liveModels(now = Date.now()): Promise<Lists> {
       const next = { video: catalog(live), image: imageCatalog(parseImageLive(i)), jobs: allJobs(live), at: now };
       if (next.video.length || !lists) lists = next;
       else lists = { ...lists, at: now };
-    } catch {
+    } catch (err) {
+      // Said out loud: an empty catalog makes every still and every take fail with nothing to go on, and the reason - a key the config
+      // would not accept, a provider down, a network rule - is only knowable here.
+      console.warn(`[cinema] the model catalog could not be read: ${err instanceof Error ? `${err.name}: ${err.message.slice(0, 200)}` : "error"}`);
       lists = lists ? { ...lists, at: now - LIST_TTL_MS + 300_000 } : { video: [], image: [], jobs: [], at: now - LIST_TTL_MS + 60_000 };
     } finally {
       reading = null;

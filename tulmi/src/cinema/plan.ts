@@ -30,6 +30,8 @@ export type Think = (o: {
 }) => Promise<{ json: unknown; text: string; usd?: number }>;
 
 export const MAX_SHOTS = 30;
+/** What a change may spend on answering: the whole film again, plus the room a thinking model needs before it writes any of it. */
+const REVISE_TOKENS = 20_000;
 export const MAX_PEOPLE = 6;
 export const MAX_PLACES = 6;
 /** How many words a second can carry, said aloud at an easy pace. */
@@ -81,13 +83,23 @@ export async function direct(think: Think, a: DirectAsk): Promise<{ script: Scri
 /** Revises the film from a note. `n`: only that shot may change. */
 export async function revise(think: Think, script: Script, note: string, o: { length: number; n?: number }): Promise<{ script: Script; notes: string[] }> {
   const user = `Current film: ${JSON.stringify(script)}\n\nNote${o.n ? ` about shot ${o.n}` : ""}: <<<${note.slice(0, 2000)}>>>`;
-  const r = await think({ purpose: "cinema.revise", tier: "strong", role: "cinema_revise", user, maxTokens: 8000, capPaise: 3000 });
-  let out: { script: Script; notes: string[] };
-  try {
-    out = normalize(r.json ?? r.text, { length: o.length, language: script.bible.language, keepLength: true });
-  } catch {
-    throw new DirectorError("The director could not make that change. Try saying it another way.");
+  // A change has to come back as the WHOLE film again, so its answer is as long as the film is - and a thinking model spends from the
+  // same budget before it writes a word (a run of this measured 4,137 of 8,000 on reasoning alone, leaving a successful answer with 4%
+  // to spare). Too little room and the JSON is cut off mid-shot, which the person sees as "the director could not make that change" on
+  // a note that was perfectly clear. So: room to think, and the same second try the first draft has always had.
+  let out: { script: Script; notes: string[] } | null = null;
+  for (let attempt = 0; attempt < 2 && !out; attempt++) {
+    const r = await think({
+      purpose: "cinema.revise", tier: "strong", role: "cinema_revise", maxTokens: REVISE_TOKENS, capPaise: 3000,
+      user: attempt ? `${user}\n\nYour last answer was not usable JSON in the required shape - most likely it was cut off. Answer again with JSON only, the complete film, and nothing else.` : user,
+    });
+    try {
+      out = normalize(r.json ?? r.text, { length: o.length, language: script.bible.language, keepLength: true });
+    } catch {
+      out = null;
+    }
   }
+  if (!out) throw new DirectorError("The director could not make that change. Try saying it another way.");
   keepRefs(out.script.bible, script.bible);
   if (!o.n) return { script: out.script, notes: [...out.notes, ...lint(out.script)] };
   const changed = out.script.shots.find((s) => s.n === o.n);
@@ -208,7 +220,7 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
       place: keyOf(s.place, places) ?? places[0]!.key,
       action: str(s.action, 600) || str(s.beat, 160),
       performance: cast.length ? str(s.performance, 500) : "",
-      camera: str(s.camera, 400),
+      camera: cameraMove(s.camera),
       frame: str(s.frame, 600) || str(s.action, 600),
       composition: str(s.composition, 400),
       atmosphere: str(s.atmosphere, 300),
@@ -237,6 +249,7 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
     else notes.push(`Shot ${s.n}: given ${need} seconds so its words can be said.`);
     return { ...s, seconds: Math.min(15, need) };
   });
+  dropPhantoms(bible, shots);
   return { script: { bible, shots }, notes };
 }
 
@@ -259,6 +272,19 @@ export function lint(script: Script): string[] {
   return out;
 }
 
+/**
+ * The camera's move, and only that. A director asked for "the ONE move in detail" sometimes writes the frame's shape there instead
+ * ("9:16 vertical" on every shot of a film), which is the one field a video model needs most and the one place the move is described.
+ * A value that says nothing but the shape is dropped, so the move falls back to the `move` word rather than telling the model the
+ * aspect ratio it already knows.
+ */
+const SHAPE_WORD = /^(\d{1,2}[:x]\d{1,2}|vertical|horizontal|portrait|landscape|widescreen|square|format|frame|aspect|ratio|crop|mode)$/i;
+export function cameraMove(v: unknown): string {
+  const said = str(v, 400);
+  const words = said.toLowerCase().replace(/[(),./|-]+/g, " ").replace(/(\d)\s*[:x]\s*(\d)/g, "$1:$2").split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.every((w) => SHAPE_WORD.test(w)) ? "" : said;
+}
+
 /** People from the person's cast keep their own looks and sheets, whatever the model wrote. */
 function keepCast(bible: Bible, cast: readonly Character[]): void {
   for (const c of bible.characters) {
@@ -273,6 +299,15 @@ function keepPlaces(bible: Bible, places: readonly Place[]): void {
     const mine = places.find((x) => x.key === p.key);
     if (mine) Object.assign(p, { name: mine.name, look: mine.look, ref: mine.ref });
   }
+}
+
+/**
+ * A character nobody ever sees is not a character. A director writing a film with narration sometimes adds the narrator to the cast with
+ * no look and no wardrobe; they would then sit in the person's own cast list for ever as a person with no face. Narration is "vo".
+ */
+function dropPhantoms(bible: Bible, shots: readonly ShotCard[]): void {
+  const seen = new Set(shots.flatMap((s) => s.cast));
+  bible.characters = bible.characters.filter((c) => seen.has(c.key) || (c.look.trim().length > 0 && c.wardrobe.trim().length > 0));
 }
 
 /** A revised bible keeps the sheets of the people and places whose looks did not change, and the look frame while the look stays. */

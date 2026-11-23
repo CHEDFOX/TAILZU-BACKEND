@@ -26,6 +26,15 @@ import type { Aspect, Film, FilmStatus, Hold, ShotCard, ShotState, ShotStatus } 
 export interface Limits { sheets: number; stills: number; renders: number; pollMs: number }
 export const LIMITS: Limits = { sheets: 3, stills: 4, renders: 3, pollMs: 20_000 };
 
+/**
+ * How many times one piece of work may fail in a row before the film gives up on it. A take has always known to stop (qc.ts MAX_TRIES);
+ * a reference sheet, a still and a voice-over did not, and a provider that refuses one of them refuses it on every tick - a film that
+ * says "drawing the storyboard" for ever while it pays for the same refusal again and again. Three strikes, then the film fails with a
+ * line saying what could not be made, which is a thing the person can act on.
+ */
+export const STEP_TRIES = 3;
+const stuck = (film: Film, s: Step): boolean => (film.tries?.[stepKey(s)] ?? 0) >= STEP_TRIES;
+
 export type Step =
   | { kind: "sheet"; of: "character" | "place" | "look"; key: string }
   | { kind: "still"; n: number }
@@ -147,6 +156,25 @@ export function animaticOf(film: Film): { stills: (string | null)[]; voices: (st
   };
 }
 
+/** What the storyboard needs and cannot get, in words, or "" while everything is still possible. */
+export function cannotMake(film: Film): string {
+  if (!film.script) return "";
+  const out: string[] = [];
+  const see = (s: Step, what: string) => { if ((film.tries?.[stepKey(s)] ?? 0) >= STEP_TRIES) out.push(what); };
+  const { bible } = film.script;
+  const need = sheetsNeeded(film.script);
+  if (needsLook(film) && !bible.lookRef) see({ kind: "sheet", of: "look", key: "look" }, "the film's look");
+  for (const key of need.characters) if (!bible.characters.find((c) => c.key === key)?.ref) see({ kind: "sheet", of: "character", key }, `a picture of ${bible.characters.find((c) => c.key === key)?.name ?? key}`);
+  for (const key of need.places) if (!bible.places.find((x) => x.key === key)?.ref) see({ kind: "sheet", of: "place", key }, `a picture of ${bible.places.find((x) => x.key === key)?.name ?? key}`);
+  const p = prints(film);
+  for (const card of film.script.shots) {
+    const st = shotOf(film, card.n);
+    if (!(st?.still && st.stillOf === p.still.get(card.n))) see({ kind: "still", n: card.n }, `the still for shot ${card.n}`);
+    see({ kind: "voice", n: card.n }, `the voice-over for shot ${card.n}`);
+  }
+  return out.slice(0, 3).join(", ");
+}
+
 export function steps(film: Film, ctx: FlowCtx): Step[] {
   const lim = ctx.limits ?? LIMITS;
   if (!film.script || !MAKING.includes(film.status)) return [];
@@ -166,26 +194,31 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
     return true;
   };
 
-  // 1. The look frame, and reference sheets for the people and places seen more than once.
+  // 1. The look frame, and reference sheets for the people and places seen more than once. A piece of work that has failed three times
+  //    in a row is not asked for a fourth: the film gives up and says which one, rather than paying for the same refusal for ever.
+  const dead: string[] = [];
   const need = sheetsNeeded(film.script);
   const missing = new Set<string>();
   let sheetSlots = lim.sheets - running("sheet:");
   if (needsLook(film) && !bible.lookRef) {
     missing.add("look");
     const s: Step = { kind: "sheet", of: "look", key: "look" };
-    if (sheetSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); sheetSlots--; }
+    if (stuck(film, s)) dead.push("the film's look");
+    else if (sheetSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); sheetSlots--; }
   }
   for (const key of need.characters) {
     if (bible.characters.find((c) => c.key === key)?.ref) continue;
     missing.add(`c:${key}`);
     const s: Step = { kind: "sheet", of: "character", key };
-    if (sheetSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); sheetSlots--; }
+    if (stuck(film, s)) dead.push(`a picture of ${bible.characters.find((c) => c.key === key)?.name ?? key}`);
+    else if (sheetSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); sheetSlots--; }
   }
   for (const key of need.places) {
     if (bible.places.find((x) => x.key === key)?.ref) continue;
     missing.add(`p:${key}`);
     const s: Step = { kind: "sheet", of: "place", key };
-    if (sheetSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); sheetSlots--; }
+    if (stuck(film, s)) dead.push(`a picture of ${bible.places.find((x) => x.key === key)?.name ?? key}`);
+    else if (sheetSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); sheetSlots--; }
   }
 
   // 2. A still for each shot whose still is missing or out of date, once its sheets are there.
@@ -197,7 +230,8 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
     stillsReady = false;
     const waits = missing.has("look") || card.cast.some((k) => missing.has(`c:${k}`)) || missing.has(`p:${card.place}`);
     const s: Step = { kind: "still", n: card.n };
-    if (!waits && stillSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); stillSlots--; }
+    if (stuck(film, s)) dead.push(`the still for shot ${card.n}`);
+    else if (!waits && stillSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); stillSlots--; }
   }
 
   // 3. The recordings, made before the price, so each shot's seconds fit what is said in it: the voice-over, and a line a mouth will be
@@ -212,9 +246,14 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
     if (hasVo && hasLine) continue;
     voicesReady = false;
     const s: Step = { kind: "voice", n: card.n };
-    if (!busy.has(stepKey(s)) && afford(s)) out.push(s);
+    if (stuck(film, s)) dead.push(`the voice-over for shot ${card.n}`);
+    else if (!busy.has(stepKey(s)) && afford(s)) out.push(s);
   }
 
+  // Something the storyboard needs cannot be made at all. Stopping is kinder than a bar that never fills.
+  if (dead.length && running("sheet:") + running("still:") + running("voice:") === 0) {
+    return [{ kind: "move", status: "failed", hold: null }];
+  }
   if (film.status === "boarding" && stillsReady && voicesReady && !missing.size && running("sheet:") + running("still:") + running("voice:") === 0) {
     // The animatic first: the storyboard held to time with the words over it. It is what the person says go to, so it is made before
     // they are asked, and it is ffmpeg only - a film that cannot have one (no frames yet) is handed over without it.
