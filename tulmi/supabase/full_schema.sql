@@ -1,5 +1,8 @@
 -- ============================================================================
--- TAILZU — the whole schema, in one script.
+-- TAILZU — the schema up to migration 0094_phone_things.sql, in one script.
+--
+-- It is NOT the whole schema: migrations 0095 onwards are not folded in. On a fresh project run this, then every
+-- migration after 0094 in order (deploy/migrate.sh <number>).
 --
 -- Paste this into the Supabase SQL editor and run it. Safe on a fresh project
 -- and safe on a live one: every statement is guarded (create ... if not exists,
