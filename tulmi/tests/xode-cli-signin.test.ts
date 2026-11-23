@@ -142,13 +142,16 @@ describe("the token", () => {
     expect(await tokens.user(`xdt_${"A".repeat(43)}`)).toBeNull();
     expect(isDeviceBearer(`Bearer xdt_${"A".repeat(43)}`)).toBe(true);
     expect(isDeviceBearer("Bearer eyJhbGci")).toBe(false);
+    // resolveUser takes a bare token too, so the scope must see it: without this a bare xdt_ was a full session.
+    expect(isDeviceBearer(`xdt_${"A".repeat(43)}`)).toBe(true);
+    expect(isDeviceBearer(`  xdt_${"A".repeat(43)}`)).toBe(true);
   });
 
   it("the scope: Xode's routes only", () => {
     for (const p of ["/v1/code/jobs", "/v1/code/runner/ticket", "/v1/bots/code/merge", "/v1/auth/device", "/v1/auth/device/revoke", "/v1/rooms/x/watch", "/v1/code/jobs/:id/live"]) {
       expect(inDeviceScope(p)).toBe(true);
     }
-    for (const p of ["/v1/you", "/v1/auth/devices", "/v1/auth/devices/:id", "/v1/auth/link/approve", "/v1/code", "/v1/codex/x", "/v1/live", "/v1/bots/plan"]) {
+    for (const p of ["/v1/you", "/v1/auth/devices", "/v1/auth/devices/:id", "/v1/auth/link/approve", "/v1/code", "/v1/codex/x", "/v1/live", "/v1/bots/plan", "/v1/rooms/seat", "/v1/rooms/abc", "/v1/rooms/abc/join"]) {
       expect(inDeviceScope(p)).toBe(false);
     }
   });

@@ -29,12 +29,14 @@ const isInner = (v: unknown): boolean => {
   return timingSafeEqual(Buffer.from(v), Buffer.from(INNER_SECRET));
 };
 
-const PREFIXES = ["/v1/code/", "/v1/bots/code/", "/v1/rooms/", "/v1/auth/device/"];
+const PREFIXES = ["/v1/code/", "/v1/bots/code/", "/v1/auth/device/"];
+/** A job's room on the jobs Worker (jobs/src/http.ts). "/v1/rooms/" on this server is the video calls, which a terminal never reaches. */
+const JOB_ROOM = /^\/v1\/rooms\/[^/]+\/(?:watch|runner)$/;
 
 /** Whether a route a device token may reach. "/v1/auth/devices" (the person's list) is not one of them. */
 export function inDeviceScope(path: string): boolean {
   const p = path.split(/[?#]/, 1)[0] ?? "";
-  return p === "/v1/auth/device" || PREFIXES.some((x) => p.startsWith(x));
+  return p === "/v1/auth/device" || JOB_ROOM.test(p) || PREFIXES.some((x) => p.startsWith(x));
 }
 
 const routeOf = (req: FastifyRequest): string => req.routeOptions?.url || req.url;

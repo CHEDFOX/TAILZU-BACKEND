@@ -34,9 +34,12 @@ export const TOUCH_MS = 10 * 60_000;
 const CACHE_MAX = 5_000;
 const ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** A header that carries a device token ("Bearer xdt_…"), whether or not it is a good one. */
+/**
+ * A header that carries a device token, whether or not it is a good one: "Bearer xdt_…" and a bare "xdt_…" alike, because
+ * resolveUser accepts both. Reading only the first let a bare token past the scope (http/deviceScope.ts) as a full session.
+ */
 export function isDeviceBearer(authorization: unknown): boolean {
-  return typeof authorization === "string" && /^\s*Bearer\s+xdt_/i.test(authorization);
+  return typeof authorization === "string" && /^\s*(?:Bearer\s+)?xdt_/i.test(authorization);
 }
 
 export type DevicePlatform = "mac" | "windows" | "linux" | "";
