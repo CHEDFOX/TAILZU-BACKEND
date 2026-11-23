@@ -40,10 +40,12 @@ export { MemoryFrontStore } from "./store.js";
 export type { FrontStore, DecisionRow } from "./store.js";
 export { Learning } from "./learn.js";
 
-/** How long the front door keeps a project's name and line. */
 /** How many of their projects the router is told about. The picker adds at most ten at a time; this is a fair few more. */
 const PROJECTS_READ = 12;
+/** How long the front door keeps a project's name and line. */
 const NAMED_FRESH_MS = 10 * 60_000;
+/** How long it keeps the list of their projects: short, so one just connected is seen within a minute. */
+const LISTED_FRESH_MS = 60_000;
 
 /** The outcomes a person reports with a tap. */
 export const PERSON_OUTCOMES = ["visual_closed", "visual_kept", "thumbs_up", "thumbs_down"] as const satisfies readonly Outcome[];
@@ -116,14 +118,14 @@ export function createFront(o: FrontOptions = {}): Front | null {
 
   /**
    * THEIR PROJECTS, for a message that came from none: the router cannot pick one it has not been shown. Kept for
-   * the same ten minutes as a project's own line, and only read when there is no project in hand, so a message
-   * sent from inside one costs nothing extra.
+   * a minute (LISTED_FRESH_MS), so one just connected is not missing for long, and only read when there is no
+   * project in hand, so a message sent from inside one costs nothing extra.
    */
   const lists = new Map<string, { projects: FrontCtx["projects"]; at: number }>();
   const listed = async (ctx: FrontCtx): Promise<FrontCtx> => {
     if (ctx.projectId || ctx.projects || !o.code) return ctx;
     let got = lists.get(ctx.userId);
-    if (!got || now() - got.at > NAMED_FRESH_MS) {
+    if (!got || now() - got.at > LISTED_FRESH_MS) {
       const all = await o.code.store.listProjects(ctx.userId).catch(() => []);
       const some = all.slice(0, PROJECTS_READ);
       const abouts = await Promise.all(some.map((p) => (o.code?.brain
@@ -144,7 +146,19 @@ export function createFront(o: FrontOptions = {}): Front | null {
 
   const front: Front = {
     store, learning, guard,
-    decide: async (message, ctx, opts = {}) => decide(message, await listed(await named(ctx)), decideDeps(opts.signal)),
+    decide: async (message, ctx, opts = {}) => {
+      const decision = await decide(message, await listed(await named(ctx)), decideDeps(opts.signal));
+      if (!decision.projects?.length || !o.code) return decision;
+      // A project picked from the kept list may have been removed since it was read: it is looked up before it is put in
+      // hand, and a missing one is dropped (and the list read again next time) rather than sent down a road that fails.
+      const code = o.code;
+      const there = await Promise.all(decision.projects.map((id) => code.store.getProject(ctx.userId, id).catch(() => null)));
+      if (there.every(Boolean)) return decision;
+      lists.delete(ctx.userId);
+      const projects = decision.projects.filter((_id, i) => there[i]);
+      const { projects: _gone, ...rest } = decision;
+      return projects.length ? { ...rest, projects } : rest;
+    },
     dispatch: (decision, message, ctx, opts = {}) => dispatch(decision, message, ctx, {
       handlers, attachments, store, learning, watch, daily: guard.daily, ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), now,
       ...(o.log ? { log: o.log } : {}),

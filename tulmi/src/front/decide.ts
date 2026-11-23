@@ -251,7 +251,15 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   // something near it. Only for the roads that are ABOUT a project — a chat about the weather names none.
   const picked: string[] = [];
   if (!ctx.projectId && ctx.projects?.length && modelProjects.length) {
-    const byName = new Map(ctx.projects.map((p) => [p.name.toLowerCase(), p.id]));
+    // Matched on the name as it was shown (the prompt shows each through forModel and cut to one line of 80) as well as
+    // the full name, so a name the prompt changed still matches; a shown form two projects share picks neither.
+    const byName = new Map<string, string | null>(ctx.projects.map((p) => [p.name.toLowerCase(), p.id]));
+    const shown = new Map<string, string | null>();
+    for (const p of ctx.projects) {
+      const k = oneLine(forModel(p.name), 80).toLowerCase();
+      shown.set(k, shown.has(k) && shown.get(k) !== p.id ? null : p.id);
+    }
+    for (const [k, id] of shown) if (!byName.has(k)) byName.set(k, id);
     for (const name of modelProjects) {
       const id = byName.get(name.trim().toLowerCase());
       if (id && !picked.includes(id)) picked.push(id);

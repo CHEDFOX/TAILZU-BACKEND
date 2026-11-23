@@ -98,6 +98,8 @@ Errors: `400 bad_request` (the body), `413` (a message over 8,000 characters), `
 
 **The small model only below 0.7** (`decide.ts`). The confidence is first adjusted by what this person's history says of the rules (section 9). If it is still under 0.7, `front_decide` is asked once, on the tiny tier, for at most 100 paise, with the message, whether there is a project, the device and the mode, and what the rules thought. It wins on the intent, the length and the question; its view of the visual is one more piece of evidence. A model that is down or over budget costs nothing but the rules' own, less certain answer: `decide` never throws for it. The model's reply is checked again against the schema, so a malformed one is the rules' answer.
 
+**Which of their projects** (`decide.ts` step 3b, `index.ts listed`). A message sent from no project shows the model the person's projects (up to 12, read through a list kept for one minute, so one just connected is seen soon), and the names it answers with are matched back to ids exactly and case-blind, on the full name or on the form it was shown (through `forModel`, one line, cut to 80); a shown form two projects share picks neither, and an invented name picks nothing. Before a picked project is put in hand it is looked up: one removed since the list was read is dropped, and the kept list with it.
+
 **The budget** (`path.ts`) is the most the road's work may cost in the worst case, in paise: the worst case of each call at its tier (`money.ts`) plus the caps the artifact core already holds its calls to. The gateway refuses a call whose worst case would pass what is left, so the budget is kept, not hoped for.
 
 ## 4. Visuals: the ladder and when to skip it
