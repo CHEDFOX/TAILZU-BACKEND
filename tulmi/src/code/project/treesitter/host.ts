@@ -33,8 +33,6 @@ export const GRAMMARS = [
 ] as const;
 export type GrammarId = (typeof GRAMMARS)[number];
 
-export const isGrammarId = (s: string): s is GrammarId => (GRAMMARS as readonly string[]).includes(s);
-
 /** A compiled WebAssembly module (the runtime's own type, which this project's lib setting does not name). */
 export type WasmModule = Parameters<typeof Language.loadSync>[0];
 

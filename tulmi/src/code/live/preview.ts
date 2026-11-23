@@ -257,13 +257,6 @@ const HOP_BY_HOP = new Set([
 /** What Cloudflare and the Worker add that the dev server has no business with. */
 const EDGE = /^(?:cf-|x-forwarded-|x-real-ip|x-room-|x-device-|x-user-id|forwarded$|true-client-ip$|x-vercel-|x-amz-)/i;
 
-export interface RequestPieces {
-  method: string;
-  /** Root-relative path and query. */
-  path: string;
-  headers: Array<[string, string]>;
-}
-
 /**
  * The headers for the dev server: the browser's own, minus the connection's and the edge's, minus our routing cookie, with Origin and Referer
  * written as the dev server's own (a dev server that checks them would otherwise refuse the public address), and the public address told in

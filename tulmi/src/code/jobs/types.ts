@@ -81,7 +81,6 @@ export type StepStatus = "pending" | "dispatched" | "running" | "blocked" | "don
 
 /** What the person's rule for paid compute says. */
 export type PaidRule = "never" | "ask" | "auto";
-export const PAID_RULES: readonly PaidRule[] = ["never", "ask", "auto"];
 
 /**
  * What a waiting_for_you job is waiting for. "paid" and "commit" are the router's
