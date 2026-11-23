@@ -82,9 +82,6 @@ const loaded: Projector = file ? ((await import(pathToFileURL(file).href)) as un
 /** The guard, for its own test: what a deploy without shared/bots/project.mjs would serve. */
 export const passthroughProjector: Projector = PASSTHROUGH;
 
-/** True when the shared projection is really here (a test asserts it in this repo). */
-export const projectionLoaded = !!file;
-
 export const projectLooks = loaded.projectLooks;
 export const formatOfCatalog = loaded.formatOfCatalog;
 export const ProjectError = loaded.ProjectError;

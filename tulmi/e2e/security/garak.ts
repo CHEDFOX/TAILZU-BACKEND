@@ -19,7 +19,6 @@
  * can be pointed at the proxy with `--garak-cmd` once it is installed.
  */
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { decide } from "../../src/front/decide.js";
 import { defaultHandlers } from "../../src/front/handlers.js";
 import type { FrontCtx } from "../../src/front/types.js";
@@ -179,5 +178,3 @@ export function garakCommand(o: { proxyUrl: string; slug: string }): string {
   const opts = JSON.stringify({ openai: { OpenAICompatible: { uri: o.proxyUrl, model: o.slug, api_key: "<any text: the proxy ignores it>" } } });
   return `python -m garak --model_type openai.OpenAICompatible --model_name ${o.slug} --generator_options '${opts}' --probes promptinject,latentinjection,dan,encoding --generations 1`;
 }
-
-export const probeSetHash = (): string => createHash("sha256").update(JSON.stringify(probes())).digest("hex").slice(0, 12);

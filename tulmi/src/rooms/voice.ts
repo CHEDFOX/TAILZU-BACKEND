@@ -23,8 +23,6 @@ const OUT_CHANNELS = 2;
 /** One frame of sound, in milliseconds. Twenty is what a call is made of. */
 export const FRAME_MS = 20;
 export const FRAME_BYTES = (OUT_RATE / 1000) * FRAME_MS * OUT_CHANNELS * 2;
-/** The speech service's own rate (pipeline/tts.ts PCM_RATE). */
-export const SPEECH_RATE = 24_000;
 /** More than this waiting to be said is a bot talking over a meeting: the oldest goes. */
 const QUEUE_MAX_S = 60;
 

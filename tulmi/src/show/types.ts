@@ -99,11 +99,6 @@ export const PART_ACTIONS = ["copy", "say"] as const;
 
 export type BlockType = Block["type"];
 
-export const BLOCK_TYPES: readonly BlockType[] = [
-  "text", "callout", "list", "facts", "table", "stat", "progress", "steps", "chart", "draw", "image", "link", "divider",
-  "row", "grid", "card", "choice", "suggest", "form", "part",
-];
-
 /** The blocks that hold others. A part holds others only when its kind is `box`, which check.ts reads. */
 export const BOXES: ReadonlySet<BlockType> = new Set(["row", "grid", "card", "part"]);
 

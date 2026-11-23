@@ -39,4 +39,3 @@ export class SpendCap {
 export const noCap = (): SpendCap => new SpendCap(0);
 
 export const inrToPaise = (inr: number): number => Math.round(inr * 100);
-export const paiseToInr = (paise: number): number => Math.round(paise) / 100;

@@ -16,8 +16,6 @@
  */
 
 export const CINEMA_SLUG = "cinema";
-/** The film page's screen id (experience/bots/ids.ts SCREENS.cinemaFilm), params { f }. */
-export const CINEMA_FILM_SCREEN = "bots.cinema.film";
 
 /**
  * THE SHAPE A FILM IS. Every shape a person may ask for, not only the ones the video models happen to offer: a film is FILMED at the

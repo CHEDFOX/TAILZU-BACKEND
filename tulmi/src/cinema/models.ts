@@ -41,7 +41,6 @@ export interface VideoModel {
 }
 
 export type Trait = "realism" | "faces" | "motion" | "physics" | "camera" | "stylized" | "dialogue" | "text" | "consistency";
-export const TRAITS: readonly Trait[] = ["realism", "faces", "motion", "physics", "camera", "stylized", "dialogue", "text", "consistency"];
 
 /** How a model wants its prompt written (compile.ts). */
 export type Dialect = "veo" | "kling" | "seedance" | "runway" | "wan" | "hailuo" | "generic";

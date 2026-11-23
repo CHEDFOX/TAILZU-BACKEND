@@ -315,7 +315,5 @@ export function handoffOf(message: string, reach: string | null | undefined): st
   return whatsappLink(text);
 }
 
-/** A day key's evening: when the check-back on it goes. */
-export const eveningOf = (day: string, tz: number): number => startOfDay(day, tz) + CHECK_MIN * MIN;
 /** The end of a day, for a card that goes then. */
 export const endOfDay = (day: string, tz: number): number => startOfDay(day, tz) + DAY - MIN;

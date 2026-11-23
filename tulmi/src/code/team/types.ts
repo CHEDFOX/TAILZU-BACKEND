@@ -77,8 +77,6 @@ export type PartStatus =
   | "exhausted"  // the helper ran out of its slice of the budget
   | "skipped";   // a part it depends on did not finish
 
-export const PART_STATUSES: readonly PartStatus[] = ["waiting", "ready", "running", "blocked", "reviewing", "fixing", "approved", "merged", "failed", "stopped", "exhausted", "skipped"];
-
 /** Statuses a part does not leave by itself. (A part that ran out of money is not over: it goes on if it is given more, and the lead waits for the person's word on it.) */
 export const PART_ENDED: readonly PartStatus[] = ["merged", "failed", "stopped", "skipped"];
 /** Statuses that count as a helper working now (against the cap). */

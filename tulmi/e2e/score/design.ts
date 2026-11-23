@@ -19,7 +19,7 @@ import { gate } from "../../src/artifacts/pixels.js";
 import type { Task } from "../tasks/schema.js";
 import { workTree } from "./hidden.js";
 import { checkoutEnv } from "../repos.js";
-import { IMAGES_DIR, mkdirp, sleep } from "../util.js";
+import { IMAGES_DIR, sleep } from "../util.js";
 
 export interface DesignResult { ok: boolean; detail: string; similarity: number; shot?: Uint8Array }
 
@@ -105,12 +105,4 @@ export async function designScore(task: Task, changes: Record<string, string | n
     server?.stop();
     co.dispose();
   }
-}
-
-/** Writes a picture where a person can look at it (the report links it). */
-export function keepShot(dir: string, name: string, png: Uint8Array): string {
-  mkdirp(dir);
-  const f = path.join(dir, name);
-  fs.writeFileSync(f, png);
-  return f;
 }

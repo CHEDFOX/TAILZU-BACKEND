@@ -43,7 +43,6 @@ export const FIELD_MAX = 160;
 
 /** How bold the person wants it. The only steering there is, because it is the only one someone with no design idea can actually use. */
 export type Register = "plain" | "safer" | "bolder";
-export const REGISTERS: readonly Register[] = ["plain", "safer", "bolder"];
 
 /** One concrete thing from the audience's world that could carry the product. */
 export interface Candidate {
@@ -174,7 +173,3 @@ export function referentBrief(c: Candidate, rut?: string): string {
     "Where the request pins something down, the request wins, always. Where it leaves a choice open, make it from this direction rather than from what you would reach for on any page.",
   ].join("\n");
 }
-
-/** The question, for the one case where the product cannot be read at all. One question, in words a person can answer in a sentence. */
-export const referentQuestion = (why: string): string =>
-  `Before I design this: what is it, and who is it for? ${why === "" ? "" : ""}A sentence is plenty — "a booking page for a two-chair barber shop" tells me far more than "modern and clean" would.`;

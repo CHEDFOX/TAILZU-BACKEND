@@ -23,7 +23,7 @@ import { checkScene, frameCount, sceneSize } from "./check.js";
 import { lookAt, type Verdict } from "./eye.js";
 import { creationKey, keep, type Kept, type Render, type Shot } from "./ports.js";
 import { scriptFor } from "./script.js";
-import { CAPS, PREVIEW, type Scene } from "./types.js";
+import { CAPS, type Scene } from "./types.js";
 
 /** Loose on purpose: check.ts reads every field, and one bad object must not lose the scene. */
 export const SceneReply = z.object({
@@ -269,6 +269,3 @@ export async function make(
     ms: Date.now() - began,
   };
 }
-
-/** What a preview costs to draw, for a caller deciding whether to bother: its size, in pixels. */
-export const previewSize = (): { width: number; height: number } => ({ width: PREVIEW.width, height: PREVIEW.height });

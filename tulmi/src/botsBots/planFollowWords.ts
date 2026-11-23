@@ -120,7 +120,6 @@ export type FollowPushKind = (typeof FOLLOW_KIND_IDS)[number];
 
 /** The states in which a follow is still going (the sweep reads these). */
 export const OPEN_STATES: readonly FollowState[] = ["open", "snoozed", "told", "nobody"];
-export const CLOSED_STATES: readonly FollowState[] = ["done", "missed", "dropped"];
 export const isOpenState = (s: FollowState): boolean => OPEN_STATES.includes(s);
 
 /** Timings, from the push surface's flags (planKinds.ts followPushFlags); FOLLOW_TIMINGS are the defaults. */

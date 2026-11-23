@@ -117,8 +117,3 @@ export async function capTakeAll(caps: CapTable, takes: Array<{ person: string; 
   }
   return true;
 }
-
-/** Gives back every key `capTakeAll` took. */
-export async function capGiveAll(caps: CapTable, takes: Array<{ person: string; day: string }>): Promise<void> {
-  for (const t of takes) await capGive(caps, t.person, t.day).catch(() => undefined);
-}

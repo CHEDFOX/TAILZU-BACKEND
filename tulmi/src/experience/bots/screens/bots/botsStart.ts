@@ -23,7 +23,7 @@
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type LiveBot, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, botAvatar, icon,
-  canScrollX, grid, scrollRow, labelled, title as pageTitle, botRoute, RADIUS, back,
+  canScrollX, grid, scrollRow, labelled, title as pageTitle, botRoute, RADIUS,
 } from "../../kit.js";
 import { botsMark } from "../../glyphs.js";
 import { idleLine } from "../shell/parts.js";
@@ -125,6 +125,3 @@ export function botsStartPage(ctx: BotsCtx): ReturnType<typeof page> {
     gap: 22,
   });
 }
-
-/** Closing it goes back to where the "+" was pressed. */
-export const closeStart = back;

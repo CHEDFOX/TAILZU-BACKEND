@@ -25,7 +25,6 @@ export const BOT_INK = {
   plan: "#8F6A1F",
   travel: "#3E6E8E",
 } as const;
-export type HeadKey = keyof typeof BOT_INK;
 
 /** Blip's poses, whole body: hello (welcome), listen, think (working), needs (needs you), done. */
 export const BLIP_POSES = ["hello", "listen", "think", "needs", "done"] as const;

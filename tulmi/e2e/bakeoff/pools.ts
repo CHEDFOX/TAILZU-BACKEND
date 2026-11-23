@@ -23,10 +23,3 @@ export function loadPools(file = path.join(E2E_DIR, "bakeoff", "pools.json")): P
   for (const t of BAKEOFF_TIERS) if (!Array.isArray(raw.tiers?.[t])) throw new Error(`pools.json has no list for the ${t} tier`);
   return { tiers: raw.tiers, writingOnly: raw.writingOnly ?? [], needs: raw.needs, families: raw.families ?? [] };
 }
-
-/** Every distinct model slug in the pools, with the tiers it is a candidate for. */
-export function tiersOfModels(p: Pools): Map<string, BakeoffTier[]> {
-  const m = new Map<string, BakeoffTier[]>();
-  for (const t of BAKEOFF_TIERS) for (const s of p.tiers[t]) m.set(s, [...(m.get(s) ?? []), t]);
-  return m;
-}

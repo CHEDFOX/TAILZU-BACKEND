@@ -197,8 +197,5 @@ export class Ears {
   }
 }
 
-/** What a room's note is called before anyone has said anything worth a title. */
-export const roomNoteTitle = (title: string): string => title.trim() || "Call";
-
 /** Whether a note still exists to write into (a person may delete it mid-call). */
 export const noteGone = (n: Note | null | undefined): boolean => n === null;

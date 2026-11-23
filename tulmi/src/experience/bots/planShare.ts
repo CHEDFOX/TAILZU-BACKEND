@@ -220,9 +220,6 @@ export function planAskNeeds(o: {
 
 // ===================================================================== the notification
 
-/** The push kind the server half sends when an ask arrives (push/defaults.ts owns the words and the sending). */
-export const PLAN_SHARE_PUSH_KIND = "plan_share_ask";
-
 /** A notification's button, the shape planKinds.ts uses (experience/appKnobs.ts spreads it into push.categories). */
 interface PushButton { id: string; title: string; icon: string; foreground: boolean; destructive: boolean; auth: boolean; act: string }
 

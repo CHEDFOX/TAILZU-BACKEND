@@ -187,9 +187,6 @@ export const CAPS = {
   name: 40,
 } as const;
 
-/** What a preview costs, against what the real thing costs: small, few samples, and nothing moves. */
-export const PREVIEW = { width: 480, height: 360, samples: 24 } as const;
-
 /** A scene as it came back from the checker: what survived, and what did not. */
 export interface Checked {
   scene: Scene;

@@ -629,12 +629,3 @@ export function designSince(id: string): number | undefined {
   if (!c || !d) return undefined;
   return typeof d.since === "number" && Number.isFinite(d.since) ? d.since : c.v;
 }
-
-/** The palette the widgets' colour comes from: the catalog's named one, else its first. Null when there is no catalog. */
-export function defaultPalette(name?: string): NLookPalette | null {
-  const c = activeNativeLooks();
-  if (!c) return null;
-  if (name && c.palettes[name]) return c.palettes[name]!;
-  const first = Object.values(c.palettes)[0];
-  return first ?? null;
-}

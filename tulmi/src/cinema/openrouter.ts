@@ -92,11 +92,6 @@ export async function liveModels(now = Date.now()): Promise<Lists> {
   return reading;
 }
 
-/** Tests set the lists directly. */
-export function setLiveModels(l: { video: CatalogModel[]; image: CatalogImageModel[]; jobs?: JobModel[] } | null, now = Date.now()): void {
-  lists = l ? { jobs: [], ...l, at: now } : null;
-}
-
 // ---------------------------------------------------------------------------------------------------------------------------------------
 // Images.
 

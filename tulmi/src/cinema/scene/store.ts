@@ -158,6 +158,3 @@ export function sceneStore(): SceneStore {
   }
   return shared;
 }
-
-/** Tests put their own in. */
-export function setSceneStore(s: SceneStore | null): void { shared = s; }

@@ -56,9 +56,6 @@ export function sweepStaleWork(maxAgeMs = 3 * 3_600_000, now = Date.now(), dir =
   return removed;
 }
 
-/** A temporary directory on the OS's tmp, for things that never need a hard link. */
-export function osTmp(prefix: string): string { return fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`)); }
-
 /**
  * A temporary directory for a SYNTHETIC project (no installed dependencies to link): outside this repository (a test runner looks upward for its config and
  * would find the product's own), and on memory where there is some, which is quick and leaves the disk alone.

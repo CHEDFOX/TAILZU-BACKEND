@@ -261,6 +261,3 @@ export function noteLinesOf(ctx: NeedsCtx, day: string, types: readonly NeedsTyp
   for (const t of types) { try { out.push(...(t.notes?.(ctx, day) ?? [])); } catch { /* nothing from it */ } }
   return out;
 }
-
-/** A card's question lands within the minute (a day note, the widget): the leave-alone rule is the type's, so this one is just the first. */
-export const firstNeeds = (ctx: NeedsCtx, types?: readonly NeedsType[]): NeedsCard | null => needsYou(ctx, types)[0] ?? null;
