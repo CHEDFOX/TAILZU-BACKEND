@@ -405,5 +405,3 @@ export function artifactStore(): ArtifactStore {
   }
   return current;
 }
-
-export function resetArtifactStoreForTests(): void { current = null; }

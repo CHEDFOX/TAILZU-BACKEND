@@ -15,7 +15,6 @@ import { answerPrompt, jsonOf } from "../meet/brain.js";
 import { complete } from "../pipeline/writing/model.js";
 import { organiseNote } from "../notes/finish.js";
 import { createNote, getNote, updateNote } from "../notes/store.js";
-import { getPersonality } from "../personality/store.js";
 import { transcribe } from "../pipeline/stt.js";
 import { asPerson } from "../privacy/aiGate.js";
 import { chargedTo } from "../usage/cost.js";
@@ -126,9 +125,6 @@ export function earsNow(): Ears | null { return shared?.ears ?? null; }
 /** The voice, the same way: the socket route hands the SFU's connection to it. */
 export function speakerNow(): Speaker | null { return shared?.speaker ?? null; }
 
-/** For the tests: the next call to sitIn() builds it again. */
-export function forgetSitIn(): void { shared = undefined; }
-
 /** One stretch of a call, in the note, under the name of whoever said it, and on their meter. */
 async function heard(noteId: string, userId: string, seg: NoteSegment, seconds: number): Promise<void> {
   const user = { id: userId };
@@ -143,12 +139,3 @@ async function heard(noteId: string, userId: string, seg: NoteSegment, seconds: 
 }
 
 export { SCRIBE_NAME };
-
-/** The personality's languages, for a call in a language that is not English. Read once a call by the ears. */
-export async function callLanguage(userId: string): Promise<string | undefined> {
-  try {
-    const p = await getPersonality({ id: userId });
-    const first = p.languages?.[0];
-    return typeof first === "string" && first && first !== "auto" ? first : undefined;
-  } catch { return undefined; }
-}

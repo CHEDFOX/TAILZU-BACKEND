@@ -287,7 +287,6 @@ export function followStores(): FollowStores {
   }
   return made;
 }
-export function resetFollowStoresForTests(): void { made = null; }
 
 /** A unique-key error from either twin (rows.ts passes Supabase's message through). */
 export const isDuplicate = (err: unknown): boolean => /duplicate key|unique constraint/i.test(String((err as Error)?.message ?? ""));

@@ -600,5 +600,3 @@ export function jobStore(): JobStore {
   }
   return current;
 }
-
-export function resetJobStoreForTests(): void { current = null; }

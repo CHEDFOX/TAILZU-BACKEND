@@ -165,6 +165,3 @@ export function judgementStore(): JudgementStore {
 
 /** A fresh one in memory, reading `cal` for its upcoming items (tests). */
 export function memoryJudgementStore(cal: CalendarRows = memoryCalendarRows()): JudgementStore { return new MemoryJudgements(cal); }
-
-/** Tests: forget the shared table. */
-export function resetJudgementStoreForTests(): void { shared = null; }

@@ -171,4 +171,3 @@ export function buildSceneService(): SceneService {
 }
 
 export const sceneService = (): SceneService | null => shared;
-export function setSceneService(s: SceneService | null): void { shared = s; }

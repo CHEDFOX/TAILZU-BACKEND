@@ -420,8 +420,6 @@ const BOOK_FRESH_MS = 30 * 60_000;
 const OPS_FILES_MAX = 16;
 const BOOK_DOC = /(^|\/)(?:roadmap|plans?|todo|backlog|[\w-]*gaps|architecture|overview|design)\.(?:md|txt)$|^readme\.md$/i;
 
-export function resetRepoGraphsForTests(): void { graphs.clear(); maps.clear(); }
-
 export async function openProjectBrain(d: BrainRuntime, userId: string, projectId: string): Promise<BrainHandle> {
   const project = await ownProject(d.projects, userId, projectId);
   const id = project.id;

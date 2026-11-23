@@ -161,5 +161,3 @@ export function everyday(): Everyday | null {
   }
   return current;
 }
-
-export function setEverydayForTests(e: Everyday | null | undefined): void { current = e; }

@@ -214,5 +214,3 @@ export class SiteStore {
 
 let shared: SiteStore | null = null;
 export const siteStore = (): SiteStore => (shared ??= new SiteStore());
-/** Tests only. */
-export const setSiteStore = (s: SiteStore | null): void => { shared = s; };
