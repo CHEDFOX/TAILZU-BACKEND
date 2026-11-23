@@ -12,7 +12,7 @@ import { sampleApi as botsApi } from "../../../tests/bots-bots-data.js";
 import { CODEWORK_API, PROJECT, JOB_ASK, JOB_LEAD, JOB_DONE, JOB_FAILED, JOB_ANSWER, ART } from "../../../tests/bots-codework-data.js";
 import { keybotApi } from "../../../tests/bots-keybot-data.js";
 import { FEED_ROHAN, FULL_CREATE, FULL_FIRST, FULL_MADE } from "../../../tests/spaces-data.js";
-import { SAMPLE_BOTS } from "../../../src/experience/bots/fixtures.js";
+import { FIXED_NOW, SAMPLE_BOTS } from "../../../src/experience/bots/fixtures.js";
 import type { FakeOpts } from "../../../src/experience/bots/fixtures.js";
 import { SCREENS } from "../../../src/experience/bots/ids.js";
 import { shellApi, UPI, ASK } from "./shell.js";
@@ -33,6 +33,8 @@ import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
+
+const SITES_NOW = FIXED_NOW, SITES_MIN = 60_000, SITES_D = 24 * 60 * SITES_MIN;
 
 export interface Sample {
   id: string;
@@ -128,6 +130,30 @@ export const SAMPLES: Sample[] = [
   { id: S.appConnect, area: "you", board: "AppConnect", deskBoard: "DAppConnect", params: { id: "google-calendar" } },
   // An app whose sign-in is a link the person pastes: the words under the box, and the button to the page that makes it.
   { id: S.appConnect, area: "you", variant: "zapier", params: { id: "zapier" } },
+  // Their own browser (docs/sites.md, CLOUD_BROWSER): what is being watched, what is signed in, and what is not yet.
+  // It draws nothing unless CLOUD_BROWSER is on, so render with it set.
+  {
+    // Render with --with LiveView: without it the screen hides every "Sign in" on purpose (screens/sites.ts).
+    id: S.sites, area: "you", api: {
+      "GET /v1/botsapp/bots/sites": {
+        logins: [
+          { site: "swiggy.com", who: "aanya@example.in", usedAt: SITES_NOW - 12 * SITES_MIN },
+          { site: "bescom.co.in", who: "9845•••210", usedAt: SITES_NOW - 3 * SITES_D, needsSignIn: true },
+        ],
+        watches: [
+          {
+            id: "w1", site: "swiggy.com", label: "Order 8812", state: "open", readAt: SITES_NOW - 4 * SITES_MIN,
+            card: {
+              title: "Biryani and two sides", line: "Out for delivery · 6 min away",
+              stages: [{ name: "Placed", done: true }, { name: "Cooking", done: true }, { name: "Picked up", done: true }, { name: "Delivered", done: false }],
+            },
+          },
+],
+        canAdd: ["swiggy.com", "bescom.co.in", "indianrail.gov.in"],
+        most: 5,
+      },
+    },
+  },
   { id: S.settings, area: "you", deskBoard: "DeskSettings" },
   // screens/you/devicesPage.ts: no board of its own
   { id: S.devices, area: "you" },
