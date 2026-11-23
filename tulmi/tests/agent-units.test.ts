@@ -639,10 +639,10 @@ describe("LOOK, and the picture path's reading rules", () => {
     ]);
   });
 
-  it("the picture path takes as many sentences as it is given room for; the text path three", () => {
+  it("the picture path takes as many sentences as it is given room for; the text path twelve (a poem, a book's summary)", () => {
     const lines = Array.from({ length: 30 }, (_, i) => `SAY Sentence ${i + 1}.`);
     const count = (r: InstanceType<typeof LineReader>) => lines.flatMap((l) => r.read(parseLine(l, "mac")!)).length;
-    expect(count(new LineReader(new Set(), "show"))).toBe(3);
+    expect(count(new LineReader(new Set(), "show"))).toBe(12);
     expect(count(new LineReader(new Set(), "show", { picture: true, says: 10 }))).toBe(10);
     expect(count(new LineReader(new Set(), "show", { picture: true, says: 24 }))).toBe(24);
   });
@@ -764,7 +764,7 @@ describe("the vision ladder and request", () => {
     expect(body.messages[0].content).toEqual([{ type: "text", text: VISION, cache_control: { type: "ephemeral" } }]);
     expect(body.messages[1]).toEqual({ role: "user", content: parts });
     expect(body.reasoning).toEqual({ effort: "none", enabled: false });
-    expect((plannerRequest("openai/gpt-6-luna", PLANNER, "u") as Record<string, any>).max_tokens).toBe(300);
+    expect((plannerRequest("openai/gpt-6-luna", PLANNER, "u") as Record<string, any>).max_tokens).toBe(800);
   });
 });
 

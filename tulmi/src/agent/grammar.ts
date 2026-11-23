@@ -85,6 +85,21 @@ export const GRAMMAR_RULES = {
   showOpening: SHOW_OPENING, showAnywhere: SHOW_ANYWHERE, politeRequest: POLITE_REQUEST,
 } as const;
 
+/**
+ * WORDS ASKED FOR, NOT A TASK: "write me a poem about rain", "give me three names for a cat", "make up a story". These want words back,
+ * and on a computer with no text box waiting for them the answer is the words, said in the card — not the planner hunting for a field to
+ * type them into (it put a poem into a document's Title field). Things that are SENT — an email, a message, a reply, a post — are not
+ * here: writing one is a task. A place named ("here", "in this", "into the doc") keeps it a task too: they said where it goes.
+ */
+const WORDS_ASKED = /^(?:write|compose|draft|make up|give me|generate|create|come up with|think of|suggest|tell me)\b.*\b(?:poem|poems|story|stories|joke|jokes|essay|summary|haiku|limerick|song|lyrics|paragraph|quote|quotes|names?|ideas?|recipe|speech|riddle|facts?|definition|explanation|slogan|tagline|caption|toast|wish(?:es)?|list)\b/;
+const PLACE_NAMED = /\b(?:here|in (?:this|the|it|my)|into|reply|respond|type it|paste)\b/;
+
+/** Words asked for, with no place named for them (WORDS_ASKED above). The caller also checks no text box is waiting. */
+export function wantsWords(said: string, names: string[] = []): boolean {
+  const clean = commandText(said, names);
+  return WORDS_ASKED.test(clean) && !PLACE_NAMED.test(clean);
+}
+
 export function modeOf(said: string, names: string[] = []): "show" | "do" {
   const clean = commandText(said, names);
   if (SHOW_OPENING.test(clean) || SHOW_ANYWHERE.test(clean)) return "show";
