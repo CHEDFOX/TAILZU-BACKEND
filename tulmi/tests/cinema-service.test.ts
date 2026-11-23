@@ -576,6 +576,40 @@ describe("a whole film", () => {
     expect(left.every((k) => k.includes("/cinema/kept/"))).toBe(true);
     expect(left.length).toBeGreaterThan(0);
   });
+
+  it("tries again what made it give up, once the person changes the shot or asks again", async () => {
+    const r = rig();
+    const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    // The storyboard gave up on shot 2's still after three refusals, as the tick would have counted them.
+    const giveUp = async () => {
+      const f = (await r.store.getFilm("u1", made.film.id))!;
+      f.tries = { "still:2": 3 };
+      f.shots = f.shots.map((st) => (st.n === 2 ? { ...st, still: null } : st));
+      await r.store.saveFilm(f);
+      const failed = await r.until("u1", made.film.id, "failed");
+      expect(failed.status).toBe("failed");
+      expect(failed.error).toContain("Change the words for it and try again");
+    };
+    await giveUp();
+    const changed = await r.svc.revise("u1", made.film.id, { note: "make shot 2 simpler", n: 2 });
+    expect(changed.film.status).toBe("script");
+    expect(changed.film.error).toBeNull();
+    await r.svc.approveScript("u1", made.film.id);
+    const images = r.calls.images;
+    expect((await r.until("u1", made.film.id, "board")).status).toBe("board");
+    expect(r.calls.images).toBeGreaterThan(images);
+    expect((await r.store.getFilm("u1", made.film.id))!.tries).toEqual({});
+
+    // Asking for the shot again does the same, without a change to the words.
+    expect((await r.svc.revise("u1", made.film.id, { note: "a warmer shot 2", n: 2 })).film.status).toBe("boarding");
+    await giveUp();
+    const again = await r.svc.retry("u1", made.film.id, 2);
+    expect(again.film.status).toBe("boarding");
+    expect(again.film.error).toBeNull();
+    expect((await r.until("u1", made.film.id, "board")).status).toBe("board");
+  });
 });
 
 describe("a picture", () => {

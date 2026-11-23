@@ -328,8 +328,10 @@ export class CinemaService {
         return was.takeOf !== p.take.get(s.n) ? { ...was, blamed: [], fix: null, error: null, failedOf: null } : was;
       });
       x.notes = [...r.notes, ...x.notes].slice(0, 20);
+      // A change is a fresh start for whatever gave up: the count that stopped the film goes, and so does what it said.
+      x.tries = {};
       if (x.status === "done") x.status = "rendering";
-      if (x.status === "failed") x.status = "script";
+      if (x.status === "failed") { x.status = "script"; x.error = null; }
       // A change to the storyboard redraws what it touched, then shows the storyboard again (the tick moves only films being made).
       if (x.status === "board") x.status = "boarding";
     });
@@ -345,6 +347,13 @@ export class CinemaService {
       if (o.model !== undefined) card.pin = o.model || null;
       const st = shotOf(x, n);
       if (st) Object.assign(st, { failedOf: null, error: null, blamed: [], fix: null, take: null, takeOf: null });
+      // The shot's own strikes go, so its still and voice-over are really asked for again. A film that gave up on its storyboard starts
+      // it over with every count cleared (the budget it was given is still there) and without the line that said why it stopped.
+      const tries = { ...(x.tries ?? {}) };
+      delete tries[`still:${n}`];
+      delete tries[`voice:${n}`];
+      x.tries = tries;
+      if (x.status === "failed" && x.script) { x.status = "boarding"; x.error = null; x.tries = {}; }
       if (x.hold === "shot") x.hold = null;
       if (x.status === "done") x.status = "rendering";
     });

@@ -86,7 +86,9 @@ tick**, so a film would sit on "Drawing the storyboard…" for ever, paying for 
 but the name of an error class. A real run found this three times in one afternoon. Now each piece of work counts its own failures in a
 row on the film itself (`Film.tries`, so a restart remembers, cleared the moment it succeeds), and at three the film **fails and says
 which thing it could not make** - "We could not make a picture of Dadi. Change the words for it and try again." - which is something a
-person can act on.
+person can act on. Acting on it really does try again: a change (`revise`) clears every count and the line that said why, and the film goes back to
+its script to be approved; Try again on a shot (`retry`) clears that shot's still and voice-over counts, and a film that had given up goes
+straight back to drawing its storyboard, with every count cleared, on the budget it already had.
 
 **How it moves.** `flow.ts steps(film)` is one pure function that looks at a film and says what to do now: make a sheet, a still, a voice-over,
 a take; ask how a take is going; check one; cut; or move the status. The service (`service.ts`) runs the steps every few seconds (`tick`), a
