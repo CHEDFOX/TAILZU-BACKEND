@@ -42,6 +42,9 @@ export function logUrl(url: string): string {
   if (/^\/device(?:[?#]|$)/.test(url)) return "/device";
   // A real phone call's callbacks carry the follow, the person and our MAC in their query (botsBots/followPhone.ts): never logged.
   if (/^\/v1\/channels\/plivo\//.test(url)) return url.replace(/[?#].*$/, "");
+  // Links that are themselves the key: the data export, the OAuth callbacks, the pay link, signed files and shared artifacts.
+  if (/^\/(?:v1\/you\/export\/file|v1\/connectors\/callback|v1\/code\/github\/signin\/callback|pay)(?:[?#]|$)/.test(url)
+    || /[?&](?:sig|share|t|state|code)=/.test(url)) return url.replace(/[?#].*$/, "");
   return url;
 }
 
