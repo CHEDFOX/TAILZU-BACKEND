@@ -484,9 +484,13 @@ export class SupabaseJobStore implements JobStore {
     return (ok(await q.returns<JobRow[]>()) ?? []).map(jobOf);
   }
   async listClaimable(now: number, limit: number) {
-    // The claim's own condition is in the query (nobody holds it, or its time ran out); the wait is read here, since a wait that is the person's own to end is not one to claim.
+    // The claim's own condition (nobody holds it, or its time ran out) and the wait are both in the query. A wait that is the person's own
+    // to end is not one to claim, and read afterwards those rows - the oldest there are, left for days - would fill the page and hide every
+    // job that could run. The two conditions are two `or` filters, which Supabase joins with "and".
     const rows = ok(await this.sb.from("code_jobs").select("*").eq("agent", true).in("state", [...CLAIMABLE_STATES])
-      .or(`agent_expires_at.is.null,agent_expires_at.lte.${iso(now)}`).order("updated_at").limit(limit * 3).returns<JobRow[]>());
+      .or(`agent_expires_at.is.null,agent_expires_at.lte.${iso(now)}`)
+      .or("state.neq.waiting_for_you,waiting_on.is.null,waiting_on.in.(paid,commit)")
+      .order("updated_at").limit(limit).returns<JobRow[]>());
     return (rows ?? []).map(jobOf).filter(claimable).slice(0, limit);
   }
   async listAgentExpired(now: number, limit: number) {
