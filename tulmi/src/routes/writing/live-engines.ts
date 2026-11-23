@@ -61,23 +61,28 @@ export interface SegmentTiming {
   duration: number;
 }
 
-type LiveName = "deepgram" | "sarvam" | "openai";
+type LiveName = "deepgram" | "sarvam" | "openai" | "openrouter";
 
 /** Which live engine the server is configured to use. */
 export function liveProvider(): LiveName {
   const cfg = getConfig();
+  if (cfg.STT_LIVE_PROVIDER === "openrouter") return "openrouter";
   if (cfg.STT_LIVE_PROVIDER === "sarvam" && cfg.SARVAM_API_KEY) return "sarvam";
-  if (cfg.STT_LIVE_PROVIDER === "openai" && cfg.OPENAI_API_KEY) return "openai";
+  // OpenAI's live model is not on OpenRouter (no streaming socket there), so with OpenAI's recogniser routed through OpenRouter
+  // (OPENAI_STT_VIA_OPENROUTER, the default) "openai" means OpenAI's model, near-live, on the OpenRouter key.
+  if (cfg.STT_LIVE_PROVIDER === "openai") return cfg.OPENAI_STT_VIA_OPENROUTER !== false ? "openrouter" : cfg.OPENAI_API_KEY ? "openai" : "deepgram";
   return "deepgram";
 }
 
 function keyFor(name: LiveName): boolean {
   const cfg = getConfig();
-  return name === "sarvam" ? !!cfg.SARVAM_API_KEY : name === "openai" ? !!cfg.OPENAI_API_KEY : !!cfg.DEEPGRAM_API_KEY;
+  return name === "sarvam" ? !!cfg.SARVAM_API_KEY : name === "openai" ? !!cfg.OPENAI_API_KEY
+    : name === "openrouter" ? !!cfg.OPENROUTER_API_KEY : !!cfg.DEEPGRAM_API_KEY;
 }
 
 function open(name: LiveName, opts: EngineOptions, h: EngineHandlers): LiveEngine {
-  return name === "sarvam" ? openSarvam(opts, h) : name === "openai" ? openOpenAI(opts, h) : openDeepgram(opts, h);
+  return name === "sarvam" ? openSarvam(opts, h) : name === "openai" ? openOpenAI(opts, h)
+    : name === "openrouter" ? openOpenRouter(opts, h) : openDeepgram(opts, h);
 }
 
 /** True when the configured engine actually has credentials to run. */
@@ -523,6 +528,127 @@ export function openOpenAI(opts: EngineOptions, h: EngineHandlers, socket?: (url
         return;
       }
       setTimeout(shut, getConfig().OPENAI_LIVE_FLUSH_MS);
+    },
+  };
+}
+
+// --- OpenRouter: near-live, on the one key ---------------------------------
+
+/** What the OpenRouter engine transcribes at: 16 kHz mono, the rate every recogniser on it takes without complaint. */
+export const ROUTER_RATE = 16_000;
+
+/** 16-bit mono PCM at `rate`, wrapped as a WAV file. */
+export function pcmToWav(pcm: Buffer, rate = ROUTER_RATE): Buffer {
+  const h = Buffer.alloc(44);
+  h.write("RIFF", 0); h.writeUInt32LE(36 + pcm.length, 4); h.write("WAVEfmt ", 8); h.writeUInt32LE(16, 16);
+  h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22); h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28);
+  h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34); h.write("data", 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
+
+/** How loud a stretch of 16-bit mono PCM is (root mean square, 0..32767). */
+export function loudness(pcm: Buffer): number {
+  const n = Math.floor(pcm.length / 2);
+  if (!n) return 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) { const v = pcm.readInt16LE(i * 2); sum += v * v; }
+  return Math.sqrt(sum / n);
+}
+
+export interface RouterLiveTuning {
+  /** How much new speech before the caption is written again. */
+  partialEveryMs: number;
+  /** Quiet this long, after some speech, ends the line. */
+  pauseMs: number;
+  /** A line never runs longer than this: it is committed and the next begins. */
+  lineMaxMs: number;
+  /** Below this loudness a frame is quiet. */
+  quiet: number;
+}
+export const ROUTER_LIVE: RouterLiveTuning = { partialEveryMs: 1200, pauseMs: 700, lineMaxMs: 12_000, quiet: 500 };
+
+type Transcribe = (wav: Buffer, prompt?: string) => Promise<string>;
+
+/** One WAV to OpenRouter's /audio/transcriptions, answered with its text. */
+function routerTranscribe(model: string): Transcribe {
+  return async (wav, prompt) => {
+    const cfg = getConfig();
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(wav)], { type: "audio/wav" }), "live.wav");
+    form.append("model", model);
+    if (prompt) form.append("prompt", prompt.slice(0, 800));
+    const res = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
+      method: "POST", headers: { Authorization: `Bearer ${cfg.OPENROUTER_API_KEY}` }, body: form, signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) throw new Error(`transcription ${res.status}`);
+    const j = (await res.json()) as { text?: unknown };
+    return typeof j.text === "string" ? j.text.trim() : "";
+  };
+}
+
+/**
+ * NEAR-LIVE DICTATION THROUGH OPENROUTER. OpenRouter has no streaming socket for speech, so the stream is made here: the frames
+ * are kept as the current line, and every `partialEveryMs` of new audio the line so far is transcribed and sent as the caption;
+ * a pause (or a line grown past `lineMaxMs`) commits it as a final and starts the next. Captions trail speech by about the time
+ * one short request takes (0.6–0.9 s measured on 22 Nov). One request is out at a time: a caption still on its way is not raced.
+ *
+ * The phone's and the desktop's protocol is untouched — ready, partials, finals, close — so this is a server setting, not a build.
+ */
+export function openOpenRouter(opts: EngineOptions, h: EngineHandlers, o: { transcribe?: Transcribe; tuning?: RouterLiveTuning } = {}): LiveEngine {
+  const cfg = getConfig();
+  const model = cfg.OPENROUTER_LIVE_STT_MODEL;
+  const t = o.tuning ?? ROUTER_LIVE;
+  const transcribe = o.transcribe ?? routerTranscribe(model);
+  const resample = createResampler(opts.sampleRate, ROUTER_RATE, opts.channels);
+  const bytesOf = (ms: number) => Math.round((ms / 1000) * ROUTER_RATE) * 2;
+
+  let line: Buffer[] = [];
+  let lineBytes = 0, spoke = false, quietBytes = 0, sinceCaption = 0;
+  let lineStartBytes = 0, streamBytes = 0;
+  let busy: Promise<void> = Promise.resolve();
+  let partialOut = false, closed = false;
+
+  const lineAudio = () => Buffer.concat(line);
+  const caption = () => {
+    if (partialOut || closed) return;
+    partialOut = true;
+    const wav = pcmToWav(lineAudio());
+    transcribe(wav, opts.prompt).then((text) => { if (!closed && text) h.onPartial(text); }, () => undefined)
+      .finally(() => { partialOut = false; });
+  };
+  /** The line committed: its text final, in order, after any final before it. */
+  const commit = () => {
+    if (!lineBytes) return;
+    const audio = lineAudio(), start = lineStartBytes / 2 / ROUTER_RATE, duration = audio.length / 2 / ROUTER_RATE;
+    const hadSpeech = spoke;
+    line = []; lineBytes = 0; spoke = false; quietBytes = 0; sinceCaption = 0; lineStartBytes = streamBytes;
+    if (!hadSpeech) return;
+    busy = busy.then(() => transcribe(pcmToWav(audio), opts.prompt)
+      .then((text) => h.onFinal(text, { start, duration }), (err: Error) => h.onError(err?.message || "transcription failed")));
+  };
+
+  queueMicrotask(() => { if (!closed) h.onReady(); });
+
+  return {
+    label: `openrouter:${model}`,
+    send(chunk: Buffer) {
+      if (closed) return;
+      try {
+        const pcm = resample(chunk);
+        if (!pcm.length) return;
+        line.push(pcm); lineBytes += pcm.length; streamBytes += pcm.length; sinceCaption += pcm.length;
+        if (loudness(pcm) >= t.quiet) { spoke = true; quietBytes = 0; } else quietBytes += pcm.length;
+        if (spoke && quietBytes >= bytesOf(t.pauseMs)) return commit();
+        if (lineBytes >= bytesOf(t.lineMaxMs)) return commit();
+        if (spoke && sinceCaption >= bytesOf(t.partialEveryMs)) { sinceCaption = 0; caption(); }
+      } catch { /* a frame that will not resample is dropped, never the session */ }
+    },
+    close() {
+      if (closed) return;
+      commit();
+      closed = true;
+      // Every final out, then the close: the route ends the session on it.
+      void busy.finally(() => h.onClose());
     },
   };
 }
