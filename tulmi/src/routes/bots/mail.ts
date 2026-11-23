@@ -307,7 +307,7 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
     const rows = (await handlers().ofBusinesses([b.id]).catch((err) => { kept("handlers")(err); return [] as MailHandler[]; }))
       .filter((h) => h.ownerId === reach.ownerId);
     const members = rows.length ? await access().membersOf(reach.ownerId) : [];
-    return answered({ ...b, access: reach.access as "own" | "admin", ...(reach.owner ? { owner: reach.owner } : {}) }, reach.ownerId, rows, members);
+    return answered({ ...b, access: "own" }, reach.ownerId, rows, members);
   };
 
   /** The person who gave an address, as the member's spaces have them, else their own first name. */
@@ -332,17 +332,8 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
       handlers().ofMember(me).catch((err) => { kept("handlers")(err); return [] as MailHandler[]; }),
     ]);
     const memberIds = new Set(members.map((m) => m.id));
-
-    // The members who have a business here: their lists, inside their accounts. One that can't be read just now is left out.
-    const owning = members.length ? await businesses().owning([...memberIds]).catch((err) => { kept("owning")(err); return new Set<string>(); }) : new Set<string>();
-    const theirs = (await Promise.all(members.filter((m) => owning.has(m.id)).map(async (m) => {
-      try {
-        const out = await w.call<ListAnswer>(ownerOf(m.id), "GET", path);
-        const list = businessesIn(out);
-        await businesses().claim(m.id, list.map((b) => b.id)).catch(kept("claim"));
-        return { owner: m, out, list };
-      } catch { return null; }
-    }))).filter((x): x is NonNullable<typeof x> => x !== null);
+    // A space's maker used to get every member's business here, read and write, under the line members agreed to. It does not any
+    // more (docs/social.md §4): the only way into someone else's mail is the addresses THEY handed over (`handled`, below).
 
     // The addresses given to them, by owner and business. An owner who is one of their members is above already, whole.
     const byOwner = new Map<string, Map<string, Set<string>>>();
@@ -364,27 +355,18 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
     }))).filter((x): x is NonNullable<typeof x> => x !== null);
     const admins = handled.length ? await access().adminsOf(me) : [];
 
-    // Who answers which address, on the businesses they may change: their own and their members'.
-    const mayChange = [...ownList, ...theirs.flatMap((t) => t.list)];
+    // Who answers which address, on the businesses they may change: their own alone.
+    const mayChange = [...ownList];
     const rows = mayChange.length ? await handlers().ofBusinesses(mayChange.map((b) => b.id)).catch((err) => { kept("handlers")(err); return [] as MailHandler[]; }) : [];
-    const peopleOf = async (ownerId: string): Promise<MailPerson[]> =>
-      ownerId === me ? members : rows.some((h) => h.ownerId === ownerId) ? access().membersOf(ownerId) : [];
-
     const list: MailBusinessView[] = ownList.map((b) => answered({ ...b, access: "own" }, me, rows, members));
-    for (const t of theirs) {
-      const named = await peopleOf(t.owner.id);
-      list.push(...t.list.map((b) => answered({ ...b, access: "admin", owner: t.owner }, t.owner.id, rows, named)));
-    }
     for (const h of handled) {
       const owner: MailPerson = { id: h.ownerId, name: admins.find((a) => a.id === h.ownerId)?.name ?? "" };
       list.push(...h.list.map((b) => forHandler(b, h.biz.get(b.id)!, owner)));
     }
     if (which === "businesses") return { ...own, businesses: list };
 
-    const others = [
-      ...theirs.flatMap((t) => runsIn(t.out)),
-      ...handled.flatMap((h) => runsIn(h.out).filter((r) => !!r.companyId && !!h.biz.get(r.companyId)?.has(lower(r.address ?? "")))),
-    ];
+    // What needs a person, across the mail they may actually reach: their own, and the addresses handed to them.
+    const others = handled.flatMap((h) => runsIn(h.out).filter((r) => !!r.companyId && !!h.biz.get(r.companyId)?.has(lower(r.address ?? ""))));
     const waiting = others.length ? [...runsIn(own), ...others].sort(byNeed).slice(0, WAITING_MAX) : runsIn(own);
     return { ...own, businesses: list, waiting, people: members };
   };

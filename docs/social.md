@@ -33,21 +33,44 @@ into a message a year ago does not.
 A look-up says only that a name is taken, never which of held, ours or given up, and is braked at 60 an hour, because asking
 repeatedly is how a list of everyone would be made.
 
-## 2. The name you give someone — PLANNED (`person_names`)
+## 2. The name you give someone — BUILT
 
 **A username is for reaching someone. It is never what you see.** What you see is the name *you* gave them, the way a phone's
 contacts work: you add `@aanya-r` and you call her Mom.
 
-So a name is per reader: `person_names(owner_id, subject_id, name)`, resolved at read time.
+So a name is per reader: `person_names(owner_id, subject_id, name)`, resolved at read time. Migration 0111,
+`tulmi/src/botsBots/personNames.ts`.
+
+```
+PUT /v1/botsapp/bots/people/:id/name { name }   -> { name }   an empty name takes it off again
+GET /v1/botsapp/bots/people/names               -> { names: [{ userId, name, at }] }
+```
+
+`known(viewer)` reads every name a person gave **in one go**, and `shownName(known, id, fallback)` applies it per row — the same
+shape as `looksKnown` / `shownLook`, so a list of twenty people costs one read, not twenty.
+
+Where it reaches: a space's members, the people you can message and the groups you can start one in (`contacts`), a one-to-one
+chat's own name (that name **is** the other person), every member of a thread, the name over every message, "To Mom" under one,
+and the chats list's own last line.
+
+**That last one needed a column.** `threads.last_text` is stored as `"Mom: Dinner at 8?"` — the sender's name baked in when it
+was written — so without `threads.last_by` (0111) a chats list would show a row titled "Amma" over a line still reading "Mom:".
+The stored text is never rewritten, so an older build reads it exactly as before; the server swaps the part before the first
+`": "` for the reader's own name, and only when it has one.
+
+A name is screened like every other name a person writes (`filter.ts`), bounded to 40 as the rows' own names are, nobody can
+name themselves (the table refuses it too), and one person may name 2,000 people — a bound, so this cannot become somewhere to
+keep notes on everybody.
 
 **The trap.** Names are denormalised onto rows today — `space_members.name`, `thread_members.name`,
 `thread_messages.sender_name` — because there is one name per person. `sender_name` is load-bearing for a **deleted account**:
 `docs/spaces.md` says a deleted account takes its `thread_members` row with it, so `viewOf` reads the name back off that
 person's own messages. So:
 
-- keep writing `sender_name` exactly as now, and treat it as the fallback
-- resolve the reader's own name on top, only while the subject still exists
-- `gone` handling then keeps working untouched
+- `sender_name` is still written exactly as before, and is the fallback
+- the reader's own name resolves on top, never instead
+- `subject_id` cascades, so a deleted account takes these names with it and the fallback takes over by itself — which is why
+  `gone` handling needed no change at all, and `spaces-gone.test.ts` passes untouched
 
 `personLook.ts` is unaffected: a look is hashed from the user id, never the name.
 
@@ -67,7 +90,7 @@ and so is `space_work_notes`'s). "Make a group with them" stays an ordinary spac
 
 Every way in ends at the same request-and-accept, exactly as a code and an email invite both end at `addMember()` today.
 
-## 4. Groups: no automatic access — PLANNED
+## 4. Groups: no automatic access — BUILT
 
 **The admin has no automatic sight of anyone's things.** This deletes, rather than adds:
 
@@ -82,8 +105,8 @@ Every way in ends at the same request-and-accept, exactly as a code and an email
 
 - the **meeting bot** (`docs/meet.md`, "In a space"): the admin sees members' meetings and can send the bot into one for them
 - the **mail bot** (`docs/mail.md`, "In a space"): the admin has a member's business mail in full, read and write
-- **existing grants** the admin made of members' things (`space_grants.by_id is not null`): revoked, since nothing in the app
-  would explain the access any more. `docs/spaces.md`'s rollback section has the snippet
+- **existing grants** the admin made of members' things (`space_grants.by_id is not null`): revoked by migration 0112, with
+  their cards and with the work notes nothing else reached, since nothing in the app would explain that access any more
 
 The Oracle was already the model for where all of these land: *"no admin ever sees a member's chart or readings."*
 
@@ -178,8 +201,8 @@ plus a hand-reviewed catalogue in `catalog.ts` that ships like code. No authors,
 
 ## The order to build in
 
-1. `person_names` — both the `@` matcher and the `@aanya` labels need it, so anything before it is done twice
-2. no automatic admin access (with the meeting bot, the mail bot and `to_id`)
+1. ~~`person_names`~~ — **done** (migration 0111)
+2. ~~no automatic admin access~~ — **done** (migration 0112; the meeting bot, the mail bot and `to_id`'s admin clause with it)
 3. `@` mentions
 4. the share registry, and shared things in each bot's list
 5. adding by username, and the two-person space

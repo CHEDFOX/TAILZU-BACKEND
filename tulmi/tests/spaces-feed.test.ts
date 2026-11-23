@@ -47,24 +47,28 @@ async function homeWithSecret(s: S) {
 }
 
 describe("a message to one person", () => {
-  it("is seen by its sender, the one it is to and the admin; nobody else, in any reader", async () => {
+  it("is seen by its sender and the one it is to, and NOBODY else — the space's maker included — in any reader", async () => {
     const s = await served();
     const { id, thread, msg } = await homeWithSecret(s);
     expect(msg).toMatchObject({ from: { userId: M_, name: "Mom", you: true }, to: { userId: R_, name: "Rohan", you: false }, text: "Your birthday gift is in my cupboard" });
-    for (const who of [M_, R_, A_]) expect(await texts(s, id, who), who).toContain("Your birthday gift is in my cupboard");
-    expect(await texts(s, id, D_)).toEqual(["Dinner at 8"]);
-    // Rohan sees it as a normal message to him; the admin sees who it was to.
+    for (const who of [M_, R_]) expect(await texts(s, id, who), who).toContain("Your birthday gift is in my cupboard");
+    // Aanya made Home, and that is no longer a way to read what was not sent to her (docs/social.md §4).
+    for (const who of [A_, D_]) expect(await texts(s, id, who), who).toEqual(["Dinner at 8"]);
+    // Rohan sees it as a normal message to him.
     const forRohan = (await feed(s, id, R_)).messages.at(-1);
     expect(forRohan.to).toEqual({ userId: R_, name: "Rohan", you: true });
-    expect((await feed(s, id, A_)).messages.at(-1).to).toEqual({ userId: R_, name: "Rohan", you: false });
     // Old builds' chat reads the same thread.
-    expect(((await s.call("GET", `${AREA}/threads/${thread}`, D_)).body.messages as Array<{ text: string }>).map((m) => m.text)).toEqual(["Dinner at 8"]);
+    for (const who of [D_, A_]) {
+      expect(((await s.call("GET", `${AREA}/threads/${thread}`, who)).body.messages as Array<{ text: string }>).map((m) => m.text), who).toEqual(["Dinner at 8"]);
+    }
     expect((await s.call("GET", `${AREA}/threads/${thread}`, M_)).body.messages.at(-1).to).toMatchObject({ name: "Rohan" });
     // The widget's words.
-    expect((await s.parts.threads.recentFrom(D_)).map((r) => r.text)).not.toContain("Your birthday gift is in my cupboard");
+    for (const who of [D_, A_]) expect((await s.parts.threads.recentFrom(who)).map((r) => r.text), who).not.toContain("Your birthday gift is in my cupboard");
     expect((await s.parts.threads.recentFrom(R_)).map((r) => r.text)).toContain("Your birthday gift is in my cupboard");
     // A report: Dev can't report what he can't see; Rohan can.
-    expect((await s.call("POST", `${AREA}/reports`, D_, { kind: "message", id: msg.id, thread, reason: "spam" })).status).toBe(404);
+    for (const who of [D_, A_]) {
+      expect((await s.call("POST", `${AREA}/reports`, who, { kind: "message", id: msg.id, thread, reason: "spam" })).status, who).toBe(404);
+    }
     expect((await s.call("GET", `${AREA}/reports/preview?kind=message&id=${msg.id}&thread=${thread}`, R_)).status).toBe(200);
     // Its file: a link signed for Dev opens nothing.
     const fid = msg.files[0].id as string;
@@ -74,7 +78,7 @@ describe("a message to one person", () => {
     expect((await s.call("GET", forRohanFile, null)).status).toBe(200);
   });
 
-  it("counts unread, pings and tells live only who sees it; the admin is not pinged", async () => {
+  it("counts unread, pings and tells live only who sees it — and the space's maker is not one of them", async () => {
     const s = await served();
     const id = await s.family([M_, R_, D_]);
     await post(s, id, A_, { text: "Dinner at 8" });
@@ -84,11 +88,11 @@ describe("a message to one person", () => {
     await post(s, id, M_, { text: "Psst", to: R_ });
     expect(await unread(D_)).toBe(before.dev);
     expect(await unread(R_)).toBe(before.rohan + 1);
-    // It is the admin's feed too: it counts, silently.
-    expect(await unread(A_)).toBe(before.aanya + 1);
+    // Aanya made Home, and no longer sees a message that was not sent to her, so it is not unread for her either.
+    expect(await unread(A_)).toBe(before.aanya);
     expect(pushes.map((p) => [p.userId, p.kind, p.data])).toEqual([[R_, "space_feed", { id }]]);
     expect(JSON.stringify(pushes)).not.toContain("Psst");
-    // A message for everyone pings everyone else, the admin too.
+    // A message for everyone pings everyone else, its maker too.
     pushes.length = 0;
     await post(s, id, R_, { text: "Thanks" });
     expect(pushes.map((p) => p.userId).sort()).toEqual([A_, M_, D_].sort());
@@ -172,18 +176,16 @@ describe("Everyone, after the question", () => {
   });
 });
 
-describe("the line about the admin", () => {
-  it("must be seen (OK tapped) before a member writes; the admin never needs it", async () => {
+describe("there is no line about the admin any more", () => {
+  it("a member simply writes, having agreed to nothing (docs/social.md §4)", async () => {
     const s = await served();
     const id = await s.family([M_]);
     await s.bringIn(id, R_, { consent: false });
-    const read = await feed(s, id, R_);
-    expect(read.space).toMatchObject({ consented: false, admin: false, adminName: "Aanya S." });
-    expect((await post(s, id, R_, { text: "hi" })).body).toEqual({ code: "consent_needed", message: "Tap OK on the line about the space's admin first." });
-    expect((await post(s, id, R_, { text: "hi", thing: { bot: "plan", id: "e:x" } })).status).toBe(403);
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/consent`, R_, { consentV: 2 })).body).toEqual({ ok: true });
-    expect((await feed(s, id, R_)).space.consented).toBe(true);
+    // `consented` is sent as true always, so an older build that shows its card until it is true never shows one again.
+    expect((await feed(s, id, R_)).space).toMatchObject({ consented: true, admin: false, adminName: "Aanya S." });
     expect((await post(s, id, R_, { text: "hi" })).status).toBe(201);
+    // And an older build's OK still answers, so a tap on a screen the app kept does not fail.
+    expect((await s.call("PUT", `${AREA}/spaces/${id}/consent`, R_, { consentV: 2 })).body).toEqual({ ok: true });
     expect((await feed(s, id, A_)).space).toMatchObject({ consented: true, admin: true });
     expect((await post(s, id, A_, { text: "welcome" })).status).toBe(201);
   });

@@ -149,6 +149,8 @@ export const SAMPLES: Sample[] = [
   { id: S.deleteAccount, area: "you", board: "DeleteAcct", deskBoard: "DDeleteAcct" },
   { id: S.apps, area: "you", board: "Apps", deskBoard: "DApps" },
   { id: S.appConnect, area: "you", board: "AppConnect", deskBoard: "DAppConnect", params: { id: "google-calendar" } },
+  // An app whose sign-in is a link the person pastes: the words under the box, and the button to the page that makes it.
+  { id: S.appConnect, area: "you", variant: "zapier", params: { id: "zapier" } },
   { id: S.settings, area: "you", deskBoard: "DeskSettings" },
   // screens/you/devicesPage.ts: no board of its own
   { id: S.devices, area: "you" },

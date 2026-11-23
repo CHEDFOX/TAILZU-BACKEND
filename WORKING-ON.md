@@ -1,5 +1,25 @@
 # Being built right now (read before you start)
 
+## 22 Nov: CONNECTING AN APP THAT ASKS FOR A PASTED LINK NOW SAYS WHERE THE LINK IS MADE
+
+The box said "Paste the link from the app" and nothing else. For Zapier — the one `auth: "url"` app in the catalog — the link
+is made at mcp.zapier.com, on a page nothing here can send anyone to automatically. That is the whole reason that auth kind
+exists, and the screen was asking for something nobody could know how to get.
+
+`ConnectorDef.linkHelp` ({ how, at }) carries the words and the page, so it is per app and not Zapier written into a screen:
+a later Make or Pipedream entry just fills in its own. The route passes it only for a "url" app that has one, and the screen
+draws the line under the box with a button, "Open mcp.zapier.com", named after the host so nobody taps it blind. The host is
+read back with `new URL()` and only over https — a linkHelp that is not a link we would open gets the words and no button.
+
+Rendered and looked at (`scripts/bots-render/showcase.ts --only app-connect~zapier`), which needed a sample for a "url" app:
+there is one now, as the `zapier` variant of bots.app-connect. Its `bots` list is deliberately empty — a bot there sends the
+screen asking for that bot's share, which the You answers do not have.
+
+12,701 pass. The two failures are the usual unrelated pair: `launch-motion`'s side-by-side case and `web-browser`'s
+Chrome-process check.
+
+Nothing is switched on by this: CONNECTORS is still off, and so is every id.
+
 ## 20 Nov: TALK IS THE APP NOW — one screen, one thread, every bot answering in it
 
 The app opened on a grid of bots. On a phone that grid is a list you scroll — eight living tiles one to a row, then
@@ -51,6 +71,87 @@ the whole way in on every build**; the marks are faster, never the only way.
 12,715 backend pass (the 20 new in `tests/talk-door.test.ts`), 1,252 phone (the one `launch-motion` failure is the
 pre-existing one, checked by stashing), 1,570 window. docs/talk-door.md has the whole design and what still needs a
 live check — chiefly whether the door's pick is good enough to carry the whole app, which it now has to be.
+## 20 Nov: A SPACE'S ADMIN HAS NO AUTOMATIC ACCESS TO ANYTHING OF ANYONE'S
+
+Third step of docs/social.md, and it deletes far more than it adds. Making a space never justified reading what the people in it
+keep in their own bots, and now it does not.
+
+**Gone, and what went with it.** The line every member agreed to before they could write — "The space's admin can see and share
+your work and messages here." — and with it `ADMIN_LINE`, `CONSENT_VERSION`, `hasConsent`, `agreedTo`, `lineShown`, the feed's
+**403 `consent_needed`** (a member simply writes now), the admin's "All their plans" in Work in space, the `of:<owner>:<item>`
+ids its "/" made, and the part that was hardest to defend: the admin sharing a member's thing **with the owner never told** — no
+card in their feed, no push, not even on their own page for that thing.
+
+**Three things rode on the same line and went with it**, or the product would have gone on claiming something false:
+
+- **`to_id`.** A message to one person was its sender's, that person's **and the admin's**. Now it is the two of them. Narrowing
+  leaks nothing, so no old message changed hands; the admin just stops seeing ones it was never party to. **The reader rule
+  itself keeps being applied, forever** — those messages were sent privately, and nothing new writing `to_id` is not the same as
+  nobody having written it.
+- **The meeting bot** saw every consenting member's meetings, was pushed when one took the bot anywhere, and could send the bot
+  into a member's meeting for them. All three gone; `MeetService` holds no list of anyone's people at all, and `join` with a
+  `forUser` now answers 403 rather than quietly joining the sender's own call.
+- **The mail bot** gave the admin a member's business **in full, read and write**. Gone. What survives is the `handler` grant,
+  which is the owner handing specific addresses over — their act, not the admin's. Its scope was itself admin-shaped ("the owner
+  made the space"), so it is symmetric now: the two still share a space, either way round.
+
+**What stopping a share still is.** The admin stops any share in its own feed. That is moderation of the space and takes nothing
+out of anyone's account, so it stays.
+
+**Migration 0112 withdraws the access, and that order matters.** The consent columns stay on every row untouched and nothing
+reads them (as the old perms columns and `space_roles` do), which is what makes this reversible — so older server code starts
+honouring the line again the moment it runs. That is exactly why the grants had to go first: live access that nothing in the app
+can show you or let you stop is worse than access withdrawn. It deletes the admin-made grants, their cards, and the work notes
+nothing else reached, and leaves every share an owner made themselves alone.
+
+Checked against a real Postgres 16: 0112 runs clean twice, the admin's grants and their cards go, Mom's own share of the same
+thing is untouched, a note only the admin's reach ever had goes, and a note on a thing its owner also shared stays.
+
+`spaces-admin-share.test.ts` is now `spaces-admin-no-access.test.ts`: every case in it is the inverse of one that used to pass,
+including that no grant is ever written with a `by_id` again. 16 cases across meet, mail, rooms, safety and the screens were
+inverted the same way rather than deleted, because "the admin cannot" is the thing worth holding.
+
+12,697 pass. The two failures are the same two unrelated ones, both checked by stashing: `launch-motion`'s side-by-side case,
+and `web-browser`'s Chrome-process check, which races the reaping of the ones the cases before it killed.
+
+docs/spaces.md, docs/meet.md §5b, docs/mail.md §9b and docs/social.md §4 all rewritten.
+
+Next in docs/social.md's order: "@" mentions.
+
+## 20 Nov: THE NAME YOU GIVE SOMEONE, WHICH IS NOT THE NAME THEY ARE REACHED BY
+
+Second step of docs/social.md. A username reaches a person; this is what they are **called**, and it is per reader, the way a
+phone's contacts are: you add `@aanya-r` and you call her Mom. The same account is Mom to one person and Aanya to another, and
+neither can read the other's name for her.
+
+`person_names(owner_id, subject_id, name)` (migration 0111), `botsBots/personNames.ts`. `known(viewer)` reads every name a
+person gave in ONE go and `shownName(known, id, fallback)` applies it per row — deliberately the same shape as `looksKnown` /
+`shownLook`, so a list of twenty people costs one read, not twenty, and the two resolve side by side in the same loops.
+
+**It resolves OVER the name a row carries, never instead of it.** Every name already stored is still written exactly as before,
+and one of them is load-bearing: a deleted account takes its `thread_members` row with it, so a one-to-one chat reads its name
+back off `sender_name` (migration 0051). `subject_id` cascades, so a deleted account takes these names with it and that
+fallback takes over by itself — which is why `gone` handling needed no change and `spaces-gone.test.ts` passes untouched.
+
+Where it reaches: a space's members, `contacts` (both the people and the groups, so one screen never shows two names for one
+person), a one-to-one chat's own name (that name IS the other person), a thread's people, the name over every message, "To Mom"
+under one, and the chats list's last line.
+
+**That last one needed a column, and was a real bug waiting.** `threads.last_text` is stored as "Mom: Dinner at 8?" — the
+sender's name baked in when it was written — so the list would have shown a row titled "Amma" over a line still reading "Mom:".
+`threads.last_by` (0111) says whose the line is; the stored text is never rewritten, so an older build reads it exactly as
+before, and the server swaps the part before the first ": " for the reader's own name only when it has one.
+
+Checked against a real Postgres 16: 0111 runs clean twice, two people hold two different names for one subject, one name per
+pair, naming yourself is refused by the table as well as the route, an empty name cannot be stored, and deleting the subject
+takes the names with it.
+
+12,711 pass. The one failure is `launch-motion`'s side-by-side case, which has been failing on its own for a while and fails
+with this work stashed too. `web-browser`'s "Chrome is not even started for it" passed this run — it counts the machine's Chrome
+processes and races the reaping of the ones the cases before it killed, so it comes and goes; stashed, it failed two runs in
+three.
+
+Next in docs/social.md's order: no automatic admin access (with the meeting bot, the mail bot and `to_id`'s admin clause).
 
 ## 20 Nov: EVERY ACCOUNT HAS A USERNAME NOW, AND THE ABOUT YOU CARD ASKS FOR IT INSTEAD OF A NAME
 

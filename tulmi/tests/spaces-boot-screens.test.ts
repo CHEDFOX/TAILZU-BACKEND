@@ -122,14 +122,14 @@ describe("the new Spaces from the server's answers", () => {
       expect(v.texts, client).toContain("Home");
       expect(v.texts.some((t) => t.startsWith("Aanya") && t.includes("invited you")), client).toBe(true);
       const accept = actionsIn(v.s).find((a) => a.kind === "callEndpoint" && a.method === "PUT" && String(a.path) === `${AREA}/spaces/invitations/${inv.body.code}`);
-      expect(accept, client).toMatchObject({ body: { decision: "accept", consent: true } });
+      expect(accept, client).toMatchObject({ body: { decision: "accept" } });
       expect(await routesExist(f, v.s), client).toBeGreaterThan(0);
       // An older build: today's Spaces, nothing of the new blocks.
       const old = await draw(f, K_, "bots.spaces", client, { can: OLD });
       expect(has3i(old.nodes), client).toBe(false);
     }
     // Accept, as the screen sends it: she is in, and her Spaces lists Home.
-    const acc = await f.call("PUT", `${AREA}/spaces/invitations/${inv.body.code}`, K_, { decision: "accept", consent: true });
+    const acc = await f.call("PUT", `${AREA}/spaces/invitations/${inv.body.code}`, K_, { decision: "accept" });
     expect(acc.body).toMatchObject({ status: "joined", id: f.home, name: "Home" });
     const joined = await draw(f, K_, "bots.spaces", "phone");
     expect(joined.texts).toContain("Your spaces");
@@ -180,7 +180,7 @@ describe("the new Spaces from the server's answers", () => {
     }
   });
 
-  it("inside a space: \"To Rohan\" for the sender and the admin, a plain line for Rohan, nothing for Dev, the card for the unconsented", async () => {
+  it("inside a space: \"To Rohan\" for the sender only, a plain line for Rohan, and nothing of it for anyone else", async () => {
     const f = await family();
     const sent = await f.call("POST", `${AREA}/spaces/${f.home}/feed`, M_, { text: "Bring the reports", to: R_ });
     expect(sent.status).toBe(201);
@@ -193,8 +193,10 @@ describe("the new Spaces from the server's answers", () => {
       expect(mom.texts, client).toContain("Bring the reports");
       expect(mom.nodes.filter((n) => n.type === "MentionField"), client).toHaveLength(1);
       expect(!!mom.s.talkTo, `${client}: the one key only on the window`).toBe(client === "desktop");
+      // Aanya made Home, and a message sent to Rohan is not hers to read (docs/social.md §4).
       const admin = await draw(f, A_, "bots.spaces", client, { params });
-      expect(admin.texts, `${client}: the admin`).toContain("To Rohan");
+      expect(admin.texts, `${client}: who made it`).not.toContain("To Rohan");
+      expect(admin.texts, `${client}: who made it`).not.toContain("Bring the reports");
       const rohan = await draw(f, R_, "bots.spaces", client, { params });
       expect(rohan.texts, client).toContain("Bring the reports");
       expect(rohan.texts, `${client}: the recipient`).not.toContain("To Rohan");
@@ -203,9 +205,9 @@ describe("the new Spaces from the server's answers", () => {
       expect(open?.params, client).toMatchObject({ bot: "plan", space: f.home, owner: M_, item: f.doctor });
       const dev = await draw(f, D_, "bots.spaces", client, { params });
       expect(dev.texts, `${client}: Dev`).not.toContain("Bring the reports");
-      expect(dev.texts, client).toContain("The space's admin can see and share your work and messages here.");
-      expect(dev.nodes.filter((n) => n.type === "MentionField"), client).toHaveLength(0);
-      expect(dev.s.talkTo, client).toBeUndefined();
+      // Dev agreed to nothing and still gets the writing box: there is no card to show (docs/social.md §4).
+      expect(dev.texts, client).not.toContain("The space's admin can see and share your work and messages here.");
+      expect(dev.nodes.filter((n) => n.type === "MentionField"), client).toHaveLength(1);
       await routesExist(f, mom.s);
       // An older build reads the same space through today's screens.
       const old = await draw(f, M_, "bots.spaces", client, { params, can: OLD });

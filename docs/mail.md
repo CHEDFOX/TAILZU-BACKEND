@@ -274,11 +274,14 @@ the mail bot's own pushes.
 
 ## 9b. In a space
 
-The rules are Spaces' own (docs/spaces.md: the admin, and the line about the admin), asked through the meeting bot's `tulmi/src/meet/people.ts`:
-a member is someone in a space the other person is the admin of (not a draft), who agreed to the line as it is now, with no block between
-them. Nothing of this while Spaces is off: then each person reaches only their own businesses. `tulmi/src/mail/access.ts` decides, on every
-call, how the person reaches the business it names (theirs, a member's as their admin, or addresses given to them), and the call to the
-worker is then made inside the business owner's account, whoever asks. Anything else is the same 404 as a business that isn't there.
+**A business is its owner's, and the only way anyone else reaches any of it is the addresses its owner hands over**
+(docs/social.md §4). `tulmi/src/mail/access.ts` decides, on every call, how the person reaches the business it names — theirs
+(`own`), or addresses given to them (`handler`) — and the call to the worker is then made inside the business owner's account,
+whoever asks. Anything else is the same 404 as a business that isn't there.
+
+Who shares a space with whom comes from `tulmi/src/meet/people.ts`, which no longer filters by any line: it scopes a handler's
+grant to two people who still share a space, either way round. Nothing of this while Spaces is off: then each person reaches only
+their own businesses.
 
 - **An address given to a member.** One address's screen has **Who answers it**: a chip for each member of the owner's spaces; a tap gives
   the address to them, another takes it back (`POST` and `DELETE …/addresses/:aid/handlers`). The member is told, `space_mail_handle`
@@ -287,15 +290,14 @@ worker is then made inside the business owner's account, whoever asks. Anything 
   the conversations that involve them and the AI's drafts for them, and they write and answer only from those addresses. The settings, the
   records, the company personality, the rules and the other addresses stay the owner's. A push for mail that needs a person goes to the
   address's handlers too, never with a word of the mail. The address list says who answers each ("· Ravi answers it").
-- **A member's own business: their admin has all of it.** When a member sets up a business, each of their admins is told, `space_mail`
-  ("Ravi set up mail for leafandco.in."), and reaches it in full, read and write, as its owner does: the mailbox, the drafts, sending, the
-  settings, the records, the personality, the rules, and giving its addresses. On the admin's page it is a chip "Ravi · leafandco.in", with
-  the line "Ravi's business. As their space's admin you can see and change everything." Their own business opens first; a member's never
-  opens by itself.
-- **The lists.** The overview and the list of businesses carry the person's own, each member's (`access: "admin"`, with its `owner`) and
-  the ones they answer for (`access: "handler"`, only their addresses). What waits for a person counts all three (for a handler, only their
-  addresses'); the day in numbers is their own, so the page shows it only on their own business. `people` is who they can give an
-  address to.
+- **A member's own business: nobody else has any of it.** Whoever made the space used to reach it in full, read and write, as its
+  owner does — the mailbox, the drafts, sending, the settings, the records, the personality, the rules, and giving its addresses
+  away. That is gone (docs/social.md §4), with the `space_mail` push that announced it and the `access: "admin"` kind. Making a
+  space is not a way into anyone's mail; handing over an address is, and that is the owner's own act.
+- **The lists.** The overview and the list of businesses carry the person's own (`access: "own"`) and the ones they answer for
+  (`access: "handler"`, only their addresses) — never a member's. What waits for a person counts both (for a handler, only their
+  addresses'); the day in numbers is their own, so the page shows it only on their own business. `people` is still who they can
+  GIVE an address to, which is who shares a space with them, not a way into anything.
 - **Rows** (migration 0084): `mail_businesses`, whose each business is (kept when it is made, filled in for an older one whenever its
   owner's list is read; a business it hasn't heard of is the asker's own, and the worker says no if it isn't), and `mail_handlers`, an
   address its owner gave a member. A row does nothing while that person is not a member (they left, a block, Spaces off) and works again

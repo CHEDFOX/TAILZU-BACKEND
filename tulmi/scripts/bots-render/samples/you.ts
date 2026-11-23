@@ -89,6 +89,22 @@ const app = {
   can: ["Read your events and free time", "Add or move events, asking you first"], cant: ["Share your calendar", "Change anything you didn't allow"],
 };
 
+/** An app whose sign-in is a link the person pastes, made on the vendor's own site (catalog.ts linkHelp). */
+const linkApp = {
+  app: {
+    id: "zapier", name: "Zapier", category: "Automation",
+    oneLine: "Reach thousands of apps (email, calendar, Slack, sheets and more) through the actions set up in Zapier.",
+    auth: "url", provider: null, connected: false, level: "look", lastUsedAt: null,
+    linkHelp: {
+      how: "Sign in at mcp.zapier.com, make a server, and copy the link it gives you. It works like a password, so paste it here and nowhere else.",
+      at: "https://mcp.zapier.com",
+    },
+  },
+  // No bots: this sample is about the words under the link box, and a bot here would send the screen asking for its share.
+  bots: [],
+  can: ["Run the actions you set up in Zapier"], cant: ["Anything you have not set up there"],
+};
+
 export const YOU_API: Record<string, unknown> = {
   ...SPACE_API,
   [`GET /v1/you?tz=${IST}`]: you,
@@ -101,6 +117,7 @@ export const YOU_API: Record<string, unknown> = {
   // The window's Settings card lists every app (screens/you/settingsCard.ts).
   "GET /v1/you/apps?all=1": apps,
   "GET /v1/you/apps/google-calendar": app,
+  "GET /v1/you/apps/zapier": linkApp,
   // Terminal sign-ins (screens/you/devicesPage.ts): Xode in two terminals.
   "GET /v1/auth/devices": {
     devices: [

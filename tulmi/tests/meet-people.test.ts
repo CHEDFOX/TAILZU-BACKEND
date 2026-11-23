@@ -1,5 +1,8 @@
 /**
- * THE MEETING BOT IN SPACES: WHOSE MEETINGS A SPACE'S ADMIN SEES (meet/people.ts): only members who agreed to the line about the admin as it
+ * WHO SHARES A SPACE WITH WHOM (meet/people.ts). It used to be "whose meetings a space's admin sees", filtered by the line members
+ * agreed to; the admin has no automatic sight of anything now (docs/social.md §4), so this is plain space membership and the
+ * consent column is not read. Kept because the mail bot scopes a grant its OWNER made by it (mail/access.ts "handler"). The
+ * `consent` each member is written with below is left in on purpose: nothing may read it, and these cases prove it does not. It was
  * is now, never in a draft, never with a block between them either way, each member once across the admin's spaces (the first), with the
  * names the space has; the other way round, the admins who see a member's meetings, each once; and nobody at all while Spaces is off.
  */
@@ -64,11 +67,14 @@ const HOME: SpaceDef = {
 };
 
 describe("the members a space's admin sees", () => {
-  it("are those who agreed to the line about the admin as it is now, with the space's names", async () => {
+  it("are everyone in the space, with the space's names, whatever anyone ever agreed to", async () => {
     const people = spacePeople({ spaces: fakeSpaces([HOME]), blocks: fakeBlocks([]) });
+    // New Person agreed to nothing and Old Line agreed to the line before: both are here, because nothing reads consent now.
     expect(await people.membersOf(AANYA)).toEqual([
       { userId: RAVI, name: "Ravi Kumar", spaceId: "s-home" },
       { userId: MOM, name: "Mom", spaceId: "s-home" },
+      { userId: NEW, name: "New Person", spaceId: "s-home" },
+      { userId: OLD, name: "Old Line", spaceId: "s-home" },
     ]);
     // A member is nobody's admin there.
     expect(await people.membersOf(RAVI)).toEqual([]);
@@ -77,7 +83,7 @@ describe("the members a space's admin sees", () => {
   it("leave out a draft, and anyone with a block between them, whoever made it", async () => {
     const draft: SpaceDef = { id: "s-draft", owner: SAM, name: "", draft: true, members: [{ id: SAM, name: "Sam" }, { id: RAVI, name: "Ravi", consent: 2 }] };
     const people = spacePeople({ spaces: fakeSpaces([HOME, draft]), blocks: fakeBlocks([[MOM, AANYA]]) });
-    expect((await people.membersOf(AANYA)).map((p) => p.userId)).toEqual([RAVI]);
+    expect((await people.membersOf(AANYA)).map((p) => p.userId)).toEqual([RAVI, NEW, OLD]);
     expect(await people.membersOf(SAM)).toEqual([]);
   });
 
@@ -87,13 +93,15 @@ describe("the members a space's admin sees", () => {
     expect(await people.membersOf(AANYA)).toEqual([
       { userId: RAVI, name: "Ravi Kumar", spaceId: "s-home" },
       { userId: MOM, name: "Mom", spaceId: "s-home" },
+      { userId: NEW, name: "New Person", spaceId: "s-home" },
+      { userId: OLD, name: "Old Line", spaceId: "s-home" },
       { userId: SAM, name: "Sam", spaceId: "s-work" },
     ]);
   });
 });
 
 describe("the admins who see a member's meetings", () => {
-  it("are the admins of their spaces, once each, when they agreed to the line and there is no block", async () => {
+  it("are whoever made each of their spaces, once each, with no block between them", async () => {
     const work: SpaceDef = { id: "s-work", owner: SAM, name: "Work", members: [{ id: SAM, name: "Sam Lee" }, { id: RAVI, name: "Ravi K.", consent: 2 }] };
     const again: SpaceDef = { id: "s-again", owner: AANYA, name: "Again", members: [{ id: AANYA, name: "Aanya" }, { id: RAVI, name: "Ravi again", consent: 2 }] };
     const people = spacePeople({ spaces: fakeSpaces([HOME, work, again]), blocks: fakeBlocks([]) });
@@ -101,9 +109,9 @@ describe("the admins who see a member's meetings", () => {
       { userId: AANYA, name: "Aanya Sharma", spaceId: "s-home", memberName: "Ravi Kumar" },
       { userId: SAM, name: "Sam Lee", spaceId: "s-work", memberName: "Ravi K." },
     ]);
-    // The line not agreed to as it is now (or at all): no admin sees their meetings.
-    expect(await people.adminsOf(OLD)).toEqual([]);
-    expect(await people.adminsOf(NEW)).toEqual([]);
+    // Having agreed to nothing makes no difference: it is membership, not a grant.
+    expect((await people.adminsOf(OLD)).map((a) => a.userId)).toEqual([AANYA]);
+    expect((await people.adminsOf(NEW)).map((a) => a.userId)).toEqual([AANYA]);
     // Their own space's admin is themself: nobody.
     expect(await people.adminsOf(AANYA)).toEqual([]);
 
@@ -121,7 +129,7 @@ describe("while Spaces is off", () => {
     expect(await people.adminsOf(RAVI)).toEqual([]);
     vi.stubEnv("SPACES_ENABLED", "true");
     resetConfigForTests();
-    expect(await people.membersOf(AANYA)).toHaveLength(2);
+    expect(await people.membersOf(AANYA)).toHaveLength(4);
   });
 
   it("and with no Spaces at all, nobody", async () => {

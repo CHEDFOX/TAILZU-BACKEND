@@ -51,7 +51,8 @@ export function registerWorkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
   const q = (req: FastifyRequest): Record<string, unknown> => (req.query as Record<string, unknown> | undefined) ?? {};
 
   app.get(`${AREA}/work/:bot`, RL, run(async (user, req) => work.read(user.id, param(req, "bot"))));
-  app.get(`${AREA}/work/:bot/mine`, RL, run(async (user, req) => work.mine(user.id, param(req, "bot"), { space: str(q(req).space), tz: q(req).tz })));
+  // `space` and `tz` are still sent by builds in the wild (they asked for the admin's list of every member's things) and ignored.
+  app.get(`${AREA}/work/:bot/mine`, RL, run(async (user, req) => work.mine(user.id, param(req, "bot"))));
   app.get(`${AREA}/work/:bot/person`, RL, run(async (user, req) => work.person(user.id, param(req, "bot"), str(q(req).space), str(q(req).owner))));
   app.get(`${AREA}/work/:bot/item`, RL, run(async (user, req) => {
     const o = q(req);

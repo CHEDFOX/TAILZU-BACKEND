@@ -335,6 +335,8 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
         app: {
           id: def.id, name: def.name, category: def.category, oneLine: def.oneLine, auth: def.auth === "url" ? "url" : "oauth", provider: def.provider ?? null,
           connected: !!conn?.tokensEnc, level: conn?.level ?? "look", lastUsedAt: conn?.lastUsedAt ?? null,
+          // Where the link it asks to be pasted is made (catalog.ts linkHelp): only for an app that asks for one.
+          ...(def.auth === "url" && def.linkHelp ? { linkHelp: def.linkHelp } : {}),
         },
         bots, can: words.can, cant: words.cant,
       });

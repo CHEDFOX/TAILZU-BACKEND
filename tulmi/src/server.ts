@@ -102,7 +102,7 @@ import { registerCinemaRoutes } from "./routes/bots/cinema.js";
 import { buildCinemaService } from "./cinema/index.js";
 import { buildSceneService } from "./cinema/scene/service.js";
 import { cinemaOn } from "./bots/builtin.js";
-import { meetService, setMeetPeople } from "./meet/service.js";
+import { meetService } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
 import { botsAreaParts, type BotsAreaParts } from "./botsBots/index.js";
@@ -651,7 +651,6 @@ registerMeetRoutes(app, {
 });
 // In a space, its admin sees the meetings of the members who agreed to the line about the admin, is told when they take the bot to one,
 // and may send it to theirs (meet/people.ts; nobody while Spaces is off).
-setMeetPeople(spacesPeople);
 if (connectors && meetService()) {
   const stopAutoJoin = startAutoJoin({
     store: meetStore(),

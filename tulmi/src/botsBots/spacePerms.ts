@@ -6,10 +6,17 @@
  *   PERMS, PERM_WORDS         every permission, and how each reads (the old builds' screens still show them)
  *   MEMBER_PERMS, ADMIN_ONLY  what every member may do; what only the admin may do on top
  *   pickedIds(v)              a clean list of people picked, from anything a screen sends
- *   ADMIN_LINE, hasConsent    the line about the admin every member agrees to, and whether they agreed to it as it is now
- *   lineShown(v)              which line a screen showed when its yes was tapped (the version it sends with it)
  *
  * The server checks every permission; screens only hide what won't work.
+ *
+ * THE ADMIN HAS NO AUTOMATIC SIGHT OF ANYONE'S THINGS, and never had any business having it. What the admin may do is in
+ * ADMIN_ONLY and it is all about the space itself — who is in it, what it is called, whether it exists — never about what a
+ * member keeps in their own bots. Nothing is shared out of someone's account unless they shared it (docs/social.md §4).
+ *
+ * So the line members used to agree to ("The space's admin can see and share your work and messages here.") is gone, with the
+ * CONSENT_VERSION it was versioned by and the hasConsent that read it. `space_members.consent_ms` and `consent_v` stay in the
+ * database and nothing reads them, as the old perms columns and space_roles do, so this can be rolled back. The routes still
+ * take a `consent` and a `consentV` from builds that send them, and ignore both.
  */
 
 export const PERMS = ["invite", "remove", "manage", "share", "bots", "addBots", "tasks", "plan", "approve", "askPay", "message", "groups", "activity", "rename"] as const;
@@ -42,24 +49,3 @@ export function pickedIds(v: unknown): string[] {
   if (v && typeof v === "object") return Object.entries(v as Record<string, unknown>).filter(([, on]) => on === true).map(([k]) => k);
   return [];
 }
-
-/**
- * The line every member agrees to before they write in a space (the feed's card, the invitation, the invite mail). Version 2 added
- * "and share": the admin may share any member's thing with someone there (spaceFeed.ts). Someone who agreed to version 1 is asked
- * once more; until then the admin sees only what they share, as before they agreed at all.
- */
-export const CONSENT_VERSION = 2;
-export const ADMIN_LINE = "The space's admin can see and share your work and messages here.";
-/** The same line, said of a space the person isn't in yet (an invitation, the invite mail). */
-export const ADMIN_LINE_THERE = "The space's admin can see and share your work and messages there.";
-/** Which line about the admin a member (or a request to join) agreed to: 0 none, 1 the one before ("can see"), or CONSENT_VERSION. */
-export const agreedTo = (m: { consent_ms?: number | null; consent_v?: number | null }): number =>
-  m.consent_ms !== null && m.consent_ms !== undefined ? Math.max(1, Number(m.consent_v ?? 1) || 1) : 0;
-/** Whether a member (or a request to join) agreed to the line about the admin as it is now. */
-export const hasConsent = (m: { consent_ms?: number | null; consent_v?: number | null }): boolean => agreedTo(m) >= CONSENT_VERSION;
-/**
- * Which line a screen showed when its yes was tapped, from the `consentV` it sends with it (start.ts Accept and Join, the feed's OK).
- * A screen drawn before the line changed (still open, or kept by the app) sends none: its yes is to the line before, so they are
- * asked once more.
- */
-export const lineShown = (v: unknown): number => (Number(v) >= CONSENT_VERSION ? CONSENT_VERSION : 1);

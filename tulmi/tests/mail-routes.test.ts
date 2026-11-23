@@ -553,55 +553,51 @@ describe("in a space: a member who answers an address", () => {
   });
 });
 
-describe("in a space: the admin", () => {
-  it("reaches a member's business whole, as the owner, every call inside the member's account", async () => {
+describe("in a space: whoever made it", () => {
+  it("reaches NONE of a member's business, through any of its paths: making a space is not a way in", async () => {
+    // It used to be the whole thing, read and write, inside the member's account, under the line members agreed to. That line
+    // is gone and so is this (docs/social.md §4).
     const { call, calls } = await spaceApp();
-    const b = (await call(AANYA, "GET", L)).json().business as View;
-    expect(b).toMatchObject({ access: "admin", owner: { id: RAVI, name: "Ravi Kumar" }, mailApp: LEAF.mailApp });
-    expect(b.addresses.map((a) => [a.email, a.handledBy])).toEqual([
-      ["hello@leafandco.in", []], ["support@leafandco.in", [{ id: SAM, name: "Sam Lee" }]], ["billing@leafandco.in", []],
-    ]);
+    expect((await call(AANYA, "GET", L)).statusCode).toBe(404);
     for (const [method, path, body] of [
       ["GET", "/dns"], ["PUT", "/brief", { about: "Bags." }], ["GET", "/folders"], ["GET", "/messages?folder=inbox"], ["GET", "/threads/t-bil"],
       ["POST", "/send", { from: "hello@leafandco.in", to: "a@b.in", text: "Hi", tid: "t-bil" }], ["POST", "/rules", { field: "from", value: "x", action: "star" }],
       ["POST", "/mail-app-password", { password: "a-long-password-1" }], ["GET", "/replies/8"], ["POST", "/replies/8/send"],
+      ["DELETE", "/addresses/3"], ["DELETE", ""],
     ] as Array<[string, string, unknown?]>) {
-      expect((await call(AANYA, method, `${L}${path}`, body)).statusCode, `${method} ${path}`).toBe(200);
+      expect((await call(AANYA, method, `${L}${path}`, body)).statusCode, `${method} ${path}`).not.toBe(200);
     }
-    expect(calls.every((c) => c.owner === ownerOf(RAVI))).toBe(true);
-    // The owner's paths, no look first: the conversation is opened (and marked read) as the owner opens it.
-    expect(calls.map((c) => c.path)).toContain(`${L}/threads/t-bil`);
-    expect(calls.find((c) => c.path === `${L}/send`)?.body).toEqual({ from: "hello@leafandco.in", to: "a@b.in", text: "Hi" });
+    // And not one call was made inside the member's account.
+    expect(calls.some((c) => c.owner === ownerOf(RAVI))).toBe(false);
   });
 
-  it("removing an address or the business takes who answers it with it", async () => {
+  it("the owner removing an address still takes who answers it with it", async () => {
     const { call, handlers, businesses } = await spaceApp();
     await handlers.give({ businessId: "leaf-co", ownerId: RAVI, addressId: 3, addressEmail: "billing@leafandco.in", memberId: SAM });
-    const r = await call(AANYA, "DELETE", `${L}/addresses/3`);
+    const r = await call(RAVI, "DELETE", `${L}/addresses/3`);
     expect(r.json().business.addresses.map((a: { id: number }) => a.id)).toEqual([1, 2]);
     expect((await handlers.ofMember(SAM)).map((h) => h.addressId)).toEqual([2]);
-    expect((await call(AANYA, "DELETE", L)).json()).toEqual({ ok: true });
+    expect((await call(RAVI, "DELETE", L)).json()).toEqual({ ok: true });
     expect(await handlers.ofMember(SAM)).toEqual([]);
     expect(await businesses.whose("leaf-co")).toBeNull();
   });
 });
 
 describe("in a space: the lists", () => {
-  it("an admin's: their own, then each member's whole (whose it is, who answers each address), what waits across them, the people they look after", async () => {
+  it("whoever made the space: their OWN businesses alone, and no call made inside a member's account", async () => {
     const { call, calls } = await spaceApp();
     const o = (await call(AANYA, "GET", "/overview")).json();
-    expect(o.businesses.map((b: View) => [b.id, b.access, b.owner ?? null])).toEqual([
-      ["chai-co", "own", null], ["leaf-co", "admin", { id: RAVI, name: "Ravi Kumar" }], ["solo-co", "admin", { id: RAVI, name: "Ravi Kumar" }],
-    ]);
-    expect(o.businesses[1].addresses.find((a: { id: number }) => a.id === 2).handledBy).toEqual([{ id: SAM, name: "Sam Lee" }]);
+    // It used to list every member's whole business here (docs/social.md §4).
+    expect(o.businesses.map((b: View) => [b.id, b.access, b.owner ?? null])).toEqual([["chai-co", "own", null]]);
     expect(o.businesses[0].addresses[0].handledBy).toEqual([]);
-    // A person's answer first, then drafts (urgent first), then what is about to go.
-    expect(o.waiting.map((r: { id: number }) => r.id)).toEqual([7, 41, 8, 9]);
-    expect(o.today).toEqual(today(2));
+    // Only their own mail needs a person: nothing of anyone else's is counted in.
+    expect(o.waiting.map((r: { id: number }) => r.id)).toEqual([41]);
+    // The people they could HAND an address to is still theirs to see: it is who shares a space, not a way into anything.
     expect(o.people).toEqual([{ id: RAVI, name: "Ravi Kumar" }]);
-    expect(calls.map((c) => [c.owner, c.path])).toEqual([[ownerOf(AANYA), "/overview"], [ownerOf(RAVI), "/overview"]]);
-    expect((await call(AANYA, "GET", "/businesses")).json().businesses.map((b: View) => [b.id, b.access])).toEqual([["chai-co", "own"], ["leaf-co", "admin"], ["solo-co", "admin"]]);
+    expect(calls.map((c) => [c.owner, c.path])).toEqual([[ownerOf(AANYA), "/overview"]]);
+    expect((await call(AANYA, "GET", "/businesses")).json().businesses.map((b: View) => [b.id, b.access])).toEqual([["chai-co", "own"]]);
   });
+
 
   it("a member's who answers an address: that business with only it, and only what came to it", async () => {
     const { call, calls } = await spaceApp();
@@ -628,13 +624,14 @@ describe("in a space: the lists", () => {
     expect(await businesses.whose("solo-co")).toBe(RAVI);
   });
 
-  it("an older business reaches the admin once its owner's list is read", async () => {
+  it("a member's business never reaches whoever made the space, read or unread by the registry", async () => {
     const { call, businesses } = await spaceApp();
     await businesses.forget("leaf-co");
-    // Unknown: the admin's own, which it isn't, so the worker says no.
+    // Unknown: treated as the asker's own, which it isn't, so the worker says no.
     expect((await call(AANYA, "GET", L)).json()).toEqual({ code: "bad_request", message: "No such business." });
     await call(RAVI, "GET", "/businesses");
-    expect((await call(AANYA, "GET", L)).json().business.access).toBe("admin");
+    // And known: still nobody's but its owner's and whoever they handed addresses to.
+    expect((await call(AANYA, "GET", L)).statusCode).toBe(404);
   });
 });
 
@@ -670,20 +667,15 @@ describe("in a space: who answers an address", () => {
     expect(pushes).toEqual([]);
   });
 
-  it("the owner's admin may give and take it too, inside the owner's account; the member is told who gave it", async () => {
-    const { call, calls, pushes, handlers } = await spaceApp({ give: false });
-    const r = await call(AANYA, "POST", `${L}/addresses/3/handlers`, { memberId: NEW });
-    expect(r.json().business).toMatchObject({ access: "admin", owner: { id: RAVI, name: "Ravi Kumar" } });
-    expect(r.json().business.addresses.find((a: { id: number }) => a.id === 3).handledBy).toEqual([{ id: NEW, name: "New One" }]);
-    // Aanya is not New's admin, so the push says her own first name.
-    expect(pushes).toEqual([{ userId: NEW, kind: "space_mail_handle", key: "leaf-co:3:2026-11-12", vars: { name: "Aanya", address: "billing@leafandco.in" }, data: { slug: "mail", b: "leaf-co" } }]);
-    expect(await handlers.ofMember(NEW)).toEqual([{ businessId: "leaf-co", ownerId: RAVI, addressId: 3, addressEmail: "billing@leafandco.in", memberId: NEW }]);
-    // A member of Aanya's own spaces is not Ravi's to give it to.
-    expect((await call(AANYA, "POST", `${L}/addresses/3/handlers`, { memberId: RAVI })).json().code).toBe("not_your_person");
-    expect((await call(AANYA, "DELETE", `${L}/addresses/3/handlers/${NEW}`)).statusCode).toBe(200);
+  it("whoever made the space may NOT give or take an address on a member's business", async () => {
+    // Handing an address over is the business owner's own act (docs/social.md §4).
+    const { call, calls, handlers } = await spaceApp({ give: false });
+    expect((await call(AANYA, "POST", `${L}/addresses/3/handlers`, { memberId: NEW })).statusCode).not.toBe(200);
     expect(await handlers.ofMember(NEW)).toEqual([]);
-    expect(calls.every((c) => c.owner === ownerOf(RAVI))).toBe(true);
+    expect((await call(AANYA, "DELETE", `${L}/addresses/3/handlers/${NEW}`)).statusCode).not.toBe(200);
+    expect(calls.some((c) => c.owner === ownerOf(RAVI))).toBe(false);
   });
+
 });
 
 describe("in a space: the pushes", () => {

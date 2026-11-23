@@ -94,6 +94,13 @@ export interface ConnectorDef {
   notes?: string;
   /** The official docs page the facts above were read from. */
   docs?: string;
+  /**
+   * "url" auth only: where the person gets the link they paste, in words, and the page that makes it. Without this the box
+   * says only "Paste the link from the app", which nobody can act on — the link is made on the vendor's own site, in a place
+   * the app cannot send them to automatically (that is the whole reason this auth exists). The screens show both under the
+   * box (experience/bots/screens/you.ts appConnectBody).
+   */
+  linkHelp?: { how: string; at: string };
   /** Set only on an app a person added by link: whose it is and how it signs in. */
   custom?: CustomApp;
 }
@@ -158,6 +165,10 @@ export const CATALOG: readonly ConnectorDef[] = [
     aliases: ["zapier", "email", "gmail", "calendar", "slack", "sheet", "sheets", "spreadsheet", "meeting", "schedule"],
     url: "https://mcp.zapier.com/api/v1/connect", auth: "url", verified: true,
     docs: "https://docs.zapier.com/mcp/overview/how-connections-work",
+    linkHelp: {
+      how: "Sign in at mcp.zapier.com, make a server, and copy the link it gives you. It works like a password, so paste it here and nowhere else.",
+      at: "https://mcp.zapier.com",
+    },
     notes: "Streamable HTTP only, no SSE. Sign-in is OAuth through the MCP client, or a connection token made at mcp.zapier.com and sent as Authorization: Bearer or as ?token= on the URL; the person pastes that URL here. The docs do not say whether dynamic client registration is supported, and this entry does not use it. The docs prefer the header to a URL token, so a pasted ?token= is sent as Authorization: Bearer (client.ts); the link is stored as pasted.",
   },
   {

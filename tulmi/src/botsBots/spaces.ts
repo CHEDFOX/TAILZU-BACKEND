@@ -12,7 +12,7 @@
  *   invite(user, space, { email? })    an old build's invite: by email, or (no email) the space's code and its link
  *   codeFor / newCode                  the space's one code (made the first time it is asked for); the admin can make a new one
  *   addMember(space, user, name, o)    the one place a member row is written (spaceJoin.ts lets people in through it)
- *   setConsent / consented             the member agreed to ADMIN_LINE (spacePerms.ts: "The space's admin can see and share your
+ *   (there is no consent any more: the admin has no automatic sight of anyone's things, docs/social.md §4. What used to be
  *                                      work and messages here."); one who agreed to the line before it is asked once more
  *   addBot / removeBot, rename, leave (or the admin removes someone), activity
  *   access(user, space) / need(user, space, perm)   who may do what: the other modules' one question
@@ -28,9 +28,10 @@ import { screenPost } from "./filter.js";
 import { inviteMail, inviteSender, type InviteMailOut } from "./inviteMail.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { shownLook, looksIn, type PersonLook } from "./personLook.js";
+import { PersonNames, shownName } from "./personNames.js";
 import { table, type Table } from "./rows.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
-import { ADMIN_LINE_THERE, ADMIN_ONLY, CONSENT_VERSION, hasConsent, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
+import { ADMIN_ONLY, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
 import { SHARE_BOTS } from "./spaceShares.js";
 
 export interface SpaceRow {
@@ -48,8 +49,12 @@ export interface MemberRow {
   perms?: string[];
   role?: string | null;
   /** When they agreed to the line about the admin. Null: not yet, so the admin sees only what they share. */
+  /**
+   * When they agreed to the line about the admin, and which line it was (migration 0069). NOTHING READS EITHER ANY MORE: the
+   * admin has no automatic sight of anyone's things, so there is no line to agree to (docs/social.md §4). They stay on the rows
+   * for a rollback, as the old perms columns and space_roles do.
+   */
   consent_ms?: number | null;
-  /** Which line that was (migration 0069): CONSENT_VERSION is ADMIN_LINE; null or 1 the one before it, which said "can see" only. */
   consent_v?: number | null;
 }
 export interface SpaceBotRow { [k: string]: unknown; space_id: string; slug: string; name: string; colour: string; added_by: string; added_ms: number }
@@ -154,6 +159,8 @@ function cant(perm: Perm, space: string): BotError {
 }
 
 export interface SpaceOpts {
+  /** The names the viewer gave people (personNames.ts); one is made if none is handed in. */
+  names?: PersonNames;
   publish?: Publish;
   outbox?: MailOutbox;
   mailer?: Mailer;
@@ -176,6 +183,8 @@ export class Spaces {
   readonly mailer: Mailer;
   private readonly origin: () => string;
   private readonly listeners: Array<(e: MemberEvent) => Promise<void>> = [];
+  /** What the viewer calls each member (personNames.ts): over the name their member row carries, never instead of it. */
+  private readonly names: PersonNames;
   private lastNote = 0;
 
   constructor(private readonly bots: Bots | null, private readonly now: () => number = Date.now, o: SpaceOpts = {}) {
@@ -189,6 +198,7 @@ export class Spaces {
     this.mailer = o.mailer ?? mailerFromEnv();
     // The host the apps claim for their links: the invite opens X0 Bot at joining (a browser gets a page that opens it).
     this.origin = o.origin ?? (() => INVITE_ORIGIN);
+    this.names = o.names ?? new PersonNames({ now });
   }
 
   /** Someone joined, left or was removed, or the space went: the chats follow (threads.ts). */
@@ -278,6 +288,7 @@ export class Spaces {
   private async view(userId: string, a: Access): Promise<SpaceView> {
     const { s } = a;
     const people = await this.members.select({ space_id: s.id }, { order: "joined_ms", limit: MEMBERS_MAX });
+    const mine = await this.names.known(userId);
     const bots = await this.shared.select({ space_id: s.id }, { order: "added_ms", limit: SPACE_BOTS_MAX });
     // Looks from every member, oldest first, before anyone is hidden from this viewer: Mom is the same bot to everyone in it.
     const looks = looksIn(people.map((p) => p.user_id));
@@ -286,7 +297,7 @@ export class Spaces {
       members: people.map((p) => {
         const admin = p.user_id === s.owner_id;
         return {
-          userId: p.user_id, name: p.name, you: p.user_id === userId, maker: admin, canApprove: true,
+          userId: p.user_id, name: shownName(mine, p.user_id, p.name), you: p.user_id === userId, maker: admin, canApprove: true,
           joinedAt: Number(p.joined_ms) || 0, perms: this.permsOfRow(p, s), role: admin ? "admin" : null, roleName: admin ? "Admin" : "Member",
           bot: shownLook(looks, p.user_id, userId),
         };
@@ -442,7 +453,7 @@ export class Spaces {
     const from = who || "Someone";
     const mail = inviteMail({
       from, space: "their space", email: "their email", joinCode: "the space's code",
-      link: `${this.origin()}/s/${JOIN_SCREEN}`, adminLine: ADMIN_LINE_THERE,
+      link: `${this.origin()}/s/${JOIN_SCREEN}`,
     });
     return { sender: inviteSender(getConfig().MAIL_FROM, from), ...mail };
   }
@@ -450,7 +461,7 @@ export class Spaces {
   private async mailPreview(spaceId: string, who: string, space: string): Promise<InviteMailOut> {
     const joinCode = await this.codeFor(spaceId);
     const from = who || "Someone";
-    const mail = inviteMail({ from, space, email: "their email", joinCode: showCode(joinCode), link: this.linkOf(joinCode), adminLine: ADMIN_LINE_THERE });
+    const mail = inviteMail({ from, space, email: "their email", joinCode: showCode(joinCode), link: this.linkOf(joinCode) });
     return { sender: inviteSender(getConfig().MAIL_FROM, from), ...mail };
   }
 
@@ -583,7 +594,7 @@ export class Spaces {
     const space = a.s.named === false ? "their space" : a.s.name;
     // The same pure function the Invite screens show the sender before they send (inviteMail.ts): one set of words, so the
     // preview App Review 5.1.2(v) asks for cannot drift from the mail that really goes.
-    const mail = inviteMail({ from, space, email, joinCode: showCode(joinCode), link: this.linkOf(joinCode), adminLine: ADMIN_LINE_THERE });
+    const mail = inviteMail({ from, space, email, joinCode: showCode(joinCode), link: this.linkOf(joinCode) });
     await this.outbox.queue({ to: email, kind: "space_invite", ref: code, by: user.id, subject: mail.subject, text: mail.text });
     await this.note(spaceId, user.id, "invited", `${from} invited ${maskEmail(email)}`);
     await this.changed(spaceId);
@@ -657,17 +668,17 @@ export class Spaces {
   // ------------------------------------------------------------------ members
 
   /**
-   * The one place a member row is written: the caps, the members' set, which line about the admin they agreed to (`consent`: 0 none,
-   * else its version, spacePerms.ts), the "joined" line, and everyone told (the chats follow; whoever's invite it was hears who came
-   * in). spaceJoin.ts calls it.
+   * The one place a member row is written: the caps, the members' set, the "joined" line, and everyone told (the chats follow;
+   * whoever's invite it was hears who came in). spaceJoin.ts calls it. The consent columns are left null: nothing reads them
+   * (docs/social.md §4).
    */
-  async addMember(s: SpaceRow, user: { id: string }, name: string, o: { consent: number; invitedBy?: string }): Promise<void> {
+  async addMember(s: SpaceRow, user: { id: string }, name: string, o: { invitedBy?: string } = {}): Promise<void> {
     if (await this.isMember(s.id, user.id)) return;
     await this.roomFor(s, user.id);
     const who = clean(name, 40) || "Someone";
     const at = this.now();
     await this.members.insert({ space_id: s.id, user_id: user.id, name: who, can_approve: true, joined_ms: at, perms: [...MEMBER_PERMS], role: null,
-      consent_ms: o.consent > 0 ? at : null, consent_v: o.consent > 0 ? Math.min(o.consent, CONSENT_VERSION) : null });
+      consent_ms: null, consent_v: null });
     await this.note(s.id, user.id, "joined", `${who} joined`);
     await this.emit({ spaceId: s.id, joined: { userId: user.id, name: who, ...(o.invitedBy ? { invitedBy: o.invitedBy } : {}), spaceName: s.name } });
     await this.changed(s.id);
@@ -677,27 +688,6 @@ export class Spaces {
   async roomFor(s: SpaceRow, userId: string): Promise<void> {
     if ((await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX + 1 })).length >= MEMBERS_MAX) throw new BotError("space_full", `A space can have ${MEMBERS_MAX} people.`, 409);
     await this.roomForOneMore(userId);
-  }
-
-  /**
-   * The member tapped OK on the line about the admin; `shown` is which line their screen showed (spacePerms.ts lineShown). Once is
-   * enough while the line stays the same; one who agreed to the line before it agrees to this one now. A yes from a screen that still
-   * showed the line before counts as that line's, so the feed asks once more. The admin never needs it.
-   */
-  async setConsent(userId: string, spaceId: string, shown: number = CONSENT_VERSION): Promise<void> {
-    const a = await this.access(userId, spaceId);
-    if (a.admin || hasConsent(a.me)) return;
-    await this.members.update({ space_id: spaceId, user_id: userId }, { consent_ms: this.now(), consent_v: Math.max(1, Math.min(shown, CONSENT_VERSION)) });
-    await this.changed(spaceId);
-  }
-
-  /** Whether they agreed to the line about the admin as it is now (the admin: always). */
-  async consented(spaceId: string, userId: string): Promise<boolean> {
-    const s = await this.spaceRow(spaceId);
-    if (!s) return false;
-    if (s.owner_id === userId) return true;
-    const [m] = await this.members.select({ space_id: spaceId, user_id: userId }, { limit: 1 });
-    return !!m && hasConsent(m);
   }
 
   // ------------------------------------------------------------------ bots

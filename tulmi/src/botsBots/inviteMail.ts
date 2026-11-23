@@ -27,8 +27,6 @@ export interface InviteMailIn {
   joinCode: string;
   /** Where to get X0 Bot, with the code in it. */
   link: string;
-  /** The one line every member agrees to, so the invite says it before anyone joins (spacePerms.ts ADMIN_LINE_THERE). */
-  adminLine: string;
 }
 
 export interface InviteMailOut {
@@ -53,7 +51,6 @@ export function inviteMail(o: InviteMailIn): Omit<InviteMailOut, "sender"> {
       `${o.from} invited you to ${o.space} on X0 Bot.`,
       `Sign in to X0 Bot with this email (${o.email}) and the invite is waiting: open Spaces, tap your bot, and tap Accept.`,
       `Signing in with another email? Open Spaces, tap your bot, and type this code: ${o.joinCode}. ${o.from} will let you in.`,
-      o.adminLine,
       `Get X0 Bot: ${o.link}`,
       "If you weren't expecting this, you can ignore it.",
     ].join("\n\n"),

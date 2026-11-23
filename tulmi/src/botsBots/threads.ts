@@ -18,8 +18,13 @@
  * other's messages in a group or a space's chat (nor counts them unread, nor is pinged for them), and neither is offered the other
  * to message or to add to a group.
  *
- * A MESSAGE TO ONE PERSON (a space's feed, spaceFeed.ts: to_id): only its sender, that person and the space's admin see it. Every
- * reader here applies that one rule (sees()): a page, the widget's words, a report, a file, unread counts, pushes and live events.
+ * A MESSAGE TO ONE PERSON (to_id): only its sender and that person see it. Every reader here applies that one rule (sees()): a
+ * page, the widget's words, a report, a file, unread counts, pushes and live events.
+ *
+ * THE SPACE'S ADMIN USED TO SEE THESE TOO, under the line members agreed to; that line is gone and so is the clause
+ * (docs/social.md §4). Narrowing never leaks anything, so no old message changes hands — the admin simply stops seeing ones it
+ * was never party to. THE RULE ITSELF MUST KEEP BEING APPLIED whatever happens to "@": these messages were sent privately, and
+ * nothing new writing to_id is not the same as nobody having written it.
  * A chat's last line (last_text, and last_public_ms, the time lists show) is only ever a message to everyone, so a message to one
  * person never moves anyone else's chat or line.
  *
@@ -29,9 +34,9 @@
  * beside it, and nothing about them opens: no page, no mention, no profile (App Review: nothing claims an account was deleted when
  * it was not, which is why one word covers both). Their look goes neutral too (personLook.ts goneLook).
  *
- * A MEMBER'S THING THE ADMIN SHARED (spaceFeed.ts, grants.ts: a grant card whose owner isn't its sender): its owner is not told, so
- * sees() never shows them its card (nor counts it unread, pings them or tells them live), and anyone with a block with the owner
- * doesn't see it either, as with a card the owner sent. It is never a chat's last line, so no list or Home card says it to them.
+ * A GRANT CARD IS ALWAYS ITS OWNER'S OWN SHARE now (grants.ts), so there is no longer a card kept from the person whose thing it
+ * is: the admin shares nobody's things. sharedOf() therefore finds nothing, and is kept only so a card written before this
+ * (owner_id not the sender's) still behaves as it did for whoever can see it.
  */
 import { screenPost } from "./filter.js";
 import { randomUUID } from "node:crypto";
@@ -39,6 +44,7 @@ import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
 import { Blocks } from "./blocks.js";
 import { goneLook, lookOf, looksIn, selfLook, shownLook, type PersonLook } from "./personLook.js";
+import { PersonNames, shownName } from "./personNames.js";
 import { signQuery } from "./spaceLinks.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { pickedIds } from "./spacePerms.js";
@@ -47,6 +53,8 @@ import type { Publish, Spaces } from "./spaces.js";
 export interface ThreadRow {
   [k: string]: unknown; id: string; kind: "direct" | "group" | "space"; space_id: string | null; name: string; direct_key: string | null;
   created_by: string | null; created_ms: number; last_ms: number; last_text: string;
+  /** Whose the last line is (migration 0111), so the reader's own name for them can stand in it. Absent on older rows. */
+  last_by?: string | null;
   /** When last_text (a line for everyone) was written: what lists show. Null on rows from before migration 0068: last_ms then. */
   last_public_ms?: number | null;
 }
@@ -115,6 +123,18 @@ const hiddenIn = (hidden: Set<string>, m: Pick<MessageRow, "item" | "sender_id">
   const of = sharedOf(m);
   return (!!m.sender_id && hidden.has(m.sender_id)) || (!!of && hidden.has(of));
 };
+/**
+ * A chat's last line with the reader's own name in it. `last_text` is stored as "Mom: Dinner at 8?", so the name before the
+ * first ": " is swapped for what this reader calls that person — and only when they call them something, and only when what is
+ * there looks like a name (no longer than one can be). The stored text is never touched: an older build reads it as it is.
+ */
+const renamedLine = (text: string, by: string | null | undefined, mine?: ReadonlyMap<string, string>): string => {
+  const name = by && mine?.get(by);
+  if (!name || !text) return text;
+  const cut = text.indexOf(": ");
+  return cut > 0 && cut <= 40 ? `${name}${text.slice(cut)}`.slice(0, 140) : text;
+};
+
 /** A message as one line (a chat's last line, a report's subject). */
 const lineOf = (m: Pick<MessageRow, "text" | "item" | "files">): string => m.text ? oneLine(m.text, 120) : m.item ? `Shared ${m.item.title}` : (m.files ?? []).length === 1 ? (m.files[0]!.mime.startsWith("image/") ? "Photo" : m.files[0]!.name) : `${(m.files ?? []).length} files`;
 
@@ -123,12 +143,14 @@ export class Threads {
   private readonly people: PagedTable<ThreadMemberRow>;
   private readonly messages: PagedTable<MessageRow>;
   private readonly publish: Publish;
+  /** The names the viewer gave people (personNames.ts): resolved over every name a row already carries. */
+  private readonly names: PersonNames;
 
   constructor(
     private readonly spaces: Spaces,
     private readonly now: () => number = Date.now,
     o: { publish?: Publish; files?: FileLookup | null; filePath?: (threadId: string, messageId: string, fileId: string) => string; notify?: MessageNotify;
-      blocks?: Blocks;
+      blocks?: Blocks; names?: PersonNames;
       tables?: { threads?: PagedTable<ThreadRow>; members?: PagedTable<ThreadMemberRow>; messages?: PagedTable<MessageRow> } } = {},
   ) {
     this.threads = o.tables?.threads ?? spaceTable<ThreadRow>("threads");
@@ -139,6 +161,7 @@ export class Threads {
     this.filePath = o.filePath ?? ((t, m, f) => `/v1/botsapp/bots/threads/${t}/files/${m}/${f}`);
     this.notify = o.notify ?? (async () => undefined);
     this.blocks = o.blocks ?? new Blocks(now);
+    this.names = o.names ?? new PersonNames({ now });
     spaces.onMembers((e) => this.follow(e));
   }
   private readonly files: FileLookup | null;
@@ -185,14 +208,9 @@ export class Threads {
    * Who sees a message: everyone, for one to everyone; else its sender, the one it is to, and the space's admin (`ownerId`). A card
    * of a member's thing the admin shared, never its owner (the rules at the top).
    */
-  private sees(viewer: string, m: Pick<MessageRow, "to_id" | "sender_id" | "item">, ownerId: string | null): boolean {
+  private sees(viewer: string, m: Pick<MessageRow, "to_id" | "sender_id" | "item">): boolean {
     if (sharedOf(m) === viewer) return false;
-    return !m.to_id || m.sender_id === viewer || m.to_id === viewer || viewer === ownerId;
-  }
-
-  /** The space's admin, for a space's chat or group (a one-to-one chat has none, and never carries a message to one person). */
-  private async ownerOf(t: ThreadRow): Promise<string | null> {
-    return t.space_id ? this.spaces.ownerOf(t.space_id) : null;
+    return !m.to_id || m.sender_id === viewer || m.to_id === viewer;
   }
 
   async canRead(userId: string, threadId: string): Promise<boolean> {
@@ -235,8 +253,10 @@ export class Threads {
     // The looks of the people in one to one chats: worked out once for the whole list, and only if there is such a chat.
     let known: Promise<Map<string, PersonLook>> | undefined;
     const looks = () => (known ??= this.looksKnown(userId));
+    // The names this person gave: one read for the whole list, whatever it holds (personNames.ts).
+    const mine = await this.names.known(userId);
     for (const r of rows) {
-      const v = await this.viewOf(userId, r.thread_id, looks).catch(() => null);
+      const v = await this.viewOf(userId, r.thread_id, looks, mine).catch(() => null);
       if (v) out.push(v);
     }
     out.sort((a, b) => (b.last?.at ?? 0) - (a.last?.at ?? 0) || a.name.localeCompare(b.name));
@@ -256,15 +276,20 @@ export class Threads {
     const out: Array<{ threadId: string; messageId: string; chat: string; chatKind: ThreadRow["kind"]; from: string; text: string; at: number; unread: boolean }> = [];
     for (const t of threads.filter((x) => x.last && (o.includeMuted || !x.muted)).slice(0, Math.max(1, Math.min(o.chats ?? 8, 20)))) {
       const newest = await this.messages.before({ thread_id: t.id }, "at_ms", null, 10);
-      const owner = t.spaceId ? await this.spaces.ownerOf(t.spaceId) : null;
-      const m = newest.find((x) => x.sender_id && x.sender_id !== userId && !hiddenIn(hidden, x) && this.sees(userId, x, owner));
+      const m = newest.find((x) => x.sender_id && x.sender_id !== userId && !hiddenIn(hidden, x) && this.sees(userId, x));
       if (!m) continue;
       out.push({ threadId: t.id, messageId: m.id, chat: t.name, chatKind: t.kind, from: m.sender_name, text: lineOf(m), at: Number(m.at_ms), unread: t.unread > 0 });
     }
     return out.sort((a, b) => b.at - a.at);
   }
 
-  private async viewOf(userId: string, threadId: string, looks: () => Promise<Map<string, PersonLook>> = () => this.looksKnown(userId)): Promise<ThreadView> {
+  private async viewOf(
+    userId: string, threadId: string, looks: () => Promise<Map<string, PersonLook>> = () => this.looksKnown(userId),
+    mineIn?: ReadonlyMap<string, string>,
+  ): Promise<ThreadView> {
+    // What the VIEWER calls each person, over the name the row carries (personNames.ts). A list hands it in, read once.
+    const mine = mineIn ?? await this.names.known(userId);
+    const called = (id: string, fallback: string) => shownName(mine, id, fallback);
     const { t, me, members: all } = await this.open(userId, threadId);
     const hidden = await this.blocks.hiddenFor(userId);
     // Someone with a block between you is left out of a group's people (they are still in it, unseen).
@@ -283,8 +308,12 @@ export class Threads {
     const deletedName = deleted
       ? (await this.messages.before({ thread_id: t.id }, "at_ms", null, 50)).find((m) => !m.sender_id)?.sender_name || "Someone"
       : "";
-    const name = t.kind === "space" ? spaceName : t.kind === "direct" ? (others[0]?.name ?? stayed?.name ?? deletedName) : (t.name || names(others.map((m) => m.name)));
-    const last = await this.lastLine(t, hidden);
+    // A one-to-one chat's name IS the other person's name, so the viewer's own name for them is this chat's name. A group
+    // keeps the name it was given; with none, it is its people's names, each as the viewer calls them.
+    const name = t.kind === "space" ? spaceName
+      : t.kind === "direct" ? (others[0] ? called(others[0].user_id, others[0].name) : stayed ? called(stayed.user_id, stayed.name) : deletedName)
+      : (t.name || names(others.map((m) => called(m.user_id, m.name))));
+    const last = await this.lastLine(t, hidden, mine);
     // One to one: the other person as the same tiny bot their page and the contacts show (a chat with no space has none of its own).
     const known = t.kind === "direct" ? await looks() : null;
     // No longer connected to the viewer: in a one-to-one chat with someone they share no space with any more. In a group or a
@@ -295,7 +324,7 @@ export class Threads {
       id: t.id, kind: t.kind, name, spaceId: t.space_id, spaceName,
       people: [
         ...members.map((m) => ({
-          userId: m.user_id, name: m.name, you: m.user_id === userId, ...(known ? { bot: botOf(m.user_id) } : {}), ...(goneIn(m.user_id) ? { gone: true } : {}),
+          userId: m.user_id, name: called(m.user_id, m.name), you: m.user_id === userId, ...(known ? { bot: botOf(m.user_id) } : {}), ...(goneIn(m.user_id) ? { gone: true } : {}),
         })),
         // The deleted account, kept in `people` so the head and the chats list fade their name the same way as everyone
         // else's. Their id comes from the chat's key, which outlives their membership; nothing opens them (`gone`).
@@ -309,15 +338,15 @@ export class Threads {
    * A chat's last line for someone: the newest message for everyone, and when (last_public_ms; last_ms on a row from before it). A
    * line from someone with a block between them is passed over for the one before it.
    */
-  private async lastLine(t: ThreadRow, hidden: Set<string>): Promise<{ text: string; at: number } | null> {
+  private async lastLine(t: ThreadRow, hidden: Set<string>, mine?: ReadonlyMap<string, string>): Promise<{ text: string; at: number } | null> {
     const at = Number(t.last_public_ms ?? t.last_ms);
-    let last = at > Number(t.created_ms) || t.last_text ? { text: t.last_text, at } : null;
+    let last = at > Number(t.created_ms) || t.last_text ? { text: renamedLine(t.last_text, t.last_by, mine), at } : null;
     if (last && hidden.size && t.kind !== "direct") {
       // The chat's last line may be theirs: show the last one you can see instead.
       const newest = (await this.messages.before({ thread_id: t.id }, "at_ms", null, 20)).filter(isPublic);
       if (newest[0] && newest[0].sender_id && hidden.has(newest[0].sender_id)) {
         const seen = newest.find((m) => !m.sender_id || !hidden.has(m.sender_id));
-        last = seen ? { text: `${seen.sender_name}: ${lineOf(seen)}`.slice(0, 140), at: Number(seen.at_ms) } : null;
+        last = seen ? { text: `${shownName(mine, seen.sender_id ?? "", seen.sender_name)}: ${lineOf(seen)}`.slice(0, 140), at: Number(seen.at_ms) } : null;
       }
     }
     return last;
@@ -363,6 +392,7 @@ export class Threads {
     const groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> = [];
     const hidden = await this.blocks.hiddenFor(userId);
     const known = new Map<string, PersonLook>();
+    const mine = await this.names.known(userId);
     for (const s of await this.spaces.mine(userId)) {
       const all = await this.spaces.membersOf(s.id);
       // Every space counts for how someone looks, the ones that don't let you message them too (looksKnown does the same).
@@ -370,12 +400,14 @@ export class Threads {
       const ms = all.filter((m) => m.userId !== userId && !hidden.has(m.userId));
       if (s.perms.includes("message")) {
         for (const m of ms) {
-          const p = people.get(m.userId) ?? { userId: m.userId, name: m.name, spaces: [], bot: known.get(m.userId) ?? lookOf(m.userId) };
+          const p = people.get(m.userId) ?? { userId: m.userId, name: shownName(mine, m.userId, m.name), spaces: [], bot: known.get(m.userId) ?? lookOf(m.userId) };
           p.spaces.push(s.name);
           people.set(m.userId, p);
         }
       }
-      if (s.perms.includes("groups") && s.perms.includes("message") && ms.length) groupSpaces.push({ id: s.id, name: s.name, people: ms });
+      if (s.perms.includes("groups") && s.perms.includes("message") && ms.length) {
+        groupSpaces.push({ id: s.id, name: s.name, people: ms.map((m) => ({ userId: m.userId, name: shownName(mine, m.userId, m.name) })) });
+      }
     }
     return { people: [...people.values()].sort((a, b) => a.name.localeCompare(b.name)), groupSpaces };
   }
@@ -493,16 +525,19 @@ export class Threads {
    * `connected`: who is still here for this viewer (looksKnown's keys). Left out where the sender can only be the viewer and
    * nothing has been read about who is still here (post): a message just written is never anybody's "no longer here".
    */
-  private viewMessage(userId: string, r: MessageRow, connected?: ReadonlySet<string>): MessageView {
+  private viewMessage(userId: string, r: MessageRow, connected?: ReadonlySet<string>, mine?: ReadonlyMap<string, string>): MessageView {
     const gone = this.gone(userId, r.sender_id, connected ?? new Set());
+    // The name over a message, and "To Mom" under one, as the VIEWER calls them — over sender_name and to_name, never instead
+    // of them: those are what a deleted account's name is read back from (personNames.ts).
+    const called = (id: string | null | undefined, fallback: string) => (id ? shownName(mine, id, fallback) : fallback);
     // "To Mom" for someone no longer here is faded too, as her name over a message of her own is: to_id has no foreign key
     // (migration 0068), by design, so a message addressed to her stays for its sender and the admin after she goes.
     const toGone = !!connected && !!r.to_id && r.to_id !== userId && !connected.has(r.to_id);
     return {
-      id: r.id, from: { userId: r.sender_id, name: r.sender_name, you: r.sender_id === userId, ...(gone ? { gone: true } : {}) }, text: r.text, at: Number(r.at_ms),
+      id: r.id, from: { userId: r.sender_id, name: called(r.sender_id, r.sender_name), you: r.sender_id === userId, ...(gone ? { gone: true } : {}) }, text: r.text, at: Number(r.at_ms),
       files: (r.files ?? []).map((f) => ({ id: f.id, name: f.name, mime: f.mime, bytes: f.bytes, kind: f.kind, url: `${this.filePath(r.thread_id, r.id, f.id)}?${signQuery(userId, [r.thread_id, r.id, f.id], this.now())}` })),
       item: r.item ?? null,
-      to: r.to_id ? { userId: r.to_id, name: r.to_name ?? "", you: r.to_id === userId, ...(toGone ? { gone: true } : {}) } : null,
+      to: r.to_id ? { userId: r.to_id, name: called(r.to_id, r.to_name ?? ""), you: r.to_id === userId, ...(toGone ? { gone: true } : {}) } : null,
     };
   }
 
@@ -526,23 +561,23 @@ export class Threads {
     const walk = t.kind === "direct" || !inSpace || page.some((r) => outsider(r.sender_id) || outsider(r.to_id));
     const knownLooks = walk ? await this.looksKnown(userId) : null;
     const connected: ReadonlySet<string> = knownLooks ? new Set(knownLooks.keys()) : inSpace!;
-    const view = await this.viewOf(userId, threadId, knownLooks ? () => Promise.resolve(knownLooks) : undefined);
+    const mine = await this.names.known(userId);
+    const view = await this.viewOf(userId, threadId, knownLooks ? () => Promise.resolve(knownLooks) : undefined, mine);
     // A group's or a space chat's people as their space has them (the rules on ThreadView.people).
     const looks = t.space_id && t.kind !== "direct" ? looksIn((await this.spaces.memberRows(t.space_id)).map((r) => r.user_id)) : null;
     const thread = looks ? { ...view, people: view.people.map((p) => ({ ...p, bot: shownLook(looks, p.userId, userId) })) } : view;
     // The page is cut before anyone's messages are left out, so the next page starts where this one ended.
     const hidden = await this.blocks.hiddenFor(userId);
-    const owner = await this.ownerOf(t);
-    const shown = page.filter((r) => !hiddenIn(hidden, r) && this.sees(userId, r, owner));
+    const shown = page.filter((r) => !hiddenIn(hidden, r) && this.sees(userId, r));
     // `page` is newest first: the next page is before its oldest.
-    return { thread: { ...thread, unread: 0 }, messages: shown.reverse().map((r) => this.viewMessage(userId, r, connected)), more: rows.length > limit, before: page.length ? Number(page[page.length - 1]!.at_ms) : null };
+    return { thread: { ...thread, unread: 0 }, messages: shown.reverse().map((r) => this.viewMessage(userId, r, connected, mine)), more: rows.length > limit, before: page.length ? Number(page[page.length - 1]!.at_ms) : null };
   }
 
   /** One message, for someone who may read the chat and see it (a report of it): the row and its chat. 404 otherwise. */
   async messageFor(userId: string, threadId: string, messageId: string): Promise<{ m: MessageRow; t: ThreadRow }> {
     const { t } = await this.open(userId, threadId);
     const [m] = UUID.test(messageId) ? await this.messages.select({ id: messageId, thread_id: t.id }, { limit: 1 }) : [];
-    if (!m || hiddenIn(await this.blocks.hiddenFor(userId), m) || !this.sees(userId, m, await this.ownerOf(t))) {
+    if (!m || hiddenIn(await this.blocks.hiddenFor(userId), m) || !this.sees(userId, m)) {
       throw new BotError("not_found", "That message isn't there any more.", 404);
     }
     return { m, t };
@@ -560,8 +595,8 @@ export class Threads {
     if (t) {
       const newest = (await this.messages.before({ thread_id: threadId }, "at_ms", null, 40)).find(isPublic);
       await this.threads.update({ id: threadId }, newest
-        ? { last_text: `${newest.sender_name}: ${lineOf(newest)}`.slice(0, 140), last_public_ms: Number(newest.at_ms) }
-        : { last_text: "", last_public_ms: Number(t.created_ms) });
+        ? { last_text: `${newest.sender_name}: ${lineOf(newest)}`.slice(0, 140), last_by: newest.sender_id, last_public_ms: Number(newest.at_ms) }
+        : { last_text: "", last_by: null, last_public_ms: Number(t.created_ms) });
     }
     const ids = (await this.people.select({ thread_id: threadId }, { limit: 60 })).map((m) => m.user_id);
     this.publish(ids, `thread:${threadId}`);
@@ -643,7 +678,6 @@ export class Threads {
     const may = await this.mayPost(userId, t, members);
     if (!may.ok) throw new BotError("not_allowed", may.why, 403);
     const to = m.to && t.kind === "space" ? m.to : null;
-    const owner = await this.ownerOf(t);
     const at = Math.max(this.now(), Number(t.last_ms) + 1);
     const row: MessageRow = {
       id: randomUUID(), thread_id: t.id, sender_id: userId, sender_name: me.name, text: m.text, files: m.files, item: m.item, at_ms: at,
@@ -653,12 +687,10 @@ export class Threads {
     // A chat's last line is only ever a message for everyone: lists show it, and its time, to everyone in the chat.
     // A chat from before last_public_ms keeps the time of its last line for everyone (last_ms, until now) when this one isn't.
     const before = t.last_public_ms === null || t.last_public_ms === undefined ? { last_public_ms: Number(t.last_ms) } : {};
-    await this.threads.update({ id: t.id }, isPublic(row) ? { last_ms: at, last_text: `${me.name}: ${lineOf(m)}`.slice(0, 140), last_public_ms: at } : { last_ms: at, ...before });
-    // Someone with a block between them and the sender never sees this message: it isn't unread for them, and they aren't pinged. Nor
-    // does someone with a block with the owner of a thing the admin shared.
-    const of = sharedOf(row);
-    const unseen = new Set([...(await this.blocks.hiddenFor(userId)), ...(of ? await this.blocks.hiddenFor(of) : [])]);
-    const seeing = members.filter((p) => p.user_id === userId || (!unseen.has(p.user_id) && this.sees(p.user_id, row, owner)));
+    await this.threads.update({ id: t.id }, isPublic(row) ? { last_ms: at, last_text: `${me.name}: ${lineOf(m)}`.slice(0, 140), last_by: me.user_id, last_public_ms: at } : { last_ms: at, ...before });
+    // Someone with a block between them and the sender never sees this message: it isn't unread for them, and they aren't pinged.
+    const unseen = await this.blocks.hiddenFor(userId);
+    const seeing = members.filter((p) => p.user_id === userId || (!unseen.has(p.user_id) && this.sees(p.user_id, row)));
     for (const p of seeing) {
       if (p.user_id === userId) await this.people.update({ thread_id: t.id, user_id: userId }, { last_read_ms: at, unread: 0 });
       else await this.people.update({ thread_id: t.id, user_id: p.user_id }, { unread: (Number(p.unread) || 0) + 1 });
@@ -666,8 +698,8 @@ export class Threads {
     const ids = seeing.map((p) => p.user_id);
     this.publish(ids, `thread:${t.id}`);
     this.publish(ids, "threads");
-    // A push to each phone, never with the words; none for a muted chat. A message to one person pings only them: the admin sees it
-    // in the feed, unannounced. A space's own chat is its feed: its push opens the space (space_feed).
+    // A push to each phone, never with the words; none for a muted chat. A message to one person pings only them. A space's own
+    // chat is its feed: its push opens the space (space_feed).
     const chat = t.kind === "direct" ? me.name : t.kind === "space" ? await this.spaces.nameOf(t.space_id ?? "") : (t.name || "Group chat");
     for (const p of seeing) {
       if (p.user_id === userId || p.muted === true || (to && p.user_id !== to.id)) continue;
@@ -684,7 +716,7 @@ export class Threads {
     const [m] = UUID.test(messageId) ? await this.messages.select({ id: messageId, thread_id: threadId }, { limit: 1 }) : [];
     if (!m) return null;
     if (hiddenIn(await this.blocks.hiddenFor(userId), m)) return null;
-    if (!this.sees(userId, m, await this.ownerOf(await this.thread(threadId)))) return null;
+    if (!this.sees(userId, m)) return null;
     return (m.files ?? []).find((f) => f.id === fileId) ?? null;
   }
 

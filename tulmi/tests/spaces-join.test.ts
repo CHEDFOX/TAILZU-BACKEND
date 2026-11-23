@@ -53,7 +53,8 @@ describe("Create: a draft, Call Your People, Name your space", () => {
     const code = (await s.spaces.codeFor(draftId));
     expect(mail.body_text).toContain(`type this code: ${showCode(code)}. Aanya S. will let you in.`);
     expect(mail.body_text).toContain("Sign in to X0 Bot with this email (mom@example.in) and the invite is waiting");
-    expect(mail.body_text).toContain("The space's admin can see and share your work and messages there.");
+    // The invite no longer promises anything about the admin, because there is nothing to promise (docs/social.md §4).
+    expect(mail.body_text).not.toContain("admin can see");
     expect(mail.body_text).toContain(`Get X0 Bot: https://app.example.in/s/bots.spaces?join=${code}`);
     // Nobody else sees it: not Mom's invitations, not a list, not a code (409), not the link's peek.
     expect((await full(s, M_)).invitations).toEqual([]);
@@ -133,7 +134,6 @@ describe("invitations", () => {
     pushes.length = 0;
     const acc = await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, M_, { decision: "accept", consent: true, consentV: 2 });
     expect(acc.body).toEqual({ status: "joined", id, name: "Home" });
-    expect(await s.spaces.consented(id, M_)).toBe(true);
     // Aanya, who made the invite, is told who came in with it.
     expect(pushes.filter((p) => p.kind === "space_joined")).toEqual([expect.objectContaining({ userId: A_, vars: expect.objectContaining({ space: "Home", name: "Mom" }) })]);
     expect((await full(s, M_)).invitations).toEqual([]);
@@ -199,7 +199,6 @@ describe("a code, and the admin letting people in", () => {
     stop2();
     expect(told).toContain("spaces");
     expect(pushes.filter((p) => p.kind === "space_accepted")).toEqual([{ userId: X_, kind: "space_accepted", vars: { space: "Home", admin: "Aanya S." }, data: { id } }]);
-    expect(await s.spaces.consented(id, X_)).toBe(true);
     expect((await full(s, A_)).requests).toEqual([]);
     expect((await full(s, X_)).asked).toEqual([]);
   });

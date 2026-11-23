@@ -18,7 +18,7 @@ import { cloudBrowserOn, mayUseCloudBrowser } from "../../../sites/gate.js";
 import { sitesScreens } from "./sites.js";
 import { spaceScreens } from "./you/space.js";
 import { devicesScreens } from "./you/devicesPage.js";
-import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
+import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type IconName, box, icon, C, row, FACE, text, whenEq, seq, botAvatar, percent, primaryButton, open, SCREENS, usageMeter,
   whenWords, card, divider, notice, page, title, col, meta, call, listCard, listRow, quietButton, secondaryButton, switchMark, when,
@@ -74,7 +74,12 @@ interface AppsData {
   github: { repos: number } | null;
 }
 interface AppData {
-  app: { id: string; name: string; category: string; oneLine: string; auth: "oauth" | "url"; provider: string | null; connected: boolean; level: string; lastUsedAt: number | null };
+  app: {
+    id: string; name: string; category: string; oneLine: string; auth: "oauth" | "url"; provider: string | null;
+    connected: boolean; level: string; lastUsedAt: number | null;
+    /** "url" auth only (catalog.ts linkHelp): where the link they paste is made, and the page that makes it. */
+    linkHelp?: { how: string; at: string };
+  };
   bots: Array<{ slug: string; name: string; colour: string; purpose: string; builtin: boolean; linked: boolean }>;
   can: string[];
   cant: string[];
@@ -632,6 +637,14 @@ function botsUsing(d: AppData): Node {
   return col([sectionLabel("Bots that will use it"), rows.length ? listCard(rows) : meta("No bot uses it yet. Make one that does, or ask any bot.", { size: 13 })], { gap: 8 });
 }
 
+/** The host of a link, for a button's words ("Open mcp.zapier.com"). "" when it is not a link we would open. */
+function hostOf(at: string): string {
+  try {
+    const u = new URL(at);
+    return u.protocol === "https:" ? u.host : "";
+  } catch { return ""; }
+}
+
 function appConnectBody(ctx: BotsCtx, d: AppData): Node[] {
   const a = d.app;
   return [
@@ -644,7 +657,16 @@ function appConnectBody(ctx: BotsCtx, d: AppData): Node[] {
       pills([{ label: "Read only", value: "look" }, { label: "Draft for me", value: "draft" }, { label: "Act, asking first", value: "send" }], "level",
         (v) => call("POST", `/v1/connectors/${encodeURIComponent(a.id)}/level`, { level: v }, { ok: seq(toast("Changed"), refresh), fail: oops() })),
     ], { gap: 8 })] : []),
-    ...(!a.connected && a.auth === "url" ? [col([sectionLabel("Its link"), field("url", "Paste the link from the app", { keyboard: "url" })], { gap: 8 })] : []),
+    // A pasted link is made on the vendor's own site, and nothing here can send them there on its own: so the words say where
+    // it is made, and a button opens it. Without them the box asks for something nobody knows how to get (catalog.ts linkHelp).
+    ...(!a.connected && a.auth === "url" ? [col([
+      sectionLabel("Its link"),
+      field("url", "Paste the link from the app", { keyboard: "url" }),
+      ...(a.linkHelp ? [meta(a.linkHelp.how, { size: 12 })] : []),
+      ...(a.linkHelp && hostOf(a.linkHelp.at)
+        ? [button(`Open ${hostOf(a.linkHelp.at)}`, { kind: "openUrl", url: a.linkHelp.at } as ActionSpec, { kind: "secondary", size: "md" })]
+        : []),
+    ], { gap: 8 })] : []),
   ];
 }
 

@@ -8,7 +8,8 @@
  *
  * THE RULES (docs/spaces.md). A message to one person is seen by them, its sender and the space's admin (threads.ts sees()). Before
  * a member writes here they tap OK on "The space's admin can see and share your work and messages here." (spacePerms.ts ADMIN_LINE; one
- * who agreed to the line before it is asked again); until then the feed answers 403 consent_needed, so nothing they send reaches the
+ * NOTHING IS GATED ON A LINE ANY MORE: the admin has no automatic sight of anyone's things (docs/social.md §4), so a member
+ * simply writes. What used to happen instead (the
  * admin unannounced. A message to someone with a block either way is refused.
  *
  * A THING SHARED becomes a grant (grants.ts) and a card in the feed. A member shares one of their own (its bot must list it). The
@@ -28,11 +29,10 @@ import type { Grants } from "./grants.js";
 import type { PaymentView, Payments } from "./payments.js";
 import { shownLook, looksIn, type PersonLook } from "./personLook.js";
 import { isShareBot, type ShareBot, type ShareSources } from "./spaceShares.js";
-import { hasConsent } from "./spacePerms.js";
-import type { Access, MemberRow, Spaces } from "./spaces.js";
+import type { Spaces } from "./spaces.js";
 import type { SpaceTasks, TaskView } from "./spaceTasks.js";
 import type { ItemCard, MessageView, Threads } from "./threads.js";
-import { BOT_NAMES, memberThing } from "./work.js";
+import { BOT_NAMES } from "./work.js";
 
 export interface FeedPost { text?: unknown; to?: unknown; thing?: unknown; files?: unknown; voice?: unknown; everyone?: unknown }
 export interface SpokenConfirm { toId: string; toName: string; text: string; whole: string; line: string }
@@ -51,6 +51,10 @@ export interface FeedMessage {
   item: { id: string; kind: string; title: string } | null;
 }
 export interface FeedRead {
+  /**
+   * `consented` is always true now: there is no line to agree to, because the admin has no automatic sight of anyone's things
+   * (docs/social.md §4). It is still sent so an older build, which shows its card until it is true, never shows one again.
+   */
   space: { id: string; name: string; admin: boolean; adminName: string; consented: boolean; threadId: string };
   /** Blocked people left out. `bot`: their tiny bot in this space (personLook.ts), the viewer's own their X0 bot. */
   people: Array<{ userId: string; name: string; you: boolean; admin: boolean; bot: PersonLook }>;
@@ -112,7 +116,7 @@ export class SpaceFeed {
     return {
       space: {
         id: a.s.id, name: a.s.name, admin: a.admin, adminName: rows.find((m) => m.user_id === owner)?.name ?? "",
-        consented: a.admin || hasConsent(a.me), threadId,
+        consented: true, threadId,
       },
       people: rows.filter((m) => !hidden.has(m.user_id)).map((m) => ({
         userId: m.user_id, name: m.name, you: m.user_id === userId, admin: m.user_id === owner, bot: shownLook(looks, m.user_id, userId),
@@ -126,9 +130,6 @@ export class SpaceFeed {
 
   async send(user: { id: string; name: string }, spaceId: string, b: FeedPost): Promise<{ message: FeedMessage } | { confirm: SpokenConfirm }> {
     const a = await this.spaces.access(user.id, spaceId);
-    if (!a.admin && !hasConsent(a.me)) {
-      throw new BotError("consent_needed", "Tap OK on the line about the space's admin first.", 403);
-    }
     const text = this.threads.textOf(b.text);
     const files = await this.threads.filesOf(user.id, b.files);
     // Empty means none: no `to` is everyone, and a thing with no bot or id is no thing.
@@ -147,14 +148,10 @@ export class SpaceFeed {
     let thing: { bot: ShareBot; item: { id: string; title: string; line: string; at: number | null }; owner: { id: string; name: string } } | null = null;
     if (thingIn) {
       const src = isShareBot(thingIn.bot) ? this.sources[thingIn.bot] : undefined;
-      // A member's thing, as the admin's "/" lists it: only the admin may share it, and only theirs it may be (the rules at the top).
-      // Anyone else naming one is told it isn't there, as for any thing that isn't theirs.
-      const theirs = memberThing(thingIn.id);
-      const owner = theirs && a.admin && theirs.ownerId !== user.id
-        ? await this.ownerToShare(user.id, a, rows, theirs.ownerId, to)
-        : { id: user.id, name: a.me.name };
-      const itemId = theirs && a.admin ? theirs.itemId : thingIn.id;
-      const item = src ? (await src.list(owner.id).catch(() => [])).find((i) => i.id === itemId) : undefined;
+      // Only ever the sharer's own thing. The admin used to be able to name a member's, under an "of:<owner>:<item>" id its "/"
+      // list made; nothing makes those any more, so such an id is simply a thing that isn't there (docs/social.md §4).
+      const owner = { id: user.id, name: a.me.name };
+      const item = src ? (await src.list(owner.id).catch(() => [])).find((i) => i.id === thingIn.id) : undefined;
       if (!src || !item) throw new BotError("not_found", "That isn't there any more.", 404);
       thing = { bot: thingIn.bot as ShareBot, item, owner };
     }
@@ -167,11 +164,10 @@ export class SpaceFeed {
     }
     const threadId = await this.threads.spaceThread(spaceId);
     if (thing) {
-      const other = thing.owner.id !== user.id;
-      const g = await this.grants.give(spaceId, thing.owner, thing.bot, thing.item, to?.id ?? null, other ? user.id : undefined);
+      const g = await this.grants.give(spaceId, thing.owner, thing.bot, thing.item, to?.id ?? null);
       const card: ItemCard = {
         kind: "grant", id: g.id, title: thing.item.title.slice(0, 120), bot: thing.bot, botName: BOT_NAMES[thing.bot],
-        ownerId: thing.owner.id, itemId: thing.item.id, line: thing.item.line.slice(0, 120), ...(other ? { ownerName: thing.owner.name.slice(0, 40) } : {}),
+        ownerId: thing.owner.id, itemId: thing.item.id, line: thing.item.line.slice(0, 120),
       };
       const posted = await this.threads.post(user.id, threadId, { text, files, item: card, to });
       await this.grants.setMessage(g.id, posted.id);
@@ -182,22 +178,9 @@ export class SpaceFeed {
   }
 
   /**
-   * The member whose thing the admin is sharing, once they may: in the space now (404 otherwise, as a thing that isn't there), with
-   * no block between them and the admin (the same 404: the admin can't see their things), agreed to the line about the admin as it
-   * is now (403), not the one it is for (it is theirs already), and with no block between them and that person (403).
-   */
-  private async ownerToShare(adminId: string, a: Access, rows: MemberRow[], ownerId: string, to: { id: string; name: string } | null): Promise<{ id: string; name: string }> {
-    const m = rows.find((r) => r.user_id === ownerId);
-    if (!m || (await this.blocks.between(adminId, ownerId))) throw new BotError("not_found", "That isn't there any more.", 404);
-    if (!hasConsent(m)) throw new BotError("not_allowed", `${m.name} hasn't agreed yet that ${a.s.name}'s admin can share their things.`, 403);
-    if (to?.id === ownerId) throw new BotError("bad_request", `That is ${m.name}'s own already.`);
-    if (to && (await this.blocks.between(ownerId, to.id))) throw new BotError("blocked", `You can't share ${m.name}'s things with ${to.name}.`, 403);
-    return { id: m.user_id, name: m.name };
-  }
-
-  /**
-   * Stop sharing a thing (grants.ts revoke says who may: a share the admin made, only the admin). The access goes at once, and its
-   * card goes from the feed for everyone, so nobody is left with an Open that leads nowhere.
+   * Stop sharing a thing (grants.ts revoke says who may: the one who shared it, or the space's admin, which is moderation of its
+   * own feed). The access goes at once, and its card goes from the feed for everyone, so nobody is left with an Open that leads
+   * nowhere.
    */
   async unshare(userId: string, spaceId: string, grantId: string): Promise<void> {
     const g = await this.grants.revoke(userId, spaceId, grantId);
