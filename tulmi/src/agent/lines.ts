@@ -391,6 +391,44 @@ const DRAW_KINDS: Record<string, AgentDrawKind> = {
   clear: "clear",
 };
 
+/**
+ * A MARK NAME NOBODY WROTE DOWN, READ FOR ITS SHAPE AND DRAWN AS ONE WE HAVE.
+ *
+ * The table above is every name we thought of. A model explaining something reaches for words nobody listed —
+ * "outline", "emphasise", "callout", "frame", "trace" — and an unlisted name used to mean the mark was dropped while
+ * the words carried on as if it were there, so the explanation lost its pointer and nobody was told. Now an unlisted
+ * name lands on a mark this app already draws, and the window and the phone draw all nine already, so an invented name
+ * needs nothing shipped. **Open at the name, closed at the mark** — the same rule as a drawing's roles
+ * (`src/show/style.ts`).
+ *
+ * THIS IS NOT THE LENIENCY THE HEADER REFUSES. "A mark that fails is dropped, never guessed at" is about its TARGET:
+ * an id must be one really on this screen, and a place in a picture only on a step that has one. That stays exactly as
+ * strict — a mark pointing at nothing is still dropped. What degrades is only how the mark LOOKS, which is ours to
+ * choose and never theirs.
+ *
+ * `clear` and `arrow` are never guessed at. Clearing wipes what is already on the screen, and an arrow needs two ends:
+ * a wrong guess at either is worse than a box round the thing, which is what an unreadable name becomes.
+ */
+const DRAW_HINTS: ReadonlyArray<readonly [RegExp, AgentDrawKind]> = [
+  [/number|order|count|step|index/, "number"],
+  [/under|beneath|baseline|strike/, "underline"],
+  [/high|emphas|stress|glow|shade|fill|mark|flash/, "highlight"],
+  // Not a bare "ring": it is a substring of "string", so "toString" came out a circle. Its own name is in the table above.
+  [/circ|round|ellip|oval|halo/, "circle"],
+  [/path|route|trace|poly|curve|stroke|freehand|draw/, "path"],
+  [/label|caption|note|word|text|say|tag|title|name/, "label"],
+  [/box|rect|square|frame|outline|border|around|bound/, "box"],
+];
+
+/** The mark a name means: the table, then the shape of a name nobody wrote down, then a box round the thing. */
+export function markOf(name: string): AgentDrawKind | undefined {
+  const n = name.trim().toLowerCase();
+  if (!n) return undefined;
+  if (Object.hasOwn(DRAW_KINDS, n)) return DRAW_KINDS[n];
+  for (const [re, kind] of DRAW_HINTS) if (re.test(n)) return kind;
+  return "box";
+}
+
 /** One picture number, with a name in front of it if the model wrote one
  *  ("x=120", "w: 40"). */
 const NUM = String.raw`(?:[a-z]\s*[=:]\s*)?(-?\d+(?:\.\d+)?)`;
@@ -517,7 +555,7 @@ export function parseDraw(arg: string, opts: ParseOptions = {}): AgentDraw | nul
   const order = opts.order ?? "xy";
   const m = /^([A-Za-z]+)\b\s*:?\s*([\s\S]*)$/.exec(arg.trim());
   const name = m ? m[1]!.toLowerCase() : "";
-  const kind = Object.hasOwn(DRAW_KINDS, name) ? DRAW_KINDS[name] : undefined;
+  const kind = markOf(name);
   if (!kind) return null;
   let rest = m![2]!;
   if (kind === "clear") return { kind };
@@ -593,6 +631,12 @@ export interface ReaderRules {
   says?: number;
   /** DRAW lines honoured in the step (AGENT_DRAW_MAX). */
   draws?: number;
+  /**
+   * The sign-in card is on for this person (SIGN_IN_CARD). Without it a FIELD or ALSO line is read and counted as dropped,
+   * and the handover goes out with no card — the plain one, the page itself, which always works. The two verbs are in the
+   * contract whatever this says, so a model that writes them anyway must be stopped HERE and not only by the prompt.
+   */
+  card?: boolean;
   /** USE lines honoured: the planner was shown a connected app's tools.
    *  Without it a USE line is read and ignored, as any other prose is. */
   connectors?: boolean;
@@ -715,6 +759,7 @@ export class LineReader {
   cardDropped = 0;
 
   constructor(private readonly ids: Set<string>, private readonly mode: "show" | "do", rules: ReaderRules = {}) {
+    this.cardOn = rules.card === true;
     this.picture = rules.picture === true;
     this.places = this.picture && rules.places !== false;
     this.connectors = rules.connectors === true && !this.picture;
@@ -845,8 +890,11 @@ export class LineReader {
    * which is the right answer whenever the planner could not read the page with confidence. `payment` and
    * `captcha` never get one, however many FIELD lines were written (CARD_WHY).
    */
+  /** Whether a handover may carry a card at all (ReaderRules.card). */
+  private readonly cardOn: boolean = false;
+
   private card(why: AgentHandoverWhy): AgentHandoverCard | undefined {
-    if (!this.fields.length || !(CARD_WHY as readonly string[]).includes(why)) {
+    if (!this.cardOn || !this.fields.length || !(CARD_WHY as readonly string[]).includes(why)) {
       this.cardDropped += this.fields.length + this.ways.length;
       return undefined;
     }

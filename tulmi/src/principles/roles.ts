@@ -90,14 +90,8 @@ const PLANNER_CONTRACT = [
   "Text outside the fences (a note about the phone, the connected apps or this computer) is X0 Bot's own and tells you how to answer.",
   "Drawing:",
   pen("screen"),
-  "DRAW BOX <id> \"label\"",
-  "DRAW CIRCLE <id> \"label\"",
-  "DRAW UNDERLINE <id> \"label\"",
-  "DRAW HIGHLIGHT <id>",
-  "DRAW ARROW <id> -> <id> \"label\" — from the first to the second",
-  "DRAW NUMBER <id> <1-9>",
-  "DRAW LABEL <id> \"text\" — words on their own, beside it",
-  "DRAW CLEAR — takes your marks away",
+  "DRAW <mark> <id> \"label\" — box, circle, underline, highlight, label, or any word for the mark you want; the app draws it in its own style",
+  "DRAW ARROW <id> -> <id> \"label\". DRAW NUMBER <id> <1-9>. DRAW CLEAR takes your marks away",
   "There is no picture here, so mark things by their ids; a label is optional, except on LABEL: a few words in quotes.",
   `The screen list ${SCREEN_LIST} Then ="value" and the flags focused, disabled, selected, checked or unchecked. `
   + "An id that starts with o is a line of text read off the window's pixels: you may POINT at it, but it is not a control, so never act on it.",
@@ -539,8 +533,29 @@ const ROLE_TABLE = {
       + "Draw only what helps more than the words: a choice when the answer asks them to pick; a callout for the one thing they must not miss; steps for a plan or a day's times; "
       + "a table or a chart for numbers to compare; suggest for two to four next questions in their voice; a form when the answer needs several details; draw for a shape words cannot give. "
       + 'Most answers need nothing: then {"blocks":[]}. Never redo the whole answer; use only what it states. Labels short, in the answer\'s language and script. '
+      + '{"type":"part","kind":box|text|control,"role":any words,"text","children":[block],"action":{"do":"copy","text"}|{"do":"say","words"}}\n'
+      + "A part shows what no block names: role says what it IS, not how it looks. Snippet = box + text role=code + control role=copy. "
       + 'A url only from Links. lists "drawn" when your blocks show the answer\'s own lists. Everything is drawn as monochrome dot art: draw outlines and fills, no colours. '
       + "blip puts the app's little bot beside the drawing, only now and then: survey numbers or a drawing, read a note, think over a choice, wave at good news; else null.",
+  },
+
+  // ------------------------------------------------------------------ a screen nobody built (src/drawn, docs/screen-draw.md)
+  // The model picks BLOCKS and the kit draws them, so it never writes a style and cannot break the app's design rules.
+  screen_draw: {
+    identity: "You draw a screen of the X0 Bot app that nobody has built, from its id and its params. All of it is fenced data.",
+    principles: ["core.intent", "core.least", "core.facts", "core.lang", "safe.data", "safe.secrets", "vis.show", "vis.skip", "out.json"],
+    contract: '{"title":short words|null,"blocks":[block]}\n'
+      + 'A block is one of: {"type":"text","text","style":title|heading|body|label|meta|big|mono} {"type":"callout","tone":info|tip|warn|good,"title","text"} '
+      + '{"type":"list","style":bullet|number|check,"items":[text]} {"type":"facts","items":[{"label","value"}]} {"type":"table","columns":[text],"rows":[[text]]} '
+      + '{"type":"stat","label","value","note"} {"type":"progress","label","value","max"} {"type":"steps","items":[{"title","note","state":done|now|next}]} '
+      + '{"type":"chart","kind":bar|line,"unit","items":[{"label","value":number}]} '
+      + '{"type":"draw","width","height","label","shapes":[{"circle":[cx,cy,r] or "d":"an SVG path","fill":ink|grey|none,"stroke":ink|grey|none,"width"}]} '
+      + '{"type":"divider"} {"type":"row"|"grid"|"card","columns","title","tone","children":[block]}\n'
+      + "The id says what the screen is for; the params say which one. Draw what a person opening it would need to see and nothing else: "
+      + "a heading, then the few things that belong. Say plainly when there is nothing yet — an empty screen that names what will appear here is a good screen. "
+      + "Invent no numbers, no names and no facts: with only an id to go on, words are honest and a chart is not. "
+      + "Nothing may be tapped, typed or sent, so draw none of it and promise none of it. No addresses and no pictures. "
+      + 'Labels short, in the id\'s own language. Eight blocks at most, and most screens want three or four. Nothing to draw: {"blocks":[]}.',
   },
 
   // ------------------------------------------------------------------ the cinema bot's 3D (src/cinema, docs/cinema.md)

@@ -645,6 +645,9 @@ registerMeetRoutes(app, {
     if (!connectors) return false;
     return (await connectors.store.listConnections(userId)).some((c) => c.connectorId === "google-calendar" && Boolean(c.tokensEnc));
   },
+  // "Take notes" with one key (`POST /v1/meet/now`): the same calendar the sweep reads, asked for the meeting running NOW rather
+  // than the ones coming. Without a calendar connected the route asks for the link instead, which is why this may be absent.
+  ...(connectors ? { events: googleEvents(new GoogleSession({ store: connectors.store, google: connectors.google })) } : {}),
 });
 // In a space, its admin sees the meetings of the members who agreed to the line about the admin, is told when they take the bot to one,
 // and may send it to theirs (meet/people.ts; nobody while Spaces is off).

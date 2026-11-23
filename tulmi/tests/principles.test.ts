@@ -54,6 +54,7 @@ const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { ShowReply } = await import("../src/show/design.js");
+const { DrawReply } = await import("../src/drawn/draw.js");
 const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
@@ -313,7 +314,8 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   talk_reply: 1779, // 1617 measured
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
-  bot_show: 2924, // 2658 measured
+  bot_show: 3188, // 2898 measured (the open `part` block is in its contract now; 2638 before it)
+  screen_draw: 2290, // 2082 measured
   cinema_scene: 2743, // 2494 measured
   cinema_eye: 1354, // 1231 measured
   cinema_propose: 1700, // 1593 measured
@@ -424,6 +426,7 @@ describe("the contracts say what the parsers read", () => {
     ["ask_decide", AskDecideReply],
     ["bot_memory", BotMemoryReply],
     ["bot_show", ShowReply],
+    ["screen_draw", DrawReply],
     ["cinema_scene", SceneReply],
     ["cinema_eye", EyeReply],
     ["widget_digest", DigestReply],

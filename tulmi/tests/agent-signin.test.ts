@@ -14,13 +14,25 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
 const { LineReader, parseLine } = await import("../src/agent/lines.js");
+const { resetConfigForTests } = await import("../src/config.js");
+
+/** An account the sign-in card is on for. The switch is off by default, so the prompt's rules are only sent where it is on. */
+const ON_USER = "00000000-0000-4000-8000-00000000aaaa";
+process.env.SIGN_IN_CARD = "true";
+// Staged on that one account, so a case can show what somebody NOT staged gets.
+process.env.SIGN_IN_CARD_USERS = ON_USER;
+resetConfigForTests();
 const { SIGN_IN_NOTE, agentUserMessage, looksLikeSignIn } = await import("../src/agent/prompt.js");
 const { stableBlock } = await import("../src/principles/roles.js");
 import type { AgentElement, AgentStepRequest } from "../../shared/types/api.js";
 
 /** A sign-in page as the device reads one: a phone box, a password box, a button, and another way in. */
 const IDS = new Set(["e1", "e2", "e3", "e4", "e5", "o1"]);
-const read = (lines: string[], r = new LineReader(IDS, "do")) =>
+/**
+ * The card is OFF by default (SIGN_IN_CARD), so every case here asks for a reader that has it on, which is what a staged
+ * account gets. The default is held by its own case at the foot of this file.
+ */
+const read = (lines: string[], r = new LineReader(IDS, "do", { card: true })) =>
   ({ out: lines.flatMap((l) => r.read(parseLine(l, "mac")!)), r });
 
 const el = (id: string, role: string, label?: string): AgentElement => (label ? { id, role, label } : { id, role });
@@ -143,7 +155,7 @@ describe("the card the reader builds", () => {
   });
 
   it("a show run and the picture path never build one: neither of them signs anybody in", () => {
-    for (const r of [new LineReader(IDS, "show"), new LineReader(IDS, "do", { picture: true, says: 10 })]) {
+    for (const r of [new LineReader(IDS, "show", { card: true }), new LineReader(IDS, "do", { picture: true, says: 10, card: true })]) {
       const out = ["FIELD e1 phone | Phone number", "HANDOVER login | Sign in."].flatMap((l) => r.read(parseLine(l, "mac")!));
       expect(out).toEqual([{ emit: { t: "say", text: "Sign in." } }]);
     }
@@ -171,7 +183,7 @@ describe("when the planner is told the rules at all", () => {
 
   it("the rules ride only on a sign-in screen, and the two verbs are always in the contract", () => {
     const say = (screen: AgentStepRequest["screen"], over: Partial<AgentStepRequest> = {}, mode: "show" | "do" = "do") =>
-      agentUserMessage(request(screen, over), "sign me in", mode, 20);
+      agentUserMessage(request(screen, over), "sign me in", mode, 20, undefined, ON_USER);
     const signIn = say({ elements: [box, wayIn] });
     const ordinary = say({ elements: [el("e1", "button", "Export")] });
     expect(signIn).toContain(SIGN_IN_NOTE);
@@ -184,5 +196,27 @@ describe("when the planner is told the rules at all", () => {
     expect(planner).toContain("FIELD <id> <text|phone|email|secret|code>");
     expect(planner).toContain("ALSO <id> | <label>");
     expect(planner).not.toContain("S1.");
+  });
+});
+
+/**
+ * THE SWITCH (SIGN_IN_CARD, off). Everything the card draws is in the window's own page, which only a new build can
+ * change — so without a way to turn it off from here, a card that came out wrong would need a release to undo. Off, a
+ * handover carries no card and the person signs in on the page itself, which always works.
+ */
+describe("the switch", () => {
+  it("off: a FIELD and an ALSO are read, counted as dropped, and the handover carries no card", () => {
+    const reader = new LineReader(IDS, "do");  // no { card: true }
+    const { out } = read(["FIELD e1 phone | Phone", "ALSO e2 | Continue with Google", "HANDOVER login | Sign in."], reader);
+    const handover = out.map((o) => o.emit).find((e) => e && e.t === "handover") as { t: string; card?: unknown } | undefined;
+    expect(handover).toBeTruthy();
+    expect(handover!.card).toBeUndefined();
+    expect(reader.cardDropped).toBe(2);
+  });
+
+  it("off: the planner is not told the card's rules, so they are not paid for either", () => {
+    const screen = { elements: [{ id: "e1", role: "field", label: "Password", kind: "password" }] } as never;
+    const off = agentUserMessage(request(screen), "sign me in", "do", 20, undefined, "someone-else-entirely");
+    expect(off).not.toContain(SIGN_IN_NOTE);
   });
 });

@@ -62,6 +62,7 @@
  * request's tests are untouched by it.
  */
 import { getConfig } from "../config.js";
+import { modelBreakerKeys, sharedBreakers, type Breakers } from "../guard/breaker.js";
 import { openrouter } from "../pipeline/openrouter.js";
 import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxTokensWithReasoning, reasoningRequired, type Effort } from "./reasoning.js";
@@ -148,6 +149,8 @@ export interface PlanOptions {
    *  AGENT_VISION_PROVIDER_SORT ("" for none). The timing script measures
    *  with and without it. */
   providerSort?: string;
+  /** The circuit breakers (guard/breaker.ts): the process's shared ones when left out, none at all when null. */
+  breakers?: Breakers | null;
 }
 
 /** Thrown when every model in the ladder failed before writing anything. */
@@ -317,11 +320,25 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
   // Models whose last answer ended in "length" with nothing written: each is asked once more, at once, with a larger allowance.
   const grown = new Set<string>();
   const queue = [...models];
+  const breakers = opts.breakers === null ? null : opts.breakers ?? sharedBreakers();
 
   for (let at = 0; at < queue.length; at += 1) {
     const model = queue[at]!;
     const bigger = grown.has(model);
     if (opts.signal?.aborted) return;
+    /**
+     * A MODEL WHOSE BREAKER IS OPEN IS NOT ASKED AT ALL. This ladder counts under the same keys as the brain's gateway
+     * (`guard/breaker.ts modelBreakerKeys`), so the two doors to a model learn from each other: a model the bots have just
+     * found dead costs a step here nothing, instead of the whole of AGENT_TIMEOUT_MS before the ladder moves on. No
+     * CallRecord is written for it, because no call was made — the skip is one line of the log, as it is in the gateway.
+     */
+    const gate = breakers ? breakers.admit(modelBreakerKeys(model)) : null;
+    if (gate && !gate.ok) {
+      lastError = new Error(`${model} is cooling off after failures (${gate.by})`);
+      console.warn(`[ask] not asking ${model}: its breaker is open (${gate.by}, ${gate.retryInMs}ms to its next probe)`);
+      continue;
+    }
+    const ticket = gate?.ok ? gate.ticket : null;
     const ctrl = new AbortController();
     const cancel = () => ctrl.abort();
     opts.signal?.addEventListener("abort", cancel, { once: true });
@@ -410,6 +427,13 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
       opts.signal?.removeEventListener("abort", cancel);
       ctrl.abort();
       call.ms = Date.now() - t0;
+      // How it went, for the breakers. An ANSWER is a success; an empty answer, a timeout and a failure are the model's,
+      // as they are in the gateway. A caller that stopped says nothing about the model, so its probe is simply given back.
+      if (ticket && breakers) {
+        if (call.outcome === "ok") breakers.success(ticket);
+        else if (call.outcome === "stopped" || opts.signal?.aborted) breakers.release(ticket);
+        else breakers.failure(ticket);
+      }
       // What it cost, on the request's tally for the usage meter (usage/cost.ts): OpenRouter's charge, else its tokens, estimated.
       addCostUsd(call.costUsd ?? openRouterUsd({ usage: { prompt_tokens: call.promptTokens, completion_tokens: call.completionTokens } }, { where: "ask", model }));
       opts.log?.(call);

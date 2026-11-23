@@ -22,6 +22,7 @@
  * the service key; a person's own token can only read their own rows. A thread is a person's and a project's: another person's id, or another project's,
  * is simply not found.
  */
+import type { Shown } from "../../show/types.js";
 import type { ProjectPlan } from "../flow/plan.js";
 import { NAME_MAX } from "./naming.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -49,6 +50,11 @@ export interface ChatTurn {
    * where Xode fell short, kept as a case to test it on (scripts/xode-cases.ts).
    */
   f?: "reaction" | "rephrase";
+  /**
+   * What to draw under this answer (src/show, docs/show.md): the same blocks a bot's chat draws, so Xode can answer with a
+   * copiable command, a table of files, a severity — the open `part` included. Absent on almost every turn.
+   */
+  s?: Shown;
 }
 
 export interface ChatThread {

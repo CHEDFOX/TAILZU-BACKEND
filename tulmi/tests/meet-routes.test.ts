@@ -209,6 +209,76 @@ describe("the person's routes", () => {
   });
 });
 
+/**
+ * ONE KEY, IN A MEETING (`POST /v1/meet/now`): `/join` wants a link pasted into a box, which is no use to somebody who pressed a
+ * key mid-meeting. This finds the meeting — a link the caller read off the screen first, else the calendar's meeting running now —
+ * and when it can tell neither, says so as a cue to ASK with a card rather than guessing a call to sit in.
+ */
+describe("one key, in a meeting", () => {
+  const ev = (over: Record<string, unknown> = {}) => ({ key: "k1", title: "Design review", startMs: NOW - 5 * 60_000, url: "https://meet.google.com/abc-defg-hij", platform: "meet", ...over });
+
+  it("joins the link the caller already has, without asking the calendar at all", async () => {
+    let asked = 0;
+    const { a, svc } = await app({ events: async () => { asked += 1; return []; } });
+    const r = await a.inject({ method: "POST", url: "/v1/meet/now", payload: { url: " https://zoom.us/j/123 " } });
+    expect(r.statusCode).toBe(201);
+    expect(asked).toBe(0);
+    expect(svc.calls.filter((c) => c.fn === "join")[0]!.args[1]).toEqual({ url: "https://zoom.us/j/123" });
+  });
+
+  it("else joins the calendar's meeting that is running now, with its title", async () => {
+    const { a, svc } = await app({ events: async () => [ev()] });
+    const r = await a.inject({ method: "POST", url: "/v1/meet/now", payload: {} });
+    expect(r.statusCode).toBe(201);
+    expect(svc.calls.filter((c) => c.fn === "join")[0]!.args[1]).toEqual({ url: "https://meet.google.com/abc-defg-hij", title: "Design review" });
+  });
+
+  it("takes the nearest start when two overlap: the one they just joined, not the one they are late leaving", async () => {
+    const { a, svc } = await app({
+      events: async () => [ev({ key: "early", startMs: NOW - 40 * 60_000, url: "https://meet.google.com/old", title: "Standup" }), ev({ key: "near", startMs: NOW - 2 * 60_000, url: "https://meet.google.com/new", title: "Design review" })],
+    });
+    expect((await a.inject({ method: "POST", url: "/v1/meet/now", payload: {} })).statusCode).toBe(201);
+    expect(svc.calls.filter((c) => c.fn === "join")[0]!.args[1]).toMatchObject({ url: "https://meet.google.com/new" });
+  });
+
+  it("asks for the link rather than guessing: nothing running, no calendar, a meeting with no link, a calendar that throws", async () => {
+    const cases: Array<[string, Partial<Deps>]> = [
+      ["nothing running", { events: async () => [] }],
+      ["no calendar at all", {}],
+      ["a meeting with no link", { events: async () => [ev({ url: "" })] }],
+      ["one too long ago", { events: async () => [ev({ startMs: NOW - 5 * 60 * 60_000 })] }],
+      ["one too far ahead", { events: async () => [ev({ startMs: NOW + 60 * 60_000 })] }],
+      ["a calendar that throws", { events: async () => { throw new Error("needs signing in again"); } }],
+    ];
+    for (const [why, deps] of cases) {
+      const { a, svc } = await app(deps);
+      const r = await a.inject({ method: "POST", url: "/v1/meet/now", payload: {} });
+      expect(r.statusCode, why).toBe(409);
+      expect(r.json(), why).toMatchObject({ code: "meet_which", ask: "link" });
+      expect(svc.calls.some((c) => c.fn === "join"), why).toBe(false);
+    }
+  });
+
+  it("refuses a url that is not one, and says what it wants", async () => {
+    const { a, svc } = await app({ events: async () => [ev()] });
+    for (const url of [7, {}, "x".repeat(2001)]) {
+      const r = await a.inject({ method: "POST", url: "/v1/meet/now", payload: { url } });
+      expect(r.statusCode).toBe(400);
+    }
+    expect(svc.calls.some((c) => c.fn === "join")).toBe(false);
+  });
+
+  it("hands the service's own refusal straight back: no minutes left is not 'which meeting'", async () => {
+    const a = Fastify();
+    const svc = fakeService({ fail: true });
+    registerMeetRoutes(a, { rateLimit: {}, bots: {}, service: svc.service, secret: SECRET, now: () => NOW, events: async () => [ev()] } as never);
+    await a.ready();
+    const r = await a.inject({ method: "POST", url: "/v1/meet/now", payload: {} });
+    expect(r.statusCode).toBe(402);
+    expect(r.json()).toMatchObject({ code: "meet_minutes" });
+  });
+});
+
 describe("Recall's status webhook", () => {
   it("is 503 without a secret and 401 when not signed", async () => {
     const none = await app({ secret: "" });

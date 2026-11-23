@@ -12,6 +12,7 @@
 import type { NavigationShell, ScreenResponse, TabGlyph } from "../../../../shared/types/sdui.js";
 import { BOTS_KIT_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { comingSoon, type BotsCtx, type Client } from "./kit.js";
+import { drawScreen, drawnOn } from "../../drawn/draw.js";
 import { loadLive, type BotsDeps } from "./live.js";
 import { isBotsScreen, type BotsScreen } from "./registry.js";
 import { botsScreens } from "./screens/bots.js";
@@ -177,7 +178,15 @@ export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise
     ...(req.blocks?.size ? { blocks: req.blocks } : {}), desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }), ...(files ? {} : { files: false }),
   };
   const def = BOTS_SCREENS.get(screenId);
-  if (!def) return comingSoon(ctx);
+  // An id nobody built. With SCREEN_DRAW on and a door to a model, it is drawn from the blocks a bot draws under its
+  // words and the kit's own look (docs/screen-draw.md); anything short of a screen that passes the checker and the
+  // app's design rules — the switch off, no door, no money, a model down — is the "coming soon" it has always been.
+  if (!def) {
+    const drawn = deps.drawn && req.user?.id && drawnOn(req.user.id)
+      ? await drawScreen(ctx, { ...deps.drawn, userId: req.user.id }, { screenId, params: ctx.params, client: req.client }).catch(() => null)
+      : null;
+    return drawn ? withLiveTopics(drawn, ctx.params) : comingSoon(ctx);
+  }
   const data = def.load ? await def.load(ctx, deps).catch(() => undefined) : undefined;
   return withLiveTopics(await def.build(ctx, data), ctx.params);
 }

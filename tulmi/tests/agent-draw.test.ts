@@ -164,10 +164,49 @@ describe("a DRAW line, read", () => {
   });
 
   it("an unreadable DRAW is still a DRAW, with no mark, so the reader counts it", () => {
-    for (const line of ["DRAW", "DRAW BLOB e5", "DRAW constructor e5", "DRAW toString e5", "DRAW CIRCLE", "DRAW CIRCLE somewhere nice", "DRAW ARROW e5", "DRAW ARROW e5 -> e5",
+    // What is dropped is a mark whose TARGET cannot be read: no name at all, no spot, an arrow with one end, an empty
+    // label, a path of one point. That strictness is the whole safety of a mark and does not move.
+    for (const line of ["DRAW", "DRAW CIRCLE", "DRAW CIRCLE somewhere nice", "DRAW ARROW e5", "DRAW ARROW e5 -> e5",
       "DRAW LABEL (500,200)", "DRAW LABEL e5 \"\"", "DRAW PATH (1,2)", "DRAW PATH e5 e6"]) {
       expect(draw(line), line).toBeNull();
     }
+  });
+
+  /**
+   * OPEN AT THE NAME, CLOSED AT THE MARK (lines.ts markOf). A model explaining something reaches for words nobody
+   * listed, and dropping the mark left the explanation pointing at nothing while the words carried on. An unlisted
+   * name is read for its shape and drawn as a mark this app already has; the target stays as strict as ever.
+   */
+  it("a mark nobody wrote down is drawn as one we have, off the shape of its name", () => {
+    const kind = (line: string) => draw(line)?.kind;
+    expect(kind('DRAW OUTLINE e12 "Export"')).toBe("box");
+    expect(kind("DRAW FRAME e12")).toBe("box");
+    expect(kind("DRAW EMPHASISE e12")).toBe("highlight");
+    expect(kind("DRAW ENCIRCLE e12")).toBe("circle");
+    expect(kind("DRAW CAPTION e12 \"it goes here\"")).toBe("label");
+    expect(kind("DRAW ORDER e12 3")).toBe("number");
+    expect(kind("DRAW STRIKE e12")).toBe("underline");
+    // A name it cannot read at all becomes the plainest mark there is, never nothing.
+    expect(kind("DRAW BLOB e5")).toBe("box");
+    expect(kind("DRAW zzzz e5")).toBe("box");
+  });
+
+  it("a prototype name is still not a kind, and cannot reach the prototype", () => {
+    // The guard is Object.hasOwn, so what a prototype name becomes is the plain fallback, never anything read off
+    // Object.prototype — a kind is always one of ours.
+    for (const line of ["DRAW constructor e5", "DRAW toString e5", "DRAW hasOwnProperty e5", "DRAW valueOf e5"]) {
+      expect(draw(line)?.kind, line).toBe("box");
+    }
+    // `__proto__` never even reaches the lookup: a mark's name is letters, so it is not a name at all.
+    expect(draw("DRAW __proto__ e5")).toBeNull();
+  });
+
+  it("clear and arrow are never guessed at: one wipes the screen, the other needs two ends", () => {
+    // Only their own names clear or point. A near-miss becomes an ordinary mark instead.
+    expect(draw("DRAW WIPE e5")?.kind).toBe("box");
+    expect(draw("DRAW ERASE e5")?.kind).toBe("box");
+    expect(draw("DRAW CLEAR")).toEqual({ kind: "clear" });
+    expect(draw("DRAW POINTAT e5")?.kind).not.toBe("arrow");
   });
 
   it("picture numbers are whole and inside 0..1000; a box is at least 4 and is cut at the edge", () => {
@@ -460,7 +499,9 @@ describe("the step's log line", () => {
     await post(step({ utterance: "what does export do?" }));
     await vi.waitFor(() => expect(logged.some((l) => l.msg === "agent step")).toBe(true));
     const line = logged.find((l) => l.msg === "agent step")!.obj.agent;
-    expect(line).toMatchObject({ path: "model", ending: "done", draws: 2, drawsDropped: 3 });
+    // SQUIGGLE is drawn now, as a box: a name nobody wrote down is still a mark (lines.ts markOf). What is still
+    // dropped is the two whose TARGET cannot be read — an id not on this screen, and a picture spot with no picture.
+    expect(line).toMatchObject({ path: "model", ending: "done", draws: 3, drawsDropped: 2 });
     // (The agent lines: the request-completed line's raw objects are pino's to serialize.)
     expect(JSON.stringify(logged.filter((l) => l.obj.agent))).not.toMatch(/Export|e99|SQUIGGLE/);
 
@@ -528,8 +569,10 @@ describe("the roles teach DRAW, and stay the same bytes", () => {
     expect(streamCalls()).toHaveLength(2);
     expect(systemText(0)).toBe(systemText(1));
     expect(systemText(0)).toBe(PLANNER);
-    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen", "DRAW BOX <id>", "DRAW CIRCLE <id>", "DRAW UNDERLINE <id>",
-      "DRAW HIGHLIGHT <id>", "DRAW ARROW <id> -> <id>", "DRAW NUMBER <id> <1-9>", "DRAW LABEL <id> \"text\"", "DRAW CLEAR", "At most 6 marks",
+    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen",
+      // One open line in place of a line per kind: the names are examples, and any word for the mark is read (markOf).
+      "DRAW <mark> <id>", "box, circle, underline, highlight, label", "or any word for the mark you want",
+      "DRAW ARROW <id> -> <id>", "DRAW NUMBER <id> <1-9>", "DRAW CLEAR", "At most 6 marks",
       "each right after the SAY it belongs to", "A plain where-question is a POINT, never a DRAW",
       "There is no picture here, so mark things by their ids", "SAY, POINT and DRAW come first."]) {
       expect(PLANNER, must).toContain(must);

@@ -153,6 +153,37 @@ A meeting is scheduled once: its row carries the event's key (the event id and i
 the old row is called off and the new time gets its own bot. A person whose calendar is not connected, or needs signing in again, is skipped;
 any other error is logged for that person and the rest go on.
 
+## 4a. One key, already in a meeting
+
+Auto-join above is the plan made in advance: meetings 11 to 45 minutes away. This is the other case, and it is the one a
+person actually asks for — they are **in** a meeting, they say "take notes", and the bot has to go in now.
+
+`POST /v1/meet/now { url? }` → `201 { meeting }`. `/join` wants the link pasted into a box, which is right for a page
+and no use at all to somebody who pressed a key mid-meeting. So this finds the meeting itself, cheapest first:
+
+1. **A `url` the caller already has.** The window can SEE the screen, so a link read off the meeting in front of them is
+   better evidence than anything a calendar knows.
+2. **Else the calendar's meeting running now** (`meet/calendar.ts nowMeeting`): with a link, started no more than
+   `NOW_LATE_MS` (90 minutes) ago and no more than `NOW_EARLY_MS` (10 minutes) from starting. When two overlap the
+   **nearest start** wins — at 10:31 the meeting they mean is the one they just joined, not the one they are late
+   leaving.
+3. **Else it asks.** `409 { code: "meet_which", ask: "link" }` is the key's cue to put up a card and call this again
+   with the link. Most people have it on the clipboard already — they clicked Copy link to get in — so the card can
+   offer that with one button and need no typing at all, which matters because the guide's window is deliberately never
+   focused and cannot take a keystroke (`docs/window-setup.md`).
+
+**It never guesses which meeting.** A bot sent into the wrong call does not fail quietly: it sits there and takes notes
+of it. So no calendar, nothing running, a meeting with no link, or a calendar that needs signing in again all end in the
+same ask, and none of them is reported as the person's error. The service's own refusals (no minutes left, the bot not
+set up) come straight back as they are, because "no minutes" is not "which meeting".
+
+**Our own calls need none of this.** The bot takes its seat with the first person in (`rooms/sitIn.ts`), hears each
+person separately through the SFU so who said what is never guessed, and writes the note and the brief. `/now` is for
+the meetings somebody else is hosting.
+
+**What is not built:** the card. The server answers `ask: "link"`; the window has to draw it and offer the clipboard.
+That is desktop work and a desktop build.
+
 ## 5. The stage: how it speaks
 
 A bot that speaks has no fixed picture. Its camera is a web page of ours, which Recall plays as Output Media; the sound of the page is the

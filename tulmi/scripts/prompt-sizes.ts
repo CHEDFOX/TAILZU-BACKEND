@@ -88,7 +88,12 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   bot_run: 1379,
   bot_memory: 1058,
   // What a bot's answer draws (src/show/design.ts): it replaces nothing, so its first size is its "before" (a NEW_ROLE).
-  bot_show: 2420,
+  // What it was before the OPEN block (the `part`, src/show/style.ts) was added to its contract: re-measured on the day,
+  // not the 2,420 of its first version, because the role had already drifted to this and a stale anchor makes the 10% rule
+  // below mean nothing. The same treatment the cinema's roles were given when they grew by the block they now carry.
+  bot_show: 2638,
+  // A screen nobody built, drawn from the same blocks (src/drawn): new, so its first measured size is its own "before".
+  screen_draw: 2082,
   cinema_scene: 2494,
   cinema_eye: 1231,
   // The film half's seven replaced real constants in src/cinema, so each has a true "before": the length of the system
@@ -123,7 +128,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "lingo_unit", "lingo_say"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "lingo_unit", "lingo_say", "screen_draw"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

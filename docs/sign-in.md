@@ -40,6 +40,66 @@ They are paid for only on a screen that looks like a sign-in (`looksLikeSignIn`)
 `CONTEXT_NOTE` are paid for only when they apply, so the stable block and every ordinary step cost nothing.
 The two verbs themselves are in the contract (`src/principles/roles.ts`), which is two lines.
 
+## The window draws the ways in now
+
+**Built (17 Nov):** the `ALSO` lines reach the handover card as buttons. Each is a real control on that screen — the
+server checked every id against the screen list and dropped the rest before it left — so the button simply presses it
+(`TAILZU-DESKTOP/src/agent/run/agent.js` `handover`, `waysOf`).
+
+Pressing one does **not** finish the handover: starting a way in is the beginning of their part, not the end, so the
+card comes back and waits, and only Continue or Stop ends it. A press that fails is logged and the card still comes
+back, because the page is theirs to finish either way. At most four, no repeat, and nothing without both an id and a
+label — the window does not trust the cap, it keeps its own.
+
+Why this half first: rule S3 exists because people rarely remember **which** way they signed up with, and a page's own
+buttons are often below the fold or behind "more options". The card puts the real choices in front of them, and it
+needed no decision about anything.
+
+## The switch
+
+`SIGN_IN_CARD`, **off**, staged by `SIGN_IN_CARD_USERS`. Off, the planner is not told the card's rules (so they are not
+paid for either), any `FIELD` or `ALSO` it writes anyway is dropped and counted in `cardDropped`, and a handover carries
+no card — the plain one, the page itself, which always works.
+
+It exists for a specific reason: **everything the card draws lives in the window's own page** (`guide.html`), which only
+a new build can change. Without a switch here, a card that came out wrong would need a release to undo. With it, the
+card is turned off from the server and the next sign-in is the one people had yesterday.
+
+## The boxes, and the one moment the window takes the keyboard
+
+**Built (17 Nov).** The card draws the page's real boxes, named in the person's own language. A `secret` and a `code`
+are hidden as typed (rule S5), nothing asks the browser for autofill (`autocomplete="off"`, because this is not the
+site's own page and must never look to the browser as if it were), and nothing is remembered: the values live in the
+inputs, go across once on Continue, and go with the card.
+
+**The window is never focusable except for this.** That flag is load-bearing — the app being worked on keeps the
+keyboard, and a dictation's paste must land in it — so `ask.js` turns it on while a card with boxes is up and off again
+in a `finally`, where a thrown or cancelled card cannot leave the window able to steal the next keystroke.
+
+**Then: the app first, the boxes after.** On Continue the agent gives the keyboard back to the app they were in
+(`drive("open", run.app)`) before setting anything, because a field cannot be set in an app that is behind. Each box is
+set by the id the CARD named, so a value for an id the card did not name is ignored. **What they typed is not logged
+and does not enter the run's history** — the log says which box was filled and never what went into it, and a test
+holds that their password and address appear nowhere in what is sent.
+
+**And a way out of all of it:** a sign-in handover also offers **"Sign in in X0 Bot's browser"**, which opens the Sites
+list in the app — the same flow the phone uses (`docs/sites.md`). The person picks the site there and signs in on a
+real page in our own browser, which keeps the session; the card stays up here, and they press Continue when they are
+in. It opens the LIST rather than a panel at a guessed address, because the window knows the site in front only by its
+display name ("Swiggy") and never its domain.
+
+**There is still no test for the card's own drawing** — `src/agent/guide/` has none, and `node --test` has no DOM. Look
+at it with **`guide.html?demo=signIn`**, which draws the whole card still: two boxes, three ways in, the browser button,
+Continue and Stop.
+
+**Why it was left until last.** The guide's window is deliberately never focused — the app being worked on
+keeps the keyboard, and a dictation's paste must still land in it (`src/agent/ask.js`, "THE PILL'S RECIPE") — so it
+cannot take a keystroke, let alone a password. That is a decision, not an omission, and there are three ways out: make
+the window focusable for that one moment and hand focus back; a separate window that may take the keyboard; or the
+cloud browser's panel in a `LiveView`, which both clients already have and which never holds the secret itself (each
+character goes to the real page and the box is emptied before the call goes out). Until one is chosen, every `FIELD`
+line still ends in a correct plain handover.
+
 `looksLikeSignIn` is a cheap guess and is meant to be: the focused field's kind says password, or there is a
 box to type in on a screen that also says one of the things a sign-in page says. It is wrong in the safe
 direction both ways. A page it misses gets the plain handover every sign-in page got before this existed. A

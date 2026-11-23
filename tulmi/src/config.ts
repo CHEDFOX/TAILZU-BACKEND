@@ -936,6 +936,32 @@ const EnvSchema = z.object({
   BOT_SHOW: bool(false),
   BOT_SHOW_USERS: orDefault(""),
   /**
+   * A SCREEN NOBODY BUILT, DRAWN BY A MODEL (src/drawn, docs/screen-draw.md): an id the Bots app does not have a builder for is
+   * answered "coming soon" today. With this on, one small call picks the BLOCKS for that screen from the same vocabulary a bot draws under
+   * its words, and the kit draws them — so the model never writes a style, and a drawing that does not survive the checker or the app's
+   * design rules is the "coming soon" it was before. Nothing on it can be tapped or typed: a screen has no chat turn to send to.
+   * Off by default; SCREEN_DRAW_USERS, a comma-separated list of account ids, is the stage before everyone, as BOT_SHOW_USERS is.
+   * No built screen goes near this: they are answered from BOTS_SCREENS exactly as they are today.
+   */
+  /**
+   * THE SIGN-IN CARD (src/agent, docs/sign-in.md): the planner describes a sign-in page's real boxes and the ways in it offers, and the window
+   * draws them on the handover card. Off by default: with it off the planner is not told the rules, and any FIELD or ALSO it writes anyway is
+   * dropped, so every sign-in ends in the plain handover it always did — the page itself, which always works.
+   *
+   * It exists so the card can be turned OFF FROM HERE. Everything it draws is in the window's own page (guide.html), which only a new build can
+   * change, so without a switch a card that came out wrong would need a release to undo. SIGN_IN_CARD_USERS is the stage before everyone.
+   */
+  SIGN_IN_CARD: bool(false),
+  SIGN_IN_CARD_USERS: orDefault(""),
+  SCREEN_DRAW: bool(false),
+  SCREEN_DRAW_USERS: orDefault(""),
+  /**
+   * How long a drawn screen is kept, in minutes (60; 0 keeps nothing and draws it on every request, which is dear). Kept per process, in
+   * memory, keyed by a hash of the exact message the model was given — so two requests share an answer only where the model would have
+   * been asked the very same thing. A screen nobody built does not change until somebody builds it, so an hour is short rather than long.
+   */
+  SCREEN_DRAW_CACHE_MIN: z.coerce.number().int().min(0).max(1440).default(60),
+  /**
    * THE BOT AT THE FOOT OF HOME, AS WHAT IS HAPPENING (experience/bots/screens/shell/homeThought.ts, docs/home-updates.md): instead of a
    * box to type in, his thought holds the updates — what needs the person, what their bots are working on, what just finished — each
    * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is
