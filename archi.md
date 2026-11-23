@@ -54,7 +54,9 @@ THIRD_PARTY_NOTICES.md   licences of vendored material
 docker-compose.yml       the VPS: backend, optional media worker (profile media), optional Oracle worker (profile oracle),
                          optional mail worker (profile mail), optional Caddy (profile https)
 .dockerignore            what the backend image is built from (tulmi/, shared/, three scripts run in the container)
-.github/workflows/ci.yml typecheck, tests and build for tulmi/, jobs/ and viewer/; the workers' pytest; the Docker image build
+.github/workflows/ci.yml typecheck, tests and build for tulmi/, jobs/ and viewer/; the Oracle worker's pytest and the mail worker's
+                         tests (the media worker's pytest is run by hand); the Docker image build
+.github/workflows/deploy.yml  main goes live by itself: once CI passes on a push to main, GitHub runs deploy/ship.sh on the server
 
 tulmi/                   the server (Node 20+, TypeScript, Fastify): everything below "tulmi/src" in this file
 jobs/                    Cloudflare Worker: Xode's jobs as Workflows, the cron ticker, the live session's Durable Objects

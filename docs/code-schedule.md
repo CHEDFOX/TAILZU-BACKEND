@@ -7,7 +7,7 @@ It is `tulmi/src/code/schedule/`. No npm dependency was added.
 
 ```
 tulmi/src/code/schedule/
-  store.ts    the table (migration 0095, code_schedules): Supabase, with a memory twin and the one-store factory
+  store.ts    the table (migration 0100, code_schedules): Supabase, with a memory twin and the one-store factory
   index.ts    CodeSchedules: create, list, update, remove, run now, and the tick that starts what is due; startCodeSchedules (every minute)
 tulmi/src/routes/code/codeSchedules.ts   the five routes, and the deps that cut a branch and make a job
 ```
@@ -68,7 +68,7 @@ UTC. Resuming a paused one works its next run out **from now** and forgets what 
 ## 5. Setting up
 
 1. Run `tulmi/supabase/migrations/0100_code_schedules.sql`:
-   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0095"`.
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0100"`.
    Without it a server keeps its schedules in memory and a restart forgets them; the routes still work.
 2. Set **`CODE_SCHEDULES=true`**. It is **off by default**: a standing job spends money with nobody watching, so it is a thing the owner turns on.
 3. Nothing else: the clock starts with the server and stops when it closes.
