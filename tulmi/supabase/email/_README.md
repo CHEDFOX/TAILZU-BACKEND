@@ -48,8 +48,12 @@ so the mail still says who it is from at the moment it asks for trust.
 The sign-in screen's look — the one the reader is holding while they read this
 (`OB` in `src/experience/onboard/kit.ts`, and the `CodeEntry` props in
 `src/experience/onboard/auth.ts`) — and as little as a code needs: the icon,
-the screen's own heading, the code, one label under it, and one line at the
-foot.
+a heading, the code, one label under it, and one line at the foot.
+
+Not the screen's own heading, though it is set in the screen's face at the
+screen's size. "Enter the code I sent" works there because they tapped the
+button a second ago; sitting in an inbox days later it names neither who sent
+it nor what it opens, so the heading says both.
 
 The code is drawn as its box is drawn on that screen: the neon ring, white
 fill, ink edge, digits in the heading's face. Neon is the app's one live
