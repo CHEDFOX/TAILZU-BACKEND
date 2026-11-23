@@ -361,6 +361,11 @@ course goes on. Still the same kind of thing first, a word against words, becaus
 whole phrase is answered by its shape rather than its meaning; unmet words fill in behind, for the first lesson
 of all, where there is nothing met to stand beside.
 
+**No meaning is shown twice.** Two words in a course can share a gloss (hola and buenas are both "hello"; tú and
+usted both "you"). The answer is marked by its place, so the right meaning beside its twin is two identical
+buttons, one of them wrong, and the miss is scheduled as a lapse. So a wrong answer never reads like the right
+one, and no two wrong answers read alike (compared as `grade.ts fold` sees them: case, spacing and marks aside).
+
 What this does NOT fix is the very first encounter, where nothing has been met and there is nothing to
 eliminate against. That wants the word shown before it is asked for — see the note in WORKING-ON.md.
 

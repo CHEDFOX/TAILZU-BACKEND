@@ -162,6 +162,20 @@ describe("what a session reaches for", () => {
     expect([...ex.options].sort()).toEqual(["dog", "duck", "hello"]);
   });
 
+  it("never offers the same meaning twice, so the twin of the right answer is not a trap", () => {
+    // hola and buenas both mean "hello": side by side, one of two identical buttons would be marked wrong.
+    const seen = (w: string, g: string) => item({ item: w, gloss: g, memory: { ...freshMemory(T0), state: "review", stability: 40, difficulty: 5, reps: 4, lastMs: T0 } });
+    const target = item({ item: "hola", gloss: "hello" });
+    const pool = [target, seen("buenas", "Hello"), seen("adiós", "goodbye"), seen("chao", "goodbye "), item({ item: "gracias", gloss: "thanks" }), item({ item: "perro", gloss: "dog" })];
+    for (let day = 0; day < 10; day++) {
+      const ex = exerciseFor(target, pool, T0 + day * DAY, "choose");
+      const shown = ex.options.map((o) => o.trim().toLowerCase());
+      expect(new Set(shown).size).toBe(ex.options.length);
+      expect(ex.options).toHaveLength(4);
+      expect(ex.options[ex.correct]).toBe("hello");
+    }
+  });
+
   it("hands the words over shuffled for putting in order, and keeps every one", () => {
     const phrase = item({ item: "one two three four", kind: "phrase", gloss: "a phrase" });
     const ex = exerciseFor(phrase, [phrase], T0, "chips");
