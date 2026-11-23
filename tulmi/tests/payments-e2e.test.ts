@@ -71,6 +71,8 @@ let row: Record<string, unknown> | null = null;
 /** Words spent this month. The meter only bites above the free cap, so
  *  proving it is off for a subscriber needs somebody who is over it. */
 let wordsUsed = 0;
+/** Set to make the entitlements upsert fail, as a database blip would. */
+let writeFails = false;
 
 /**
  * Just enough Supabase to answer the two shapes entitlements.ts asks for:
@@ -98,11 +100,15 @@ function fakeSupabase() {
         maybeSingle: async () => ({ data: isEnt ? row : null, error: null }),
         single: async () => ({ data: isEnt ? row : null, error: null }),
         upsert: async (values: Record<string, unknown>) => {
+          if (isEnt && writeFails) return { error: { message: "connection reset" } };
           if (isEnt) row = { ...values };
           return { error: null };
         },
         insert: async () => ({ error: null }),
-        update: () => chain,
+        // The entitlements row is changed in place (a TRANSFER takes access away from the account it left).
+        update: (patch: Record<string, unknown>) => (isEnt
+          ? { eq: async () => { if (writeFails) return { error: { message: "connection reset" } }; if (row) row = { ...row, ...patch }; return { error: null }; } }
+          : chain),
         delete: () => chain,
         then: (resolve: (v: unknown) => unknown) => resolve({ data: usage, error: null }),
       };
@@ -144,7 +150,7 @@ const { getConfig } = await import("../src/config.js");
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); });
 afterAll(async () => { await app.close(); });
-beforeEach(() => { row = null; wordsUsed = 0; forgetEntitlement(USER); });
+beforeEach(() => { row = null; wordsUsed = 0; writeFails = false; forgetEntitlement(USER); });
 
 /** What RevenueCat actually posts, trimmed to the fields the server reads. */
 function event(over: Record<string, unknown> = {}) {
@@ -206,6 +212,41 @@ describe("payments, end to end", () => {
     expect((await webhook(event(), `${SECRET}x`)).statusCode).toBe(401);
     expect((await webhook(event(), `Bearer ${SECRET.slice(0, -1)}`)).statusCode).toBe(401);
     expect((await webhook(event(), SECRET)).statusCode).toBe(200);
+  });
+
+  it("asks RevenueCat to send a renewal again when it could not be written", async () => {
+    // A 200 here would be final: RevenueCat never retries it, and the payer is
+    // capped from last period's expiry until the next renewal.
+    writeFails = true;
+    const failed = await webhook(event({ type: "RENEWAL" }));
+    expect(failed.statusCode).toBe(500);
+    expect(failed.json()).toMatchObject({ ok: false, reason: "connection reset" });
+    expect(row).toBeNull();
+    // The retry, once the database is back, lands.
+    writeFails = false;
+    const again = await webhook(event({ type: "RENEWAL" }));
+    expect(again.statusCode).toBe(200);
+    expect(row?.active).toBe(true);
+    // An event for nobody we know is still answered 200: it will never become valid.
+    const nobody = await webhook(event({ app_user_id: "$RCAnonymousID:abc" }));
+    expect(nobody.statusCode).toBe(200);
+    expect(nobody.json().ok).toBe(false);
+  });
+
+  it("takes access away from the account a transfer left, as RevenueCat sends it", async () => {
+    await webhook(event());
+    expect(row?.active).toBe(true);
+    const OTHER = "99999999-8888-7777-6666-555555555555";
+    // A TRANSFER carries transferred_from / transferred_to and no app_user_id or entitlement.
+    const moved = await webhook({ event: { type: "TRANSFER", transferred_from: [USER], transferred_to: [OTHER], store: "APP_STORE", environment: "PRODUCTION" } });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json()).toMatchObject({ ok: true, userId: OTHER });
+    expect(row).toMatchObject({ active: false, last_event: "TRANSFER" });
+    wordsUsed = 5_000;
+    expect(await enforceQuota(user as never)).not.toBeNull();
+    // One that could not be written comes again.
+    writeFails = true;
+    expect((await webhook({ event: { type: "TRANSFER", transferred_from: [USER], transferred_to: [OTHER] } })).statusCode).toBe(500);
   });
 
   it("does not let last period's EXPIRATION revoke a renewed subscriber", async () => {

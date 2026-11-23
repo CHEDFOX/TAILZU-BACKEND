@@ -261,6 +261,29 @@ describe("joining a call", () => {
     expect((await r.svc.join(USER, { url: MEET })).id).not.toBe(a.id);
   });
 
+  it("sends one bot for two presses at once", async () => {
+    const r = rig();
+    const [a, b] = await Promise.all([r.svc.join(USER, { url: MEET }), r.svc.join(USER, { url: `${MEET}#again` })]);
+    expect(b.id).toBe(a.id);
+    await r.svc.idle();
+    expect(r.calls.create).toHaveLength(1);
+    // Once the first is answered, the next press is a fresh ask, and it finds the bot already there.
+    expect((await r.svc.join(USER, { url: MEET })).id).toBe(a.id);
+    await r.svc.idle();
+    expect(r.calls.create).toHaveLength(1);
+  });
+
+  it("answers a join now with the bot already booked for that call in a few minutes", async () => {
+    // Auto-join books a calendar meeting's bot ahead; "take notes now" a few minutes before it starts is the same call.
+    const r = rig();
+    const booked = await r.svc.join(USER, { url: MEET, joinAt: r.clock.t + 15 * 60_000 });
+    expect(booked.status).toBe("scheduled");
+    r.clock.t += 8 * 60_000;
+    expect((await r.svc.join(USER, { url: MEET })).id).toBe(booked.id);
+    await r.svc.idle();
+    expect(r.calls.create).toHaveLength(1);
+  });
+
   it("keeps the name the join card carried, so the next call has it too", async () => {
     const r = rig();
     await r.svc.join(USER, { url: MEET, botName: "  Aanya's  notetaker " });

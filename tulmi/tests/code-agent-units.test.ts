@@ -707,6 +707,11 @@ describe("the job store's agent claim (as Supabase is asked)", () => {
     expect(claimableJobs.log).toEqual(expect.arrayContaining([
       ["eq", ["agent", true]], ["in", ["state", [...CLAIMABLE_STATES]]], ["or", [`agent_expires_at.is.null,agent_expires_at.lte.${new Date(9000).toISOString()}`]],
     ]));
+    // The person's own waits are left out by the query itself, before the page is cut: read afterwards, a page of them (the oldest rows)
+    // would hide every job that could run.
+    expect(claimableJobs.log).toEqual(expect.arrayContaining([
+      ["or", ["state.neq.waiting_for_you,waiting_on.is.null,waiting_on.in.(paid,commit)"]], ["limit", [5]],
+    ]));
     const expired = stub({ data: [row()], error: null });
     expect(await new SupabaseJobStore(expired.sb as never).listAgentExpired(9000, 5)).toHaveLength(1);
     expect(expired.log).toEqual(expect.arrayContaining([

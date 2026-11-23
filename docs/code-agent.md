@@ -414,7 +414,7 @@ It does not score beauty and never will: there is no ground truth for beauty, an
 
 ## 6. Waiting for the person
 
-A job that needs the person is **parked**: `waiting_for_you`, nobody's claim, the state saved, the person pushed `needs_you` (`code_needs_you`, "Tailzu needs you"). Their word is written into the state by a route and the job goes back to `running`; the orchestrator's next poll claims it and the same phase runs again and finds the answer.
+A job that needs the person is **parked**: `waiting_for_you`, nobody's claim, the state saved, the person pushed `needs_you` (`code_needs_you`, "Tailzu needs you"). Their word is written into the state by a route and the job goes back to `running`; the orchestrator's next poll claims it and the same phase runs again and finds the answer. A parked job is never in the list a poll claims from: the store leaves it out in the query itself (`listClaimable`), before the list is cut to size, so a pile of jobs waiting on people (the oldest rows there are) can never fill the page and hide the jobs that could run.
 
 | It waits for | `waiting_on` | The person says it with |
 | --- | --- | --- |

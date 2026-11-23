@@ -44,6 +44,14 @@ import { filmKeys, type Picture, type CinemaStore } from "./store.js";
 import { ASPECTS, filmShape, TIERS, type Aspect, type Character, type Film, type FilmRow, type ShotCard, type Take, type Tier, type Verdict } from "./types.js";
 
 export const TICK_MS = 5_000;
+/**
+ * How long a sheet, a still or a voice-over that just failed is left before it is asked for again: this after the first failure, twice
+ * this after the second. The tick comes every five seconds, so without it three strikes (flow.ts STEP_TRIES) took fifteen: a provider's
+ * short outage, or a catalog that came back empty for a moment, failed every film drawing its storyboard for good.
+ */
+export const STEP_REST_MS = 30_000;
+/** The steps that count strikes towards giving up (flow.ts stuck), and so rest between them. */
+const COUNTED: ReadonlySet<Step["kind"]> = new Set(["sheet", "still", "voice"]);
 /** Longer than any script takes to write. */
 export const WRITING_MS = 10 * 60_000;
 /** A storyboard's price is the quote plus this share, for stills the eye sends back. */
@@ -195,6 +203,8 @@ export class CinemaService {
   private readonly id: () => string;
   private readonly busy = new Map<string, Set<string>>();
   private readonly reserved = new Map<string, number>();
+  /** When a step that failed may be asked for again, by film and step (STEP_REST_MS). In memory: a restart only tries sooner. */
+  private readonly rest = new Map<string, number>();
   private readonly locks = new Map<string, Promise<unknown>>();
   private readonly day = new Map<string, { day: number; paise: number }>();
   private readonly frameCache = new Map<string, Buffer[]>();
@@ -328,8 +338,11 @@ export class CinemaService {
         return was.takeOf !== p.take.get(s.n) ? { ...was, blamed: [], fix: null, error: null, failedOf: null } : was;
       });
       x.notes = [...r.notes, ...x.notes].slice(0, 20);
+      // A change is a fresh start for whatever gave up: the count that stopped the film goes, and so does what it said.
+      x.tries = {};
       if (x.status === "done") x.status = "rendering";
-      if (x.status === "failed") x.status = "script";
+      if (x.status === "failed") { x.status = "script"; x.error = null; }
+      this.unrest(x.id);
       // A change to the storyboard redraws what it touched, then shows the storyboard again (the tick moves only films being made).
       if (x.status === "board") x.status = "boarding";
     });
@@ -345,6 +358,14 @@ export class CinemaService {
       if (o.model !== undefined) card.pin = o.model || null;
       const st = shotOf(x, n);
       if (st) Object.assign(st, { failedOf: null, error: null, blamed: [], fix: null, take: null, takeOf: null });
+      // The shot's own strikes go, so its still and voice-over are really asked for again. A film that gave up on its storyboard starts
+      // it over with every count cleared (the budget it was given is still there) and without the line that said why it stopped.
+      const tries = { ...(x.tries ?? {}) };
+      delete tries[`still:${n}`];
+      delete tries[`voice:${n}`];
+      x.tries = tries;
+      if (x.status === "failed" && x.script) { x.status = "boarding"; x.error = null; x.tries = {}; }
+      this.unrest(x.id);
       if (x.hold === "shot") x.hold = null;
       if (x.status === "done") x.status = "rendering";
     });
@@ -596,6 +617,7 @@ export class CinemaService {
       }
       const key = stepKey(s);
       if (busy.has(key)) continue;
+      if ((this.rest.get(`${f.id}|${key}`) ?? 0) > this.now()) continue;
       busy.add(key);
       this.busy.set(f.id, busy);
       const hold = cost(s) ?? 0;
@@ -603,10 +625,16 @@ export class CinemaService {
       this.track(f.id, async () => {
         try {
           await asPerson(f.ownerId, () => this.run(f, s, models));
+          this.rest.delete(`${f.id}|${key}`);
           await this.tried(f, key, false);
         } catch (err) {
           this.d.log?.(`[cinema] ${stepKey(s)} failed: ${why(err)}`);
-          await this.tried(f, key, true);
+          // Our own "not just now" (no model listed: the catalog is empty or could not be read) is not this step's failure, so it is not
+          // a strike; it rests all the same, and the next look asks again. Anything else is a strike, and the rest doubles with each.
+          const notJustNow = err instanceof CinemaError && err.code === "no_model";
+          const strikes = (f.tries?.[key] ?? 0) + (notJustNow ? 0 : 1);
+          if (COUNTED.has(s.kind)) this.rest.set(`${f.id}|${key}`, this.now() + STEP_REST_MS * 2 ** Math.max(0, strikes - 1));
+          if (!notJustNow) await this.tried(f, key, true);
         } finally {
           busy.delete(key);
           this.reserved.set(f.id, Math.max(0, (this.reserved.get(f.id) ?? 0) - hold));
@@ -629,6 +657,11 @@ export class CinemaService {
       else delete tries[key];
       x.tries = tries;
     });
+  }
+
+  /** A film the person has changed or asked again is tried at once: nothing it is waiting out still holds. */
+  private unrest(filmId: string): void {
+    for (const k of [...this.rest.keys()]) if (k.startsWith(`${filmId}|`)) this.rest.delete(k);
   }
 
   private async move(f: Film, status: Film["status"], hold: Film["hold"]): Promise<void> {

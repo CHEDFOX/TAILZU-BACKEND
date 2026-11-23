@@ -157,8 +157,10 @@ function others(item: LingoItem, pool: readonly LingoItem[], seed: string): stri
  * is answered by its shape rather than its meaning. Unmet words fill in behind, for the first lesson of all,
  * where there is nothing met to stand beside.
  */
-function beside(item: LingoItem, pool: readonly LingoItem[], seed: string): LingoItem[] {
-  const mine = pool.filter((p) => p.item !== item.item);
+function beside(item: LingoItem, pool: readonly LingoItem[], seed: string, same?: (p: LingoItem) => string): LingoItem[] {
+  // With `same`, what is shown is what must differ: nothing that reads like the answer, and no two alike, since the answer is
+  // marked by its place and the twin of the right one would be marked wrong.
+  const mine = pool.filter((p) => p.item !== item.item && (!same || same(p) !== same(item)));
   const met = (p: LingoItem) => p.memory.state !== "new";
   const rank = [
     mine.filter((p) => met(p) && p.kind === item.kind),
@@ -170,6 +172,7 @@ function beside(item: LingoItem, pool: readonly LingoItem[], seed: string): Ling
   for (const group of rank) {
     for (const p of shuffle(group, seed)) {
       if (out.length >= 3) return out;
+      if (same && out.some((q) => same(q) === same(p))) continue;
       out.push(p);
     }
   }
@@ -203,7 +206,8 @@ export function gapIn(text: string, item: string): string | null {
 
 /** Up to three other meanings to offer beside the right one: the words they have MET first (see `beside`). */
 function distractors(item: LingoItem, pool: readonly LingoItem[], seed: string): string[] {
-  return beside(item, pool.filter((p) => p.gloss.trim()), seed).map((p) => p.gloss);
+  // Two words can share a meaning (hola and buenas are both "hello"): offered beside each other, one of two identical buttons is wrong.
+  return beside(item, pool.filter((p) => p.gloss.trim()), seed, (p) => fold(p.gloss)).map((p) => p.gloss);
 }
 
 /** One item turned into the exercise it has earned. */

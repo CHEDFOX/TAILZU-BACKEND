@@ -449,6 +449,51 @@ describe("the small model", () => {
       expect((await decide("what changed this week?", withProjects(), { call: none.call, tiers, fx: 88, jobBudgetPaise: 3000 })).projects).toBeUndefined();
     });
 
+    it("matches a name on the form it was shown, cut to one line, as well as in full", async () => {
+      const long = { id: "33333333-3333-4333-8333-333333333333", name: `aanya/${"a-very-long-repository-name-".repeat(4)}end` };
+      const shown = long.name.slice(0, 80);
+      const m = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: [shown] }));
+      const d = await decide("fix the build", withProjects({ projects: [...MINE, long] }), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      expect(d.projects).toEqual([long.id]);
+      // Two names that read alike once cut pick neither: near enough is the wrong repo.
+      const twin = { id: "44444444-4444-4444-8444-444444444444", name: `${shown}-other` };
+      const both = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: [shown] }));
+      expect((await decide("fix the build", withProjects({ projects: [long, twin] }), { call: both.call, tiers, fx: 88, jobBudgetPaise: 3000 })).projects).toBeUndefined();
+    });
+
+    /** The front door keeps the list a minute; a project removed meanwhile is not put in hand, and one added is seen soon. */
+    it("does not hand over a project removed since the list was read, and sees a new one within a minute", async () => {
+      const { createFront, MemoryFrontStore } = await import("../src/front/index.js");
+      const { Guard } = await import("../src/guard/index.js");
+      const projects = new Map(MINE.map((p) => [p.id, { id: p.id, fullName: p.name }]));
+      let reads = 0;
+      const clock = { t: 1_800_000_000_000 };
+      const code = {
+        store: {
+          listProjects: async () => { reads++; return [...projects.values()]; },
+          getProject: async (_u: string, id: string) => projects.get(id) ?? null,
+        },
+        brain: null,
+      };
+      let answer = "aanya/storefront";
+      const m = model(() => decideJson({ intent: "code_task", confidence: 0.9, projects: [answer] }));
+      const front = createFront({ force: true, store: new MemoryFrontStore(), guard: new Guard(), call: m.call, code: code as never, now: () => clock.t })!;
+      expect((await front.decide("the cart total is wrong", ctx())).projects).toEqual([MINE[0]!.id]);
+      projects.delete(MINE[0]!.id);
+      const after = await front.decide("the cart total is wrong", ctx());
+      expect(after.projects).toBeUndefined();
+      // The kept list was dropped with it, so the next message reads it again.
+      const was = reads;
+      answer = "aanya/api-server";
+      expect((await front.decide("the cart total is wrong", ctx())).projects).toEqual([MINE[1]!.id]);
+      expect(reads).toBe(was + 1);
+      // One connected now is seen once the minute is up.
+      projects.set("66666666-6666-4666-8666-666666666666", { id: "66666666-6666-4666-8666-666666666666", fullName: "aanya/new-app" });
+      answer = "aanya/new-app";
+      clock.t += 61_000;
+      expect((await front.decide("the cart total is wrong", ctx())).projects).toEqual(["66666666-6666-4666-8666-666666666666"]);
+    });
+
     it("says nothing about projects to somebody who has none", async () => {
       const m = model(() => decideJson({ intent: "chat", confidence: 0.9 }));
       await decide("hello", ctx(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });

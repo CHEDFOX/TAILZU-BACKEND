@@ -85,8 +85,21 @@ describe("applyRevenueCatEvent — other products in the same project", () => {
     // The other direction of the same uncertainty. A wrong revoke is repaired
     // on the next read by askRevenueCat; a wrong grant is trusted until it
     // expires. So an ambiguous event may end access, never give it.
-    const res = await apply({ type: "TRANSFER", app_user_id: USER }, "pro");
+    const res = await apply({ type: "SUBSCRIPTION_PAUSED", app_user_id: USER }, "pro");
     expect(res.reason).toBe(WROTE);
+  });
+
+  it("takes a transfer by the ids it names, as RevenueCat sends it (no app_user_id)", async () => {
+    // transferred_from loses access, which needs the database; it got as far as the write.
+    const away = await apply({ type: "TRANSFER", transferred_from: [USER], transferred_to: ["$RCAnonymousID:abc"] }, "pro");
+    expect(away).toMatchObject({ ok: false, reason: WROTE, userId: USER });
+    // Only to an account of ours: nothing to write, the next read asks RevenueCat.
+    const to = await apply({ type: "TRANSFER", transferred_from: ["$RCAnonymousID:abc"], transferred_to: [USER] }, "pro");
+    expect(to).toMatchObject({ ok: true, userId: USER });
+    // Between nobody we know: unusable, and said so.
+    const none = await apply({ type: "TRANSFER", transferred_from: ["$RCAnonymousID:a"], transferred_to: ["$RCAnonymousID:b"] }, "pro");
+    expect(none.ok).toBe(false);
+    expect(none.userId).toBeUndefined();
   });
 
   it("does not let another product's refund revoke ours", async () => {
@@ -253,6 +266,61 @@ describe("applyRevenueCatEvent — buying from the desktop", () => {
     const res = await apply(web({ type: "CANCELLATION" }), "TAILZU AIR", false);
     expect(res.ok).toBe(true);
     expect(res.reason).toContain("access runs to expiry");
+  });
+});
+
+describe("getEntitlement — a row past its expiry", () => {
+  /**
+   * A RENEWAL whose webhook was lost leaves the row active with last period's
+   * date. Read with a fresh module each time, a fake row and a fake RevenueCat.
+   */
+  async function read(rc: Record<string, unknown> | null) {
+    process.env.REVENUECAT_API_KEY = "test-rc-key";
+    vi.resetModules();
+    vi.doMock("../src/auth/supabase.js", async (orig) => ({
+      ...((await orig()) as Record<string, unknown>),
+      supabase: () => ({
+        from: () => ({
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { user_id: USER, entitlement: "TAILZU AIR", active: true, expires_at: new Date(Date.now() - 86_400_000).toISOString(), store: "APP_STORE" },
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }),
+    }));
+    vi.doMock("../src/billing/razorpay.js", async (orig) => ({ ...((await orig()) as Record<string, unknown>), razorpayEntitlement: async () => null }));
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      asked.push(String(url));
+      return new Response(JSON.stringify({ subscriber: { entitlements: rc ?? {}, subscriptions: {} } }), { status: 200 });
+    });
+    try {
+      const mod = await import("../src/billing/entitlements.js");
+      return { got: await mod.getEntitlement({ id: USER } as never), asked };
+    } finally {
+      vi.unstubAllGlobals();
+      vi.doUnmock("../src/auth/supabase.js");
+      vi.doUnmock("../src/billing/razorpay.js");
+      delete process.env.REVENUECAT_API_KEY;
+      vi.resetModules();
+    }
+  }
+
+  it("asks RevenueCat before capping a payer whose renewal was missed", async () => {
+    const until = new Date(Date.now() + 29 * 86_400_000).toISOString();
+    const { got, asked } = await read({ "TAILZU AIR": { expires_date: until, store: "APP_STORE", product_identifier: "x0_air_monthly" } });
+    expect(asked).toEqual([`https://api.revenuecat.com/v1/subscribers/${USER}`]);
+    expect(got).toMatchObject({ entitlement: "TAILZU AIR", active: true, expiresAt: until });
+  });
+
+  it("still ends it when RevenueCat agrees it lapsed", async () => {
+    const { got, asked } = await read(null);
+    expect(asked).toHaveLength(1);
+    expect(got).toBeNull();
   });
 });
 
