@@ -30,7 +30,6 @@ export const ARTIFACT_LIBS = [
   "three",
   "mermaid",
 ] as const;
-export type ArtifactLib = (typeof ARTIFACT_LIBS)[number];
 
 /**
  * Every element the person can point at carries this attribute, set by the viewer as it compiles:

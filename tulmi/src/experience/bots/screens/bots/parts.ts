@@ -315,11 +315,6 @@ export function chatBar(ctx: BotsCtx, slug: string, name: string, placeholder?: 
   ], { gap: 8 });
 }
 
-/** What a screen with a chat bar starts with, so the insert card has somewhere to put what it picks. */
-export const CHAT_BAR_STATE: Record<string, unknown> = {
-  say: "", [INSERT_PATHS.attach]: [] as unknown[], [INSERT_PATHS.shots]: [] as unknown[], [INSERT_PATHS.open]: false, up: null,
-};
-
 // ===================================================================== bots.bot and bots.chat
 export interface BotPageData {
   bot?: BotView; memory?: Memory; linked?: Linked[]; turns?: Turn[];

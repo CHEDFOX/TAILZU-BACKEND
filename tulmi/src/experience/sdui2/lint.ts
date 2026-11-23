@@ -29,7 +29,7 @@
  * that declared every one of them.
  */
 import {
-  BLOCK_NODES, CAN_OPEN_SCHEMES, DEVICE_FACTS, GESTURE_KINDS, INPUT_KINDS, MOTION_KEYS, PAINT_BLEND_MODES,
+  BLOCK_NODES, GESTURE_KINDS, INPUT_KINDS, MOTION_KEYS, PAINT_BLEND_MODES,
   PAINT_BLUR_TINTS, PAINT_FILTERS, PAINT_KEYS, PRESENTATIONS, SDUI_BLOCKS, SHELL_NODES, SHELL_TRANSITIONS,
   type ActionRef, type BlockName, type Node, type ScreenResponse,
 } from "../../../../shared/types/sdui.js";
@@ -745,8 +745,3 @@ export function screenNeeds(screen: ScreenResponse): BlockName[] {
 export function isVocab1(screen: ScreenResponse): boolean {
   return !screen.needs?.length && screen.defs === undefined && screen.rules === undefined;
 }
-
-/** The device facts a screen may read, for anyone writing one. */
-export const READABLE_DEVICE_FACTS = DEVICE_FACTS;
-/** The `canOpen` names, and what each probes. */
-export const CAN_OPEN = CAN_OPEN_SCHEMES;

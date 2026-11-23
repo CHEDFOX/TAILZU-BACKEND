@@ -285,5 +285,4 @@ export function panelPage(o: PanelPageOptions): { html: string; origin: string }
   return { html, origin: o.origin };
 }
 
-export const PANEL_PAGE_WORDS = WORDS;
 export const PANEL_PAGE_CLOCK = { QUIET_MS, BUSY_MS, BUSY_FOR_MS, TAP_SLOP };

@@ -24,7 +24,7 @@
  * Deliberately not clever: no string distance, no model call, no learning. A rule a person can read off the page is worth
  * more here than one that is right more often, because the failure of a guess is a thing drawn wrong and nobody told.
  */
-import { SHOW_LIMITS as L, type PartKind, type TextStyle, type Tone } from "./types.js";
+import { type TextStyle, type Tone } from "./types.js";
 
 /** A role as it is looked up: lowercase, trimmed, punctuation that only joins words removed. */
 export const normalRole = (role: string): string => role.trim().toLowerCase().replace(/[\s._-]+/g, "");
@@ -136,7 +136,3 @@ export const LOOKS = {
   box: ["plain", "row", "card", "card:info", "card:tip", "card:warn", "card:good"] as const,
   control: ["copy", "say"] as const,
 } as const;
-
-/** A role, as the log says it: what was asked for, and what it was drawn as. */
-export const lookWords = (kind: PartKind, role: string, look: string): string =>
-  `part ${kind} "${role.slice(0, L.role)}" drawn as ${look}`;
