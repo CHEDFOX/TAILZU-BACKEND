@@ -7,7 +7,7 @@
  * where the sound came from, which no model can get wrong.
  *
  * While it records, each stretch is labelled by its track: "You" or "Others".
- * When it stops, each track is sent once, whole, to Deepgram with diarization
+ * When it stops, each track is sent once, whole, for diarization (ElevenLabs Scribe through OpenRouter, then Deepgram, then OpenAI),
  * on, so a speaker keeps one label for the whole meeting rather than one per
  * stretch. Those labels replace the live ones.
  *
@@ -156,7 +156,56 @@ export function labelSpeakers(
  */
 export async function diarize(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
   if (audio.length < 1024) return null;
-  return (await diarizeDeepgram(audio, format)) ?? (await diarizeOpenAI(audio, format));
+  return (await diarizeOpenRouter(audio, format)) ?? (await diarizeDeepgram(audio, format)) ?? (await diarizeOpenAI(audio, format));
+}
+
+/** One word as a diarizing model labels it. */
+export interface SpokenWord { word: string; start?: number; end?: number; speaker?: number | string; speaker_label?: string }
+
+/**
+ * Words labelled by speaker, made into turns: a turn runs while the label stays the same. Labels are numbered in the order their
+ * speakers first speak ("speaker_1" first is speaker 0), so the note reads "Speaker 1" for whoever opened, whatever the model called them.
+ */
+export function turnsOf(words: SpokenWord[]): Utterance[] {
+  const ids = new Map<string, number>();
+  const out: Utterance[] = [];
+  for (const w of words) {
+    const text = String(w.word ?? "").trim();
+    if (!text) continue;
+    const label = String(w.speaker_label ?? w.speaker ?? "0");
+    if (!ids.has(label)) ids.set(label, ids.size);
+    const speaker = ids.get(label)!;
+    const start = Number(w.start ?? 0), end = Number(w.end ?? w.start ?? 0);
+    const last = out[out.length - 1];
+    if (last && last.speaker === speaker) { last.text = `${last.text} ${text}`; last.end = Math.max(last.end, end); }
+    else out.push({ speaker, start, end, text });
+  }
+  return out;
+}
+
+/** ElevenLabs' Scribe through OpenRouter, every word with its speaker. Null on any failure: Deepgram and OpenAI are asked next. */
+async function diarizeOpenRouter(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
+  const cfg = getConfig();
+  if (!cfg.NOTES_DIARIZE_OPENROUTER_MODEL || !cfg.OPENROUTER_API_KEY) return null;
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(audio)], { type: `audio/${format}` }), `track.${format}`);
+    form.append("model", cfg.NOTES_DIARIZE_OPENROUTER_MODEL);
+    form.append("diarize", "true");
+    form.append("response_format", "verbose_json");
+    const res = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.OPENROUTER_API_KEY}` },
+      body: form,
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { words?: SpokenWord[] };
+    const turns = turnsOf(json.words ?? []);
+    return turns.length ? turns : null;
+  } catch {
+    return null;
+  }
 }
 
 /** OpenAI's diarizing transcription. Its speakers are letters ("A", "B"),

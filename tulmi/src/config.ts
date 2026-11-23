@@ -195,7 +195,12 @@ const EnvSchema = z.object({
   // you have a reason about the partials specifically.
   // "openai" streams through OpenAI's realtime transcription with
   // OPENAI_API_KEY, the same key the one-shot path uses (see OPENAI_LIVE_*).
-  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam", "openai"]).default("deepgram"),
+  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam", "openai", "openrouter"]).default("deepgram"),
+  /**
+   * Live dictation through OpenRouter (STT_LIVE_PROVIDER=openrouter, or =openai while OPENAI_STT_VIA_OPENROUTER is on): near-live
+   * captions made by transcribing the line so far every ~1.2 s, a pause committing it (routes/writing/live-engines.ts openOpenRouter).
+   */
+  OPENROUTER_LIVE_STT_MODEL: z.string().default("openai/gpt-4o-mini-transcribe"),
 
   // Run BOTH live engines: the one named above streams to the user, the other
   // listens silently, and the two transcripts are reconciled at stop.
@@ -347,6 +352,12 @@ const EnvSchema = z.object({
   /** OpenAI's model for the same, used when Deepgram is not configured or
    *  fails. Empty = do not use OpenAI for it. */
   NOTES_DIARIZE_OPENAI_MODEL: z.string().default("gpt-4o-transcribe-diarize"),
+  /**
+   * WHO SAID WHAT, THROUGH OPENROUTER (notes/speakers.ts diarizeOpenRouter): asked first, on OPENROUTER_API_KEY. ElevenLabs' Scribe labels
+   * every word with its speaker — on 22 Nov it split a two-voice exchange line for line where nova-3 called it all one speaker. Empty
+   * turns it off, and Deepgram, then OpenAI, are asked as before.
+   */
+  NOTES_DIARIZE_OPENROUTER_MODEL: z.string().default("elevenlabs/scribe-v2"),
   /**
    * ASK, THE ON-SCREEN AGENT (POST /v1/agent, src/agent).
    *
@@ -1456,6 +1467,19 @@ const EnvSchema = z.object({
   // that fails is read once more on gpt-4o-mini-tts until that date; from it, the error stands.
   OPENAI_TTS_MODEL: z.string().default("gpt-realtime-2.1-mini"),
   TTS_VOICE: z.string().default("alloy"),
+  /**
+   * THE VOICE, THROUGH OPENROUTER (pipeline/tts.ts synthesizeOpenRouter). Everything read aloud goes to OpenRouter's /audio/speech on
+   * OPENROUTER_API_KEY — the key every model call here already uses — so no voice provider of its own has to be kept funded. The model is
+   * ElevenLabs' (seventy-odd languages, Hindi and code-mixed Hinglish read properly), and a voice name the apps still send from the old
+   * catalogue ("alloy", "nova", "marin"…) is mapped onto one of its voices (voiceForElevenLabs). Checked on 22 Nov: mp3 straight back,
+   * a Hindi line read right, speed taken. false keeps the old OpenAI path (OPENAI_TTS_MODEL, OPENAI_API_KEY).
+   */
+  TTS_VIA_OPENROUTER: bool(true),
+  OPENROUTER_TTS_MODEL: z.string().default("elevenlabs/eleven-multilingual-v2"),
+  /** The voice when the request names none, or one this model does not have. One of the model's own (sarah, george, alice, brian…). */
+  OPENROUTER_TTS_VOICE: z.string().default("sarah"),
+  /** What a character costs on that model, in US dollars (OpenRouter's listed price), for the read's own tally. */
+  OPENROUTER_TTS_USD_PER_CHAR: z.coerce.number().min(0).max(1).default(0.00008),
   TTS_FORMAT: z.enum(["mp3", "opus", "aac", "flac", "wav", "pcm"]).default("mp3"),
 
   /**

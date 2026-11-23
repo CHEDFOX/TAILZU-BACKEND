@@ -9,6 +9,9 @@ process.env.STT_LIVE_DUAL = "false";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 process.env.OPENAI_LIVE_FLUSH_MS = "50";
+// This file holds the direct OpenAI paths to their promises; OpenRouter is the default for both now, so they are switched to OpenAI here.
+process.env.OPENAI_STT_VIA_OPENROUTER = "false";
+process.env.NOTES_DIARIZE_OPENROUTER_MODEL = "";
 
 // eslint-disable-next-line import/first
 import { OPENAI_RATE, createResampler, liveEngineConfigured, liveProvider, openOpenAI } from "../src/routes/writing/live-engines.js";

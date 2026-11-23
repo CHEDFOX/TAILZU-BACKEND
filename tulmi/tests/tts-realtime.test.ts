@@ -84,6 +84,8 @@ process.env.OPENAI_API_KEY = "k";
 process.env.GROQ_API_KEY = "k";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
+// The OpenAI path is behind TTS_VIA_OPENROUTER=false now (OpenRouter is the default); this file holds that path to its promises.
+process.env.TTS_VIA_OPENROUTER = "false";
 process.env.OPENAI_TTS_MODEL = "gpt-realtime-2.1-mini";
 process.env.OPENAI_REALTIME_SIDEBAND_URL = `ws://127.0.0.1:${PORT}`;
 

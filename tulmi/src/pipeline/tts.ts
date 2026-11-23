@@ -230,8 +230,69 @@ async function synthesizeSpeech(input: TtsInput, model: string): Promise<TtsResu
   return { audio, contentType: FORMAT_MIME[format] };
 }
 
+// ------------------------------------------------------------------ through OpenRouter (TTS_VIA_OPENROUTER, the default)
+
+/** ElevenLabs' voices on OpenRouter (the model's own `supported_voices`, 22 Nov 2026). */
+export const ELEVENLABS_VOICES: readonly string[] = [
+  "george", "sarah", "adam", "alice", "bella", "bill", "brian", "callum", "charlie", "chris", "daniel", "eric", "harry", "jessica",
+  "laura", "liam", "lily", "matilda", "river", "roger", "will",
+];
+
+/**
+ * The old catalogue's names, kept by people's settings and sent by every build in the field, each given the ElevenLabs voice nearest
+ * in kind — so somebody who picked a warm low voice still hears one, and nothing they chose turns into an error.
+ */
+const FROM_OPENAI: Readonly<Record<string, string>> = {
+  alloy: "sarah", nova: "jessica", shimmer: "lily", coral: "laura", sage: "alice", marin: "matilda",
+  echo: "brian", onyx: "george", fable: "charlie", ash: "chris", ballad: "daniel", verse: "liam", cedar: "roger",
+};
+
+/** The ElevenLabs voice for whatever was asked: one of its own as it is, an old name mapped, anything else the default. */
+export function voiceForElevenLabs(asked: string | undefined, fallback: string): string {
+  const v = String(asked ?? "").trim().toLowerCase();
+  if (ELEVENLABS_VOICES.includes(v)) return v;
+  if (FROM_OPENAI[v]) return FROM_OPENAI[v]!;
+  const f = fallback.trim().toLowerCase();
+  return ELEVENLABS_VOICES.includes(f) ? f : "sarah";
+}
+
+let routerClient: OpenAI | null = null;
+function openRouter(): OpenAI {
+  if (!routerClient) {
+    routerClient = guardClient(new OpenAI({
+      apiKey: getConfig().OPENROUTER_API_KEY, baseURL: "https://openrouter.ai/api/v1", timeout: 30_000, maxRetries: 1,
+    }));
+  }
+  return routerClient;
+}
+
+/**
+ * Words read aloud by OpenRouter's /audio/speech. mp3 comes back as mp3; any other container is asked for as raw 24 kHz PCM and made
+ * here by the same ffmpeg step the realtime path uses, since the voice models answer only those two. A style steer (`instructions`) has
+ * no field on these models and is left out; a reading speed is passed as a rate.
+ */
+export async function synthesizeOpenRouter(input: TtsInput): Promise<TtsResult> {
+  const cfg = getConfig();
+  const format = (input.format ?? cfg.TTS_FORMAT) as TtsFormat;
+  const speed = input.speed !== undefined && Number.isFinite(input.speed) && input.speed !== 1
+    ? Math.min(1.2, Math.max(0.7, input.speed)) : undefined;
+  const params = {
+    model: cfg.OPENROUTER_TTS_MODEL,
+    voice: voiceForElevenLabs(input.voice ?? cfg.TTS_VOICE, cfg.OPENROUTER_TTS_VOICE),
+    input: input.text,
+    response_format: format === "mp3" ? "mp3" : "pcm",
+    ...(speed !== undefined ? { speed } : {}),
+  } as unknown as OpenAI.Audio.Speech.SpeechCreateParams;
+  const res = await openRouter().audio.speech.create(params);
+  const raw = Buffer.from(await res.arrayBuffer());
+  if (!raw.length) throw new Error("TTS gave no audio.");
+  const audio = format === "mp3" ? raw : await encodePcm(raw, format);
+  return { audio, contentType: FORMAT_MIME[format], usd: input.text.length * cfg.OPENROUTER_TTS_USD_PER_CHAR };
+}
+
 export async function synthesize(input: TtsInput): Promise<TtsResult> {
   const cfg = getConfig();
+  if (cfg.TTS_VIA_OPENROUTER !== false) return synthesizeOpenRouter(input);
   if (!cfg.OPENAI_API_KEY) {
     throw new Error("TTS requires OPENAI_API_KEY.");
   }
