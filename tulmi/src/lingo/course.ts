@@ -107,7 +107,6 @@ export const UNITS: readonly Unit[] = [
 export const FIRST_UNIT = UNITS[0]!.key;
 
 export const unitOf = (key: string): Unit | undefined => UNITS.find((u) => u.key === key);
-export const unitAt = (i: number): Unit | undefined => UNITS[i];
 export const indexOf = (key: string): number => UNITS.findIndex((u) => u.key === key);
 
 /** The unit after this one, or null at the end of the path. */

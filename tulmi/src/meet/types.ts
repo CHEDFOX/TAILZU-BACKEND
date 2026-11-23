@@ -35,8 +35,6 @@ import type { Brief } from "../brief/types.js";
 export type { LiveNotes, MeetAsk, MeetSettings, MeetStatus, Platform };
 
 export const MEET_SLUG = "meet";
-/** The meeting page's screen id (experience/bots/ids.ts SCREENS.meetMeeting). */
-export const MEET_MEETING_SCREEN = "bots.meet.meeting";
 /** The name the bot shows in a call when the person has not given it one. */
 export const DEFAULT_BOT_NAME = "X0 Bot";
 

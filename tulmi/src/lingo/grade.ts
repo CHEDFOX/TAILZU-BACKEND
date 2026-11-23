@@ -62,9 +62,6 @@ const BY_CHARACTER = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Sc
  */
 const SPACELESS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Khmer}\p{Script=Lao}\p{Script=Myanmar}]/u;
 
-/** Whether this text is in a script where one character is a word, so a slipped letter cannot happen. */
-export const byCharacter = (text: string): boolean => BY_CHARACTER.test(text);
-
 /** Whether this text is in a script that does not separate its words with spaces, so it cannot be split on them. */
 export const spaceless = (text: string): boolean => SPACELESS.test(text);
 

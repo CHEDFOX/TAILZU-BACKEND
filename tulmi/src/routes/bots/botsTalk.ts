@@ -42,7 +42,6 @@ export const TALK_SLUG = "talk";
 /** The most turns one read of the thread hands back (the chat's own limit; botsBots/chat.ts CHAT_KEEP caps it again). */
 const TURNS = 40;
 const MESSAGE_MAX = 2000;
-const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export interface TalkRoutesParts {
   chat: BotChat | null;
@@ -223,8 +222,5 @@ interface DoorReply {
     text?: unknown; job?: unknown; upi?: unknown; finds?: unknown; needs?: unknown; routine?: unknown;
   } | undefined;
 }
-
-/** A slug Talk will route to, for a caller that wants to check one without reading the list (tests, the screen's lint). */
-export const isTalkSlug = (v: unknown): boolean => typeof v === "string" && SLUG.test(v) && v !== TALK_SLUG;
 
 export { talkName };
