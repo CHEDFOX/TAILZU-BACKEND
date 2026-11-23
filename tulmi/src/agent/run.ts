@@ -61,6 +61,7 @@ import { agentPictureContent, agentUserMessage, agentVideoContent, drawOrderFor,
 import { stableBlock } from "../principles/roles.js";
 import type { AgentClip, AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
+import { decideFlow, type FlowPolicy } from "./flow.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
 import { getConfig } from "../config.js";
 import type { UseOutcome } from "../connectors/tasks.js";
@@ -84,6 +85,8 @@ export interface StepContext {
   drawMax?: number;
   /** The person's context (src/context), already capped: shown to the planner at a run's first step only. */
   context?: string;
+  /** The flow policies (agent/flow.ts): with them, a request that asks for flow instructions is sent a `flow` event. */
+  flow?: FlowPolicy;
 }
 
 export interface StepDeps {
@@ -134,7 +137,7 @@ export interface ConnectorsRuntime {
 /** Tool calls in one step before the planner must answer: each is a model call. */
 const MAX_USE_ROUNDS = 3;
 
-export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model" | "picture" | "video";
+export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model" | "picture" | "video" | "look";
 
 /** What the step did, for metering and the log. Never any of its text. */
 export interface StepResult {
@@ -237,10 +240,21 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
   const textWaiting = req.screen.elements.some((e) => e.focused && (e.role === "field" || e.role === "area" || e.role === "combo")) || !!req.screen.field;
   const mode = ctx.image || ctx.video ? "show" : wantsWords(first, names) && !textWaiting ? "show" : modeOf(first, names);
   sink.emit({ t: "heard", text: said, mode });
+  // THE FLOW, right after what was heard, to a device that asked for it (agent/flow.ts). A clip or a picture the
+  // words want ends the step here, before any model: the device sends the same step again with it.
+  const flow = ctx.flow && req.flow && req.flow.v >= 1
+    ? decideFlow(ctx.flow, { req, said, first, mode, all: everythingSaid(req, said), names, media: !!(ctx.image || ctx.video) })
+    : null;
+  if (flow) sink.emit({ t: "flow", ...flow });
+  if (flow?.media === "clip" || flow?.media === "picture") {
+    sink.emit({ t: "look", why: flow.media === "clip" ? "something moving" : "something drawn" });
+    return { path: "look", mode, words: 0, audioSeconds };
+  }
   if (ctx.video) return answerVideo(ctx, deps, sink, { said, video: ctx.video, audioSeconds });
   if (ctx.image) return answerPicture(ctx, deps, sink, { said, image: ctx.image, audioSeconds });
 
-  const scene: Scene = { req, said: everythingSaid(req, said) };
+  // Trusted only for a device told so: its own lowering then matches this one.
+  const scene: Scene = { req, said: everythingSaid(req, said), ...(flow?.trusted ? { trusted: true } : {}) };
   const clean = commandText(said, names);
   const acted = history.some((t) => t.did);
   const done = (path: StepPath, extra: Partial<StepResult> = {}): StepResult =>

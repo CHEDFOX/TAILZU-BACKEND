@@ -786,6 +786,15 @@ export interface AskResponse {
 // picture in picture units (0–1000 across and down it). The device turns
 // both into screen positions itself; nothing about where things are goes
 // the other way for it.
+//
+// Flow: a desktop that sends `flow: { v: 1, can }` with its steps is sent the
+// server's decisions about how the step and the run go, as one `flow` event
+// right after `heard` (AgentFlow): whether the card stays and listens again
+// after the answer, how long the microphone waits, whether their words are
+// their yes for ordinary steps, whether to look at a clip or a picture before
+// answering, whether an ASK's answer opens the microphone at once. A step
+// whose request did not ask for them gets no `flow` event, and the device
+// decides all of that itself, as before. Safety floors stay on the device.
 
 /** Where an element sits in its window, by thirds. Never a frame. */
 export type AgentRegion = "tl" | "t" | "tr" | "l" | "c" | "r" | "bl" | "b" | "br";
@@ -895,6 +904,73 @@ export interface AgentStepRequest {
   /** The whole page or document, at a run's first step only (later steps ignore it): the planner is shown it reduced, in
    *  <page>, so it understands more than what is on screen. Not with a picture or a clip. */
   page?: PageText;
+  /** The FLOW INSTRUCTIONS this device obeys (AgentFlow, the `flow` event): sent on every step by a desktop that reads
+   *  them. Absent, the server sends no `flow` event and the device runs the step's flow itself, as every desktop did before. */
+  flow?: AgentFlowAsk;
+}
+
+/**
+ * What a device says about flow instructions on a step (AgentStepRequest.flow).
+ *
+ * `v` is the highest version of the `flow` event it obeys; the server answers with the highest it can that is not above it
+ * (today only 1), and with none at all when that is nothing. `can` is what the device could show the server on THIS step if
+ * asked to look: "picture" (one still of the window or a part of it) and "clip" (a few seconds of it). Each is said only when
+ * it could really be sent now: the person's pictures setting for the app is not "never", the device took a picture at the
+ * question, nothing has been done to the screen since, and for a clip, a recorder is there and the window is not a private
+ * one. The server never asks for a kind the device did not offer, so a `look` it sends because of `media` is one the device
+ * can answer. An empty or missing `can` is "ask for nothing": the step is answered from the words and the screen's text.
+ */
+export interface AgentFlowAsk {
+  v: number;
+  can?: Array<"picture" | "clip">;
+}
+
+/**
+ * THE FLOW INSTRUCTIONS, version 1: the server's decisions about how this step and this run go, which the desktop used to
+ * make on its own (docs/ask-flow.md). Sent once, right after `heard`, on every step whose request asked for them
+ * (AgentStepRequest.flow) and that got past the refusals. Every field is optional: one that is absent leaves that decision
+ * where it was, the device's own (its knobs, its defaults). A device ignores fields it does not know, and a `flow` event of a
+ * version it does not know, and then runs the step exactly as it would with no flow event at all.
+ *
+ * NONE OF IT IS A SAFETY DECISION. The device keeps its floors whatever this says: a sensitive app or a private window is
+ * never pictured or recorded, the words that pay, delete or sign out and the chords that close, quit or delete always ask,
+ * a muted conversation's microphone stays shut, and an open microphone is never kept open past the device's own ceiling.
+ * The server can make a step more careful and a conversation shorter; it cannot make the device less careful than its floors.
+ */
+export interface AgentFlow {
+  v: 1;
+  /**
+   * When this run ends with its answer: "listen" keeps the card up and opens the microphone again for the next question
+   * (Ask's conversation); "close" lets the card go once the answer has been said, as a single question's card always did.
+   * The device's conversation switch (desktop.agent.thread) still decides whether there can be a conversation at all: the
+   * server can end one, never open a microphone the device has turned off.
+   */
+  afterAnswer?: "listen" | "close";
+  /** With "listen": how long the reopened microphone waits for someone to speak before the conversation ends, ms. */
+  idleMs?: number;
+  /**
+   * Their words are their yes for this run's ORDINARY steps: they gave a command (mode do) and nothing in what they said pays
+   * or deletes, so opening the app, a press on a page, and the Enter that sends what they asked to send are not asked about
+   * again. Set on step 0; a later step may only take it back (false). The server's own action risks follow it (risk.ts).
+   * The device's own "always" words and destroying chords still ask (desktop run/risk.js floorRisk).
+   */
+  trusted?: boolean;
+  /**
+   * What the server wants to see to answer this step, decided from the question's words and the app: "clip" (something
+   * moving: a few seconds of the window, clipSeconds long), "picture" (something drawn: one still), "none" (the words and the
+   * screen's text will do). With "clip" or "picture" the step ends in `look`, and the device sends the SAME step again with
+   * it; one the device cannot or may not send (the person said no, it went private) goes again with nothing, `can` empty,
+   * and is answered from the words. Only ever a kind the request offered in `flow.can`.
+   */
+  media?: "clip" | "picture" | "none";
+  /** With media "clip": how many seconds to record (1–30). */
+  clipSeconds?: number;
+  /**
+   * When this step ends in an ASK: "open" opens the microphone for the answer as soon as the question has been said; "key"
+   * leaves the question on the card until they press the key to answer. Absent: the device's own rule (open in a
+   * conversation, the key otherwise).
+   */
+  askReplyMic?: "open" | "key";
 }
 
 export type AgentHandoverWhy = "login" | "code" | "captcha" | "payment" | "other";
@@ -1249,6 +1325,9 @@ export type AgentEvent =
   | { t: "handover"; why: AgentHandoverWhy; text: string; card?: AgentHandoverCard }
   /** TERMINAL: a question for the user; their answer is the next step. */
   | { t: "ask"; text: string }
+  /** Not terminal. The server's decisions for this step and run (AgentFlow), sent right after `heard` and only to a
+   *  request that asked for them (AgentStepRequest.flow). A device that does not know it skips it. */
+  | ({ t: "flow" } & AgentFlow)
   /** TERMINAL, only on a step without a picture: the answer needs to see
    *  something drawn rather than written. The device may send the SAME step
    *  again with the picture (once a run, with permission), or say it can't.
