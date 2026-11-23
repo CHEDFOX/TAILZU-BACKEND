@@ -22,10 +22,11 @@
  * A step may also carry one picture, read here too: its type is taken from
  * its bytes as well as its label, since the label is only the client's word
  * for it, and the model it goes to refuses a picture that is not what it is
- * called.
+ * called. So may a clip, in place of the picture (readClip), read the same
+ * way: a WebM or an MP4 by its first bytes as well as its label.
  */
 import type {
-  AgentElement, AgentEvent, AgentJob, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
+  AgentElement, AgentEvent, AgentJob, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AgentVideo, AudioFormat,
 } from "../../../shared/types/api.js";
 import { readPage } from "../talk/page.js";
 import { elementLine } from "./prompt.js";
@@ -193,13 +194,15 @@ const tooBig = (message: string): { refusal: Refusal } => ({ refusal: { status: 
  * A step request as the planner may use it, or the reason it is refused.
  * `hasAudio`: an audio file came with it, which is then the utterance.
  * `hasImage`: a picture came with it, which `picture` then describes; without
- * one, `picture` describes nothing and is dropped.
+ * one, `picture` describes nothing and is dropped. `hasVideo`: a clip came
+ * with it, which `video` then describes, the same way.
  */
 export function readStepRequest(
   raw: unknown,
   caps: Caps,
   hasAudio = false,
   hasImage = false,
+  hasVideo = false,
 ): { req: AgentStepRequest } | { refusal: Refusal } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return bad("Missing the step request");
   const o = raw as Record<string, unknown>;
@@ -287,10 +290,15 @@ export function readStepRequest(
     : [];
   if (capabilities.length) req.capabilities = capabilities;
   if (hasImage) req.picture = readPictureInfo(o.picture);
+  // A clip is always of the whole window: what was playing in it.
+  if (hasVideo) {
+    req.picture = { region: "window" };
+    req.video = readVideoInfo(o.video);
+  }
   const job = readJob(o.job);
   if (job) req.job = job;
-  // The whole page, at a run's first step only and not with a picture: cut, never refused (talk/page.ts), its URLs without their tails.
-  if (o.step === 0 && !hasImage) {
+  // The whole page, at a run's first step only and not with a picture or a clip: cut, never refused (talk/page.ts), its URLs without their tails.
+  if (o.step === 0 && !hasImage && !hasVideo) {
     const page = readPage(o.page, withoutUrlSecrets);
     if (page) req.page = page;
   }
@@ -356,6 +364,55 @@ export function readPicture(
   const mime = sniffPicture(data);
   if (!mime) return bad("the picture is not a JPEG, PNG or WebP image");
   return { image: { mime, data } };
+}
+
+/** How long the clip is and whether it has the computer's sound, as the
+ *  device says: only for the prompt's words, so anything odd is read as
+ *  the plainer claim (a few seconds, no sound) rather than refused. */
+function readVideoInfo(v: unknown): AgentVideo {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const n = typeof o.seconds === "number" && Number.isFinite(o.seconds) ? Math.round(o.seconds) : 0;
+  return { seconds: Math.min(30, Math.max(1, n || 6)), sound: o.sound === true };
+}
+
+const CLIP_TYPES = ["video/webm", "video/mp4"] as const;
+export type ClipType = (typeof CLIP_TYPES)[number];
+
+/** The one clip a step carries, as read: its type is its bytes'. */
+export interface AgentClip {
+  mime: ClipType;
+  data: Buffer;
+}
+
+const EBML_MAGIC = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
+
+/** A clip's type by its first bytes, or null when it is neither: WebM (and
+ *  any Matroska file) opens with the EBML header, an MP4 with an `ftyp` box
+ *  four bytes in. */
+export function sniffClip(b: Buffer): ClipType | null {
+  if (b.length >= 4 && b.subarray(0, 4).equals(EBML_MAGIC)) return "video/webm";
+  if (b.length >= 12 && b.toString("latin1", 4, 8) === "ftyp") return "video/mp4";
+  return null;
+}
+
+/**
+ * The `video` part as the clip path may use it, or why it is refused: as
+ * readPicture is for a picture. `data` is null when the part ran past
+ * `maxBytes`. The declared type must be WebM or MP4 (a codecs parameter, as
+ * MediaRecorder writes it, is allowed), and the bytes must be one of them;
+ * the bytes' type is the one the model is told.
+ */
+export function readClip(
+  declared: string | undefined,
+  data: Buffer | null,
+  maxBytes: number,
+): { video: AgentClip } | { refusal: Refusal } {
+  if (!data) return tooBig(`the clip is over ${maxBytes} bytes`);
+  const type = (declared ?? "").split(";")[0]!.trim().toLowerCase();
+  if (!(CLIP_TYPES as readonly string[]).includes(type)) return bad("the clip is a WebM or MP4 video");
+  const mime = sniffClip(data);
+  if (!mime) return bad("the clip is not a WebM or MP4 video");
+  return { video: { mime, data } };
 }
 
 /** The recording's container, from its file name, else its MIME type. The

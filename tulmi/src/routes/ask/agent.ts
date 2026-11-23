@@ -22,6 +22,13 @@
  * costs a refusal and not the memory to hold it. The picture is never logged,
  * and is gone with the request.
  *
+ * Or, in its place, one clip, a `video` part (a WebM or an MP4 of the window
+ * while something played in it, with the computer's sound when the desktop
+ * could hear it): read the same way, up to AGENT_VIDEO_MAX_BYTES, sent down
+ * the clip path to a model that watches, and counted against the same day's
+ * pictures. Never logged either. A picture and a clip together is a 400:
+ * the step is about one or the other.
+ *
  * The person's context (src/context) is read at a run's first step and goes
  * into the planner's message; later steps have the run's own history. A step
  * that ends the run with DONE puts its last words on the ask the run came
@@ -34,7 +41,7 @@ import type { FastifyInstance } from "fastify";
 import { AI_CONSENT_CODE, AI_CONSENT_TEXT, aiAllowed } from "../../privacy/aiGate.js";
 import type { AudioFormat } from "../../../../shared/types/api.js";
 import { planStream } from "../../agent/llm.js";
-import { type AgentImage, type Refusal, readPicture, audioFormatOf, readStepRequest, EventSink } from "../../agent/protocol.js";
+import { type AgentClip, type AgentImage, type Refusal, readClip, readPicture, audioFormatOf, readStepRequest, EventSink } from "../../agent/protocol.js";
 import { type StepResult, runStep } from "../../agent/run.js";
 import { resolveUser } from "../../auth/supabase.js";
 import type { AppConfig } from "../../config.js";
@@ -91,20 +98,31 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     let audio: Buffer | null = null;
     let format: AudioFormat = "webm";
     let image: AgentImage | null = null;
+    let video: AgentClip | null = null;
     let unreadable = false;
     let refused: Refusal | null = null;
     if (req.isMultipart()) {
       // Every part is read to the end, even after a bad one: a multipart stream
       // left half-read never finishes the request. Two files at most, the
-      // recording and the picture; a third is the plugin's 413.
+      // recording and the picture (or the clip); a third is the plugin's 413.
       for await (const part of req.parts({ limits: { files: 2 } })) {
         if (part.type === "file") {
           if (part.fieldname === "image") {
             const data = await readUpTo(part.file, cfg.AGENT_IMAGE_MAX_BYTES);
             const pic = readPicture(part.mimetype, data, cfg.AGENT_IMAGE_MAX_BYTES);
             if (image) refused ??= { status: 400, code: "bad_request", message: "One picture per step" };
+            else if (video) refused ??= { status: 400, code: "bad_request", message: "A picture or a clip, not both" };
             else if ("refusal" in pic) refused ??= pic.refusal;
             else image = pic.image;
+            continue;
+          }
+          if (part.fieldname === "video") {
+            const data = await readUpTo(part.file, cfg.AGENT_VIDEO_MAX_BYTES);
+            const clip = readClip(part.mimetype, data, cfg.AGENT_VIDEO_MAX_BYTES);
+            if (video) refused ??= { status: 400, code: "bad_request", message: "One clip per step" };
+            else if (image) refused ??= { status: 400, code: "bad_request", message: "A picture or a clip, not both" };
+            else if ("refusal" in clip) refused ??= clip.refusal;
+            else video = clip.video;
             continue;
           }
           const buf = await part.toBuffer();
@@ -128,6 +146,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
       { maxElements: cfg.AGENT_MAX_ELEMENTS, screenMaxChars: cfg.AGENT_SCREEN_MAX_CHARS },
       !!audio,
       !!image,
+      !!video,
     );
     if ("refusal" in read) return reply.code(read.refusal.status).send({ code: read.refusal.code, message: read.refusal.message });
     const step = read.req;
@@ -136,8 +155,9 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     }
 
     // A recording is a question spoken to Ask, held to Ask's own seconds too,
-    // and a picture to the day's pictures.
-    const quota = await enforceQuota(user, { agentAudio: !!audio, picture: !!image });
+    // and a picture to the day's pictures. A clip is one of those too: one
+    // vision call, a dearer one, and the same daily count keeps it simple.
+    const quota = await enforceQuota(user, { agentAudio: !!audio, picture: !!image || !!video });
     if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
 
     // NO YES TO AI SERVICES, NO STEP (privacy/aiGate.ts). Said here, before the stream, in the gate's own words — the desktop
@@ -187,7 +207,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
         else if (e.t === "say" && says.length < RESULT_CHARS) says = `${says} ${e.text}`.trim();
       },
     });
-    const offLimits = !!step.privateField || sensitiveApp(step.app) || !!image;
+    const offLimits = !!step.privateField || sensitiveApp(step.app) || !!image || !!video;
 
     const t0 = Date.now();
     let result: StepResult | undefined;
@@ -213,6 +233,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
         {
           req: step, maxSteps: cfg.AGENT_MAX_STEPS, jobMaxSteps: cfg.AGENT_JOB_MAX_STEPS, names: [ASSISTANT_NAME, ...NAME_HEARD, "Blip", ...(nick ? [nick] : [])],
           ...(image ? { image } : {}),
+          ...(video ? { video } : {}),
           ...(kept?.text ? { context: kept.text } : {}),
         },
         {
@@ -266,7 +287,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
       if (runSaid && did) void context.keepResult(user.id, { said: runSaid, result: did, app: step.app, orNew: "answer", ...(step.privateWindow ? { private: true } : {}) }).catch((err) => req.log.warn({ err: (err as Error)?.message }, "context: result not kept"));
     }
     if (result && result.path !== "refused") {
-      if (result.path === "picture") recordPicture(user);
+      if (result.path === "picture" || result.path === "video") recordPicture(user);
       await recordUsage({
         user,
         source: "agent",
@@ -284,6 +305,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
         events: sink.count, elements: step.screen.elements.length, words: result?.words ?? 0,
         audioSeconds: result?.audioSeconds ?? 0, ms: Date.now() - t0,
         ...(image ? { picture: true, pictureBytes: image.data.length, region: step.picture?.region } : {}),
+        ...(video ? { video: true, videoBytes: video.data.length, videoSeconds: step.video?.seconds, videoSound: step.video?.sound } : {}),
         ...(result?.deep ? { deep: true } : {}),
         // The marks drawn, and the DRAW lines dropped (unreadable, at an id not
         // on this screen, at a picture place with no picture, past the cap): a

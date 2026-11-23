@@ -769,6 +769,16 @@ export interface AskResponse {
 // thing from the screen that leaves the machine as pixels, and only when the
 // person has allowed it for that app.
 //
+// The clip path: in place of the picture, a multipart step may carry ONE
+// `video` part (video/webm or video/mp4, at most AGENT_VIDEO_MAX_BYTES: 413
+// above it, 400 for another type, a second clip, or a clip beside a
+// picture): a few seconds of the window in front, recorded while something
+// played in it, with the computer's own sound when the device could hear it
+// and never the microphone. Answered as the picture is, by a model that can
+// watch, in show mode, and counted against the same day's pictures. Marks
+// on a clip step may name element ids only: a place in a moving picture is
+// no place on the screen now.
+//
 // Drawing: on either path the answer may mark the screen while it explains
 // (a box, a circle, an arrow, numbered places), as `draw` events in the order
 // the model wrote them among its sentences. A mark names what it is on by an
@@ -880,8 +890,10 @@ export interface AgentStepRequest {
    *  the screen ("element"), or the whole window. Where it is on the screen
    *  never leaves the device. */
   picture?: AgentPicture;
+  /** Only with a `video` part: how long the clip is, and whether the computer's own sound is in it. */
+  video?: AgentVideo;
   /** The whole page or document, at a run's first step only (later steps ignore it): the planner is shown it reduced, in
-   *  <page>, so it understands more than what is on screen. Not with a picture. */
+   *  <page>, so it understands more than what is on screen. Not with a picture or a clip. */
   page?: PageText;
 }
 
@@ -1012,6 +1024,13 @@ export interface AgentJob {
 
 export interface AgentPicture {
   region: "element" | "window";
+}
+
+/** What a step's clip is: always of the whole window. `seconds` as the device recorded it (1–30, rounded), `sound`
+ *  whether the computer's own sound is in it (never the microphone). */
+export interface AgentVideo {
+  seconds: number;
+  sound: boolean;
 }
 
 export type AgentActionKind = "press" | "set" | "type" | "key" | "scroll" | "focus" | "open";
