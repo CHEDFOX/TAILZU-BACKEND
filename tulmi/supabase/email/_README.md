@@ -39,7 +39,7 @@ project somewhere — but it has an upload in front of it (the old X0 Bot mark,
 three white squares on brown), so a template that names it shows that until
 someone clears or replaces it. New templates name `email.icon`.
 
-The icon stands alone, with `alt="X0 Bot"`: most clients block remote images
+The icon stands alone, with `alt="X0"`: most clients block remote images
 until the reader allows them, and those draw the alt text in the image's place,
 so the mail still says who it is from at the moment it asks for trust.
 
