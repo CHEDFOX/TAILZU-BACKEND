@@ -270,7 +270,8 @@ class Step implements StepWatch {
       return { t: "receipt", receipt: this.last };
     },
     seen: (e) => {
-      if (e.t !== "heard" && e.t !== "receipt") this.firstAt ??= this.d.now();
+      // The flow is sent with heard, before any answer: not the first thing the person sees.
+      if (e.t !== "heard" && e.t !== "receipt" && e.t !== "flow") this.firstAt ??= this.d.now();
     },
   };
 

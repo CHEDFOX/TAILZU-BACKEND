@@ -21,6 +21,20 @@
  *   - every press in a browser, whose page authors write the labels and can
  *     write them to lie
  *   - opening a different app
+ *
+ * ASKED FOR IN SO MANY WORDS (Scene.trusted, the flow event's `trusted`, sent
+ * only to a device that obeys flow instructions): a command with nothing in
+ * it that pays or deletes. Its ORDINARY steps are what they asked for, and are
+ * not asked about again: the plain sending words (send, post, submit) on the
+ * button that sends what they asked to send, the Enter in a message box, a
+ * press in a browser, opening the app the task is in, and the words of the
+ * message they asked for typed into a message box. Everything else above
+ * still holds whatever they said: paying and deleting, sharing, inviting,
+ * signing out, the chords that send, close, quit or delete, a key or text
+ * that would fire a shortcut, and anything carried off the screen. This is
+ * the desktop's own rule (run/risk.js classifyRisk with `trusted`), moved
+ * here so that the device can take this risk as final (flow `confirm:
+ * "server"`) and a new rule here is not undone there.
  */
 import type { AgentElement, AgentEvent, AgentRisk, AgentStepRequest } from "../../../shared/types/api.js";
 
@@ -32,6 +46,9 @@ export interface Scene {
   /** Everything the user said in this run. A code they read out themselves
    *  is theirs to type. */
   said: string;
+  /** Their words are their yes for the ordinary steps (see above). Only ever
+   *  set for a device that obeys flow instructions, which was told so. */
+  trusted?: boolean;
 }
 
 const CONFIRM_WORDS = /\b(?:send|post|submit|reply all|share|invite|publish|merge|deploy|sign out|log out|uninstall|close without saving)\b/i;
@@ -48,11 +65,21 @@ const SENDS_OR_DESTROYS = new Set(["cmd+w", "ctrl+w", "cmd+q", "alt+f4", "cmd+de
 const RANK: Record<AgentRisk, number> = { free: 0, confirm: 1, always: 2 };
 const higher = (a: AgentRisk, b: AgentRisk): AgentRisk => (RANK[b] > RANK[a] ? b : a);
 
-function wordsRisk(s: string | undefined): AgentRisk {
-  if (!s) return "free";
-  if (ALWAYS_WORDS.test(s)) return "always";
-  if (CONFIRM_WORDS.test(s)) return "confirm";
+/** The words of plain sending: a message they asked for is sent with these. */
+const SEND_WORDS = /\b(?:send|post|submit)\b/gi;
+
+/** `asked`: a trusted run's, where the plain sending words are their yes already. */
+function wordsRisk(s: string | undefined, asked = false): AgentRisk {
+  const t = asked && s ? s.replace(SEND_WORDS, " ") : s;
+  if (!t) return "free";
+  if (ALWAYS_WORDS.test(t)) return "always";
+  if (CONFIRM_WORDS.test(t)) return "confirm";
   return "free";
+}
+
+/** Words that pay or delete: a run whose words have any is never trusted, and a step with them always asks. */
+export function paysOrDeletes(s: string): boolean {
+  return ALWAYS_WORDS.test(s);
 }
 
 export function isTextEntry(el: AgentElement | undefined): boolean {
@@ -110,20 +137,26 @@ function carriesOffScreen(text: string, scene: Scene, into?: AgentElement): bool
  */
 export function riskOf(action: PlannedAction, scene: Scene, rewrite = false): AgentRisk {
   const { req } = scene;
+  const asked = scene.trusted === true;
   const target = byId(req, action.id);
   const focused = focusedOf(req);
-  let risk = higher(wordsRisk(target?.label), wordsRisk(action.text ?? action.keys ?? action.app));
+  // The message they asked for, going into a message box: its words are what they want said ("the checkout mockups are
+  // ready" buys nothing). The press that sends it is checked on its own; text typed anywhere else still is.
+  const into = action.kind === "set" ? target : action.kind === "type" ? focused : undefined;
+  const messageWords = asked && (action.kind === "type" || action.kind === "set") && isMessageBox(into, action.kind === "type" ? req.screen.field : undefined);
+  let risk = higher(wordsRisk(target?.label, asked), messageWords ? "free" : wordsRisk(action.text ?? action.keys ?? action.app, asked));
 
   switch (action.kind) {
     case "press":
-      if (isBrowser(req.app)) risk = higher(risk, "confirm");
+      if (isBrowser(req.app) && !asked) risk = higher(risk, "confirm");
       break;
     case "key": {
       const keys = action.keys ?? "";
       const parts = keys.split("+");
       const key = parts.at(-1) ?? "";
       const mods = parts.slice(0, -1);
-      if (key === "enter" && (mods.length > 0 || isMessageBox(focused, req.screen.field))) risk = higher(risk, "confirm");
+      if (key === "enter" && mods.length > 0) risk = higher(risk, "confirm");
+      if (key === "enter" && !mods.length && !asked && isMessageBox(focused, req.screen.field)) risk = higher(risk, "confirm");
       if (SENDS_OR_DESTROYS.has(keys)) risk = higher(risk, "confirm");
       const printable = key === "space" || [...key].length === 1;
       if (!mods.length && printable && !typingIntoText(req)) risk = higher(risk, "confirm");
@@ -137,7 +170,7 @@ export function riskOf(action: PlannedAction, scene: Scene, rewrite = false): Ag
       if (carriesOffScreen(action.text ?? "", scene, target)) risk = higher(risk, "confirm");
       break;
     case "open":
-      if ((action.app ?? "").trim().toLowerCase() !== req.app.trim().toLowerCase()) risk = higher(risk, "confirm");
+      if (!asked && (action.app ?? "").trim().toLowerCase() !== req.app.trim().toLowerCase()) risk = higher(risk, "confirm");
       break;
     default:
       break;
