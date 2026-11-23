@@ -45,10 +45,10 @@ describe("the comparison's own tasks (--tasks)", () => {
     expect(() => chosenSample("no-such-task", pool, new Map())).toThrow(/matches no task/);
   });
 
-  it("takes a glob too, in id order: the twelve complex tasks (two sets of six) are there and validated", () => {
+  it("takes a glob too, in id order: the thirteen complex tasks (two sets of six, and the one on our own repo) are there and validated", () => {
     const s = chosenSample("tag:complex", pool, new Map());
     expect(s.ordered.map((t) => t.id)).toEqual([...s.ordered.map((t) => t.id)].sort());
-    expect(s.ordered).toHaveLength(12);
+    expect(s.ordered).toHaveLength(13);
     expect(chosenSample("tag:complex2", pool, new Map()).ordered).toHaveLength(6);
     expect(new Set(s.ordered.map((t) => t.category))).toEqual(new Set(["refactor", "feature", "bug", "vague", "language", "question", "hostile"]));
     expect(s.ordered.every((t) => t.validated?.oraclePasses && t.validated.baseFails)).toBe(true);

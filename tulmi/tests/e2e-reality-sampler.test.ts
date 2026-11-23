@@ -17,8 +17,8 @@ function task(id: string, category: Task["category"], over: Partial<Task> = {}):
 }
 
 describe("the pool", () => {
-  it("is the 77 tasks on the real projects (65, and the two sets of six complex ones of 2026-10-28): no smoke task, no injection case", () => {
-    expect(pool.length).toBe(77);
+  it("is the 78 tasks on the real projects (65, the two sets of six complex ones of 2026-10-28, and the one on our own repo): no smoke task, no injection case", () => {
+    expect(pool.length).toBe(78);
     expect(pool.some((t) => t.tags.includes("smoke") || t.tags.includes("injection-suite"))).toBe(false);
     for (const c of CATEGORIES_REQUIRED) expect(pool.some((t) => t.category === c), c).toBe(true);
   });
