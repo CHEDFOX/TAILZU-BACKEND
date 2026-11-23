@@ -139,11 +139,6 @@ export function loadLatestGrid(): GridFile | null {
   return fs.existsSync(f) ? readJson<GridFile>(f) : null;
 }
 
-export function loadLatestParts(): PartsFile | null {
-  const f = path.join(OUT_DIR, "parts", "latest.json");
-  return fs.existsSync(f) ? readJson<PartsFile>(f) : null;
-}
-
 export const PARTS_SPEC: CliSpec = {
   name: "npm run bakeoff -- --parts",
   about: "the part bake-offs: page extraction and locate for free now; edit formats, context strategy and router with the key (or from a cassette)",
