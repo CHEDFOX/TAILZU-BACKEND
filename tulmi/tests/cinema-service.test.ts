@@ -50,6 +50,10 @@ function rig(o: {
   verdictFor?: (shot: number, take: number) => unknown;
   /** A model that will not take what we send it, so the fallback can be tested. */
   refuseJob?: (model: string) => boolean;
+  /** The first this many pictures fail, as a provider's short outage would. */
+  failImages?: number;
+  /** The catalog lists no picture models for its first this many reads. */
+  noImagesFor?: number;
 } = {}) {
   const store = new MemoryCinemaStore();
   const blobs = new Map<string, Buffer>();
@@ -59,6 +63,8 @@ function rig(o: {
   const clock = { t: 1_800_000_000_000 };
   let ids = 0;
   let takeChecks = 0;
+  let imageFails = 0;
+  let modelReads = 0;
   const logs: string[] = [];
   const directed: string[] = [];
   const shotChecks: Record<number, number> = {};
@@ -91,7 +97,9 @@ function rig(o: {
     return { json: good, text: "", usd: 0.001 };
   };
   const media: MediaPorts = {
-    image: async () => { calls.images++; return { bytes: Buffer.from(`png${calls.images}`), type: "image/png", usd: 0.04 }; },
+    image: async () => {
+      if (o.failImages && imageFails < o.failImages) { imageFails++; throw Object.assign(new Error("provider busy"), { code: "busy" }); }
+      calls.images++; return { bytes: Buffer.from(`png${calls.images}`), type: "image/png", usd: 0.04 }; },
     startVideo: async (a) => {
       if (o.refuseJob?.(a.model)) throw Object.assign(new Error("that model does not take a clip"), { code: "bad_request" });
       const source = a.source ? ("job" in a.source ? `job:${a.source.job}` : "bytes") : null;
@@ -117,7 +125,7 @@ function rig(o: {
     store,
     blobs: { put: async (k, d) => { blobs.set(k, d); }, get: async (k) => blobs.get(k) ?? null, delete: async (k) => { blobs.delete(k); } },
     think,
-    models: async () => ({ video: videoModels(), image: imageModels(), jobs: jobModels() }),
+    models: async () => ({ video: videoModels(), image: modelReads++ < (o.noImagesFor ?? 0) ? [] : imageModels(), jobs: jobModels() }),
     media,
     charge: (_u, usd) => charged.push(usd),
     aiAllowed: async () => o.consent ?? true,
@@ -575,6 +583,34 @@ describe("a whole film", () => {
     const left = [...r.blobs.keys()];
     expect(left.every((k) => k.includes("/cinema/kept/"))).toBe(true);
     expect(left.length).toBeGreaterThan(0);
+  });
+
+  it("does not give up on a storyboard over a short outage: a failed step rests, and longer each time", async () => {
+    const r = rig({ failImages: 3 });
+    const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    // A tick every five seconds, as the server runs it: three failures in fifteen seconds used to fail the film for good.
+    for (let i = 0; i < 6; i++) {
+      await r.svc.tick();
+      await r.svc.idle();
+      r.clock.t += 5_000;
+    }
+    const f = (await r.store.getFilm("u1", made.film.id))!;
+    expect(f.status).toBe("boarding");
+    expect(Math.max(...Object.values(f.tries ?? {}))).toBeLessThan(3);
+    // Once the provider is back, the storyboard is drawn.
+    expect((await r.until("u1", made.film.id, "board")).status).toBe("board");
+  });
+
+  it("does not count an empty catalog against a step: it is asked again, not given up on", async () => {
+    const r = rig({ noImagesFor: 8 });
+    const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    const done = await r.until("u1", made.film.id, "board");
+    expect(done.status).toBe("board");
+    expect((await r.store.getFilm("u1", made.film.id))!.tries ?? {}).toEqual({});
   });
 
   it("tries again what made it give up, once the person changes the shot or asks again", async () => {
