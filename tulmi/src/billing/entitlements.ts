@@ -218,7 +218,7 @@ const GRANTS = new Set([
   "INITIAL_PURCHASE", "RENEWAL", "PRODUCT_CHANGE", "UNCANCELLATION",
   "NON_RENEWING_PURCHASE", "SUBSCRIPTION_EXTENDED", "TEMPORARY_ENTITLEMENT_GRANT",
 ]);
-const REVOKES = new Set(["EXPIRATION", "REFUND", "SUBSCRIPTION_PAUSED", "TRANSFER"]);
+const REVOKES = new Set(["EXPIRATION", "REFUND", "SUBSCRIPTION_PAUSED"]);
 
 /**
  * Which entitlement ids mean "Tailzu paid".
@@ -317,7 +317,42 @@ export type RcEvent = {
   environment?: string | null;
   /** Which RevenueCat app the event came from. Recorded, never enforced. */
   app_id?: string | null;
+  /** On a TRANSFER, the ids the purchases were taken from, and the ids they went to. A TRANSFER names no app_user_id. */
+  transferred_from?: string[] | null;
+  transferred_to?: string[] | null;
 };
+
+/**
+ * A TRANSFER: RevenueCat moved a store account's purchases from one app user
+ * to another (the same Apple ID signed in to a second account of ours). It
+ * names no app_user_id and no entitlement, only `transferred_from` and
+ * `transferred_to`, so it is handled here rather than as a revoke.
+ *
+ * Each account of ours it was taken from loses its row's access. Each one it
+ * went to has its cache cleared: its next read finds no live row and asks
+ * RevenueCat (askRevenueCat), which knows what it now holds. Nothing is
+ * granted from the event itself, since it does not say what was moved.
+ */
+async function applyTransfer(ev: RcEvent): Promise<{ ok: boolean; reason: string; userId?: string }> {
+  const uuids = (ids: unknown) => (Array.isArray(ids) ? ids : []).map((v) => String(v ?? "").trim()).filter((v) => UUID.test(v));
+  const from = uuids(ev.transferred_from);
+  const to = uuids(ev.transferred_to);
+  if (!from.length && !to.length) {
+    return { ok: false, reason: `no Supabase user id on the transfer (saw: ${[...(ev.transferred_from ?? []), ...(ev.transferred_to ?? [])].join(", ") || "nothing"})` };
+  }
+  const userId = to[0] ?? from[0];
+  if (from.length) {
+    const sb = supabase();
+    if (!sb) return { ok: false, reason: "no service client", userId };
+    for (const id of from) {
+      const { error } = await sb.from("entitlements").update({ active: false, last_event: "TRANSFER", updated_at: new Date().toISOString() }).eq("user_id", id);
+      if (error) return { ok: false, reason: error.message, userId };
+    }
+  }
+  for (const id of from) forgetEntitlement(id, { granted: false });
+  for (const id of to) forgetEntitlement(id);
+  return { ok: true, reason: `transferred from ${from.join(", ") || "nobody of ours"} to ${to.join(", ") || "nobody of ours"}`, userId };
+}
 
 /**
  * Apply one RevenueCat event.
@@ -331,6 +366,7 @@ export async function applyRevenueCatEvent(
   defaultEntitlement: string,
 ): Promise<{ ok: boolean; reason: string; userId?: string }> {
   const type = String(ev.type ?? "").toUpperCase();
+  if (type === "TRANSFER") return applyTransfer(ev);
   const userId = pickUserId(ev);
   if (!userId) {
     // Named explicitly, because this is the failure that looks like success:

@@ -105,7 +105,10 @@ function fakeSupabase() {
           return { error: null };
         },
         insert: async () => ({ error: null }),
-        update: () => chain,
+        // The entitlements row is changed in place (a TRANSFER takes access away from the account it left).
+        update: (patch: Record<string, unknown>) => (isEnt
+          ? { eq: async () => { if (writeFails) return { error: { message: "connection reset" } }; if (row) row = { ...row, ...patch }; return { error: null }; } }
+          : chain),
         delete: () => chain,
         then: (resolve: (v: unknown) => unknown) => resolve({ data: usage, error: null }),
       };
@@ -228,6 +231,22 @@ describe("payments, end to end", () => {
     const nobody = await webhook(event({ app_user_id: "$RCAnonymousID:abc" }));
     expect(nobody.statusCode).toBe(200);
     expect(nobody.json().ok).toBe(false);
+  });
+
+  it("takes access away from the account a transfer left, as RevenueCat sends it", async () => {
+    await webhook(event());
+    expect(row?.active).toBe(true);
+    const OTHER = "99999999-8888-7777-6666-555555555555";
+    // A TRANSFER carries transferred_from / transferred_to and no app_user_id or entitlement.
+    const moved = await webhook({ event: { type: "TRANSFER", transferred_from: [USER], transferred_to: [OTHER], store: "APP_STORE", environment: "PRODUCTION" } });
+    expect(moved.statusCode).toBe(200);
+    expect(moved.json()).toMatchObject({ ok: true, userId: OTHER });
+    expect(row).toMatchObject({ active: false, last_event: "TRANSFER" });
+    wordsUsed = 5_000;
+    expect(await enforceQuota(user as never)).not.toBeNull();
+    // One that could not be written comes again.
+    writeFails = true;
+    expect((await webhook({ event: { type: "TRANSFER", transferred_from: [USER], transferred_to: [OTHER] } })).statusCode).toBe(500);
   });
 
   it("does not let last period's EXPIRATION revoke a renewed subscriber", async () => {

@@ -85,8 +85,21 @@ describe("applyRevenueCatEvent — other products in the same project", () => {
     // The other direction of the same uncertainty. A wrong revoke is repaired
     // on the next read by askRevenueCat; a wrong grant is trusted until it
     // expires. So an ambiguous event may end access, never give it.
-    const res = await apply({ type: "TRANSFER", app_user_id: USER }, "pro");
+    const res = await apply({ type: "SUBSCRIPTION_PAUSED", app_user_id: USER }, "pro");
     expect(res.reason).toBe(WROTE);
+  });
+
+  it("takes a transfer by the ids it names, as RevenueCat sends it (no app_user_id)", async () => {
+    // transferred_from loses access, which needs the database; it got as far as the write.
+    const away = await apply({ type: "TRANSFER", transferred_from: [USER], transferred_to: ["$RCAnonymousID:abc"] }, "pro");
+    expect(away).toMatchObject({ ok: false, reason: WROTE, userId: USER });
+    // Only to an account of ours: nothing to write, the next read asks RevenueCat.
+    const to = await apply({ type: "TRANSFER", transferred_from: ["$RCAnonymousID:abc"], transferred_to: [USER] }, "pro");
+    expect(to).toMatchObject({ ok: true, userId: USER });
+    // Between nobody we know: unusable, and said so.
+    const none = await apply({ type: "TRANSFER", transferred_from: ["$RCAnonymousID:a"], transferred_to: ["$RCAnonymousID:b"] }, "pro");
+    expect(none.ok).toBe(false);
+    expect(none.userId).toBeUndefined();
   });
 
   it("does not let another product's refund revoke ours", async () => {
