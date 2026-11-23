@@ -56,6 +56,12 @@ meeting (`src/meet/words.ts` `meetingOf`):
 * **Consent.** The person must have agreed to the AI (`privacy/aiGate`). The model and the text-to-speech run as that person.
 * **The daily cap.** `MEET_DAILY_MINUTES` (240 by default) is the minutes of meetings one person's bot may sit in, over a rolling 24 hours.
 
+**One bot a call.** Pasting a link again answers the bot already in that call, or the one already booked for that time.
+Asked for now, a bot booked for the same call within the next `NOW_EARLY_MS` (10 minutes, the window `/now` looks in)
+is the bot for it, so "take notes" a few minutes before an auto-joined meeting does not send a second; one booked for
+much later is no reason to refuse sending one now. Two joins for the same call at once (a double press, two devices)
+share one: the second waits for the first and gets its meeting (`service.ts join`, in flight by person and call).
+
 **Joining.** A Recall bot is created with:
 
 | What | Value |

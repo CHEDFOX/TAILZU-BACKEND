@@ -46,6 +46,7 @@ import { chatParts, recall, RecallError, type BotInput, type RecallBot, type Rec
 import {
   botIdOf, chatOf, cleanText, eventOf, FLUSH_LINES, heardOf, personOf, QUEUE_MAX, Room, WAKE_WAIT_MS, type Ask, type Chat, type Heard,
 } from "./room.js";
+import { NOW_EARLY_MS } from "./calendar.js";
 import { stageHub } from "./stage.js";
 import { LIVE_STATUSES, meetStore, type Meeting, type MeetSettings, type MeetStatus, type MeetStore } from "./store.js";
 import { DEFAULT_BOT_NAME, MEET_SLUG, type MeetingDetail, type MeetingView, type MeetNotify, type MeetOverview, type StageHub } from "./types.js";
@@ -243,10 +244,25 @@ export class MeetService {
     };
   }
 
+  /**
+   * Joins in flight, by person and call. The check for a bot already there and the row that records a new one are a few awaits apart, so
+   * two presses at once (a double tap, two devices) would both find nothing and send two bots: a second waits for the first instead.
+   */
+  private readonly joining = new Map<string, Promise<MeetingView>>();
+
   async join(userId: string, input: { url: string; title?: string; voice?: boolean; forUser?: string; joinAt?: number; botName?: string }): Promise<MeetingView> {
     if (!this.recall) throw new MeetError(503, "The meeting bot isn't set up on this server.", "meet_off");
     const link = meetingOf(input?.url);
     if (!link) throw new MeetError(400, "That isn't a meeting link (Google Meet, Zoom, Teams or Webex).", "bad_link");
+    const key = `${userId}\u0000${link.url}`;
+    const inFlight = this.joining.get(key);
+    if (inFlight) return inFlight;
+    const out = this.joinOnce(userId, link, input).finally(() => this.joining.delete(key));
+    this.joining.set(key, out);
+    return out;
+  }
+
+  private async joinOnce(userId: string, link: MeetingLink, input: { title?: string; voice?: boolean; forUser?: string; joinAt?: number; botName?: string }): Promise<MeetingView> {
     // `forUser` sent the bot into a member's meeting for them: the admin's power alone, and gone (docs/social.md §4). A build
     // that still sends it is told, rather than quietly sending the bot into the sender's own call.
     if (typeof input.forUser === "string" && input.forUser && input.forUser !== userId) {
@@ -257,8 +273,11 @@ export class MeetService {
     if (typeof input.botName === "string") await this.renameBot(userId, input.botName);
     const at = this.scheduledFor(input.joinAt);
     const all = await this.store.list(userId, LIST_MAX);
-    // One bot a call: pasting the link again answers the bot already there, or the one already waiting for that time.
-    const there = all.find((m) => m.url === link.url && (LIVE_STATUSES.has(m.status) || (at !== null && m.status === "scheduled")));
+    // One bot a call: pasting the link again answers the bot already there, or the one already waiting for that time. Asked for now, a bot
+    // booked for this call within the next few minutes (auto-join books a calendar meeting's) IS the bot for it: a second would sit beside
+    // it. One booked for much later is no reason to refuse sending one now.
+    const soon = (m: Meeting) => at !== null || (m.joinAt ?? Infinity) - this.now() <= NOW_EARLY_MS;
+    const there = all.find((m) => m.url === link.url && (LIVE_STATUSES.has(m.status) || (m.status === "scheduled" && soon(m))));
     if (there) return this.viewFor(userId, there);
     if (this.minutesIn(all) >= getConfig().MEET_DAILY_MINUTES) {
       throw new MeetError(429, "Today's meeting time is used up. It comes back over the next day.", "meet_cap");
