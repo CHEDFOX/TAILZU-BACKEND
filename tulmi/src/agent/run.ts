@@ -10,6 +10,9 @@
  *   1. heard      what they said: their words, or the recording transcribed
  *   P. picture    a step that came with a picture goes straight to a model
  *                 that can see, and is answered about it, in show mode
+ *   V. clip       the same for a step that came with a clip of the window
+ *                 (something playing in it), to a model that can watch; never
+ *                 from a private window, which the device does not record
  *   2. grammar    "scroll down", "go back", "undo", "open Slack": free
  *   3. selection  text selected and they said something about it: the writer
  *                 rewrites it, and it is pasted over the selection
@@ -54,9 +57,9 @@ import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
 import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserPrompt } from "./llm.js";
-import { agentPictureContent, agentUserMessage, drawOrderFor } from "./prompt.js";
+import { agentPictureContent, agentUserMessage, agentVideoContent, drawOrderFor } from "./prompt.js";
 import { stableBlock } from "../principles/roles.js";
-import type { AgentImage, EventSink } from "./protocol.js";
+import type { AgentClip, AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
 import { getConfig } from "../config.js";
@@ -73,6 +76,8 @@ export interface StepContext {
   names?: string[];
   /** The one picture that came with the step: the picture path. */
   image?: AgentImage;
+  /** The one clip that came with the step, in place of a picture: the clip path. */
+  video?: AgentClip;
   /** Marks a step may draw; AGENT_DRAW_MAX when not given. */
   drawMax?: number;
   /** The person's context (src/context), already capped: shown to the planner at a run's first step only. */
@@ -127,7 +132,7 @@ export interface ConnectorsRuntime {
 /** Tool calls in one step before the planner must answer: each is a model call. */
 const MAX_USE_ROUNDS = 3;
 
-export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model" | "picture";
+export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model" | "picture" | "video";
 
 /** What the step did, for metering and the log. Never any of its text. */
 export interface StepResult {
@@ -160,6 +165,7 @@ export interface StepResult {
 const countWords = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 const NOT_FOUND = "I couldn't find that here.";
 const NOT_SEEN = "I couldn't make that out in the picture.";
+const NOT_WATCHED = "I couldn't make out what was happening in that clip.";
 /** Sentences a picture answer may run to: about 90 words, or 250 for the
  *  worked one, with room over for short ones. */
 const PICTURE_SAYS = 10;
@@ -192,6 +198,13 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
     sink.emit({ t: "error", code: "private", message: "Ask doesn't read private windows or sensitive apps." });
     return { path: "refused", words: 0, audioSeconds: 0, code: "private" };
   }
+  // A clip of a private window: the device never records one, and this is the
+  // second lock. A picture of one may go when private windows are on; a clip
+  // is seconds of whatever plays there, sound and all, and is not asked for.
+  if (ctx.video && req.privateWindow) {
+    sink.emit({ t: "error", code: "private", message: "Ask doesn't record private windows." });
+    return { path: "refused", words: 0, audioSeconds: 0, code: "private" };
+  }
   const stepsAllowed = req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps;
   if (req.step > stepsAllowed) {
     sink.emit({ t: "error", code: "too_many_steps", message: "That took too many steps, so I stopped." });
@@ -216,8 +229,9 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
   // The run's mode is its first request's: an answer to a question it asked
   // ("the second one") does not turn a show run into a do run. A picture is
   // only ever shown.
-  const mode = ctx.image ? "show" : modeOf(history.find((t) => t.said)?.said ?? said, names);
+  const mode = ctx.image || ctx.video ? "show" : modeOf(history.find((t) => t.said)?.said ?? said, names);
   sink.emit({ t: "heard", text: said, mode });
+  if (ctx.video) return answerVideo(ctx, deps, sink, { said, video: ctx.video, audioSeconds });
   if (ctx.image) return answerPicture(ctx, deps, sink, { said, image: ctx.image, audioSeconds });
 
   const scene: Scene = { req, said: everythingSaid(req, said) };
@@ -431,6 +445,37 @@ async function answerPicture(
     order: drawOrderFor,
     scene: { req, said: all },
     nothing: NOT_SEEN,
+    result,
+  });
+}
+
+/**
+ * The clip path: the clip and the question to a model that watches, read as
+ * the picture path's answer is (one step, show mode, sentences as they come),
+ * with two differences. Its marks name ids only (ReaderRules.places): the
+ * clip's frames moved while it was recorded, and a place in one of them is no
+ * place on the screen now. And no deep ladder: the clip ladder is one list,
+ * given the longer budget when they asked for detail.
+ */
+async function answerVideo(
+  ctx: StepContext,
+  deps: StepDeps,
+  sink: EventSink,
+  s: { said: string; video: AgentClip; audioSeconds: number },
+): Promise<StepResult> {
+  const { req } = ctx;
+  const all = everythingSaid(req, s.said);
+  const deep = wantsDetail(all);
+  const result: StepResult = { path: "video", mode: "show", words: 0, audioSeconds: s.audioSeconds };
+  if (deep) result.deep = true;
+  return follow(ctx, deps, sink, {
+    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), "show", {
+      picture: true, places: false, says: deep ? DEEP_SAYS : PICTURE_SAYS, draws: drawMax(ctx),
+    }),
+    stream: deps.plan(stableBlock("ask_vision"), agentVideoContent(req, s.said, s.video), deps.signal, { deep, video: true }),
+    order: drawOrderFor,
+    scene: { req, said: all },
+    nothing: NOT_WATCHED,
     result,
   });
 }

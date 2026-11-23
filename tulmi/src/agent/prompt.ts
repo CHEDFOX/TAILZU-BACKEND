@@ -57,7 +57,7 @@ import type { AgentElement, AgentStepRequest } from "../../../shared/types/api.j
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
 import type { SpotOrder } from "./lines.js";
 import { isGemini, type UserPart } from "./llm.js";
-import type { AgentImage } from "./protocol.js";
+import type { AgentClip, AgentImage } from "./protocol.js";
 import { reducePage } from "../talk/page.js";
 
 const AGENT_TAG_NAMES = "screen|said|history|job|context|page";
@@ -303,6 +303,43 @@ export function agentPictureMessage(req: AgentStepRequest, said: string, order: 
   if (history.length) parts.push(`<history>\n${history.map((t, i) => historyLine(i + 1, t)).join("\n")}\n</history>`);
   parts.push(`<said>${fenced(said)}</said>`);
   return parts.join("\n");
+}
+
+/**
+ * The clip path's user message, as its text: what the clip is (seconds of the
+ * whole window, recorded while it played, with or without the computer's
+ * sound), that marks name ids only, then the screen, the run so far and what
+ * they said, last, as the picture's message has them. The system prompt is
+ * the picture reader's, the same bytes, so its cache is shared: "the picture"
+ * there is this clip, and this says so after it, where a message says what
+ * differs.
+ */
+export function agentVideoMessage(req: AgentStepRequest, said: string): string {
+  const v = req.video ?? { seconds: 6, sound: false };
+  const head = [
+    `App: ${fenced(req.app) || "unknown"}. The picture is a ${v.seconds}-second clip of the whole window, recorded just now while it played, ${v.sound ? "with the computer's own sound" : "without sound"}.`,
+    "Answer about what happens in it over those seconds" + (v.sound ? ", and what is heard in it" : "") + ", not about one frame.",
+  ];
+  if (req.language && req.language !== "auto") head.push(`Their language: ${req.language}.`);
+  const parts = [
+    head.join(" "),
+    "Its frames moved while it was recorded, so mark only ids from the screen list: there are no places in this picture to draw at.",
+    `<screen>\n${screenLines(req).join("\n")}\n</screen>`,
+  ];
+  const history = req.history ?? [];
+  if (history.length) parts.push(`<history>\n${history.map((t, i) => historyLine(i + 1, t)).join("\n")}\n</history>`);
+  parts.push(`<said>${fenced(said)}</said>`);
+  return parts.join("\n");
+}
+
+/** The clip path's user message as content parts: the clip first, as an
+ *  OpenRouter `video_url` part with a data: URL (the shape a real call to a
+ *  Gemini Flash took, sound and all), then the text. */
+export function agentVideoContent(req: AgentStepRequest, said: string, clip: AgentClip): UserPart[] {
+  return [
+    { type: "video_url", video_url: { url: `data:${clip.mime};base64,${clip.data.toString("base64")}` } },
+    { type: "text", text: agentVideoMessage(req, said) },
+  ];
 }
 
 /** The picture path's user message as content parts: the picture first, as

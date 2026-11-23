@@ -58,14 +58,16 @@ export function systemText(system: SystemPrompt): string {
 export function userText(user: UserPrompt, models: string[] = []): string {
   if (typeof user === "function") return models.map((m) => userText(user(m))).join("\n␞\n");
   if (typeof user === "string") return user;
-  return user.map((p) => (p.type === "text" ? p.text : `[picture ${sha256(p.image_url.url).slice(0, 16)}]`)).join("\n␞\n");
+  return user.map((p) => (p.type === "text" ? p.text
+    : p.type === "video_url" ? `[clip ${sha256(p.video_url.url).slice(0, 16)}]`
+    : `[picture ${sha256(p.image_url.url).slice(0, 16)}]`)).join("\n␞\n");
 }
 
 export const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
 
 /** sha256 of [version, models joined, the system text, the user text, the picture mark]. */
 export function cassetteKey(models: string[], system: SystemPrompt, user: UserPrompt, picture?: PictureCall): string {
-  const mark = picture ? (picture.deep ? "picture:deep" : "picture") : "";
+  const mark = picture ? (picture.video ? "clip" : picture.deep ? "picture:deep" : "picture") : "";
   return sha256(JSON.stringify([CASSETTE_VERSION, models.join(","), systemText(system), userText(user, models), mark]));
 }
 

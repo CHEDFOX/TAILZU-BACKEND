@@ -32,6 +32,13 @@
  * because there it is opt-in; the other providers cache a repeated prefix on
  * their own.
  *
+ * The clip path (a few seconds of the window, PictureCall.video) climbs a
+ * ladder of models that watch: AGENT_VIDEO_MODEL, then each of
+ * AGENT_VIDEO_FALLBACK_MODELS, by the same rule, with AGENT_VIDEO_TIMEOUT_MS
+ * to the first character and between chunks, and the picture's budget and
+ * provider preference otherwise. No CLEANUP_MODEL under it: a model that
+ * cannot take video would answer about nothing it was shown.
+ *
  * The picture path climbs its own ladder: AGENT_VISION_MODEL, then each of
  * AGENT_VISION_FALLBACK_MODELS, then CLEANUP_MODEL, by the same rule, each
  * model once however often the config names it. Asked for the long answer
@@ -80,7 +87,9 @@ export type SystemPrompt = string;
 /** One part of a user message that carries a picture. */
 export type UserPart =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } };
+  | { type: "image_url"; image_url: { url: string } }
+  // OpenRouter's part for a video, a data: URL of the WebM or MP4 (the clip path).
+  | { type: "video_url"; video_url: { url: string } };
 
 /** A user message: text, or parts when it carries a picture. */
 export type UserContent = string | UserPart[];
@@ -93,6 +102,8 @@ export type UserPrompt = UserContent | ((model: string) => UserContent);
 /** The picture path's call: which ladder, and how much it may write. */
 export interface PictureCall {
   deep: boolean;
+  /** What it sees is a clip, not a picture: the clip ladder, and its timeout. */
+  video?: boolean;
 }
 
 /** What one model call did, for the log. Never any of the prompt. */
@@ -119,6 +130,8 @@ export interface CallRecord {
   status?: number;
   /** A picture path call: one picture went with it. */
   picture?: true;
+  /** A clip path call: one clip went with it (picture is set too). */
+  video?: true;
   /** On the deep ladder. */
   deep?: true;
 }
@@ -162,6 +175,13 @@ export function visionLadder(deep = false): string[] {
     ...cfg.AGENT_VISION_FALLBACK_MODELS.split(","),
     cfg.CLEANUP_MODEL,
   ]);
+}
+
+/** The clip path's models: each one must take video (OpenRouter lists
+ *  "video" among its input modalities). */
+export function videoLadder(): string[] {
+  const cfg = getConfig();
+  return ladder([cfg.AGENT_VIDEO_MODEL, ...cfg.AGENT_VIDEO_FALLBACK_MODELS.split(",")]);
 }
 
 const isAnthropic = (model: string) => model.startsWith("anthropic/");
@@ -282,8 +302,8 @@ interface StreamChunk {
 export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: PlanOptions = {}): AsyncGenerator<PlanChunk> {
   const cfg = getConfig();
   const picture = opts.picture;
-  const models = ladder(opts.models ?? (picture ? visionLadder(picture.deep) : modelLadder()));
-  const timeoutMs = opts.timeoutMs ?? (picture ? cfg.AGENT_VISION_TIMEOUT_MS : cfg.AGENT_TIMEOUT_MS);
+  const models = ladder(opts.models ?? (picture?.video ? videoLadder() : picture ? visionLadder(picture.deep) : modelLadder()));
+  const timeoutMs = opts.timeoutMs ?? (picture?.video ? cfg.AGENT_VIDEO_TIMEOUT_MS : picture ? cfg.AGENT_VISION_TIMEOUT_MS : cfg.AGENT_TIMEOUT_MS);
   const maxTokens = !picture ? AGENT_MAX_TOKENS : picture.deep ? VISION_DEEP_MAX_TOKENS : VISION_MAX_TOKENS;
   // Only the picture path asks for a provider: the text path's calls are
   // short and its models were never measured slow to start.
@@ -314,6 +334,7 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
     const call: CallRecord = { model, outcome: "stopped", ms: 0 };
     if (picture) call.picture = true;
     if (picture?.deep) call.deep = true;
+    if (picture?.video) call.video = true;
     let wrote = false;
     let ranOut = false;
     try {

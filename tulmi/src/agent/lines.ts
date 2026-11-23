@@ -555,6 +555,11 @@ export type ReaderOut = { emit: AgentEvent } | { act: ActionLine } | { use: UseL
 export interface ReaderRules {
   /** The step came with a picture and is answered about it. */
   picture?: boolean;
+  /** Marks may be at places in that picture (DRAW BOX [x,y,w,h]): on with
+   *  `picture` unless said otherwise. A clip's step answers as a picture's
+   *  does, but its frames moved while it was recorded, and a place in one
+   *  of them is no place on the screen now: its marks name ids only. */
+  places?: boolean;
   /** SAY lines honoured in the step. */
   says?: number;
   /** DRAW lines honoured in the step (AGENT_DRAW_MAX). */
@@ -664,6 +669,7 @@ export class LineReader {
   private says = 0;
   private readonly pointed = new Set<string>();
   private readonly picture: boolean;
+  private readonly places: boolean;
   private readonly connectors: boolean;
   private readonly saysMax: number;
   private readonly drawsMax: number;
@@ -681,6 +687,7 @@ export class LineReader {
 
   constructor(private readonly ids: Set<string>, private readonly mode: "show" | "do", rules: ReaderRules = {}) {
     this.picture = rules.picture === true;
+    this.places = this.picture && rules.places !== false;
     this.connectors = rules.connectors === true && !this.picture;
     this.saysMax = rules.says ?? SAYS_MAX;
     this.drawsMax = Math.max(0, rules.draws ?? DRAWS_MAX);
@@ -819,8 +826,8 @@ export class LineReader {
 
   /** Every spot of the mark is one this step may draw at. */
   private placeable(mark: AgentDraw): boolean {
-    if (mark.points && !this.picture) return false;
-    return [mark.target, mark.from, mark.to].every((s) => !s || ("id" in s ? this.ids.has(s.id) : this.picture));
+    if (mark.points && !this.places) return false;
+    return [mark.target, mark.from, mark.to].every((s) => !s || ("id" in s ? this.ids.has(s.id) : this.places));
   }
 
   private point(id: string, caption?: string): ReaderOut[] {

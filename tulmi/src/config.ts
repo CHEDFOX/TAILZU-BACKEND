@@ -438,6 +438,36 @@ const EnvSchema = z.object({
    *  1024-pixel JPEG of a window is 100–300 KB, so this is far past fair. */
   AGENT_IMAGE_MAX_BYTES: z.coerce.number().int().min(10_000).max(20_000_000).default(2_000_000),
   /**
+   * THE CLIP PATH: a question about something moving on screen ("what's
+   * happening in this video?") comes with a few seconds of the window in
+   * place of one picture (the desktop's desktop.agent.videoSeconds, 6 by
+   * default, at most 960 pixels a side and 4 frames a second), with the
+   * computer's own sound when it could be heard. It goes to a model that
+   * watches: a Gemini Flash that lists "video" among its input modalities on
+   * OpenRouter (GET /api/v1/models), given as a `video_url` content part with
+   * a data: URL (llm.ts, prompt.ts agentVideoContent). Checked by a real call
+   * with a 3-second VP8/Opus WebM: it described both the test pattern and the
+   * tone. Then each of AGENT_VIDEO_FALLBACK_MODELS, which must take video too;
+   * there is no CLEANUP_MODEL under this ladder, as there is under the
+   * picture's, because a model that cannot watch would answer about nothing.
+   */
+  AGENT_VIDEO_MODEL: z.string().default("google/gemini-3.8-flash"),
+  /** Comma-separated; each must list "video" in its input modalities. */
+  AGENT_VIDEO_FALLBACK_MODELS: z.string().default("google/gemini-2.5-flash"),
+  /**
+   * Per clip call, to its first written character and then chunk to chunk,
+   * as AGENT_VISION_TIMEOUT_MS is for a picture. Longer: a model reads every
+   * frame and the sound before it writes a word (a 6-second clip is about
+   * 1,500 tokens of video on Gemini 2.5 Flash, measured), and the device
+   * gives a whole run a minute.
+   */
+  AGENT_VIDEO_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(20_000),
+  /** The one clip a step may carry, in bytes; above it is a 413. Six seconds
+   *  at 960 pixels and 4 frames a second in VP8 is well under 2 MB; the
+   *  desktop falls back to the still picture above its own cap, which is
+   *  this one (desktop.agent.videoMaxBytes). */
+  AGENT_VIDEO_MAX_BYTES: z.coerce.number().int().min(100_000).max(20_000_000).default(8_000_000),
+  /**
    * Marks one step may draw on the screen (DRAW lines: a box, an arrow, a
    * numbered place). The model is asked for six at most; past this it is
    * scribbling, and the rest are dropped. 0 turns drawing off.
