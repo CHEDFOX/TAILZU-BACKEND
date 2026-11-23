@@ -26,7 +26,7 @@
  * way: a WebM or an MP4 by its first bytes as well as its label.
  */
 import type {
-  AgentElement, AgentEvent, AgentJob, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AgentVideo, AudioFormat,
+  AgentElement, AgentEvent, AgentFlowAsk, AgentJob, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AgentVideo, AudioFormat,
 } from "../../../shared/types/api.js";
 import { readPage } from "../talk/page.js";
 import { elementLine } from "./prompt.js";
@@ -297,6 +297,8 @@ export function readStepRequest(
   }
   const job = readJob(o.job);
   if (job) req.job = job;
+  const flow = readFlowAsk(o.flow, hasImage || hasVideo);
+  if (flow) req.flow = flow;
   // The whole page, at a run's first step only and not with a picture or a clip: cut, never refused (talk/page.ts), its URLs without their tails.
   if (o.step === 0 && !hasImage && !hasVideo) {
     const page = readPage(o.page, withoutUrlSecrets);
@@ -318,6 +320,21 @@ export function readJob(v: unknown): AgentJob | null {
   const done = Array.isArray(o.done) ? [...new Set(o.done.filter((n): n is number => Number.isInteger(n) && n >= 0 && n < plan.length))].sort((a, b) => a - b) : [];
   const notes = Array.isArray(o.notes) ? o.notes.filter((x): x is string => typeof x === "string").map((x) => oneLine(x, LIMITS.jobNote)).filter(Boolean).slice(-LIMITS.jobNotes) : [];
   return { goal: typeof o.goal === "string" ? oneLine(o.goal, LIMITS.jobGoal) : "", plan, done, notes };
+}
+
+/**
+ * What the device says about flow instructions (AgentFlowAsk): the version it obeys, a whole number from 1 (anything else
+ * is no flow at all, and the step is answered as it always was), and what it could show if asked to look, only the two
+ * kinds there are, each once. A step that already carries a picture or a clip offers nothing more: it has shown what it has.
+ */
+export function readFlowAsk(v: unknown, carriesMedia = false): AgentFlowAsk | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.v !== "number" || !Number.isInteger(o.v) || o.v < 1 || o.v > 999) return null;
+  const can = !carriesMedia && Array.isArray(o.can)
+    ? [...new Set(o.can.filter((c): c is "picture" | "clip" => c === "picture" || c === "clip"))]
+    : [];
+  return can.length ? { v: o.v, can } : { v: o.v };
 }
 
 /** What the picture is a crop of. Anything but one image on the screen is

@@ -19,6 +19,7 @@ import { soundsFlags } from "../bots/sounds.js";
 import { CACHE_VERSION } from "../cacheVersion.js";
 import { deskNav } from "../desk/screens.js";
 import { DESKTOP_LATEST, installerUrl, desktopOs, publishedRelease } from "../desktopRelease.js";
+import { uiBundleFlags } from "../desktopUiBundle.js";
 import { FLOW_IDLE_TIMEOUT_MS, FLOW_TRANSPORT } from "../flow.js";
 import { getMediaRegistryFn } from "../mediaRegistry.js";
 import { onboardAuthTree } from "../onboard/auth.js";
@@ -318,6 +319,8 @@ export function buildBootstrap(
           ...(deskAddThisOn(opts) ? { "desktop.plan.addThis": true } : {}),
           // Blip's moves and poses (bots/blip.ts): which catalog is current, and where to fetch it.
           ...blipFlags(),
+          // The overlay pages (pill, Ask's card, resting Blip) as last published (desktopUiBundle.ts).
+          ...uiBundleFlags(),
           // Closing the window really closes it, so opening it again starts
           // on the landing page with fresh numbers — not on whatever page it
           // was hidden on an hour ago. The tray, the pill and the hotkey live

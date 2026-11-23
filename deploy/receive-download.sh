@@ -18,8 +18,41 @@
 # The installer's SHA-512 is written beside it too (Tailzu.dmg.sha512), before
 # the version: a build that updates itself checks what it downloaded against
 # it, so an announced version always has a checksum to be held to.
+#
+# THE DESKTOP'S UI BUNDLE comes the same way ("ui <v> <minApp>", the bundle on stdin; desktop
+# scripts/ui-bundle.js, .github/workflows/ui.yml): it lands as downloads/ui/<v>.json, and only then is
+# downloads/ui/latest.json written with the SHA-256 of the bytes received, which the bootstrap hands every
+# desktop to check the bundle against (tulmi/src/experience/desktopUiBundle.ts). The last ten are kept.
 set -euo pipefail
-read -r name version extra <<< "${SSH_ORIGINAL_COMMAND:-}"
+read -r name version extra more <<< "${SSH_ORIGINAL_COMMAND:-}"
+if [ "${name:-}" = "ui" ]; then
+  v="${version:-}"; minapp="${extra:-}"
+  [ -z "${more:-}" ] || { echo "refused: too many words" >&2; exit 2; }
+  [[ "$v" =~ ^[0-9]{14}-[0-9a-f]{7,40}$ ]] || { echo "refused: '$v' is not a UI bundle version" >&2; exit 2; }
+  [[ "$minapp" =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,6}$ ]] || { echo "refused: '$minapp' is not a version" >&2; exit 2; }
+  dir="$(dirname "$(readlink -f "$0")")/../downloads/ui"
+  mkdir -p "$dir"
+  tmp="$(mktemp "$dir/.incoming.XXXXXX")"
+  trap 'rm -f "$tmp"' EXIT
+  head -c 16000001 > "$tmp"
+  size=$(stat -c %s "$tmp")
+  [ "$size" -le 16000000 ] || { echo "refused: the UI bundle is over 16 MB" >&2; exit 3; }
+  [ "$size" -ge 1000 ] || { echo "refused: the UI bundle is only $size bytes" >&2; exit 3; }
+  [ "$(head -c 1 "$tmp")" = "{" ] || { echo "refused: the UI bundle is not JSON" >&2; exit 3; }
+  chmod 644 "$tmp"
+  sha="$(sha256sum "$tmp" | cut -d' ' -f1)"
+  exec 9>"$dir/.publish.lock"
+  flock 9
+  mv -f "$tmp" "$dir/$v.json"
+  trap - EXIT
+  printf '{"format":1,"v":"%s","sha256":"%s","size":%s,"minApp":"%s"}\n' "$v" "$sha" "$size" "$minapp" > "$dir/.latest.json.tmp"
+  chmod 644 "$dir/.latest.json.tmp"
+  mv -f "$dir/.latest.json.tmp" "$dir/latest.json"
+  ls -1t "$dir"/[0-9]*.json 2>/dev/null | tail -n +11 | xargs -r rm -f
+  echo "published ui $v ($size bytes, sha256 $sha, minApp $minapp)"
+  exit 0
+fi
+[ -z "${more:-}" ] || { echo "refused: too many words" >&2; exit 2; }
 name="${name:-}"; version="${version:-}"
 [ -z "${extra:-}" ] || { echo "refused: too many words" >&2; exit 2; }
 if [ -n "$version" ] && ! [[ "$version" =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,6}$ ]]; then

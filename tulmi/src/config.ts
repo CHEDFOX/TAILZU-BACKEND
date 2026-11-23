@@ -474,6 +474,25 @@ const EnvSchema = z.object({
    */
   AGENT_DRAW_MAX: z.coerce.number().int().min(0).max(50).default(12),
   /**
+   * ASK'S FLOW INSTRUCTIONS (agent/flow.ts, the `flow` event): the server decides how a run goes for a desktop that asks.
+   * Off: no flow event is sent, and every desktop decides as it did before. The defaults are what the desktop did.
+   *   LISTEN_AFTER   kinds of answer after which a conversation listens again (question, command, words, picture);
+   *                  a kind left out closes the card after its answer
+   *   IDLE_MS        how long the reopened microphone waits for words
+   *   TRUST_COMMANDS a command with nothing that pays or deletes is their yes for its ordinary steps
+   *   MEDIA          ask for a clip or a picture when the words want one; CLIP_SECONDS long
+   *   VIDEO_APPS     comma-separated players a "what's happening?" is a clip in; empty is the built-in list
+   *   ASK_REPLY_MIC  "open" or "key" for an ASK's answer; empty leaves it to the desktop
+   */
+  AGENT_FLOW: bool(true),
+  AGENT_FLOW_LISTEN_AFTER: z.string().default("question,command,words,picture"),
+  AGENT_FLOW_IDLE_MS: z.coerce.number().int().min(1000).max(600_000).default(120_000),
+  AGENT_FLOW_TRUST_COMMANDS: bool(true),
+  AGENT_FLOW_MEDIA: bool(true),
+  AGENT_FLOW_CLIP_SECONDS: z.coerce.number().int().min(1).max(30).default(6),
+  AGENT_FLOW_VIDEO_APPS: z.string().default(""),
+  AGENT_FLOW_ASK_REPLY_MIC: z.enum(["", "open", "key"]).default(""),
+  /**
    * Ask's own bucket, apart from the app's: a run is several requests a few
    * seconds apart, and it must never be the reason dictation gets a 429.
    */
