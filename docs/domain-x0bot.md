@@ -6,7 +6,7 @@ each one needs the ones before it. Nothing here prints a secret.
 
 | what | address | where it runs |
 | --- | --- | --- |
-| the site | `https://x0bot.com` (`www.x0bot.com` redirects to it) | Vercel, from the site repo |
+| the site | `https://x0bot.com` (`www.x0bot.com` redirects to it) | the same VPS, behind its nginx (moved off Vercel 2026-11; the site repo's README, Publishing) |
 | the API | `https://api.x0bot.com` | the VPS, `root@91.108.104.168`, code in `~/tulmi` |
 | app links | `https://app.x0bot.com` (`/s/*`, the AASA, `assetlinks.json`) | the same VPS |
 | mail | `support@`, `privacy@`, `legal@`, `security@`, `hello@x0bot.com` | not set up yet (step 17) |
@@ -455,13 +455,13 @@ should be sent from them), and afterwards:
 | Meta (pixel, Conversions API) | events for site pages | `x0bot.com` | 15 |
 | Search engines, IndexNow | crawl and ping the site | `x0bot.com` | 15 |
 | Desktop updater | downloads `/downloads/*` | `x0bot.com` (0.4.5 on), `tailzu.space` (up to 0.4.4) | 13 |
-| The site's proxy (Vercel) | `/v1/*`, `/download(s)`, `/privacy`, `/terms`, `/.well-known/*` | `https://api.x0bot.com` | 10 |
+| The site's proxy (nginx, from the site's `vercel.json`) | `/v1/*`, `/download(s)`, `/privacy`, `/terms`, `/.well-known/*` | `https://api.x0bot.com` | 10 |
 
 ## What still says tailzu.space, and why
 
 - **`api.tailzu.space` and `app.tailzu.space`** stay served (step 3): installed
   phones and desktops have them built in, and links already sent name them.
-- **tailzu.space and www.tailzu.space** stay on Vercel: pages redirect to
+- **tailzu.space and www.tailzu.space** stay served by the site (now on the VPS): pages redirect to
   x0bot.com; `/v1/*`, `/downloads/*`, `/.well-known/*` stay straight.
 - **The phone app** claims both domains' links, and accepts both as its API.
 - **The desktop updater** trusts both; builds up to 0.4.4 are offered their
