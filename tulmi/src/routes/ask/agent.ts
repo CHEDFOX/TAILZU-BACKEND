@@ -43,6 +43,7 @@ import type { AudioFormat } from "../../../../shared/types/api.js";
 import { planStream } from "../../agent/llm.js";
 import { type AgentClip, type AgentImage, type Refusal, readClip, readPicture, audioFormatOf, readStepRequest, EventSink } from "../../agent/protocol.js";
 import { type StepResult, runStep } from "../../agent/run.js";
+import { flowPolicy } from "../../agent/flow.js";
 import { resolveUser } from "../../auth/supabase.js";
 import type { AppConfig } from "../../config.js";
 import type { Connectors } from "../../connectors/index.js";
@@ -235,6 +236,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
           ...(image ? { image } : {}),
           ...(video ? { video } : {}),
           ...(kept?.text ? { context: kept.text } : {}),
+          ...(cfg.AGENT_FLOW ? { flow: flowPolicy(cfg) } : {}),
         },
         {
           hear: audio
