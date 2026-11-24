@@ -53,6 +53,24 @@ row ([front-door.md](front-door.md), [bots.md](bots.md) section 7). This is a *t
 `bots.talk` is the first tab and `initialTabId`, so it is what the app opens on. The **Bots** tab keeps the grid,
 because a bot's own page — a trip, a day's plan, a mailbox, a film — is a place and not a message.
 
+### 1a. The welcome, and the line of the day (`screens/bots/talkWelcome.ts`)
+
+An empty thread opens on the bot in a dashed box. **One bot, in one place:**
+
+* **The first visit** (the welcome Home used to play, due on the same read, `GET /v1/bots/first-run/arrival`): he waves
+  with "Hi Aanya, I'm X0 · Every bot here is me, ready for one job." for `HELLO_MS` (3 s). He does **not** walk off: the
+  box draws in around him where he stands, he turns to listening, and his words change to "Say what you need". The
+  chips and the two marks come in under it, and the microphone and keyboard card (which keeps its own bot) waits
+  `CARD_AFTER_MS` more (`cardDue`), so the two never land together. The thread does not jump to its end while this
+  plays (`startAtEnd` off), or the head would be carried off the top when the words change size.
+* **Back after a long time away** (`kind: "back"`): the same, with "Welcome back, Aanya · X0 and your bots missed you."
+* **Every visit after**: the same box, with a short line for the hour in the person's own time under him — "Morning,
+  Aanya", "Midday ask?", "Golden-hour chat?", "Moonlit chat?" (`DAY_LINES`; the parts of the day are Home's,
+  `touches.ts dayPart`). One line a part of the day, the next one the next day.
+
+Only on an empty thread: someone who already has turns gets their thread and no hello over it. A build that cannot
+move (no `BotsMotion`) draws the hello still, inside the box. Closing the card ends the welcome on Talk and Home alike.
+
 ## 2. The two marks: "/" and "@"
 
 Both are read **for nothing** (`botsBots/talkWords.ts`, pure, no model), and neither is taken on the client's word.
@@ -270,6 +288,8 @@ four above say otherwise.
 nothing while the thread keeps what was typed, "@Mom" with the name read off their own people and a stranger's id
 simply not found, a job-only turn, a refusal keeping nothing, picks going back through the door); the screen (who
 answered, the cards in the chat, the pills, the empty thread, an older build's box, the thread that would not read).
+The welcome and the line of the day: the hello by name and what it changes to, the card waiting on `cardDue`, welcome
+back, no hello over a thread, the still build, the line for each part of the day and the next day's line.
 `tests/bots-app-boot.test.ts` holds the tab order and the landing; `tests/ai-asks-once.test.ts` the two landing screens
 and the one answer. The field: `mentionCore.test.ts` (phone) and `mention.test.js` (window), plus `fill.test.ts` for the
 `\@` escape. The render check: `npx tsx scripts/bots-render/render.ts bots.talk --api "$(…samples…)"`.

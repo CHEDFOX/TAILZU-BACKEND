@@ -341,7 +341,9 @@ describe("Talk's screen", () => {
 
   it("an empty thread offers things to say and the two marks, never a list of bots", async () => {
     const s = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>));
-    expect(s).toContain("Say what you need");
+    // The bot in his box, with the line of the day under him (FIXED_NOW is 7:40 pm in India: the evening).
+    expect(s).toMatch(/Evening, Aanya|Wrapping up the day\?|Golden-hour chat\?/);
+    expect(s).toContain("Whichever bot it belongs to answers here");
     expect(s).toContain("names a bot");
     expect(s).toContain("names a person");
     // The "@" is the CHARACTER and not a catalog key, so it draws (kit.ts atText).
@@ -366,5 +368,95 @@ describe("Talk's screen", () => {
     expect(s).not.toContain("Whichever bot it belongs to answers here");
     // The box stays: a thread that could not be read is no reason to stop someone saying something.
     expect(s).toContain("/v1/botsapp/talk");
+  });
+});
+
+// ===================================================================== 4. the welcome, and the line of the day
+
+describe("Talk's welcome and its line of the day", () => {
+  const ARRIVAL = "GET /v1/bots/first-run/arrival";
+  const due = (kind: "first" | "back" = "first") => ({ ...(TALK_EMPTY_API as Record<string, unknown>), [ARRIVAL]: { due: true, kind } });
+  const build = (api: Record<string, unknown>, o: { client?: "phone" | "desktop"; can?: (c: string) => boolean; now?: number } = {}) =>
+    buildBotsScreen({
+      screenId: SCREENS.talk, client: o.client ?? "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Aanya" },
+      can: { has: o.can ?? (() => true) } as unknown as Set<string>, desk: { pages: o.client === "desktop", notes: true },
+    }, fakeDeps({ api, ...(o.now ? { now: o.now } : {}) }));
+  /** A time in India on 24 Nov 2026, as the server's clock would hold it. */
+  const ist = (hour: number, day = 24) => Date.UTC(2026, 10, day) + (hour * 60 - IST) * 60_000;
+
+  it("the first visit: he waves by their name, then the box draws in around him and his words change", async () => {
+    const screen = await build(due());
+    const s = JSON.stringify(screen);
+    expect(s).toContain("Hi Aanya, I'm X0");
+    expect(s).toContain("Every bot here is me, ready for one job.");
+    // What his words change to, and the box that draws in (a Rise behind him, shown once helloSeen is set).
+    expect(s).toContain("Say what you need");
+    expect(s).toContain('"path":"helloSeen"');
+    expect(screen.state).toMatchObject({ helloSeen: false, cardDue: false });
+    // He never walks off: one bot in one place.
+    expect(s).not.toContain("BlipWalkOut");
+    expect(s).not.toContain("MorphOut");
+    // Not jumped to the end while it plays, or the head would leave the top when the words change size.
+    expect(s).not.toContain('"startAtEnd":true');
+  });
+
+  it("the card waits for the box, so the two never land in the same moment", async () => {
+    const s = JSON.stringify(await build({ ...due(), "GET /v1/you/ai-consent": { agreed: true, asked: true } }));
+    expect(s).toContain('"path":"cardDue"');
+    expect(s).toContain('{"truthy":"cardDue"}');
+  });
+
+  it("after a long time away: welcome back, by name", async () => {
+    const s = JSON.stringify(await build(due("back")));
+    expect(s).toContain("Welcome back, Aanya");
+    expect(s).toContain("X0 and your bots missed you.");
+    expect(s).not.toContain("Hi Aanya, I'm X0");
+  });
+
+  it("only on an empty thread: someone with turns gets their thread, not a hello over it", async () => {
+    const s = JSON.stringify(await build({ ...(TALK_API as Record<string, unknown>), [ARRIVAL]: { due: true, kind: "back" } }));
+    expect(s).not.toContain("Welcome back");
+    expect(s).not.toContain('"path":"helloSeen"');
+    expect(s).toContain("Plan Ease");
+  });
+
+  it("a build that cannot move draws the hello still, in the box, with nothing waiting on a timer", async () => {
+    const screen = await build(due(), { can: (c) => c !== "BotsMotion" });
+    const s = JSON.stringify(screen);
+    expect(s).toContain("Hi Aanya, I'm X0");
+    expect(s).toContain("Whichever bot it belongs to answers here");
+    expect(s).not.toContain('"path":"helloSeen"');
+    expect(screen.state?.helloSeen).toBeUndefined();
+  });
+
+  it("keeps to the kit on both clients, moving or still (lintTree)", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      // DeskAskSetup is the desktop's own card for the setup steps, declared only by a window that has it; not the welcome's.
+      for (const can of [(c: string) => c !== "DeskAskSetup", (c: string) => c !== "BotsMotion" && c !== "DeskAskSetup"]) {
+        const s = await build(due(), { client, can });
+        expect(lintTree(s.root!), client).toEqual([]);
+      }
+    }
+  });
+
+  it("every visit after: a short line for the hour, in the person's own time", async () => {
+    const lineAt = async (hour: number, day?: number) => {
+      const s = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>, { now: ist(hour, day) }));
+      return s;
+    };
+    expect(await lineAt(8)).toMatch(/Morning, Aanya|Coffee and a plan\?|Fresh start\?/);
+    expect(await lineAt(14)).toMatch(/Afternoon, Aanya|Midday ask\?|Busy hands\? Just talk/);
+    expect(await lineAt(19)).toMatch(/Evening, Aanya|Wrapping up the day\?|Golden-hour chat\?/);
+    expect(await lineAt(1)).toMatch(/Moonlit chat\?|Up late, Aanya\?|Night owl mode/);
+    // 10 pm is still the evening (touches.ts dayPart), not "Moonlit chat?".
+    expect(await lineAt(22)).not.toMatch(/Moonlit chat|Up late|Night owl/);
+  });
+
+  it("the line holds for the day and moves on the next", async () => {
+    const { dayLine } = await import("../src/experience/bots/screens/bots/talkWelcome.js");
+    const at = (hour: number, day: number) => dayLine({ tzOffsetMinutes: IST, live: { now: ist(hour, day) }, user: { id: U, name: "Aanya" } } as never);
+    expect(at(18, 24)).toBe(at(21, 24));
+    const week = new Set([24, 25, 26].map((d) => at(19, d)));
+    expect(week.size).toBe(3);
   });
 });

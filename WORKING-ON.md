@@ -1,5 +1,25 @@
 # Being built right now (read before you start)
 
+## 24 Nov: TALK SAYS HELLO — ONE BOT, AND A LINE FOR THE HOUR AFTER
+
+When the Bots tab went (20 Nov), Home's welcome went with it in all but name: Talk drew the microphone card that used to
+follow it, never the bot saying hello, and closing that card marked the welcome done for good. So a new person met the
+app with no hello at all, and "Welcome back" after a long time away was lost the same way.
+
+It is on Talk now (`screens/bots/talkWelcome.ts`, docs/talk-door.md section 1a), and it is one bot in one place. He
+waves with "Hi Aanya, I'm X0" and does **not** walk off: the dashed box draws in around him where he stands, he turns to
+listening, and his words change to "Say what you need". The chips come in under it, and the card (which keeps its own
+bot) waits a beat more, so the two never land together. The empty thread's old box drew a second bot under the one that
+had just left; that is gone with the walk.
+
+Every visit after, the same box says something short for the hour, in the person's own time: "Morning, Aanya",
+"Midday ask?", "Golden-hour chat?", "Moonlit chat?" — one line a part of the day, the next one tomorrow. English only
+for now: the lines have no Hinglish yet.
+
+Talk no longer jumps to its end while the welcome plays: the words change size, and the jump carried the head off the
+top. Server only; the box is a Rise behind the bot, which both apps already draw. Rendered and looked at, on both
+clients and in motion (`showcase.ts --only bots.talk`: the new `welcome` sample). 12,988 pass.
+
 ## 22 Nov: CONNECTING AN APP THAT ASKS FOR A PASTED LINK NOW SAYS WHERE THE LINK IS MADE
 
 The box said "Paste the link from the app" and nothing else. For Zapier — the one `auth: "url"` app in the catalog — the link

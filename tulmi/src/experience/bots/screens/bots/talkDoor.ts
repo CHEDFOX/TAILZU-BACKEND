@@ -45,6 +45,7 @@ import { didCards } from "../shell/doorCards.js";
 import { nameOf, avatarOf } from "../shell/parts.js";
 // Home's asks, drawn here because this is the screen the app opens on (see TalkData.notices).
 import { homeNotices } from "../shell/home.js";
+import { WELCOME_CARD_AFTER, WELCOME_STATE, afterWelcome, talkFrame, welcomeFrame, welcomeMoves } from "./talkWelcome.js";
 import { type DeletionState, DELETION_PATH } from "../accountGrace.js";
 import { type AiConsent, AI_CONSENT_PATH } from "../firstRun/aiConsentCard.js";
 import { ABOUT_PATH } from "../firstRun/aboutCard.js";
@@ -217,7 +218,6 @@ function answerWords(t: ChatTurn, color: string, drawnLists: boolean): Node[] {
  */
 function thread(ctx: BotsCtx, d: TalkData): Node[] {
   const turns = (d.turns ?? []).slice(-TALK_TURNS);
-  if (!turns.length) return starters(ctx);
   // The newest answer's pictures take the screen's dot budget first, and every copy of a dot counts (parts.ts).
   const budget = { left: SCREEN_DOTS };
   const lastBot = [...turns].reverse().find((t) => t.role === "bot");
@@ -227,10 +227,11 @@ function thread(ctx: BotsCtx, d: TalkData): Node[] {
 }
 
 /**
- * AN EMPTY THREAD: what you can say, in your own words, and the two marks. Not a list of bots — a list of bots is the
- * thing this screen exists to stop being the first thing anybody sees.
+ * AN EMPTY THREAD: the bot in his box with the line of the day (or, the first time, his welcome), then what you can say,
+ * in your own words, and the two marks. Not a list of bots — a list of bots is the thing this screen exists to stop being
+ * the first thing anybody sees.
  */
-function starters(ctx: BotsCtx): Node[] {
+function starters(ctx: BotsCtx, welcome?: { back: boolean }): Node[] {
   const has = (slug: string): boolean => ctx.live.bots.some((b) => b.slug === slug);
   const lines = [
     ...(has("plan") ? ["What's on tomorrow?"] : []),
@@ -238,14 +239,18 @@ function starters(ctx: BotsCtx): Node[] {
     ...(has("code") ? ["Why is the login page slow?"] : []),
     "Sum up this week every Friday at 5",
   ];
+  const under: Node[] = [
+    row(lines.map((l) => chip(l, { onPress: sendWords(ctx, l) })), { gap: 8, flexWrap: "wrap", justifyContent: "center" }),
+    col([
+      row([mark("/"), meta("names a bot — /plan, /travel", { size: 12.5 })], { gap: 8, alignItems: "center" }),
+      ...(hasSpaces(ctx) ? [row([mark("@"), meta("names a person — @Mom, and it is for them", { size: 12.5 })], { gap: 8, alignItems: "center" })] : []),
+    ], { gap: 8, paddingTop: 6 }),
+  ];
+  const moving = !!welcome && welcomeMoves(ctx);
   return [
     col([
-      emptyState({ pose: "listen", title: "Say what you need", body: "Whichever bot it belongs to answers here. Nothing to pick first." }),
-      row(lines.map((l) => chip(l, { onPress: sendWords(ctx, l) })), { gap: 8, flexWrap: "wrap", justifyContent: "center" }),
-      col([
-        row([mark("/"), meta("names a bot — /plan, /travel", { size: 12.5 })], { gap: 8, alignItems: "center" }),
-        ...(hasSpaces(ctx) ? [row([mark("@"), meta("names a person — @Mom, and it is for them", { size: 12.5 })], { gap: 8, alignItems: "center" })] : []),
-      ], { gap: 8, paddingTop: 6 }),
+      welcome ? welcomeFrame(ctx, welcome.back) : talkFrame(ctx),
+      ...(moving ? afterWelcome(under) : under),
     ], { gap: 18, alignItems: "center", paddingTop: 10 }),
   ];
 }
@@ -396,11 +401,15 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
   const n = homeNotices(ctx, nt.arrival === true, {
     leaving: nt.leaving, push: nt.push === true, about: nt.about, ai: nt.ai, back: nt.back === true,
   });
+  // THE WELCOME, where Home's would be due: on an empty thread, the bot says hello and the box draws in around him (talkWelcome.ts).
+  const welcome = n.arrival && !data.down && !turns.length;
+  const moving = welcome && welcomeMoves(ctx);
   return page(ctx, {
     tab: "talk", title: "Talk", nav: "talk", ...(ctx.client === "desktop" ? { maxWidth: 760, fixed: true } : {}),
-    state: { ...TALK_STATE, ...n.state, ...(rt ? routineCardState(ctx, rt, newest?.by?.slug ?? "") : {}) },
+    state: { ...TALK_STATE, ...n.state, ...(moving ? WELCOME_STATE : {}), ...(rt ? routineCardState(ctx, rt, newest?.by?.slug ?? "") : {}) },
     // Opens at the newest turn and stays there as answers come in, as a chat should (only for a build that keeps it).
-    startAtEnd: true,
+    // Not while the welcome plays: its words change size, and a jump to the end would carry the head off the top.
+    startAtEnd: !moving,
     // Pull-a-bot at both ends; what is new is a turn, and new turns land at the bottom.
     pullBot: { top: true, bottom: true, newAt: "bottom", items: turns.map((t) => t.id) },
     // The topics are live/topics.ts's, where every screen's are: this thread, every bot, and Activity.
@@ -413,8 +422,9 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
       ...n.about,
       ...n.push,
       // The microphone and keyboard card, the first time anyone lands in the app — which is here now.
-      ...(n.arrival ? arrivalCard(ctx) : []),
-      ...(data.down ? [downNote()] : thread(ctx, data)),
+      // With the welcome, the card waits until the box is drawn, so the two never land in the same moment.
+      ...(n.arrival ? arrivalCard(ctx, moving ? { after: WELCOME_CARD_AFTER } : {}) : []),
+      ...(data.down ? [downNote()] : turns.length ? thread(ctx, data) : starters(ctx, welcome ? { back: nt.back === true } : undefined)),
     ],
     footer: bar(ctx, data),
     gap: 18,
