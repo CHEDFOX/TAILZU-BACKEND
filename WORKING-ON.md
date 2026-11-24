@@ -13,9 +13,11 @@ one more on the window:
 3. **The thread never showed the file.** The person's turn keeps the refs (`extra.files`) and draws a photo as itself, by a
    signed link to their own upload (`media/link.ts`, `GET /v1/files/<user>/<id>/picture`), any other file as its name.
 4. **The card stayed open over everything.** A pick now closes it once the file is up, as an attach menu does.
-5. **The window showed a paperclip for every picture**: it kept no copy of what was picked, and its renderer did not read a
-   picture bound to state at all. The upload now hands back `pic` (the same signed link), and TAILZU-DESKTOP draws a bound
-   picture and lays it over its glyph — that half needs a **desktop release**; until then the window shows the glyph.
+5. **The window showed a paperclip for every picture**: the installed window draws a picture only from the tree, never from
+   state, and its main window is not in the UI bundle, so that cannot change without an installer. So the window shows each
+   file as a chip with its NAME (a bound Text, which it does draw), with the same ×; a SENT photo is drawn from the tree in
+   the thread, so the window shows it as a picture there. No desktop release is needed. (TAILZU-DESKTOP also learnt to draw
+   a bound picture, so whichever installer comes next can show thumbnails; nothing depends on it.)
 
 `MEDIA_LINK_SECRET` signs the links (made at each start when unset; set it with more than one server).
 

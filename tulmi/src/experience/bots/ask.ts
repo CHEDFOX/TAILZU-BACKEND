@@ -78,7 +78,19 @@ function wayIn(name: string, glyph: "clip" | "camera" | "folder" | "computer" | 
  * file's bytes back, so this local copy is the only picture of it there is; a file with no picture leaves the source
  * undefined, the Image draws nothing, and the glyph underneath is what shows.
  */
-function chosen(i: number, size = 64): Node {
+function chosen(i: number, size = 64, desk = false): Node {
+  // THE WINDOW SHOWS THE FILE'S NAME. The installed window draws a picture only from the tree, never from state (its
+  // renderer reads a bound picture from the release after 0.4.9), so there the file is a chip with its name, which it
+  // can bind; the phone draws the picture itself.
+  if (desk) {
+    return when({ truthy: `${ATTACH}.${i}` }, row([
+      icon("clip", { size: 14, color: C.meta }),
+      text("File", { size: 13, lineHeight: 17, lines: 1, bind: `${ATTACH}.${i}.name`, style: { flexShrink: 1 } }),
+    ], {
+      gap: 6, height: size > 48 ? 40 : 32, maxWidth: 180, paddingHorizontal: 12, borderRadius: 12, backgroundColor: C.surface,
+      borderWidth: 1, borderColor: C.line, alignItems: "center", flexShrink: 0,
+    }));
+  }
   return when({ truthy: `${ATTACH}.${i}` }, box([
     icon("clip", { size: size > 48 ? 17 : 13, color: C.meta }),
     {
@@ -105,7 +117,7 @@ function chosen(i: number, size = 64): Node {
  */
 export function askFiles(o: { send?: ActionRef; desk?: boolean } = {}): Node {
   return when(anyOnAsk, row([
-    row(Array.from({ length: MOST }, (_, i) => fileTile(i)), { gap: 8, flexWrap: "wrap", flexShrink: 1, alignItems: "center" }),
+    row(Array.from({ length: MOST }, (_, i) => fileTile(i, !!o.desk)), { gap: 8, flexWrap: "wrap", flexShrink: 1, alignItems: "center" }),
     // On the phone the send sits over the box's own, at the right; the window's column is wide and its box is not, so
     // there the send stays beside the files.
     ...(o.desk ? [] : [grow()]),
@@ -114,14 +126,14 @@ export function askFiles(o: { send?: ActionRef; desk?: boolean } = {}): Node {
 }
 
 /** One file on the ask: its picture, and a cross in the corner that takes it off. */
-function fileTile(i: number): Node {
+function fileTile(i: number, desk = false): Node {
   return when({ truthy: `${ATTACH}.${i}` }, box([
-    chosen(i, 56),
+    chosen(i, 56, desk),
     box([labelled(box([icon("close", { size: 11, color: C.paper })], {
       width: 22, height: 22, borderRadius: 11, backgroundColor: C.ink, alignItems: "center", justifyContent: "center",
       borderWidth: 2, borderColor: C.paper,
     }, takeOff(i)), "Remove this file")], { position: "absolute", top: 0, right: 0 }),
-  ], { width: 62, height: 62, paddingTop: 6, paddingRight: 6 }));
+  ], desk ? { paddingTop: 6, paddingRight: 6 } : { width: 62, height: 62, paddingTop: 6, paddingRight: 6 }));
 }
 
 /**
@@ -156,7 +168,7 @@ export function insertCard(ctx: BotsCtx, path: string): Node[] {
     row([sectionLabel("On the ask"), grow(), labelled(row([
       text("Clear", { size: 13, weight: 500, lineHeight: 17, color: C.meta }),
     ], { minHeight: 30 }, seq({ kind: "clearState", path: ATTACH }, { kind: "clearState", path: SHOTS })), "Take them all off")], { gap: 8 }),
-    row(Array.from({ length: MOST }, (_, i) => chosen(i)), { gap: 8, flexWrap: "wrap" }),
+    row(Array.from({ length: MOST }, (_, i) => chosen(i, 64, desk)), { gap: 8, flexWrap: "wrap" }),
   ], { gap: 8, paddingBottom: 6 }));
   // THE WAY OUT IS THE SERVER'S (firstRun/parts.ts cardBack). The apps draw nothing: an overlay card is a modal, so
   // they answer only what markup cannot — a swipe to the right, and the phone's own back. An iPhone has neither a
@@ -229,7 +241,7 @@ export function askBar(client: Client, o: { placeholder?: string; path?: string;
     // (uploadChip reads `up`); the strip under it is what is already attached, which the card alone used to show —
     // so closing the card left a composer that looked empty and an ask that was carrying a photo.
     // (Its send is the box's: Ask asks a question, so words come first here. Talk's strip has a send of its own.)
-    ...(inserts ? [uploadChip(ATTACH, { wide: true }), askFiles()] : []),
+    ...(inserts ? [uploadChip(ATTACH, { wide: true }), askFiles({ desk: client === "desktop" })] : []),
     key.length ? row([...key, bar], { gap: 10, alignItems: "flex-end" }) : bar,
     ctx
       ? askMoment(ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking your bots…", bubble: "surface" })

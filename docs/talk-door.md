@@ -138,8 +138,9 @@ caller, a routine and a voice call still pay for no drawing.
 
 * **A pick closes the card** once the file is up (`ask.ts` `uploadAdd … then: shut`), so the next thing anyone sees is the bar with
   the file on it. A cancelled pick leaves the card open.
-* **What is on the ask sits above the bar** (`askFiles`): a picture per file (the phone's own copy of what was picked, or the
-  server's signed link to it, `pic`, on a window that keeps none), its kind's glyph where there is no picture, and a **×** that
+* **What is on the ask sits above the bar** (`askFiles`): on the phone a picture per file (its own copy of what was picked), its
+  kind's glyph where there is no picture; on the window a chip with the file's name, because the installed window draws a
+  picture only from the tree and never from state (no release needed for any of this). Each has a **×** that
   takes that one off (`clearState attach.<i>` and `shots.<i>`; the gap it leaves is skipped when the ask goes).
 * **A photo on its own is a message.** The strip has a **send of its own**, because the box's send stays grey until something is
   typed (that is the apps' field, and only a release changes it). It sends whatever is typed with the files. With no words, the
