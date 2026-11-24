@@ -58,7 +58,8 @@ because a bot's own page — a trip, a day's plan, a mailbox, a film — is a pl
 An empty thread opens on the bot in a dashed box. **One bot, in one place:**
 
 * **The first visit** (the welcome Home used to play, due on the same read, `GET /v1/bots/first-run/arrival`): he waves
-  with "Hi Aanya, I'm X0 · Every bot here is me, ready for one job." for `HELLO_MS` (3 s). He does **not** walk off: the
+  with "Hi Aanya, I'm X0 · Every bot here is me, ready for one job." for `HELLO_MS` (3 s), **alone on the screen**: the head
+  and the bar wait, keeping their room, and fade in with the box (`fadeInWithBox`), so he never moves. He does **not** walk off: the
   box draws in around him where he stands, he turns to listening, and his words change to "Say what you need". The
   chips and the two marks come in under it, and the microphone and keyboard card (which keeps its own bot) waits
   `CARD_AFTER_MS` more (`cardDue`), so the two never land together. The thread does not jump to its end while this
@@ -124,6 +125,29 @@ and are routed on their own merits.
 not such a place ([show.md](show.md) section 2). Talk is: `POST /v1/ask` takes `draw: true`, which reaches a **bot's**
 answer only. The front door's own roads keep their visual ladder ([front-door.md](front-door.md) section 4), and an API
 caller, a routine and a voice call still pay for no drawing.
+
+### 3a. Photos and files, the way a chat app does them
+
+```
+  (+) → Photo · Camera · File · Screenshot · Paste     the insert card; a pick closes it once the file is up
+  ┌────┐ ┌────┐
+  │ ▣ ×│ │ ▤ ×│                              (↑)       on the ask: each file with its own ×, and a send
+  └────┘ └────┘
+  (+)  [ Say it…  / a bot, @ someone       ]
+```
+
+* **A pick closes the card** once the file is up (`ask.ts` `uploadAdd … then: shut`), so the next thing anyone sees is the bar with
+  the file on it. A cancelled pick leaves the card open.
+* **What is on the ask sits above the bar** (`askFiles`): a picture per file (the phone's own copy of what was picked, or the
+  server's signed link to it, `pic`, on a window that keeps none), its kind's glyph where there is no picture, and a **×** that
+  takes that one off (`clearState attach.<i>` and `shots.<i>`; the gap it leaves is skipped when the ask goes).
+* **A photo on its own is a message.** The strip has a **send of its own**, because the box's send stays grey until something is
+  typed (that is the apps' field, and only a release changes it). It sends whatever is typed with the files. With no words, the
+  bot is told what came ("Have a look at this photo.") and the person's turn keeps no made-up words, only the files.
+* **The thread shows what was sent**, on the person's own turn above their words: a photo as itself, by a signed link to their own
+  upload made fresh each time the thread is drawn (`media/link.ts`), any other file as a chip with its name. The turn keeps the
+  refs (`extra.files`: id, name, kind, mime, size), never the bytes.
+* **Not yet:** pictures in a bot's answer, and a picture that is not kept (a server with no R2) shows as an empty frame.
 
 ## 4. Xode is a pill, not a turn
 
@@ -290,7 +314,9 @@ simply not found, a job-only turn, a refusal keeping nothing, picks going back t
 answered, the cards in the chat, the pills, the empty thread, an older build's box, the thread that would not read).
 The welcome and the line of the day: the hello by name and what it changes to, the card waiting on `cardDue`, welcome
 back, no hello over a thread, the still build, the line for each part of the day and the next day's line.
-`tests/bots-app-boot.test.ts` holds the tab order and the landing; `tests/ai-asks-once.test.ts` the two landing screens
+Files: a photo on its own, words with files, a gap in the list skipped, refs that are not refs refused, the photo drawn by its
+signed link and a file by its name, the strip's send and its crosses (`tests/bots-ask-insert.test.ts` the card closing on a pick;
+`tests/ingest-routes.test.ts` the picture link). `tests/bots-app-boot.test.ts` holds the tab order and the landing; `tests/ai-asks-once.test.ts` the two landing screens
 and the one answer. The field: `mentionCore.test.ts` (phone) and `mention.test.js` (window), plus `fill.test.ts` for the
 `\@` escape. The render check: `npx tsx scripts/bots-render/render.ts bots.talk --api "$(…samples…)"`.
 

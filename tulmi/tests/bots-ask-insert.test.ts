@@ -80,12 +80,17 @@ describe("the card", () => {
     const card = bar().find((n) => n.type === "BotCard")!;
     expect(card.on?.onDismiss).toEqual({ kind: "setState", path: "insert", value: false });  // botCard maps onLeave to it
   });
-  it("a way in does NOT shut the card: the picker opens over it and it is still there, holding the file", () => {
+  it("a pick shuts the card once the file is up, as an attach menu does — and not before", () => {
     const photo = bar().find((n) => n.on?.onPress && JSON.stringify(n.on.onPress).includes('"pick":"photo"'))!;
     const act = photo.on!.onPress as any;
     const inner = act.kind === "sequence" ? act.actions : [act];
+    // Not as the picker opens: a cancelled pick leaves the card where it was.
     expect(inner.some((a: any) => a?.kind === "setState" && a.path === "insert")).toBe(false);
-    expect(inner.some((a: any) => a?.kind === "uploadFile")).toBe(true);
+    const upload = inner.find((a: any) => a?.kind === "uploadFile");
+    expect(upload).toBeTruthy();
+    // Once the file is on the ask: the card goes, and the bar shows the file ready to send.
+    expect(JSON.stringify(upload.onSuccess)).toContain('{"kind":"setState","path":"insert","value":false}');
+    expect(JSON.stringify(upload.onError)).not.toContain('"path":"insert"');
   });
   it("pasting DOES shut it: there is nothing to come back to", () => {
     const paste = bar().find((n) => JSON.stringify(n.on?.onPress ?? {}).includes("readClipboard"))!;
@@ -168,12 +173,19 @@ describe("the card grows with what you chose", () => {
     expect(slots.map((n) => n.visibleIf)).toEqual(Array.from({ length: 2 }, () => Array.from({ length: 8 }, (_, i) => ({ truthy: `attach.${i}` }))).flat());
   });
 
-  /** And the strip above the bar is there at all, with its own way to take them off. */
-  it("shows what is on the ask above the bar, not only inside the card", () => {
-    const strip = bar().find((n) => JSON.stringify(n.visibleIf ?? {}) === JSON.stringify({ truthy: "attach.0" })
-      && JSON.stringify(n.on?.onPress ?? {}).includes('"clearState"'))!;
-    expect(strip, "a strip that clears the ask").toBeTruthy();
-    expect(JSON.stringify(strip.on!.onPress)).toContain('"shots"');
+  /** And the strip above the bar is there at all, with a cross on each file that takes THAT one off. */
+  it("shows what is on the ask above the bar, each file with its own cross", () => {
+    const any = { any: Array.from({ length: 8 }, (_, i) => ({ truthy: `attach.${i}` })) };
+    const strip = bar().find((n) => JSON.stringify(n.visibleIf ?? {}) === JSON.stringify(any) && n.type === "Stack" && (n.style as any)?.flexDirection === "row");
+    expect(strip, "a strip shown while anything is on the ask").toBeTruthy();
+    const crosses = walk(strip!).filter((n) => n.props?.accessibilityLabel === "Remove this file");
+    expect(crosses.length).toBe(8);
+    // Each takes off its own file: the ref and its picture, at the same place in both lists.
+    crosses.forEach((n, i) => {
+      const p = JSON.stringify(n.on!.onPress);
+      expect(p).toContain(`"path":"attach.${i}"`);
+      expect(p).toContain(`"path":"shots.${i}"`);
+    });
   });
   it("a file with no picture still shows something: its kind's glyph, under the image that draws nothing", () => {
     const box = bar().find((n) => n.visibleIf && JSON.stringify(n.visibleIf) === JSON.stringify({ truthy: "attach.0" }) && (n.children ?? []).some((c) => c.type === "Image"))!;

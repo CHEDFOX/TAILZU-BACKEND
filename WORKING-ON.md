@@ -1,5 +1,28 @@
 # Being built right now (read before you start)
 
+## 24 Nov: A PHOTO GOES IN TALK THE WAY IT DOES IN A CHAT APP — AND THE HELLO IS ALONE ON THE SCREEN
+
+Inserting a file did nothing you could see: pick, it showed in the card, and that was the end. Four things stopped it, and
+one more on the window:
+
+1. **A photo with no words was refused** (`botsTalk.ts`: "message is what the person said"). Now a photo on its own is a
+   message: the bot is told what came ("Have a look at this photo.") and the turn keeps no made-up words.
+2. **Nothing on Talk's bar said a file was on the ask** once the card shut. The strip is there now (`ask.ts askFiles`), each
+   file with its own × (one taken off from the middle leaves a gap, skipped when sent) and a **send of its own** — the box's
+   send stays grey with nothing typed, and that is the apps' field, so the strip's send is how a photo goes alone.
+3. **The thread never showed the file.** The person's turn keeps the refs (`extra.files`) and draws a photo as itself, by a
+   signed link to their own upload (`media/link.ts`, `GET /v1/files/<user>/<id>/picture`), any other file as its name.
+4. **The card stayed open over everything.** A pick now closes it once the file is up, as an attach menu does.
+5. **The window showed a paperclip for every picture**: it kept no copy of what was picked, and its renderer did not read a
+   picture bound to state at all. The upload now hands back `pic` (the same signed link), and TAILZU-DESKTOP draws a bound
+   picture and lays it over its glyph — that half needs a **desktop release**; until then the window shows the glyph.
+
+`MEDIA_LINK_SECRET` signs the links (made at each start when unset; set it with more than one server).
+
+And the welcome: while he waves, he is alone — the head and the bar keep their room and fade in with the box.
+
+Not yet: pictures in a bot's answer; a server with no R2 keeps no bytes, so a sent photo is an empty frame there.
+
 ## 24 Nov: TALK SAYS HELLO — ONE BOT, AND A LINE FOR THE HOUR AFTER
 
 When the Bots tab went (20 Nov), Home's welcome went with it in all but name: Talk drew the microphone card that used to

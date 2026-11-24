@@ -6,9 +6,14 @@
  * The file is read once (by SHA-256, for this person); every later question about it finds the few chunks that answer it, and nothing is read again.
  *
  *   POST   /v1/files              multipart, one `file` part (50 MB at most; each kind has a lower cap)
- *                                 -> 201 { file, attachment, cached }   200 if the same bytes had been read before
+ *                                 -> 201 { file, attachment, cached, pic? }   200 if the same bytes had been read before. `pic` ({ url }),
+ *                                 for a picture whose bytes are kept: a signed link to it, so an app with no local copy of its own
+ *                                 (the window) can still draw what was picked
  *   GET    /v1/files              -> { files }  the person's files, newest first
  *   GET    /v1/files/:id          -> { file }
+ *   GET    /v1/files/:user/:id/picture?exp=&sig=   the picture itself, by a signed link and no session (media/link.ts): what the apps
+ *                                 draw a person's own uploaded picture by, on the ask and in the chat. Pictures only; 403 a link that
+ *                                 has expired or was not signed for this file
  *   POST   /v1/files/:id/keep { keep }     -> { file }  keep it past thirty days, or let it go
  *   DELETE /v1/files/:id          -> { ok }  the file, its text and its bytes
  *   POST   /v1/files/:id/artifact { kind: "chart" | "table", table? }
@@ -37,6 +42,7 @@ import { CAP_MAX, attachmentKindOf, isMediaError, viewOf, type MediaItem, type M
 import { failCode } from "./code/code.js";
 import { idempotencyHeader, planOf } from "../http/guarded.js";
 import { createHash } from "node:crypto";
+import { canLink, filePictureUrl, verifyFilePicture } from "../media/link.js";
 
 export interface FilesRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -54,6 +60,12 @@ const STATUS: Record<string, number> = {
 
 /** The ref the app puts in `attachments` of an ask. */
 const attachmentOf = (i: MediaItem) => ({ id: i.id, kind: attachmentKindOf(i.kind), mime: i.mime, bytes: i.bytes, sha256: i.sha256, name: i.name });
+
+/** The picture types a signed link serves: what an image view draws, and nothing a browser would run. */
+const PICTURE_MIME = new Set(["image/png", "image/jpeg", "image/webp", "image/gif", "image/heic", "image/heif"]);
+/** A signed link to a kept picture, or nothing (not a picture, or its bytes are not kept). */
+const picOf = (i: MediaItem): { pic: { url: string } } | Record<string, never> =>
+  PICTURE_MIME.has(i.mime) && i.blobKey && canLink(i.userId, i.id) ? { pic: { url: filePictureUrl(i.userId, i.id) } } : {};
 
 export function registerFilesRoutes(app: FastifyInstance, deps: FilesRoutesDeps): void {
   const media = deps.media;
@@ -113,7 +125,7 @@ export function registerFilesRoutes(app: FastifyInstance, deps: FilesRoutesDeps)
         replayUnkeyed: false,
       }, async () => {
         const r = await s.media.ingest(s.user.id, { name, data });
-        return { status: r.cached ? 200 : 201, body: { file: viewOf(r.item), attachment: attachmentOf(r.item), cached: r.cached } };
+        return { status: r.cached ? 200 : 201, body: { file: viewOf(r.item), attachment: attachmentOf(r.item), cached: r.cached, ...picOf(r.item) } };
       });
       if (out.replay) reply.header("idempotent-replayed", "true");
       return reply.code(out.result.status).send(out.result.body);
@@ -129,6 +141,28 @@ export function registerFilesRoutes(app: FastifyInstance, deps: FilesRoutesDeps)
     const s = await begin(req, reply);
     if (!s) return reply;
     try { return reply.send({ files: (await s.media.store.list(s.user.id, 50)).map(viewOf) }); } catch (err) { return fail(reply, err); }
+  });
+
+  // The picture, by its signed link (media/link.ts). No session: an image view sends no token. The link names the person, the
+  // signature says it was made for exactly this person and this file, and only a picture is ever served from it.
+  app.get<{ Params: { user: string; id: string }; Querystring: { exp?: string; sig?: string } }>("/v1/files/:user/:id/picture", RL, async (req, reply) => {
+    if (!media) return off(reply);
+    const { user, id } = req.params;
+    if (!verifyFilePicture({ userId: user, id, exp: req.query.exp, sig: req.query.sig })) {
+      return reply.code(403).send({ code: "bad_link", message: "This link has expired. Open it again from the app." });
+    }
+    try {
+      const item = await media.store.get(user, id, { light: true });
+      if (!item || !PICTURE_MIME.has(item.mime)) return reply.code(404).send({ code: "not_found", message: "That picture is gone." });
+      const bytes = await media.bytesOf(item);
+      if (!bytes) return reply.code(404).send({ code: "not_found", message: "That picture is gone." });
+      return reply
+        .header("content-type", item.mime)
+        .header("cache-control", "private, max-age=3600")
+        .header("x-content-type-options", "nosniff")
+        .header("content-security-policy", "default-src 'none'")
+        .send(bytes);
+    } catch (err) { return fail(reply, err); }
   });
 
   app.get<{ Params: { id: string } }>("/v1/files/:id", RL, async (req, reply) => {

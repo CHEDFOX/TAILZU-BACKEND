@@ -97,6 +97,13 @@ The result is wrapped the way a web page is (`web/reader.ts` `asUntrusted`): one
 
 **`POST /v1/files`** is for a file too big for a message. Multipart, one `file` part, up to 50 MB (each kind lower). It answers `201 { file, attachment, cached }` (`200` when the same bytes had been read before); `attachment` is exactly the ref `POST /v1/ask` takes in `attachments`, sent without its bytes. Also `GET /v1/files`, `GET /v1/files/:id`, `POST /v1/files/:id/keep { keep }`, `DELETE /v1/files/:id`, `POST /v1/files/:id/artifact` (section 7) and `POST /v1/files/:id/asset` (section 8). The routes sit under the overload guards (`src/guard`): two different files are two runs, a double tap of one is one. A refusal is a sentence: `422` password / bomb / not a kind we read, `413` too big, `503` a reader that is not switched on.
 
+**A person's own picture, by a signed link** (`media/link.ts`). An app draws a picture it uploaded without a session, because an
+image view sends no token: `GET /v1/files/<user>/<id>/picture?exp=&sig=` serves the bytes of a kept picture (PNG, JPEG, WebP, GIF,
+HEIC) to a link signed for exactly that person and that file, for a day. `POST /v1/files` adds `pic: { url }` for a picture whose
+bytes are kept, so a window that keeps no copy of what was picked (the desktop) can still show it on the ask; the phone uses its own
+copy. Talk's thread draws a sent photo by a link made fresh each time it is drawn (`docs/talk-door.md` section 3a). Not a picture,
+a picture whose bytes are not kept (no R2), an expired or altered link: no link, or `403 bad_link`.
+
 (`/v1/media/*` is the admin media registry, an older feature; files are `/v1/files`.)
 
 ## 7. A spreadsheet as a chart or a table
@@ -154,6 +161,7 @@ The route makes a work branch and a draft pull request when no `branch` is given
 | `MEDIA_WORKER_URL`, `MEDIA_WORKER_SECRET` | none | the worker; `http://media-worker:8000` and `openssl rand -hex 32` (**secret**, `.env` only, the same on the worker). Without them: office files, scanned PDFs, video and shrinking pictures say what is not switched on; text-layer PDFs, CSV, text, code, zip, pictures and sound still work |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` | none | the bucket (**`R2_SECRET_ACCESS_KEY` is a secret**, `.env` only). Without all four the bytes are not kept |
 | `MEDIA_KEEP_DAYS` | `30` | how long a file lives unless kept |
+| `MEDIA_LINK_SECRET` | made at each start | signs the picture links (**secret**, `.env` only). Set it when there is more than one server, so each opens the others' links |
 | `DEEPGRAM_API_KEY`, `DEEPGRAM_STT_MODEL`, `DEEPGRAM_LANGUAGE` | existing | sound and the sound of a video |
 
 Worker side (compose passes them): `MEDIA_WORKER_SECRET`, `WORKER_CONCURRENCY` (`MEDIA_WORKER_CONCURRENCY`), `MEDIA_WORKER_MEMORY` (6g), `MEDIA_WORKER_CPUS` (2).

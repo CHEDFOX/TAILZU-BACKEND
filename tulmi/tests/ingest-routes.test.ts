@@ -310,3 +310,61 @@ describe("add this logo to the project", () => {
     expect(r.statusCode).toBe(404);
   });
 });
+
+describe("a person's own picture, by a signed link (media/link.ts)", () => {
+  const pathOf = (url: string) => { const u = new URL(url); return `${u.pathname}${u.search}`; };
+
+  it("the upload of a picture gives a signed link to it, so a window with no copy of its own can draw it", async () => {
+    const s = await served();
+    const r = (await s.upload("alice", "p.png", rig.png())).json();
+    expect(r.pic?.url).toMatch(new RegExp(`/v1/files/alice/${r.file.id}/picture\\?exp=\\d+&sig=`));
+    const got = await s.app.inject({ method: "GET", url: pathOf(r.pic.url) });
+    expect(got.statusCode).toBe(200);
+    expect(got.headers["content-type"]).toBe("image/png");
+    expect(got.headers["x-content-type-options"]).toBe("nosniff");
+    expect(got.rawPayload.length).toBeGreaterThan(0);
+  });
+
+  it("a file that is not a picture gets no link", async () => {
+    const s = await served();
+    const r = (await s.upload("alice", "notes.pdf", rig.pdf(["Hello"]))).json();
+    expect(r.pic).toBeUndefined();
+  });
+
+  it("nor does a picture whose bytes are not kept", async () => {
+    const s = await served({ blobs: false });
+    const r = (await s.upload("alice", "p.png", rig.png())).json();
+    expect(r.pic).toBeUndefined();
+  });
+
+  it("a link opens only what it was signed for: not another file, not another person's, not once expired", async () => {
+    const s = await served();
+    const a = (await s.upload("alice", "p.png", rig.png())).json();
+    const b = (await s.upload("alice", "q.png", rig.png(6, 6))).json();
+    const link = new URL(a.pic.url);
+    const q = link.search;
+    // The same signature on alice's other picture, and on bob's id for the same file.
+    expect((await s.app.inject({ method: "GET", url: `/v1/files/alice/${b.file.id}/picture${q}` })).statusCode).toBe(403);
+    expect((await s.app.inject({ method: "GET", url: `/v1/files/bob/${a.file.id}/picture${q}` })).statusCode).toBe(403);
+    // A tampered signature, none at all, and an expiry moved later.
+    expect((await s.app.inject({ method: "GET", url: `${link.pathname}${q.replace(/sig=./, "sig=Z")}` })).statusCode).toBe(403);
+    expect((await s.app.inject({ method: "GET", url: link.pathname })).statusCode).toBe(403);
+    const later = q.replace(/exp=(\d+)/, (_, e) => `exp=${Number(e) + 1000}`);
+    expect((await s.app.inject({ method: "GET", url: `${link.pathname}${later}` })).statusCode).toBe(403);
+  });
+
+  it("an expired link is refused, and a fresh one is simply made again", async () => {
+    const { filePicturePath, verifyFilePicture } = await import("../src/media/link.js");
+    const id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const p = new URL(`https://x${filePicturePath("alice", id, { secret: "s", now: 1_000_000_000_000, ttlMs: 1000 })}`);
+    const exp = p.searchParams.get("exp"), sig = p.searchParams.get("sig");
+    expect(verifyFilePicture({ userId: "alice", id, exp, sig, secret: "s", now: 1_000_000_000_500 })).toBe(true);
+    expect(verifyFilePicture({ userId: "alice", id, exp, sig, secret: "s", now: 1_000_000_002_000 })).toBe(false);
+    expect(verifyFilePicture({ userId: "alice", id, exp, sig, secret: "other", now: 1_000_000_000_500 })).toBe(false);
+  });
+
+  it("with reading files off, there is no picture either", async () => {
+    const s = await served({ media: false });
+    expect((await s.app.inject({ method: "GET", url: `/v1/files/alice/${ID}/picture?exp=1&sig=x` })).statusCode).toBe(404);
+  });
+});

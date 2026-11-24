@@ -32,7 +32,7 @@ import type { ChatTurn } from "../../../../botsBots/chat.js";
 import { TALK_COMMANDS, slashBots } from "../../../../botsBots/talkWords.js";
 import {
   type BotsCtx, page, col, row, text, meta, grow, C, open, SCREENS, seq, chip, atText,
-  emptyState, botLook, botKind, canPersonBot, appMark, roundButton,
+  emptyState, botLook, botKind, canPersonBot, appMark, roundButton, picture, icon,
   pillSwitch, mentionField, hasSpaces,
 } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
@@ -45,7 +45,7 @@ import { didCards } from "../shell/doorCards.js";
 import { nameOf, avatarOf } from "../shell/parts.js";
 // Home's asks, drawn here because this is the screen the app opens on (see TalkData.notices).
 import { homeNotices } from "../shell/home.js";
-import { WELCOME_CARD_AFTER, WELCOME_STATE, afterWelcome, talkFrame, welcomeFrame, welcomeMoves } from "./talkWelcome.js";
+import { WELCOME_CARD_AFTER, WELCOME_STATE, afterWelcome, fadeInWithBox, talkFrame, welcomeFrame, welcomeMoves } from "./talkWelcome.js";
 import { type DeletionState, DELETION_PATH } from "../accountGrace.js";
 import { type AiConsent, AI_CONSENT_PATH } from "../firstRun/aiConsentCard.js";
 import { ABOUT_PATH } from "../firstRun/aboutCard.js";
@@ -55,7 +55,9 @@ import type { About } from "../firstRun/parts.js";
 import { canUpload, uploadChip } from "../../media.js";
 import { SHOW_STATE } from "../../show.js";
 // The insert key and its card: the ask bar's own, so a file is inserted the one way everywhere (ask.ts).
-import { insertCard, insertKey, INSERT_PATHS } from "../../ask.js";
+import { askFiles, insertCard, insertKey, INSERT_PATHS } from "../../ask.js";
+import type { TurnFile } from "../../../../botsBots/chat.js";
+import { canLink, filePictureUrl } from "../../../../media/link.js";
 
 /** The door this screen sends everything to (routes/bots/botsTalk.ts). */
 const TALK_PATH = "/v1/botsapp/talk";
@@ -159,6 +161,13 @@ function byLine(ctx: BotsCtx, t: ChatTurn): Node {
  */
 function talkTurn(ctx: BotsCtx, t: ChatTurn, o: { live: boolean; next?: ChatTurn | undefined; budget: { left: number }; finds?: TalkData["finds"] }): Node {
   if (t.role === "me") {
+    // What was sent with the words, above them, as a chat shows it: a photo as itself, any other file as its name.
+    const files = t.files?.length ? [sentFiles(ctx, t.files)] : [];
+    if (!t.text.trim()) return files.length ? col(files, { gap: 4 }) : bubble(ctx, t.text, true);
+    if (files.length) {
+      const words = bubble(ctx, t.text, true);
+      return col([...files, words, ...(t.forName ? [row([meta(`for ${t.forName}`, { size: 11 })], { justifyContent: "flex-end" })] : [])], { gap: 6 });
+    }
     const mine = bubble(ctx, t.text, true);
     // "@Mom …": who it was for, under the person's own bubble, so the thread says it and not only the bot's answer.
     return t.forName
@@ -321,7 +330,8 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
   // A file on its way, the insert key and its card: the ask bar's own, so inserting a file is one thing in one place
   // (ask.ts insertKey / insertCard). The pasted clipboard goes into whichever box this build draws.
   const box = canMarks(ctx) ? `${DRAFT}.text` : "talk";
-  const chipAbove = up ? [uploadChip(ATTACH, { wide: true })] : [];
+  // A file on its way, then what is on the ask with its own send (ask.ts askFiles): a photo on its own is a message.
+  const above = (sendIt: ActionRef): Node[] => (up ? [uploadChip(ATTACH, { wide: true }), askFiles({ send: sendIt, desk: ctx.client === "desktop" })] : []);
   const key = insertKey(ctx, box);
   const moment = askMoment(ctx, {
     slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Working on it…", size: 15,
@@ -343,12 +353,13 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
       words: { people: "People", bots: "Ask a bot", empty: "Nothing here yet" },
     }, send(ctx, { words: `$state.${DRAFT}.text`, from: DRAFT, bot: `$state.${DRAFT}.bot`, to: `$state.${DRAFT}.toId`, ...(up ? { attach: true } : {}) }));
     const filled = col([field], { flexGrow: 1, flexShrink: 1, minWidth: 0 });
-    return [moment, ...chipAbove, withKey(inputBox([filled], { radius: 24, pad: 4, grow: true })), ...insertCard(ctx, box)];
+    const sendFiles = send(ctx, { words: `$state.${DRAFT}.text`, from: DRAFT, bot: `$state.${DRAFT}.bot`, to: `$state.${DRAFT}.toId`, attach: true });
+    return [moment, ...above(sendFiles), withKey(inputBox([filled], { radius: 24, pad: 4, grow: true })), ...insertCard(ctx, box)];
   }
   // An older build: the box it already draws, sending to the same door. Plain language is the whole way in there — the
   // marks are a faster way of saying something, never the only way, so nothing is out of reach without them.
   const plain = sendField("talk", "talk", "Say what you need…", send(ctx, { words: "$state.talk", from: "talk", ...(up ? { attach: true } : {}) }), { desk: ctx.client === "desktop" });
-  return [moment, ...chipAbove, withKey(plain), ...insertCard(ctx, box)];
+  return [moment, ...above(send(ctx, { words: "$state.talk", from: "talk", attach: true })), withKey(plain), ...insertCard(ctx, box)];
 }
 
 // ===================================================================== the head
@@ -415,7 +426,8 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
     // The topics are live/topics.ts's, where every screen's are: this thread, every bot, and Activity.
     body: [
       // The head carries the notifications check where that ask is due, as Home's does (n.head).
-      n.head(head(ctx)),
+      // During the hello there is only the bot: the head comes in with the box (it keeps its room meanwhile, so he never moves).
+      moving ? fadeInWithBox(n.head(head(ctx))) : n.head(head(ctx)),
       // The deletion notice comes before anything else and nothing else asks while it is up (homeNotices' own rule).
       ...n.leaving,
       // The AI permission, or the username card: whichever is due, in the one slot Home gives them.
@@ -426,7 +438,7 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
       ...(n.arrival ? arrivalCard(ctx, moving ? { after: WELCOME_CARD_AFTER } : {}) : []),
       ...(data.down ? [downNote()] : turns.length ? thread(ctx, data) : starters(ctx, welcome ? { back: nt.back === true } : undefined)),
     ],
-    footer: bar(ctx, data),
+    footer: moving ? bar(ctx, data).map((x) => fadeInWithBox(x)) : bar(ctx, data),
     gap: 18,
   });
 }
@@ -436,3 +448,30 @@ const downNote = (): Node => emptyState({
   pose: "think", title: "Couldn't open your thread", body: "Check your connection and try again.",
   action: { label: "Try again", onPress: refresh },
 });
+
+// ===================================================================== what the person sent
+
+/**
+ * THE FILES ON THE PERSON'S OWN TURN, on the right like their words. A photo is drawn as itself, by a signed link to
+ * their own upload (media/link.ts), made fresh each time the thread is drawn; any other file, or a photo whose link
+ * cannot be made, is a chip with its kind's glyph and its name.
+ */
+function sentFiles(ctx: BotsCtx, files: readonly TurnFile[]): Node {
+  const userId = ctx.user?.id ?? "";
+  const pics = files.filter((f) => isPicture(f) && canLink(userId, f.id));
+  const rest = files.filter((f) => !pics.includes(f));
+  const size = pics.length === 1 ? 200 : 120;
+  return col([
+    ...(pics.length ? [row(pics.map((f) => picture(filePictureUrl(userId, f.id), size, size, {
+      radius: 16, fit: "cover", background: C.surface, label: f.name,
+    })), { gap: 6, flexWrap: "wrap", justifyContent: "flex-end" })] : []),
+    ...rest.map((f) => row([
+      row([icon(f.kind === "image" ? "camera" : "clip", { size: 14, color: C.meta }), text(f.name, { size: 13, lineHeight: 18, lines: 1, style: { flexShrink: 1 } })], {
+        gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper,
+        alignItems: "center", maxWidth: "80%",
+      }),
+    ], { justifyContent: "flex-end" })),
+  ], { gap: 6 });
+}
+
+const isPicture = (f: TurnFile): boolean => f.mime.startsWith("image/") && f.mime !== "image/svg+xml";

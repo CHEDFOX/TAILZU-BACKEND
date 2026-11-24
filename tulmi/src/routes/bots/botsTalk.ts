@@ -24,7 +24,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { isBotError, type Bots } from "../../bots/index.js";
-import type { BotChat, TurnBy, TurnDid } from "../../botsBots/chat.js";
+import type { BotChat, TurnBy, TurnDid, TurnFile } from "../../botsBots/chat.js";
+import { filesOf, TURN_FILES_MAX } from "../../botsBots/chat.js";
 import type { Sessions } from "../../botsBots/sessions.js";
 import { readTalk, slashBots, talkName, TALK_COMMANDS } from "../../botsBots/talkWords.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
@@ -145,7 +146,11 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
     if (b.picks && typeof b.picks === "object") {
       try { said = await s.chat.wordsOfPicks(s.user.id, TALK_SLUG, b.picks as Parameters<BotChat["wordsOfPicks"]>[2]); } catch (err) { return fail(req, reply, err); }
     }
-    if (!said) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
+    // A PHOTO ON ITS OWN IS A MESSAGE. What was sent with the words (the upload's refs); a list the app thinned by taking one
+    // off can hold gaps, so only the refs themselves go on.
+    const sent = Array.isArray(b.attachments) ? (b.attachments as unknown[]).filter((x) => !!x && typeof x === "object").slice(0, TURN_FILES_MAX) : [];
+    const files = filesOf(sent);
+    if (!said && !files.length) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
     if (said.length > MESSAGE_MAX) return reply.code(413).send({ code: "too_large", message: `A message may be ${MESSAGE_MAX} characters at most.` });
 
     try {
@@ -161,7 +166,9 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
         const made = await parts.sessions.open(s.user.id, TALK_SLUG);
         return reply.send({ turns: [], session: made.id, started: true });
       }
-      if (!read.message) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
+      // With no words of their own (or only "/plan"), the bot is told what came, so the file is the question.
+      const message = read.message || (files.length ? filesLine(files) : "");
+      if (!message) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
 
       // THE DOOR, UNCHANGED: the same route Ask has always used, so the guards, the money, the routine drafts, the outbox's
       // answer-once and the Activity row are all the ones that already exist. `draw` is the one thing Talk asks for that Ask
@@ -169,9 +176,9 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
       const r = await app.inject({
         method: "POST", url: "/v1/shell/ask",
         payload: {
-          message: read.message, bot: read.bot, device: b.device === "desktop" ? "desktop" : "phone", mode: b.mode === "voice" ? "voice" : "text", draw: true,
+          message, bot: read.bot, device: b.device === "desktop" ? "desktop" : "phone", mode: b.mode === "voice" ? "voice" : "text", draw: true,
           ...(typeof b.tz === "number" ? { tz: b.tz } : {}),
-          ...(Array.isArray(b.attachments) && b.attachments.length ? { attachments: b.attachments.slice(0, 8) } : {}),
+          ...(sent.length ? { attachments: sent } : {}),
           ...(typeof b.streamId === "string" && b.streamId ? { streamId: b.streamId } : {}),
           ...(typeof b.projectId === "string" && b.projectId ? { projectId: b.projectId } : {}),
           ...(typeof b.clientId === "string" && b.clientId ? { clientId: b.clientId } : {}),
@@ -207,6 +214,7 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
         ...(j.answer?.show ? { show: j.answer.show } : {}),
         ...(read.forName ? { forName: read.forName } : {}),
         ...(session ? { session } : {}),
+        ...(files.length ? { files } : {}),
       });
       return reply.send({ turns, shell, ...(turns[0]?.session ? { session: turns[0].session } : {}) });
     } catch (err) { return fail(req, reply, err); }
@@ -224,3 +232,10 @@ interface DoorReply {
 }
 
 export { talkName };
+
+/** What the bot is told when a photo or a file came with no words: the file is the question. */
+export function filesLine(files: readonly TurnFile[]): string {
+  const pics = files.every((f) => f.kind === "image" || f.mime.startsWith("image/"));
+  if (files.length === 1) return pics ? "Have a look at this photo." : `Have a look at this file: ${files[0]!.name}`;
+  return pics ? `Have a look at these ${files.length} photos.` : `Have a look at these ${files.length} files.`;
+}

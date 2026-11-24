@@ -3,9 +3,10 @@
  *
  * Talk is the screen the app opens on, so the welcome Home used to play lives here now. It is ONE bot in ONE place:
  *
- *   first visit   he waves with his hello ("Hi Aanya, I'm X0"). He does not walk off: the dashed box draws in around
- *                 him where he stands, he turns to listening, and his words change to what Talk says. The things to say
- *                 come in under the box, and the microphone and keyboard card (with its own bot) a beat after.
+ *   first visit   he waves with his hello ("Hi Aanya, I'm X0"), alone on the screen. He does not walk off: the dashed
+ *                 box draws in around him where he stands, he turns to listening, and his words change to what Talk says.
+ *                 The head and the bar fade in with it (fadeInWithBox), the things to say come in under the box, and the
+ *                 microphone and keyboard card (with its own bot) a beat after.
  *   back          the same, after a long time away or on a newer Talk: "Welcome back, Aanya".
  *   every visit   the box and the bot as they are, with a short line for the hour under him: "Morning, Aanya",
  *   after         "Moonlit chat?". One line a part of the day, the next one tomorrow.
@@ -110,4 +111,13 @@ export function welcomeFrame(ctx: BotsCtx, back: boolean): Node {
 /** What comes in under the box once it is drawn: each a beat after the one before. */
 export function afterWelcome(nodes: Node[]): Node[] {
   return nodes.map((x, i) => ({ type: "Rise", visibleIf: { truthy: "helloSeen" }, props: { delayMs: 350 + i * 90, fromY: 24, scaleFrom: 0.98 }, children: [x] }));
+}
+
+/**
+ * What is on Talk besides the bot, during his hello: the head and the bar. Nothing else is there while he waves; they
+ * fade in as the box draws, keeping their room the whole time (a Rise that waits, not one that mounts late), so the bot
+ * never moves when they come.
+ */
+export function fadeInWithBox(x: Node): Node {
+  return { type: "Rise", props: { delayMs: HELLO_MS, fromY: 0, scaleFrom: 1 }, children: [x] };
 }

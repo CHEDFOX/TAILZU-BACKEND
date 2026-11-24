@@ -17,6 +17,8 @@ vi.hoisted(() => {
   process.env.GROQ_API_KEY = "k";
   process.env.DEV_SKIP_AUTH = "true";
   process.env.NODE_ENV = "test";
+  // Reading files is a deployment switch (MEDIA_INGEST); the attach is drawn only where the server can take a file.
+  process.env.MEDIA_INGEST = "true";
 });
 
 vi.mock("../src/auth/supabase.js", async (orig) => {
@@ -39,7 +41,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
 const { TALK_API, TALK_EMPTY_API, TALK_JOB } = await import("../scripts/bots-render/samples/talk.js");
-const { lintTree } = await import("../src/experience/bots/lint.js");
+const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 
 const RL = { rateLimit: { max: 1000, timeWindow: 60_000 } };
 const NONE = { code: null, jobs: null, connectors: null, media: null, artifacts: null };
@@ -261,6 +263,50 @@ describe("the Talk door", () => {
     const after = (await t.read()).json().turns as Array<{ text: string }>;
     expect(after[2]!.text).toContain("As a task");
   });
+
+  // A PHOTO, THE WAY A CHAT APP SENDS ONE: with words or without, kept on the person's own turn.
+  const PHOTO = { id: "11111111-1111-4111-8111-111111111111", kind: "image", mime: "image/png", bytes: 2048, sha256: "a".repeat(64), name: "receipt.png" };
+  const PDF = { id: "22222222-2222-4222-8222-222222222222", kind: "document", mime: "application/pdf", bytes: 9000, sha256: "b".repeat(64), name: "lease.pdf" };
+
+  it("a photo on its own is a message: the bot is told what came, and the photo goes with it", async () => {
+    const t = served();
+    const r = await t.say({ message: "", attachments: [PHOTO] });
+    expect(r.statusCode).toBe(200);
+    expect(t.asked[0]).toMatchObject({ message: "Have a look at this photo.", attachments: [expect.objectContaining({ id: PHOTO.id })] });
+    // The person's own turn keeps no made-up words, only what they sent.
+    const mine = (await t.read()).json().turns[0];
+    expect(mine).toMatchObject({ role: "me", text: "", files: [{ id: PHOTO.id, name: "receipt.png", kind: "image", mime: "image/png", bytes: 2048 }] });
+  });
+
+  it("with words, the words are the question and the files ride with them", async () => {
+    const t = served();
+    await t.say({ message: "split this bill", attachments: [PHOTO, PDF] });
+    expect(t.asked[0]).toMatchObject({ message: "split this bill" });
+    expect((t.asked[0]!.attachments as unknown[]).length).toBe(2);
+    const mine = (await t.read()).json().turns[0];
+    expect(mine.text).toBe("split this bill");
+    expect(mine.files.map((f: { name: string }) => f.name)).toEqual(["receipt.png", "lease.pdf"]);
+  });
+
+  it("a file taken off from the middle leaves a gap in the app's list: the gap is skipped, the rest go", async () => {
+    const t = served();
+    await t.say({ message: "", attachments: [null, PDF, null] });
+    expect(t.asked[0]).toMatchObject({ message: "Have a look at this file: lease.pdf", attachments: [expect.objectContaining({ id: PDF.id })] });
+    expect((t.asked[0]!.attachments as unknown[]).length).toBe(1);
+  });
+
+  it("a list of only gaps, or refs that are not refs, is still nothing to send", async () => {
+    const t = served();
+    expect((await t.say({ message: "", attachments: [null, null] })).statusCode).toBe(400);
+    expect((await t.say({ message: "", attachments: [{ id: "../etc", name: "x" }] })).statusCode).toBe(400);
+    expect(t.asked.length).toBe(0);
+  });
+
+  it("several photos with no words are named as photos", async () => {
+    const t = served();
+    await t.say({ message: "", attachments: [PHOTO, { ...PHOTO, id: "33333333-3333-4333-8333-333333333333" }] });
+    expect(t.asked[0]).toMatchObject({ message: "Have a look at these 2 photos." });
+  });
 });
 
 // ===================================================================== 3. the screen
@@ -400,6 +446,21 @@ describe("Talk's welcome and its line of the day", () => {
     expect(s).not.toContain('"startAtEnd":true');
   });
 
+  it("while he waves there is only him: the head and the bar wait, keeping their room, and fade in with the box", async () => {
+    const screen = await build(due());
+    const waits = walk(screen.root!).filter((n) => n.type === "Rise" && n.props?.delayMs === 3000 && !n.visibleIf);
+    // The head, and the bar's parts (the field, and what sits above it).
+    expect(waits.length).toBeGreaterThanOrEqual(2);
+    const inside = JSON.stringify(waits);
+    expect(inside).toContain("Search everything");
+    expect(inside).toContain("/v1/botsapp/talk");
+  });
+
+  it("on any other visit nothing waits", async () => {
+    const screen = await build(TALK_EMPTY_API as Record<string, unknown>);
+    expect(walk(screen.root!).some((n) => n.type === "Rise" && n.props?.delayMs === 3000)).toBe(false);
+  });
+
   it("the card waits for the box, so the two never land in the same moment", async () => {
     const s = JSON.stringify(await build({ ...due(), "GET /v1/you/ai-consent": { agreed: true, asked: true } }));
     expect(s).toContain('"path":"cardDue"');
@@ -458,5 +519,57 @@ describe("Talk's welcome and its line of the day", () => {
     expect(at(18, 24)).toBe(at(21, 24));
     const week = new Set([24, 25, 26].map((d) => at(19, d)));
     expect(week.size).toBe(3);
+  });
+});
+
+// ===================================================================== 5. files, the way a chat app does them
+
+describe("Talk's files", () => {
+  const ME = "00000000-0000-4000-8000-00000000aaaa";
+  const build = (api: Record<string, unknown>, can: (c: string) => boolean = () => true) =>
+    buildBotsScreen({
+      screenId: SCREENS.talk, client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: ME, name: "Aanya" },
+      can: { has: can } as unknown as Set<string>, desk: { pages: false, notes: true },
+    }, fakeDeps({ api }));
+  const photo = { id: "11111111-1111-4111-8111-111111111111", name: "receipt.png", kind: "image", mime: "image/png", bytes: 2048 };
+  const pdf = { id: "22222222-2222-4222-8222-222222222222", name: "lease.pdf", kind: "document", mime: "application/pdf", bytes: 9000 };
+  const thread = (files: unknown[], text = "") => ({
+    "GET /v1/botsapp/talk?limit=40": {
+      session: null, people: [], commands: [],
+      turns: [{ id: "t1", role: "me", text, at: Date.UTC(2026, 9, 28, 13), opens: [], approvals: [], paise: 0, files }],
+    },
+  });
+
+  it("a photo the person sent is drawn as itself, by a signed link to their own upload", async () => {
+    const s = JSON.stringify(await build(thread([photo])));
+    expect(s).toMatch(new RegExp(`/v1/files/${ME}/${photo.id}/picture\\?exp=\\d+&sig=`));
+  });
+
+  it("any other file is its name, and the words still come under what was sent", async () => {
+    const s = JSON.stringify(await build(thread([pdf], "what does clause 4 say?")));
+    expect(s).toContain("lease.pdf");
+    expect(s).toContain("what does clause 4 say?");
+    expect(s).not.toContain("/picture?");
+  });
+
+  it("the bar shows what is on the ask, with a send of its own, because a photo on its own is a message", async () => {
+    const screen = await build(TALK_EMPTY_API as Record<string, unknown>);
+    const all = walk(screen.root!);
+    const send = all.find((n) => n.props?.accessibilityLabel === "Send" && JSON.stringify(n.on?.onPress ?? {}).includes('"attachments":"$state.attach"'));
+    expect(send, "a send beside the files").toBeTruthy();
+    // It sends the words too, whatever was typed, through the same door.
+    expect(JSON.stringify(send!.on!.onPress)).toContain("/v1/botsapp/talk");
+    expect(all.filter((n) => n.props?.accessibilityLabel === "Remove this file").length).toBe(8);
+  });
+
+  it("a build that cannot upload has no strip and sends no files", async () => {
+    const s = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>, (c) => c !== "FileUpload"));
+    expect(s).not.toContain("Remove this file");
+    expect(s).not.toContain('"attachments"');
+  });
+
+  it("keeps to the kit with files in the thread and on the bar", async () => {
+    const s = await build(thread([photo, pdf], "both of these"));
+    expect(lintTree(s.root!)).toEqual([]);
   });
 });
