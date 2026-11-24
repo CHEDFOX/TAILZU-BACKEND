@@ -281,6 +281,27 @@ describe("Talk's screen", () => {
     }
   });
 
+  it("in the window, fills the width: a wide column, and the plain box stretching beside the insert key", async () => {
+    // A build without the "/" field (no MentionCommands) draws the plain box. Beside the + key it was as wide as its
+    // placeholder, and the column stopped at 760 — the bar sat a third of the way across a wide window.
+    const { MENTION_COMMANDS_CAPABILITY } = await import("../../shared/types/sdui.js");
+    const can = { has: (c: string) => c !== MENTION_COMMANDS_CAPABILITY } as unknown as Set<string>;
+    const s = await buildBotsScreen({
+      screenId: SCREENS.talk, client: "desktop", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Aanya" },
+      can, desk: { pages: true, notes: true }, files: true,
+    }, fakeDeps({ api: TALK_EMPTY_API as Record<string, unknown> }));
+    type N = { type?: string; id?: string; style?: Record<string, unknown>; children?: N[] };
+    const parents: N[] = [];
+    const walk = (n: N, up: N[]): void => {
+      if (n.type === "TextField" && n.id === "talk") parents.push(up[up.length - 1]!);
+      for (const c of n.children ?? []) walk(c, [...up, n]);
+    };
+    walk(s.root as N, []);
+    expect(parents.length).toBe(1);
+    expect(parents[0]!.style?.flexGrow).toBe(1);
+    expect(JSON.stringify(s.root)).toContain('"maxWidth":1400');
+  });
+
   it("draws the thread with who answered, and the cards in the chat", async () => {
     const s = JSON.stringify(await build(TALK_API as Record<string, unknown>));
     // Every bot that answered is named on its own turn: one thread, many bots.
