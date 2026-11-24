@@ -150,6 +150,23 @@ caller, a routine and a voice call still pay for no drawing.
   refs (`extra.files`: id, name, kind, mime, size), never the bytes.
 * **Not yet:** pictures in a bot's answer, and a picture that is not kept (a server with no R2) shows as an empty frame.
 
+### 3b. Pictures, made when asked
+
+"Make a poster for Riya's birthday", "draw a cat on a skateboard", "logo banao mere cafe ke liye", or a photo sent with "remove
+the background": Talk makes the picture and the **Cinema** bot answers with it, under its words. A tap opens it whole.
+
+* **What counts** is read off the words alone, with no model (`botsBots/pictureAsk.ts`): a verb of making and a picture word close
+  together, in English or Hinglish, or an edit with a photo attached. Narrow on purpose: a picture costs money and most of a
+  minute, so a question about a photo, a how-to ("…in Canva"), or finding and sending photos is never one.
+* **The engine is the cinema bot's** (`cinema/service.ts picture`): it reads the ask, picks the model for what the picture needs
+  (words to spell, a face to keep, a logo), makes it, checks it, charges it to the person and keeps it, under the bot's own
+  daily cap and the AI permission. The photos they attached go as its references (`server.ts` reads them from their files).
+* **Its refusals are the answer** (no AI permission yet, today's pictures used up), so the thread says why there is no picture.
+* **The turn keeps the picture's id and type** (`extra.images`); the thread draws it by a signed link made fresh each time
+  (`cinema/media.ts`).
+* **Off with the cinema bot** (`CINEMA`): with no engine, an ask for a picture goes through the door like anything else.
+* The door is not asked for these, so a picture has no Activity row.
+
 ## 4. Xode is a pill, not a turn
 
 Everything else answers with words and a card. Xode answers with a project, a branch, a plan, a job and a pull request,

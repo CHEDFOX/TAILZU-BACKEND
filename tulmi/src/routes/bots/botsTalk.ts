@@ -26,6 +26,7 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { isBotError, type Bots } from "../../bots/index.js";
 import type { BotChat, TurnBy, TurnDid, TurnFile } from "../../botsBots/chat.js";
 import { filesOf, TURN_FILES_MAX } from "../../botsBots/chat.js";
+import { isPictureAsk } from "../../botsBots/pictureAsk.js";
 import type { Sessions } from "../../botsBots/sessions.js";
 import { readTalk, slashBots, talkName, TALK_COMMANDS } from "../../botsBots/talkWords.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
@@ -49,7 +50,21 @@ export interface TalkRoutesParts {
   sessions: Sessions;
   /** Who the person shares a space with: the "@" list, and the one check on an "@" that came in (botsBots/threads.ts). */
   threads: Threads;
+  /**
+   * THE PICTURE ENGINE, when there is one (the cinema bot's, cinema/service.ts picture: read the ask, pick the model, make
+   * it, check it, charge it, keep it). Asked for at each message, because the server builds it after this route. Null, or
+   * absent: no pictures here, and an ask for one goes through the door like any other.
+   */
+  pictures?: () => TalkPictures | null;
 }
+
+/** What Talk needs of the picture engine: one picture from the words, with the person's attached photos as references. */
+export interface TalkPictures {
+  make(userId: string, o: { words: string; photoIds: string[] }): Promise<{ id: string; type: string; note: string | null }>;
+}
+
+/** Who answers with a picture: the cinema bot, as itself. */
+const PICTURE_BY: TurnBy = { slug: "cinema", name: "Cinema", color: botLook("cinema").color };
 
 /** A person as the "@" list draws it: their own tiny bot, never initials (docs/spaces.md personLook.ts). */
 interface TalkPersonOut { id: string; name: string; bot?: unknown }
@@ -169,6 +184,32 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
       // With no words of their own (or only "/plan"), the bot is told what came, so the file is the question.
       const message = read.message || (files.length ? filesLine(files) : "");
       if (!message) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
+
+      // A PICTURE, ASKED FOR: made by the picture engine and kept as the cinema bot's answer, with the picture on its turn.
+      // Read off the words alone (botsBots/pictureAsk.ts, no model), and narrowly, because a picture costs money.
+      const engine = parts.pictures?.() ?? null;
+      const photoIds = files.filter((f) => f.mime.startsWith("image/")).map((f) => f.id);
+      if (engine && isPictureAsk(read.message || said, { photos: photoIds.length })) {
+        let text: string, images: Array<{ id: string; type: string }> = [];
+        try {
+          const made = await engine.make(s.user.id, { words: read.message || said, photoIds });
+          images = [{ id: made.id, type: made.type }];
+          text = made.note ? `Here it is. ${made.note}` : "Here it is.";
+        } catch (err) {
+          // Its own refusals are written for a person (no AI permission yet, today's pictures used up): said as the answer,
+          // so the thread says why there is no picture. Anything else is a failure like any other.
+          const e = err as { status?: number; message?: string } | null;
+          if (!e || typeof e.status !== "number" || e.status >= 500 || !e.message) return fail(req, reply, err);
+          text = e.message;
+        }
+        const turns = await s.chat.keepDoor(s.user.id, TALK_SLUG, {
+          said, text, by: PICTURE_BY, images,
+          ...(read.forName ? { forName: read.forName } : {}),
+          ...(session ? { session } : {}),
+          ...(files.length ? { files } : {}),
+        });
+        return reply.send({ turns, shell: { bot: PICTURE_BY, text }, ...(turns[0]?.session ? { session: turns[0].session } : {}) });
+      }
 
       // THE DOOR, UNCHANGED: the same route Ask has always used, so the guards, the money, the routine drafts, the outbox's
       // answer-once and the Activity row are all the ones that already exist. `draw` is the one thing Talk asks for that Ask

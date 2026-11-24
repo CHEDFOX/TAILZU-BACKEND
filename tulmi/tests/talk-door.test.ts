@@ -119,7 +119,7 @@ describe("the two marks", () => {
 describe("the Talk door", () => {
   beforeEach(() => resetAreaTablesForTests());
 
-  function served(o: { answer?: () => { status: number; body: unknown } } = {}) {
+  function served(o: { answer?: () => { status: number; body: unknown }; pictures?: unknown } = {}) {
     const app = Fastify();
     const asked: Array<Record<string, unknown>> = [];
     // The front door, stubbed: what it decides is its own business and is tested in front-*.test.ts. What is tested here
@@ -144,7 +144,7 @@ describe("the Talk door", () => {
     registerBotsShellRoutes(app, { rateLimit: RL, ...NONE, bots } as never, { events });
     const parts = botsAreaParts({ bots, connectors: null });
     const threads = { contacts: async () => ({ people: [{ userId: "u-mom", name: "Mom", spaces: ["s1"], bot: null }] }) } as never;
-    registerTalkRoutes(app, { rateLimit: RL, ...NONE, bots }, { chat: parts.chat, sessions: parts.sessions, threads });
+    registerTalkRoutes(app, { rateLimit: RL, ...NONE, bots }, { chat: parts.chat, sessions: parts.sessions, threads, ...(o.pictures !== undefined ? { pictures: () => o.pictures as never } : {}) });
     const say = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/v1/botsapp/talk", headers: who, payload });
     // `session` names one conversation to read instead of whichever is current (routes/bots/botsTalk.ts).
     const read = (o: { session?: string } = {}) => app.inject({
@@ -300,6 +300,63 @@ describe("the Talk door", () => {
     expect((await t.say({ message: "", attachments: [null, null] })).statusCode).toBe(400);
     expect((await t.say({ message: "", attachments: [{ id: "../etc", name: "x" }] })).statusCode).toBe(400);
     expect(t.asked.length).toBe(0);
+  });
+
+  // A PICTURE, ASKED FOR: the picture engine makes it and the cinema bot answers with it.
+  const engine = (o: { fail?: { status: number; message: string } } = {}) => {
+    const calls: Array<{ userId: string; words: string; photoIds: string[] }> = [];
+    return {
+      calls,
+      make: async (userId: string, x: { words: string; photoIds: string[] }) => {
+        calls.push({ userId, ...x });
+        if (o.fail) throw Object.assign(new Error(o.fail.message), o.fail);
+        return { id: "pic_1", type: "image/png", note: null };
+      },
+    };
+  };
+
+  it("\"make a poster…\" is made by the picture engine and kept as the cinema bot's answer, the picture on its turn", async () => {
+    const e = engine();
+    const t = served({ pictures: e });
+    const r = await t.say({ message: "make a poster for Riya's birthday, gold and pink" });
+    expect(r.statusCode).toBe(200);
+    expect(e.calls).toEqual([{ userId: U, words: "make a poster for Riya's birthday, gold and pink", photoIds: [] }]);
+    // The door is not asked: the picture is the answer.
+    expect(t.asked.length).toBe(0);
+    const turns = (await t.read()).json().turns;
+    expect(turns[1]).toMatchObject({ role: "bot", text: "Here it is.", by: { slug: "cinema", name: "Cinema" }, images: [{ id: "pic_1", type: "image/png" }] });
+  });
+
+  it("a photo with \"remove the background\" is an edit: the photo goes to the engine as its reference", async () => {
+    const e = engine();
+    const t = served({ pictures: e });
+    await t.say({ message: "remove the background", attachments: [PHOTO] });
+    expect(e.calls[0]).toMatchObject({ words: "remove the background", photoIds: [PHOTO.id] });
+    const mine = (await t.read()).json().turns[0];
+    expect(mine.files[0].id).toBe(PHOTO.id);
+  });
+
+  it("its own refusal is said as the answer, so the thread says why there is no picture", async () => {
+    const t = served({ pictures: engine({ fail: { status: 429, message: "Today's films and pictures are used up. It starts again tomorrow, or see the plans." } }) });
+    const r = await t.say({ message: "draw a cat on a skateboard" });
+    expect(r.statusCode).toBe(200);
+    const turns = (await t.read()).json().turns;
+    expect(turns[1].text).toContain("used up");
+    expect(turns[1].images).toBeUndefined();
+  });
+
+  it("anything that is not an ask for a picture goes through the door as always", async () => {
+    const e = engine();
+    const t = served({ pictures: e });
+    await t.say({ message: "show me photos of hotels in Goa" });
+    expect(e.calls.length).toBe(0);
+    expect(t.asked.length).toBe(1);
+  });
+
+  it("with no picture engine (the cinema bot off), an ask for a picture goes through the door", async () => {
+    const t = served({ pictures: null });
+    await t.say({ message: "make a poster for Riya's birthday" });
+    expect(t.asked.length).toBe(1);
   });
 
   it("several photos with no words are named as photos", async () => {
@@ -570,6 +627,54 @@ describe("Talk's files", () => {
 
   it("keeps to the kit with files in the thread and on the bar", async () => {
     const s = await build(thread([photo, pdf], "both of these"));
+    expect(lintTree(s.root!)).toEqual([]);
+  });
+});
+
+// ===================================================================== 6. pictures the bot made, and what counts as asking for one
+
+describe("an ask for a picture (botsBots/pictureAsk.ts)", () => {
+  it("is a verb of making and a picture, close together — in English and in Hinglish", async () => {
+    const { isPictureAsk } = await import("../src/botsBots/pictureAsk.js");
+    for (const w of [
+      "make a poster for Riya's birthday", "draw a cat on a skateboard", "generate an image of the Red Fort at dusk",
+      "create a logo for my bakery", "Can you make me a cute sticker of a mango?", "design 3 wallpapers with mountains",
+      "ek photo bana do jisme Goa ka beach ho", "logo banao mere cafe ke liye", "imagine a city made of glass", "paint my dog as a king",
+    ]) expect(isPictureAsk(w), w).toBe(true);
+  });
+  it("is not a question about a picture, a how-to, or finding, sending and opening photos", async () => {
+    const { isPictureAsk } = await import("../src/botsBots/pictureAsk.js");
+    for (const w of [
+      "show me photos of hotels in Goa", "what is in this photo?", "send the picture to Mom", "how do I make a poster in Canva?",
+      "can you read this image?", "make a reservation for two", "create a reminder to call Mom", "find the photos from Riya's wedding",
+      "make a card payment", "what's on tomorrow?",
+    ]) expect(isPictureAsk(w), w).toBe(false);
+  });
+  it("with a photo attached, an edit counts; without one, it does not", async () => {
+    const { isPictureAsk } = await import("../src/botsBots/pictureAsk.js");
+    expect(isPictureAsk("remove the background", { photos: 1 })).toBe(true);
+    expect(isPictureAsk("make it look like a ghibli movie", { photos: 1 })).toBe(true);
+    expect(isPictureAsk("remove the background")).toBe(false);
+    expect(isPictureAsk("what does this say?", { photos: 1 })).toBe(false);
+  });
+});
+
+describe("a picture the bot made, in the thread", () => {
+  const ME = "00000000-0000-4000-8000-00000000aaaa";
+  it("is drawn under its words by a signed link, and a tap opens it whole", async () => {
+    const s = await buildBotsScreen({
+      screenId: SCREENS.talk, client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: ME, name: "Aanya" },
+      can: { has: () => true } as unknown as Set<string>, desk: { pages: false, notes: true },
+    }, fakeDeps({ api: { "GET /v1/botsapp/talk?limit=40": { session: null, people: [], commands: [], turns: [
+      { id: "t1", role: "me", text: "make a poster for Riya's birthday", at: Date.UTC(2026, 9, 28, 13), opens: [], approvals: [], paise: 0 },
+      { id: "t2", role: "bot", text: "Here it is.", at: Date.UTC(2026, 9, 28, 13, 1), opens: [], approvals: [], paise: 0, by: { slug: "cinema", name: "Cinema", color: "#6b3a5e" }, images: [{ id: "pic_1", type: "image/png" }] },
+    ] } } }));
+    const all = walk(s.root!);
+    const open = all.find((n) => n.props?.accessibilityLabel === "Open the picture");
+    expect(open, "the picture, pressable").toBeTruthy();
+    const url = (open!.on!.onPress as { url: string }).url;
+    expect(url).toMatch(new RegExp(`/v1/cinema/media/u/${ME}/cinema/pictures/pic_1\\.png\\?exp=\\d+&sig=`));
+    expect(JSON.stringify(open)).toContain(url);
     expect(lintTree(s.root!)).toEqual([]);
   });
 });

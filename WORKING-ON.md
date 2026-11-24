@@ -1,5 +1,14 @@
 # Being built right now (read before you start)
 
+## 24 Nov: TALK MAKES A PICTURE WHEN ASKED FOR ONE
+
+"Make a poster…", "draw…", "logo banao…", or a photo with "remove the background": Talk made none, because nothing in the door
+makes pictures and the one engine that does (the cinema bot's) was only reachable from its own page. Now Talk spots the ask
+from the words alone (`botsBots/pictureAsk.ts`, narrow on purpose: a picture costs money) and the cinema bot's engine makes
+it, with any attached photo as its reference; the Cinema bot answers with the picture under its words and a tap opens it.
+Its cap, its charge and the AI permission are the engine's own, and its refusals are said in the thread. Needs `CINEMA=true`
+(with it off, the ask goes through the door as before). The door is not asked, so these have no Activity row yet.
+
 ## 24 Nov: A PHOTO GOES IN TALK THE WAY IT DOES IN A CHAT APP — AND THE HELLO IS ALONE ON THE SCREEN
 
 Inserting a file did nothing you could see: pick, it showed in the card, and that was the end. Four things stopped it, and

@@ -32,7 +32,7 @@ import type { ChatTurn } from "../../../../botsBots/chat.js";
 import { TALK_COMMANDS, slashBots } from "../../../../botsBots/talkWords.js";
 import {
   type BotsCtx, page, col, row, text, meta, grow, C, open, SCREENS, seq, chip, atText,
-  emptyState, botLook, botKind, canPersonBot, appMark, roundButton, picture, icon,
+  emptyState, botLook, botKind, canPersonBot, appMark, roundButton, picture, icon, box,
   pillSwitch, mentionField, hasSpaces,
 } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
@@ -57,7 +57,9 @@ import { SHOW_STATE } from "../../show.js";
 // The insert key and its card: the ask bar's own, so a file is inserted the one way everywhere (ask.ts).
 import { askFiles, insertCard, insertKey, INSERT_PATHS } from "../../ask.js";
 import type { TurnFile } from "../../../../botsBots/chat.js";
-import { canLink, filePictureUrl } from "../../../../media/link.js";
+import { canLink, filePictureUrl, publicOrigin } from "../../../../media/link.js";
+import type { TurnImage } from "../../../../botsBots/chat.js";
+import { pictureKey, signMedia } from "../../../../cinema/media.js";
 
 /** The door this screen sends everything to (routes/bots/botsTalk.ts). */
 const TALK_PATH = "/v1/botsapp/talk";
@@ -194,6 +196,7 @@ function talkTurn(ctx: BotsCtx, t: ChatTurn, o: { live: boolean; next?: ChatTurn
   return col([
     byLine(ctx, t),
     ...words,
+    ...(t.images?.length ? [madePictures(ctx, t.images)] : []),
     ...drawn,
     ...routine,
     ...finds,
@@ -475,3 +478,21 @@ function sentFiles(ctx: BotsCtx, files: readonly TurnFile[]): Node {
 }
 
 const isPicture = (f: TurnFile): boolean => f.mime.startsWith("image/") && f.mime !== "image/svg+xml";
+
+/**
+ * A PICTURE THE BOT MADE (the cinema bot's picture engine, routes/bots/botsTalk.ts): drawn under its words by a signed link
+ * made fresh each time the thread is drawn (cinema/media.ts), and a tap opens it whole, to look at or save.
+ */
+function madePictures(ctx: BotsCtx, images: readonly TurnImage[]): Node {
+  const userId = ctx.user?.id ?? "";
+  const size = ctx.client === "desktop" ? 320 : images.length === 1 ? 280 : 160;
+  return row(images.map((im) => {
+    let url = "";
+    try { url = `${publicOrigin()}${signMedia(pictureKey(userId, im.id, im.type))}`; } catch { url = ""; }
+    if (!url) return box([], { width: size, height: size, borderRadius: 18, backgroundColor: C.surface });
+    return labelledPress(picture(url, size, size, { radius: 18, fit: "cover", background: C.surface, label: "The picture" }), { kind: "openUrl", url }, "Open the picture");
+  }), { gap: 8, flexWrap: "wrap" });
+}
+
+/** A node that does something when pressed, with words for a screen reader. */
+const labelledPress = (n: Node, onPress: ActionRef, label: string): Node => ({ ...n, on: { ...(n.on ?? {}), onPress }, props: { ...(n.props ?? {}), accessibilityLabel: label } });
