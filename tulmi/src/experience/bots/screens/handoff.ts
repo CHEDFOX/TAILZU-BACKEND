@@ -14,7 +14,7 @@
 import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import { hangUrl } from "../art.js";
 import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when, box, whenEq, seq } from "../kit.js";
-import { keyboardArt } from "./firstRun/firstWords.js";
+import { keyboardArt, KEYS_DARK } from "./firstRun/firstWords.js";
 import { CLAY } from "./firstRun/parts.js";
 
 /** The launch's ground: the app icon's cream (the phone's splash, app/src/launch). */
@@ -73,29 +73,47 @@ export const BOTS_HANDOFF_IDS: ReadonlySet<string> = new Set(["keyboard_record",
 
 /**
  * flow_arm: armed on appear, leaves on its own, nothing to tap. What it says is what to do next — switch to the app you
- * want to write in — over Keylessbord's own keyboard (the one its setup ends on), on which "Say it" is typed out as a
- * person would: one letter at a time, each key lit for a moment by a light touch as its letter lands, the caret after.
+ * want to write in — on black, over Keylessbord's own keyboard (the one its setup ends on, dark here), on which "Say it" is
+ * typed out as a person would: one key at a time, each lit for a moment by a light touch with its letter showing on it.
  * The typing is state and time only (a delay and a setState a letter), so every build draws it, with nothing new.
  */
 export function botsFlowArm(base: ScreenResponse): ScreenResponse {
   const typing: Node = {
     ...col([
       gap(8),
-      title("Switch to the app you want to write in", { align: "center" }), gap(10),
-      body("We feel the inconvenience too. Apple has a little trauma about microphones.", { align: "center", color: C.meta }),
+      title("Switch to the app you want to write in", { align: "center", color: C.paper }), gap(10),
+      body("We feel the inconvenience too. Apple has a little trauma about microphones.", { align: "center", color: DIM }),
       { ...box([], { flexGrow: 1 }) },
       keyboardArt(null, {
-        strip: typedStrip(),
+        keys: KEYS_DARK,
         key: (r, i) => touchStyle(keyAt(r, i)),
-        // The letter shows on its key while it is touched, as a phone's key pops its letter up.
-        keyIn: (r, i) => (keyAt(r, i) ? [when({ eq: [TOUCH, keyAt(r, i)] }, text(keyAt(r, i), { size: 15, weight: 600, lineHeight: 18, color: C.ink }))] : []),
-        bar: { borderWidth: 1.5, borderColor: whenEq(TOUCH, " ", CLAY, C.paper) },
+        // The letter shows on its key while it is touched, and only then: the words are the keys, there is no box.
+        keyIn: (r, i) => (keyAt(r, i) ? [when({ eq: [TOUCH, keyAt(r, i)] }, text(keyAt(r, i).toUpperCase(), { size: 16, weight: 600, lineHeight: 19, color: INK_ON_LIT }))] : []),
+        // The space is the long bar: a touch rims it in clay.
+        bar: { borderWidth: 1.5, borderColor: whenEq(TOUCH, " ", CLAY, KEYS_DARK.key) },
         label: "Keylessbord, typing: Say it",
       }),
     ], { flex: 1, paddingHorizontal: 20, paddingTop: 40, paddingBottom: 20 }),
     on: { onAppear: typeSayIt() },
   };
-  return homeNotStats(page({ ...base, actions: heldForTyping(base.actions), state: { ...(base.state ?? {}), [TYPED]: 0, [TOUCH]: "" } }, typing, base.root?.on));
+  return homeNotStats(dark(page({ ...base, actions: heldForTyping(base.actions), state: { ...(base.state ?? {}), [TOUCH]: "" } }, typing, base.root?.on)));
+}
+
+/** The Flow screen is on black: the moment between the keyboard and the app you are going back to. */
+const BLACK = "#000000";
+const DIM = "#9A9A9F";
+/** A touched key: lit, its letter dark on it. */
+const LIT = "#E5E5EA";
+const INK_ON_LIT = "#111111";
+
+/** The cream page made black: its theme, its ground and a light status bar. */
+function dark(s: ScreenResponse): ScreenResponse {
+  const root = s.root!;
+  return {
+    ...s,
+    theme: { ...s.theme, color: { ...(s.theme?.color ?? {}), bg: BLACK, surface: BLACK, tabBar: BLACK } } as ScreenResponse["theme"],
+    root: { ...root, props: { ...(root.props ?? {}), barStyle: "light-content" }, style: { ...(root.style ?? {}), backgroundColor: BLACK } },
+  };
 }
 
 /** How long "Say it" takes to type, from the screen's first frame. */
@@ -115,7 +133,6 @@ function heldForTyping(actions: ScreenResponse["actions"]): ScreenResponse["acti
 
 /** What is typed, and which key is being touched right now ("" none, " " the bar). */
 const SAY = "Say it";
-const TYPED = "flowTyped";
 const TOUCH = "flowTouch";
 
 /** Where each letter sits on the drawn keyboard's two letter rows (QWERTY: q-p, then a-l). */
@@ -124,20 +141,12 @@ const keyAt = (r: number, i: number): string => ROWS[r]?.[i] ?? "";
 
 /** A key lit for a moment while its letter lands: a light touch, not a press. */
 function touchStyle(letter: string): Record<string, unknown> {
-  return letter ? { backgroundColor: whenEq(TOUCH, letter, "#EAD9CE", C.paper) } : {};
-}
-
-/** The line above the keys where the words land: what is typed so far, and the caret after it. */
-function typedStrip(): Node {
-  return row([
-    ...Array.from({ length: SAY.length + 1 }, (_, n) => when({ eq: [TYPED, n] }, text(SAY.slice(0, n) || " ", { size: 20, weight: 600, lineHeight: 26 }))),
-    box([], { width: 2, height: 22, borderRadius: 1, backgroundColor: CLAY, marginLeft: 1 }),
-  ], { height: 44, alignItems: "center", justifyContent: "center", backgroundColor: C.paper, borderRadius: 12, marginBottom: 2 });
+  return letter ? { backgroundColor: whenEq(TOUCH, letter, LIT, KEYS_DARK.key) } : {};
 }
 
 /**
- * "Say it", typed: a beat to settle, then for each letter its key lit, the letter in, the key let go; the spaces between
- * letters uneven, as a person's are. Then it stays, caret after, until the screen leaves on its own.
+ * "Say it", typed: a beat to settle, then for each letter its key lit with the letter on it, then let go; the spaces
+ * between letters uneven, as a person's are.
  */
 function typeSayIt(): ActionRef {
   const steps: ActionSpec[] = [{ kind: "delay", ms: 1100 }];
@@ -146,7 +155,6 @@ function typeSayIt(): ActionRef {
     const k = ch === " " ? " " : ch.toLowerCase();
     steps.push(
       { kind: "setState", path: TOUCH, value: k },
-      { kind: "setState", path: TYPED, value: i + 1 },
       { kind: "delay", ms: 130 },
       { kind: "setState", path: TOUCH, value: "" },
       { kind: "delay", ms: gaps[i] ?? 140 },
