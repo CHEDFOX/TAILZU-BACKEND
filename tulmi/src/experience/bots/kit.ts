@@ -1390,7 +1390,10 @@ export interface PageOpts {
   actions?: Record<string, ActionSpec>;
   /** Between the body's blocks (22 on the phone, 28 in the window by default). */
   gap?: number;
-  /** The window's main column at most this wide (880). */
+  /**
+   * The window's main column at most this wide — but never narrower than DESK_COLUMN: a page that asked for 760 or 880
+   * stopped two thirds across a wide window with a blank strip beside it. Only a wider ask changes anything now.
+   */
   maxWidth?: number;
   /**
    * The window's page fills the window and does not scroll as a whole: the body scrolls inside itself (a chat, whose message box stays put
@@ -1528,14 +1531,17 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
   return response(ctx, o, root);
 }
 
+/** The window's main column: the whole width beside the sidebar, up to this (only a very wide screen leaves room over). */
+export const DESK_COLUMN = 1400;
+
 /**
  * The window's page (1280 x 800 in the boards, fluid): the sidebar on the left, the main column scrolls, the footer
- * stays at its foot. The column is at most 880 wide.
+ * stays at its foot. The column fills the window up to DESK_COLUMN.
  */
 export function deskPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
   if (o.sheet) return sheetPage(ctx, o);
   const docked = !!o.dock?.length;
-  const width = o.maxWidth ?? 880;
+  const width = Math.max(o.maxWidth ?? 0, DESK_COLUMN);
   const scroller = col([
     col([
       ...backNode(o),

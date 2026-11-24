@@ -361,7 +361,7 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
   }
   // An older build: the box it already draws, sending to the same door. Plain language is the whole way in there — the
   // marks are a faster way of saying something, never the only way, so nothing is out of reach without them.
-  const plain = sendField("talk", "talk", "Say what you need…", send(ctx, { words: "$state.talk", from: "talk", ...(up ? { attach: true } : {}) }), { desk: ctx.client === "desktop" });
+  const plain = sendField("talk", "talk", "Say what you need…", send(ctx, { words: "$state.talk", from: "talk", ...(up ? { attach: true } : {}) }), { desk: ctx.client === "desktop", grow: key.length > 0 });
   return [moment, ...above(send(ctx, { words: "$state.talk", from: "talk", attach: true })), withKey(plain), ...insertCard(ctx, box)];
 }
 
@@ -419,7 +419,7 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
   const welcome = n.arrival && !data.down && !turns.length;
   const moving = welcome && welcomeMoves(ctx);
   return page(ctx, {
-    tab: "talk", title: "Talk", nav: "talk", ...(ctx.client === "desktop" ? { maxWidth: 760, fixed: true } : {}),
+    tab: "talk", title: "Talk", nav: "talk", ...(ctx.client === "desktop" ? { fixed: true } : {}),
     state: { ...TALK_STATE, ...n.state, ...(moving ? WELCOME_STATE : {}), ...(rt ? routineCardState(ctx, rt, newest?.by?.slug ?? "") : {}) },
     // Opens at the newest turn and stays there as answers come in, as a chat should (only for a build that keeps it).
     // Not while the welcome plays: its words change size, and a jump to the end would carry the head off the top.

@@ -123,13 +123,17 @@ export function inputBox(children: Node[], o: { ink?: boolean; radius?: number; 
     ...(o.grow ? { flexGrow: 1, flexShrink: 1, minWidth: 0 } : {}),
   });
 }
-/** A field with a send button: Enter or the button runs `send` when it has words. */
-export function sendField(id: string, path: string, placeholder: string, send: ActionRef, o: { radius?: number; desk?: boolean } = {}): Node {
+/**
+ * A field with a send button: Enter or the button runs `send` when it has words. `grow`: beside the insert key, in a row,
+ * it fills the rest of it (inputBox `grow`); without it the box was as wide as its placeholder and the bar stopped a third
+ * of the way across the window.
+ */
+export function sendField(id: string, path: string, placeholder: string, send: ActionRef, o: { radius?: number; desk?: boolean; grow?: boolean } = {}): Node {
   const go = ifFilled(path, send);
   return inputBox([
     field(id, path, placeholder, { onSubmit: go }),
     roundButton("send", go, { size: 40, label: "Send" }),
-  ], { radius: o.radius ?? 28, pad: o.desk ? 22 : 18 });
+  ], { radius: o.radius ?? 28, pad: o.desk ? 22 : 18, grow: o.grow });
 }
 
 export const link = (label: string, onPress: ActionRef): Node => row([text(label, { size: 13, weight: 500, lineHeight: 18 })], { minHeight: 32, paddingHorizontal: 4 }, onPress);
@@ -197,9 +201,10 @@ function turnActions(ctx: BotsCtx, t: Turn): Node[] {
 
 export function bubble(ctx: BotsCtx, s: string, big = false): Node {
   const desk = isDesk(ctx);
+  // White on black in the window as on the phone: the grey the window had read as one more card beside the bot's.
   return row([
-    box([text(s, { size: big ? 15 : 14, lineHeight: big ? 21 : 20, color: desk ? C.ink : C.paper })], {
-      maxWidth: desk ? "82%" : "80%", backgroundColor: desk ? C.surface : C.ink, paddingVertical: 10, paddingHorizontal: 14,
+    box([text(s, { size: big ? 15 : 14, lineHeight: big ? 21 : 20, color: C.paper })], {
+      maxWidth: desk ? "82%" : "80%", backgroundColor: C.ink, paddingVertical: 10, paddingHorizontal: 14,
       borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: 18, borderBottomRightRadius: 6,
     }),
   ], { justifyContent: "flex-end" });
@@ -304,7 +309,7 @@ export const askBot = (slug: string, message: string): ActionRef => seq(
  */
 export function chatBar(ctx: BotsCtx, slug: string, name: string, placeholder?: string, then?: ActionRef): Node {
   const up = canUpload(ctx);
-  const field = sendField("say", "say", placeholder ?? (isDesk(ctx) ? `Ask ${name}…  or hold Fn and speak` : `Ask ${name}…`), sendToBot(slug, "say", then, ctx, { attach: up }), { desk: isDesk(ctx) });
+  const field = sendField("say", "say", placeholder ?? (isDesk(ctx) ? `Ask ${name}…  or hold Fn and speak` : `Ask ${name}…`), sendToBot(slug, "say", then, ctx, { attach: up }), { desk: isDesk(ctx), grow: insertKey(ctx, "say").length > 0 });
   const key = insertKey(ctx, "say");
   return col([
     askMoment(ctx, { slug, color: ctx.live.bots.find((b) => b.slug === slug)?.color ?? lookOf(slug).color, kind: botKind(slug), busy: "sending", line: `${name} is on it…` }),

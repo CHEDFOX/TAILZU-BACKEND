@@ -478,8 +478,9 @@ function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
     for (const f of m.files) parts.push(fileNode(f, desk));
     if (m.item) parts.push(sharedItemNode(m.item));
     if (m.text) {
-      parts.push(box([text(m.text, { size: 15, lineHeight: 21, color: mine && !desk ? C.paper : C.ink })], {
-        backgroundColor: mine ? (desk ? C.surface : C.ink) : desk ? C.paper : C.surface, ...(desk && !mine ? { borderWidth: 1, borderColor: C.line } : {}),
+      parts.push(box([text(m.text, { size: 15, lineHeight: 21, color: mine ? C.paper : C.ink })], {
+        // Your own words white on black in the window as on the phone (parts.ts bubble).
+        backgroundColor: mine ? C.ink : desk ? C.paper : C.surface, ...(desk && !mine ? { borderWidth: 1, borderColor: C.line } : {}),
         paddingVertical: 10, paddingHorizontal: 14, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: mine ? 18 : 6, borderBottomRightRadius: mine ? 6 : 18,
       }));
     }
