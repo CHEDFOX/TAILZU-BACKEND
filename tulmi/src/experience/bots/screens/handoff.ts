@@ -11,9 +11,11 @@
  * it writes into are the catalog's own nodes, untouched. flow_arm's demo clip (a keyboard on black) is left out: the
  * screen still leaves when its clip would have ended.
  */
-import type { Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import { hangUrl } from "../art.js";
-import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when } from "../kit.js";
+import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when, box, whenEq, seq } from "../kit.js";
+import { keyboardArt } from "./firstRun/firstWords.js";
+import { CLAY } from "./firstRun/parts.js";
 
 /** The launch's ground: the app icon's cream (the phone's splash, app/src/launch). */
 export const CREAM = "#F7F3EC";
@@ -69,13 +71,88 @@ const head = (label: string, heading: string, line: string): Node[] => [
 /** The keyboard's handoff screens: today's ids (the keyboard's config names them), drawn in the Bots app's look. */
 export const BOTS_HANDOFF_IDS: ReadonlySet<string> = new Set(["keyboard_record", "keyboard_primer", "flow_arm"]);
 
-/** flow_arm: armed on appear, says what changed, leaves on its own. Centred on the screen; nothing to tap. */
+/**
+ * flow_arm: armed on appear, leaves on its own, nothing to tap. What it says is what to do next — switch to the app you
+ * want to write in — over Keylessbord's own keyboard (the one its setup ends on), on which "Say it" is typed out as a
+ * person would: one letter at a time, each key lit for a moment by a light touch as its letter lands, the caret after.
+ * The typing is state and time only (a delay and a setState a letter), so every build draws it, with nothing new.
+ */
 export function botsFlowArm(base: ScreenResponse): ScreenResponse {
-  return homeNotStats(page(base, col([
-    bot(), gap(24),
-    title("The mic goes with you.", { align: "center" }), gap(10),
-    body("Tap the mic in any app and talk — the words land written.", { align: "center", color: C.grey70 }),
-  ], { flex: 1, justifyContent: "center", paddingHorizontal: 28, paddingBottom: 48 }), base.root?.on));
+  const typing: Node = {
+    ...col([
+      gap(8),
+      title("Switch to the app you want to write in", { align: "center" }), gap(10),
+      body("We feel the inconvenience too. Apple has a little trauma about microphones.", { align: "center", color: C.meta }),
+      { ...box([], { flexGrow: 1 }) },
+      keyboardArt(null, {
+        strip: typedStrip(),
+        key: (r, i) => touchStyle(keyAt(r, i)),
+        // The letter shows on its key while it is touched, as a phone's key pops its letter up.
+        keyIn: (r, i) => (keyAt(r, i) ? [when({ eq: [TOUCH, keyAt(r, i)] }, text(keyAt(r, i), { size: 15, weight: 600, lineHeight: 18, color: C.ink }))] : []),
+        bar: { borderWidth: 1.5, borderColor: whenEq(TOUCH, " ", CLAY, C.paper) },
+        label: "Keylessbord, typing: Say it",
+      }),
+    ], { flex: 1, paddingHorizontal: 20, paddingTop: 40, paddingBottom: 20 }),
+    on: { onAppear: typeSayIt() },
+  };
+  return homeNotStats(page({ ...base, actions: heldForTyping(base.actions), state: { ...(base.state ?? {}), [TYPED]: 0, [TOUCH]: "" } }, typing, base.root?.on));
+}
+
+/** How long "Say it" takes to type, from the screen's first frame. */
+const TYPE_MS = 1100 + [230, 190, 270, 320, 210, 250].reduce((a, g) => a + 130 + g, 0);
+/** And how long it stays typed before the screen leaves, so it is read and not cut off. */
+const READ_MS = 1500;
+
+/**
+ * The screen leaves on its own once the mic is armed (doArm's delay, then away). Held here until "Say it" has been typed
+ * and read: never shorter than it was, only long enough for the typing.
+ */
+function heldForTyping(actions: ScreenResponse["actions"]): ScreenResponse["actions"] {
+  const arm = actions?.doArm as { kind?: string; actions?: Array<{ kind?: string; ms?: number }> } | undefined;
+  if (!actions || !arm || arm.kind !== "sequence" || !Array.isArray(arm.actions)) return actions;
+  return { ...actions, doArm: { ...arm, actions: arm.actions.map((x) => (x.kind === "delay" ? { ...x, ms: Math.max(Number(x.ms) || 0, TYPE_MS + READ_MS) } : x)) } as never };
+}
+
+/** What is typed, and which key is being touched right now ("" none, " " the bar). */
+const SAY = "Say it";
+const TYPED = "flowTyped";
+const TOUCH = "flowTouch";
+
+/** Where each letter sits on the drawn keyboard's two letter rows (QWERTY: q-p, then a-l). */
+const ROWS = ["qwertyuiop", "asdfghjkl"];
+const keyAt = (r: number, i: number): string => ROWS[r]?.[i] ?? "";
+
+/** A key lit for a moment while its letter lands: a light touch, not a press. */
+function touchStyle(letter: string): Record<string, unknown> {
+  return letter ? { backgroundColor: whenEq(TOUCH, letter, "#EAD9CE", C.paper) } : {};
+}
+
+/** The line above the keys where the words land: what is typed so far, and the caret after it. */
+function typedStrip(): Node {
+  return row([
+    ...Array.from({ length: SAY.length + 1 }, (_, n) => when({ eq: [TYPED, n] }, text(SAY.slice(0, n) || " ", { size: 20, weight: 600, lineHeight: 26 }))),
+    box([], { width: 2, height: 22, borderRadius: 1, backgroundColor: CLAY, marginLeft: 1 }),
+  ], { height: 44, alignItems: "center", justifyContent: "center", backgroundColor: C.paper, borderRadius: 12, marginBottom: 2 });
+}
+
+/**
+ * "Say it", typed: a beat to settle, then for each letter its key lit, the letter in, the key let go; the spaces between
+ * letters uneven, as a person's are. Then it stays, caret after, until the screen leaves on its own.
+ */
+function typeSayIt(): ActionRef {
+  const steps: ActionSpec[] = [{ kind: "delay", ms: 1100 }];
+  const gaps = [230, 190, 270, 320, 210, 250]; // TYPE_MS adds these up: change them together
+  [...SAY].forEach((ch, i) => {
+    const k = ch === " " ? " " : ch.toLowerCase();
+    steps.push(
+      { kind: "setState", path: TOUCH, value: k },
+      { kind: "setState", path: TYPED, value: i + 1 },
+      { kind: "delay", ms: 130 },
+      { kind: "setState", path: TOUCH, value: "" },
+      { kind: "delay", ms: gaps[i] ?? 140 },
+    );
+  });
+  return seq(...steps);
 }
 
 /** The tab the Bots app opens on (bots/index.ts initialTabId): where the Flow screen leaves for. */

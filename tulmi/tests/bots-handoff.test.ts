@@ -33,16 +33,44 @@ describe("the keyboard's handoff screens in the Bots app", () => {
   it.each(IDS)("%s keeps its id, state, actions and timing", (id) => {
     const old = build(id, false), now = build(id, true);
     expect(now.screenId).toBe(id);
-    expect(now.state).toEqual(old.state);
+    // flow_arm adds its typing ("Say it", typed on the keyboard); everything the catalog keeps is kept.
+    expect(now.state).toEqual(id === "flow_arm" ? { ...old.state, flowTyped: 0, flowTouch: "" } : old.state);
     // The same actions; the words in them in the Bots app's sentence case, where the catalog capitalises every word.
     const folded = (x: unknown) => JSON.parse(home(JSON.stringify(x)).toLowerCase());
-    expect(folded(now.actions)).toEqual(folded(old.actions));
+    // flow_arm waits for its typing before it leaves: the one delay that changes, and only ever longer.
+    const held = (x: unknown) => JSON.parse(JSON.stringify(x), (k, v) => (k === "ms" ? "ms" : v));
+    if (id === "flow_arm") {
+      expect(held(folded(now.actions))).toEqual(held(folded(old.actions)));
+      const ms = (a: unknown) => ((a as { doArm: { actions: Array<{ kind: string; ms?: number }> } }).doArm.actions.find((x) => x.kind === "delay")!.ms!);
+      expect(ms(now.actions)).toBeGreaterThanOrEqual(ms(old.actions));
+      expect(ms(now.actions)).toBeGreaterThanOrEqual(4500);
+    } else expect(folded(now.actions)).toEqual(folded(old.actions));
     expect(now.root!.props?.keepCase).toBe(true);
     expect(now.cacheTtlSeconds).toEqual(old.cacheTtlSeconds);
   });
 
-  it.each(IDS)("%s does exactly what it did: every action fired, binding and condition", (id) => {
-    expect(doing(build(id, true).root!)).toEqual(doing(build(id, false).root!).map(home));
+  it.each(IDS)("%s does everything it did: every action fired, binding and condition (flow_arm adds only its typing)", (id) => {
+    const now = doing(build(id, true).root!), old = doing(build(id, false).root!).map(home);
+    if (id !== "flow_arm") expect(now).toEqual(old);
+    else {
+      for (const x of old) expect(now, x).toContain(x);
+      // What it adds is the typing alone: its letters and its touches, nothing that leaves, asks or arms.
+      const added = now.filter((x) => !old.includes(x)).join("\n");
+      expect(added).not.toMatch(/navigate|switchTab|armFlowSession|requestPermission|callEndpoint/);
+    }
+  });
+
+  it("flow_arm says what to do next, over Keylessbord's keyboard, with \"Say it\" typed out a letter and a touch at a time", () => {
+    const s = build("flow_arm", true);
+    const json = JSON.stringify(s);
+    expect(json).toContain("Switch to the app you want to write in");
+    expect(json).toContain("Apple has a little trauma about microphones");
+    // Each letter: its key touched, the letter in, the key let go.
+    const steps = JSON.stringify(walk(s.root!).map((n) => n.on?.onAppear).filter(Boolean));
+    for (const k of ["s", "a", "y", " ", "i", "t"]) expect(steps).toContain(`{"kind":"setState","path":"flowTouch","value":"${k}"}`);
+    expect(steps).toContain('{"kind":"setState","path":"flowTyped","value":6}');
+    // The words as they grow, one at a time.
+    for (const w of ["S", "Sa", "Say", "Say ", "Say i", "Say it"]) expect(json).toContain(`"content":"${w}"`);
   });
 
   it("flow_arm leaves by switching to Talk, the tab the app opens on: never Stats, never Home pushed over it", () => {
@@ -63,7 +91,8 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     expect(s.theme?.color?.bg).toBe(CREAM);
     expect(s.root!.style?.backgroundColor).toBe(CREAM);
     const art = walk(s.root!).filter((n) => n.type === "Image").map((n) => (n.props?.source as { url: string }).url);
-    expect(art).toEqual([expect.stringMatching(/\/blip\/bots\/x0-hang\.png\?v=\d+$/)]);
+    // flow_arm draws Keylessbord's keyboard in the bot's place; the other two keep the icon's bot.
+    expect(art).toEqual(id === "flow_arm" ? [] : [expect.stringMatching(/\/blip\/bots\/x0-hang\.png\?v=\d+$/)]);
     // The kit's rules, save the mic (a phone part the kit has no helper for).
     expect(lintTree(s.root!).filter((m) => m !== "type VoiceToggle")).toEqual([]);
   });
