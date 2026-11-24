@@ -1,5 +1,14 @@
 # Being built right now (read before you start)
 
+## 24 Nov: START SOMETHING IS THE LIVING TILES AGAIN, ONE A ROW, SAYING WHAT EACH CAN DO
+
+The launcher had gone to small still cards in twos. It is Home's living tiles again (the bot playing on his fabric,
+looking round when another is tapped, a gesture of his own now and then; the Oracle, Mail and Cinema in their own
+characters), one a row and taller than Home's (128), each with its name and a short line on what it can do
+(`START_LINES`, written for this page and kept to two lines; a bot someone made says its purpose, cut to fit). Always a
+description here, never a status. A build that cannot draw the living tiles gets the same rows, still. Tests in
+`tests/bots-start.test.ts` (the file the screen's comment already pointed to, which did not exist).
+
 ## 24 Nov: TALK REACHES EVERY APP THEY CONNECTED, AND KNOWS THEIR SITES
 
 Talk could not use most of what people connected. Every bot has a short fixed list of apps (Plan Ease: calendar and tasks;
