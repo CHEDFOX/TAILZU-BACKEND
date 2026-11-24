@@ -110,6 +110,28 @@ describe("the screen route", () => {
   const caps = (components: string[], formFactor = "phone") => ({ platform: "ios", appVersion: "1.0.0", components, device: { formFactor, width: 390, height: 844 } });
   const post = (url: string, payload: object) => server.inject({ method: "POST", url, headers: auth, payload });
 
+  // The update card was only ever drawn on the old desk pages, so a window on the Bots app never offered its update.
+  it("an older desktop on the Bots app is offered its update at the top of Home; a current one and a Store install are not", async () => {
+    const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dl-"));
+    fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.version"), "0.4.9");
+    fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.sha512"), "a".repeat(128));
+    const was = process.env.DOWNLOADS_DIR;
+    process.env.DOWNLOADS_DIR = dir;
+    try {
+      const desk = (v: string, extra: string[] = []) => post("/v1/app/screen", { screenId: "bots.home",
+        capabilities: { platform: "web", appVersion: v, components: ["BotsKit", "DeskShell", "DeskSelfUpdate", ...extra], device: { formFactor: "desktop", os: "win32", width: 1280, height: 800 } } });
+      const old = await desk("0.4.7");
+      expect(old.statusCode).toBe(200);
+      expect(old.body).toContain("X0 Bot 0.4.9 is ready.");
+      expect(old.body).toContain('"kind":"installUpdate"');
+      expect((await desk("0.4.9")).body).not.toContain("is ready.");
+      expect((await desk("0.4.7", ["DeskStore"])).body).not.toContain("is ready.");
+    } finally {
+      if (was === undefined) delete process.env.DOWNLOADS_DIR; else process.env.DOWNLOADS_DIR = was;
+    }
+  });
+
   it("a build that draws the kit is booted into the Bots app", async () => {
     const r = await post("/v1/app/bootstrap", { capabilities: caps(["BotsKit"]) });
     expect(r.statusCode).toBe(200);
