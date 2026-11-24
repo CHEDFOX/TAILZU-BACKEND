@@ -78,7 +78,7 @@ import { registerCalendarRoutes } from "./botsCalendar.js";
 import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
-import { registerTalkRoutes } from "./botsTalk.js";
+import { registerTalkRoutes, type TalkRoutesParts } from "./botsTalk.js";
 import { registerActivitiesRoutes } from "./botsActivities.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
@@ -167,6 +167,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
    * ignored and its words are asked as they always were.
    */
   readFiles?: Front["readFiles"];
+  /** Talk's picture engine (the cinema bot's), asked for at each message because it is built after this (botsTalk.ts). */
+  pictures?: TalkRoutesParts["pictures"];
 } = {}): {
   sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
   chatShared: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
@@ -184,7 +186,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Plan Ease: the work calendar's link, captures, bills (routes/bots/planIn.ts)
   // TALK: the one screen's one thread (routes/bots/botsTalk.ts, docs/talk-door.md). It answers nothing itself: every message
   // goes through POST /v1/shell/ask, and this keeps the pair of turns so the thread reads as one conversation.
-  registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads });
+  registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads, ...(o.pictures ? { pictures: o.pictures } : {}) });
   // ACTIVITIES: what the work turned into, derived on every read from the feed, Talk's threads and the routines
   // (routes/bots/botsActivities.ts over botsBots/activities.ts). Nothing stored, nothing decided here.
   registerActivitiesRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions });

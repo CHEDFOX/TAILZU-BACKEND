@@ -12,19 +12,23 @@
  *   EVERY GROUP SAYS WHAT IT IS FOR. "Making — describe it, and they build it" answers the week-one question that a
  *   grid of ten heads never did. This is where someone learns what they have.
  *
- *   TWO OR FEWER SIT IN A ROW OF TWO; MORE THAN TWO SCROLL SIDEWAYS. A build that cannot scroll sideways gets the row
- *   of two either way, so the fallback is the small shape and needed no design of its own (docs/renderer.md § 4).
+ *   ONE BOT A ROW, ALIVE. Each is Home's living tile (BotTiles): the bot playing on its fabric, looking round when another
+ *   is tapped, now and then a gesture of his own; then its name, and a short line on what it can do — taller than Home's
+ *   rows, because here the line is the point. A build that cannot draw the living tiles gets the same rows, still.
  *
  * KEYLESSBORD IS NOT A TILE, and that is deliberate. It is a keyboard: you use it by typing in other apps, never by
  * starting something here, and its pages are settings-shaped (voices, words, haptics, history). A tile in a "start
  * something" grid would be a promise it does not keep — so it gets one plain line at the foot, which keeps every one
  * of its pages reachable without lying about what it is.
  */
-import type { Node } from "../../../../../../shared/types/sdui.js";
+import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, type LiveBot, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, botAvatar, icon,
-  canScrollX, grid, scrollRow, labelled, title as pageTitle, botRoute, RADIUS,
+  type BotsCtx, type LiveBot, page, col, row, text, meta, grow, C, open, SCREENS, sectionLabel, botAvatar, icon,
+  grid, labelled, title as pageTitle, botRoute, canMove, botTiles, botTileSpec, makeTileSpec, botTile, makeBotTile, homeSurprises,
 } from "../../kit.js";
+import { oracleTileLook } from "./oraclePage.js";
+import { mailTileLook } from "./mailPage.js";
+import { cinemaTileLook } from "./cinemaPage.js";
 import { botsMark } from "../../glyphs.js";
 import { idleLine } from "../shell/parts.js";
 
@@ -48,50 +52,67 @@ export const NOT_TILED: readonly string[] = ["talk", "keybot"];
 /** Every slug a group claims, for the check that nothing is lost. */
 export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slugs);
 
-/** One bot, as something to start: its head, its name, and what it is for in the app's own words. */
-function tile(b: LiveBot, ctx: BotsCtx): Node {
-  return col([
-    botAvatar(b, 34),
-    col([
-      text(b.name, { size: 14, weight: 600, lineHeight: 19, lines: 1 }),
-      meta(idleLine(b, ctx.client), { size: 12, lines: 2 }),
-    ], { gap: 2 }),
-  ], {
-    gap: 10, padding: 14, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line, minWidth: 0,
-  }, botRoute(b.slug));
+/**
+ * WHAT EACH CAN DO, IN A LINE THAT FITS TWO LINES OF A TILE. The built-ins' own words for this page (their `purpose` is
+ * written for the door that routes to them, and runs longer); a bot someone made says its purpose, cut to fit.
+ */
+export const START_LINES: Readonly<Record<string, string>> = {
+  plan: "Turns a goal into timed steps and puts them on your calendar.",
+  oracle: "Reads your birth chart to answer about love, work and timing.",
+  meet: "Joins your calls, takes the notes and turns what's agreed into to-dos.",
+  mail: "Sorts your business email and drafts replies in your voice.",
+  notes: "Keeps what was said in your meetings, and what was agreed.",
+  code: "Reads your projects, answers about the code, ships changes as PRs.",
+  cinema: "Makes films shot by shot, and pictures: posters, portraits, logos.",
+  travel: "Plans trips: routes, stays and timings, with sources.",
+  lingo: "Teaches a language by talking, and brings words back before you forget.",
+};
+const LINE_MAX = 90;
+
+export function startLine(b: LiveBot, ctx: BotsCtx): string {
+  const own = b.builtin ? START_LINES[b.slug] : undefined;
+  if (own) return own;
+  const p = (b.purpose || "").replace(/\s+/g, " ").trim();
+  if (!p) return idleLine(b, ctx.client);
+  if (p.length <= LINE_MAX) return p;
+  const cut = p.slice(0, LINE_MAX);
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40)).replace(/[,;:\s]+$/, "")}…`;
 }
 
-/** The one that makes a new bot, in the same shape as the rest so it reads as one of the things you can start. */
-function makeTile(): Node {
-  return col([
-    box([icon("plus", { size: 20, color: C.ink })], {
-      width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: C.outline, borderStyle: "dashed",
-      alignItems: "center", justifyContent: "center",
-    }),
-    col([
-      text("Make a bot", { size: 14, weight: 600, lineHeight: 19 }),
-      meta("One sentence is enough", { size: 12, lines: 2 }),
-    ], { gap: 2 }),
-  ], {
-    gap: 10, padding: 14, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.outline, borderStyle: "dashed", minWidth: 0,
-  }, open(SCREENS.make));
+/** How tall a row is: Home's rows are 104; these carry two lines of what the bot can do. */
+export const START_TILE_HEIGHT = 128;
+
+/** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
+function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
+  return {
+    ...botTileSpec({ ...b, working: false, needs: 0 }, { idle: startLine(b, ctx), onPress: botRoute(b.slug) }),
+    state: "idle",
+    // The Oracle wears its character, the mail bot the postie, the cinema bot the director, as on Home.
+    ...(b.builtin && b.slug === "oracle" ? oracleTileLook(ctx) : b.builtin && b.slug === "mail" ? mailTileLook(ctx) : b.builtin && b.slug === "cinema" ? cinemaTileLook(ctx) : {}),
+  };
 }
 
-/** Two or fewer in a row of two; more than two scroll sideways (and a build that cannot, gets the row of two). */
-export function groupRow(ctx: BotsCtx, tiles: Node[]): Node {
-  if (tiles.length > 2 && canScrollX(ctx)) {
-    return scrollRow(tiles.map((t) => box([t], { width: 158, flexShrink: 0 })), { gap: 10 });
+/** A group's bots, one a row: alive where the build draws it, else the same rows still. `make` adds Make a bot at the end. */
+export function groupRow(ctx: BotsCtx, bots: LiveBot[], o: { make?: boolean } = {}): Node {
+  const height = START_TILE_HEIGHT, padding = 16, gap = 12;
+  if (canMove(ctx)) {
+    const surprises = homeSurprises(ctx);
+    return botTiles([...bots.map((b) => tileSpec(b, ctx)), ...(o.make ? [{ ...makeTileSpec(open(SCREENS.make)), sub: "One sentence is enough" }] : [])],
+      { columns: 1, height, padding, gap, ...(surprises ? { surprises } : {}) });
   }
-  return grid(tiles, 2, 10);
+  return grid([
+    ...bots.map((b) => botTile({ ...b, working: false, needs: 0 }, { idle: startLine(b, ctx), onPress: botRoute(b.slug), height, padding })),
+    ...(o.make ? [makeBotTile({ onPress: open(SCREENS.make), height, padding })] : []),
+  ], 1, gap);
 }
 
 /** A group and its line, with its bots under it. Nothing for a group whose bots this person does not have. */
 function groupBlock(ctx: BotsCtx, g: (typeof BOT_GROUPS)[number], have: Map<string, LiveBot>): Node[] {
-  const tiles = g.slugs.map((s) => have.get(s)).filter((b): b is LiveBot => !!b).map((b) => tile(b, ctx));
-  if (!tiles.length) return [];
+  const bots = g.slugs.map((s) => have.get(s)).filter((b): b is LiveBot => !!b);
+  if (!bots.length) return [];
   return [col([
     col([sectionLabel(g.title), meta(g.line, { size: 12, lineHeight: 16 })], { gap: 2 }),
-    groupRow(ctx, tiles),
+    groupRow(ctx, bots),
   ], { gap: 10 })];
 }
 
@@ -110,7 +131,7 @@ export function botsStartPage(ctx: BotsCtx): ReturnType<typeof page> {
       ...BOT_GROUPS.flatMap((g) => groupBlock(ctx, g, have)),
       col([
         col([sectionLabel("Yours"), meta(mine.length ? "The ones you made" : "Nothing yet — one sentence is enough", { size: 12, lineHeight: 16 })], { gap: 2 }),
-        groupRow(ctx, [...mine.map((b) => tile(b, ctx)), makeTile()]),
+        groupRow(ctx, mine, { make: true }),
       ], { gap: 10 }),
       // The keyboard: one line, because it is not something you start (see this file's head).
       ...(keybot ? [labelled(row([

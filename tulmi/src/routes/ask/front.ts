@@ -91,6 +91,8 @@ export interface AskInput {
    * own roads have their own visual ladder (docs/front-door.md section 4) and are untouched by it.
    */
   draw?: boolean;
+  /** Talk: the bot may use every app the person connected and knows their signed-in sites (bots/run.ts everyApp). */
+  everyApp?: boolean;
   ctx: Omit<FrontCtx, "userId" | "plan">;
   data: Map<string, Buffer>;
   stream: boolean;
@@ -117,6 +119,7 @@ export function readAsk(body: unknown): AskRead {
   if (b.bot !== undefined && (typeof b.bot !== "string" || b.bot.length > 40 || !/^(?:any|auto|[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(b.bot))) return bad('bot is "any" or a bot\'s slug.');
   if (b.streamId !== undefined && (typeof b.streamId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(b.streamId))) return bad("streamId is 16 to 64 letters, digits, - or _.");
   if (b.draw !== undefined && typeof b.draw !== "boolean") return bad("draw is true or false.");
+  if (b.everyApp !== undefined && typeof b.everyApp !== "boolean") return bad("everyApp is true or false.");
 
   const attachments: AttachmentRef[] = [];
   const data = new Map<string, Buffer>();
@@ -147,6 +150,7 @@ export function readAsk(body: unknown): AskRead {
     input: {
       message: b.message, data, stream: b.stream === true, ...(typeof b.bot === "string" ? { bot: b.bot } : {}),
       ...(b.draw === true ? { draw: true as const } : {}),
+      ...(b.everyApp === true ? { everyApp: true as const } : {}),
       ctx: {
         device: b.device as Device, mode: b.mode as Mode, visuals: (b.visuals as VisualPref | undefined) ?? "auto", recent, attachments,
         ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}), ...(typeof b.threadId === "string" ? { threadId: b.threadId } : {}),
@@ -265,7 +269,9 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
         const emit = (ev: unknown): void => { toWords(ev as { t: string }); emitOut(ev); };
         // "Ask any bot", or a bot the person chose: the front door picks, or is told. Xode and "none of them" go down the front door's own roads, unchanged.
         if (bots) {
-          const target = await bots.target(user.id, input.bot!, input.message, { ...(ctx.projectId ? { projectId: ctx.projectId } : {}), attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode }, stop);
+          // Talk (everyApp): the bot may use every app they connected and knows their sites, and an ask about one of those
+          // that no bot fits is Talk's own bot's rather than the toolless road's (bots/service.ts target).
+          const target = await bots.target(user.id, input.bot!, input.message, { ...(ctx.projectId ? { projectId: ctx.projectId } : {}), attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode }, stop, input.everyApp === true ? { everyApp: true } : {});
           if (target.kind === "bot") {
             const daily = front?.guard.daily;
             // The front door's own spend on this person today: the picker's small model and the reading of a file are its own, like its replies are.
@@ -290,6 +296,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
               // Drawn under its words only where the caller really draws it (Talk's thread): the drawing's own cap comes
               // off this request's meter, as it does in a bot's chat (docs/show.md section 9).
               ...(input.draw === true ? { draw: true as const } : {}),
+              ...(input.everyApp === true ? { everyApp: true as const } : {}),
             });
             if (read?.notes.length) answer.notes.push(...read.notes.map((n) => n.note ?? "").filter(Boolean));
             daily?.add(user.id, target.paise + answer.paise);

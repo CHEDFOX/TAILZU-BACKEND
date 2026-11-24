@@ -1,5 +1,88 @@
 # Being built right now (read before you start)
 
+## 24 Nov: NO PLIVO FOR NOW: THE IN-APP CALL IS THE LOUDEST STEP
+
+There is no Plivo account, so real phone calls stay off (`CHANNEL_PHONE_CALLS` unset: the routes answer 404, What pings you
+shows no "X0 may call my phone" switch, and the ladder's phone step passes quietly). The in-app "X0 is calling" is the
+loudest step a must-not-miss item climbs to. One leftover fixed: the follow page's "Next: a phone call, if you turned that
+on" was promised even with no provider; the phone step is now counted only when the provider is ready and their switch is on.
+
+## 24 Nov: START SOMETHING IS THE LIVING TILES AGAIN, ONE A ROW, SAYING WHAT EACH CAN DO
+
+The launcher had gone to small still cards in twos. It is Home's living tiles again (the bot playing on his fabric,
+looking round when another is tapped, a gesture of his own now and then; the Oracle, Mail and Cinema in their own
+characters), one a row and taller than Home's (128), each with its name and a short line on what it can do
+(`START_LINES`, written for this page and kept to two lines; a bot someone made says its purpose, cut to fit). Always a
+description here, never a status. A build that cannot draw the living tiles gets the same rows, still. Tests in
+`tests/bots-start.test.ts` (the file the screen's comment already pointed to, which did not exist).
+
+## 24 Nov: TALK REACHES EVERY APP THEY CONNECTED, AND KNOWS THEIR SITES
+
+Talk could not use most of what people connected. Every bot has a short fixed list of apps (Plan Ease: calendar and tasks;
+Travel: maps and booking), so Gmail, Notion or Zapier were on nobody's list; and an ask no bot fitted went down the front
+door's road, which has no tools at all, so "anything from HDFC in my Gmail?" was answered from nothing. The signed-in sites
+were never offered to any bot.
+
+Now Talk marks its messages `everyApp`: the bot answering gets every app the person connected (the apps' permission tiers
+unchanged: a change still asks), is told which apps and which signed-in sites it can reach and what is being watched there,
+may watch one more page (`site_watch`; sites stay read only), and an ask about something connected that no bot fits goes to
+Talk's own bot (`touchesWhatTheyConnected`). Outside Talk nothing changes. The Talk bot's rule about what it can do now
+now covers using their apps through its tools. docs/talk-door.md section 6b.
+
+## 24 Nov: TALK MAKES A PICTURE WHEN ASKED FOR ONE
+
+"Make a poster…", "draw…", "logo banao…", or a photo with "remove the background": Talk made none, because nothing in the door
+makes pictures and the one engine that does (the cinema bot's) was only reachable from its own page. Now Talk spots the ask
+from the words alone (`botsBots/pictureAsk.ts`, narrow on purpose: a picture costs money) and the cinema bot's engine makes
+it, with any attached photo as its reference; the Cinema bot answers with the picture under its words and a tap opens it.
+Its cap, its charge and the AI permission are the engine's own, and its refusals are said in the thread. Needs `CINEMA=true`
+(with it off, the ask goes through the door as before). The door is not asked, so these have no Activity row yet.
+
+## 24 Nov: A PHOTO GOES IN TALK THE WAY IT DOES IN A CHAT APP — AND THE HELLO IS ALONE ON THE SCREEN
+
+Inserting a file did nothing you could see: pick, it showed in the card, and that was the end. Four things stopped it, and
+one more on the window:
+
+1. **A photo with no words was refused** (`botsTalk.ts`: "message is what the person said"). Now a photo on its own is a
+   message: the bot is told what came ("Have a look at this photo.") and the turn keeps no made-up words.
+2. **Nothing on Talk's bar said a file was on the ask** once the card shut. The strip is there now (`ask.ts askFiles`), each
+   file with its own × (one taken off from the middle leaves a gap, skipped when sent) and a **send of its own** — the box's
+   send stays grey with nothing typed, and that is the apps' field, so the strip's send is how a photo goes alone.
+3. **The thread never showed the file.** The person's turn keeps the refs (`extra.files`) and draws a photo as itself, by a
+   signed link to their own upload (`media/link.ts`, `GET /v1/files/<user>/<id>/picture`), any other file as its name.
+4. **The card stayed open over everything.** A pick now closes it once the file is up, as an attach menu does.
+5. **The window showed a paperclip for every picture**: the installed window draws a picture only from the tree, never from
+   state, and its main window is not in the UI bundle, so that cannot change without an installer. So the window shows each
+   file as a chip with its NAME (a bound Text, which it does draw), with the same ×; a SENT photo is drawn from the tree in
+   the thread, so the window shows it as a picture there. No desktop release is needed. (TAILZU-DESKTOP also learnt to draw
+   a bound picture, so whichever installer comes next can show thumbnails; nothing depends on it.)
+
+`MEDIA_LINK_SECRET` signs the links (made at each start when unset; set it with more than one server).
+
+And the welcome: while he waves, he is alone — the head and the bar keep their room and fade in with the box.
+
+Not yet: pictures in a bot's answer; a server with no R2 keeps no bytes, so a sent photo is an empty frame there.
+
+## 24 Nov: TALK SAYS HELLO — ONE BOT, AND A LINE FOR THE HOUR AFTER
+
+When the Bots tab went (20 Nov), Home's welcome went with it in all but name: Talk drew the microphone card that used to
+follow it, never the bot saying hello, and closing that card marked the welcome done for good. So a new person met the
+app with no hello at all, and "Welcome back" after a long time away was lost the same way.
+
+It is on Talk now (`screens/bots/talkWelcome.ts`, docs/talk-door.md section 1a), and it is one bot in one place. He
+waves with "Hi Aanya, I'm X0" and does **not** walk off: the dashed box draws in around him where he stands, he turns to
+listening, and his words change to "Say what you need". The chips come in under it, and the card (which keeps its own
+bot) waits a beat more, so the two never land together. The empty thread's old box drew a second bot under the one that
+had just left; that is gone with the walk.
+
+Every visit after, the same box says something short for the hour, in the person's own time: "Morning, Aanya",
+"Midday ask?", "Golden-hour chat?", "Moonlit chat?" — one line a part of the day, the next one tomorrow. English only
+for now: the lines have no Hinglish yet.
+
+Talk no longer jumps to its end while the welcome plays: the words change size, and the jump carried the head off the
+top. Server only; the box is a Rise behind the bot, which both apps already draw. Rendered and looked at, on both
+clients and in motion (`showcase.ts --only bots.talk`: the new `welcome` sample). 12,988 pass.
+
 ## 22 Nov: CONNECTING AN APP THAT ASKS FOR A PASTED LINK NOW SAYS WHERE THE LINK IS MADE
 
 The box said "Paste the link from the app" and nothing else. For Zapier — the one `auth: "url"` app in the catalog — the link

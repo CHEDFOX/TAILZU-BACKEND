@@ -94,6 +94,13 @@ export interface RunRequest {
   fresh?: boolean;
   /** The answer is drawn where it goes (the app's chat): ask what to draw under its words (step 7). Never for an API caller. */
   draw?: boolean;
+  /**
+   * EVERY APP THEY CONNECTED, AND THEIR SITES (Talk, docs/talk-door.md section 6b). Talk is one thread every bot answers in,
+   * so the bot answering there may use any app the person connected, not only the ones on its own list, and knows which sites
+   * they are signed in to and what is being watched there (read only). The apps' own permission tiers still hold: a read runs,
+   * a change asks the person first.
+   */
+  everyApp?: boolean;
 }
 
 /** How many turns the model gets: tool rounds, then one to say the answer. */
@@ -122,7 +129,13 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   // The Oracle's words are its own service's (src/oracle/run.ts): the sky, the turns, the route; no tool loop.
   if (r.bot.ownerId === null && r.bot.slug === ORACLE_SLUG) return runOracle(d, r);
   const t0 = (d.now ?? Date.now)();
-  const bot = r.bot;
+  // In Talk, every app they connected (the bot's own list first, then the rest, each once).
+  const connected = r.everyApp && d.ports.connectors
+    ? (await d.ports.connectors.catalog(r.userId).catch(() => [])).filter((a) => a.connected).map((a) => a.id)
+    : [];
+  const bot = connected.length
+    ? { ...r.bot, skills: { ...r.bot.skills, connectors: [...new Set([...r.bot.skills.connectors, ...connected])] } }
+    : r.bot;
   const emit = r.emit ?? (() => undefined);
   const base: CallFn = d.call ?? (callModel as CallFn);
   const meter = new Meter(r.capPaise);
@@ -175,7 +188,9 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     : null;
   // The cinema bot reads their films and pictures (cinema/digest.ts).
   const cinema = bot.ownerId === null && bot.slug === CINEMA_SLUG ? await cinemaDigest(r.userId).catch(() => null) : null;
-  const knowledge = [know?.text, mail, meet, lingo, cinema].filter((x): x is string => !!x?.trim()).join("\n\n");
+  // In Talk: what they connected and the sites they are signed in to, so the bot knows what it can reach and what it cannot.
+  const reach = r.everyApp ? await reachOf(d, r.userId, connected).catch(() => null) : null;
+  const knowledge = [know?.text, mail, meet, lingo, cinema, reach].filter((x): x is string => !!x?.trim()).join("\n\n");
   // The addresses this turn reads: the only ones a drawing may link to or show (show/links.ts). Every tool's result joins them below.
   const read = new Seen();
   read.add(r.message);
@@ -184,7 +199,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 
   const kit = await buildTools({
     bot, userId: r.userId, runId, ...(r.projectId ? { projectId: r.projectId } : {}), ports: d.ports, meter, call, ...(d.gateway ? { gateway: d.gateway } : {}),
-    ...(r.signal ? { signal: r.signal } : {}), record,
+    ...(r.signal ? { signal: r.signal } : {}), record, ...(r.everyApp ? { sites: true } : {}),
   });
   notes.push(...record.notes.splice(0));
   if (kit.notConnected.length) notes.push(`Not connected yet: ${kit.notConnected.join(", ")}. Connect ${kit.notConnected.length === 1 ? "it" : "them"} in X0 Bot to let this bot use ${kit.notConnected.length === 1 ? "it" : "them"}.`);
@@ -283,3 +298,30 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   emit({ t: "result", result: answer });
   return answer;
 }
+
+/**
+ * WHAT THIS PERSON HAS CONNECTED, AS THE BOT IS TOLD IT (Talk). The apps by name, so "check my Gmail" is known to be
+ * possible; the sites they are signed in to, with what is being watched and its latest card, so "where is my order?" is
+ * answered from it, and so the bot knows a site is READ ONLY (nothing on it can be pressed, typed or paid).
+ */
+async function reachOf(d: RunDeps, userId: string, connected: readonly string[]): Promise<string | null> {
+  const lines: string[] = [];
+  if (connected.length && d.ports.connectors) {
+    const names = (await d.ports.connectors.catalog(userId).catch(() => [])).filter((a) => connected.includes(a.id)).map((a) => a.name);
+    if (names.length) lines.push(`Apps they connected (use their tools for anything about them; a change asks them first): ${names.join(", ")}.`);
+  }
+  const sites = d.ports.sites?.() ?? null;
+  if (sites) {
+    const snap = await sites.snapshot(userId).catch(() => null);
+    if (snap?.logins.length) {
+      lines.push(`Sites they are signed in to (read only: you can read what is watched and watch a page with site_watch; you cannot press, type, order or pay on them): ${snap.logins.map((l) => `${l.site}${l.needsSignIn ? " (needs signing in again)" : ""}`).join(", ")}.`);
+    }
+    const now = (d.now ?? Date.now)();
+    for (const w of (snap?.watches ?? []).filter((x) => x.state === "open" || x.card).slice(0, 8)) {
+      const ago = w.readAt ? ` (read ${Math.max(1, Math.round((now - w.readAt) / 60_000))} min ago)` : "";
+      lines.push(`Watching on ${w.site}: ${w.label}${w.card ? ` — ${w.card.title}: ${w.card.line}${w.card.detail ? `; ${w.card.detail}` : ""}${w.card.done ? " (finished)" : ""}` : " — not read yet"}${ago}.`);
+    }
+  }
+  return lines.length ? lines.join("\n") : null;
+}
+

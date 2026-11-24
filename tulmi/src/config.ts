@@ -835,8 +835,13 @@ const EnvSchema = z.object({
    * src/media/sigv4.ts). R2_SECRET_ACCESS_KEY is a SECRET: .env only. Without all four, files are read and their text kept but their bytes are not.
    *
    * MEDIA_KEEP_DAYS: how long a file is kept unless the person keeps it (30).
+   *
+   * MEDIA_LINK_SECRET (SECRET: .env only): signs the links the apps draw a person's own uploaded picture by (media/link.ts: the
+   * picture on the ask, and in the chat once sent). When not set, a secret is made at each start; the links are made fresh each
+   * time a screen is drawn, so nothing breaks, but with more than one server set it so each one opens the others' links.
    */
   MEDIA_INGEST: bool(false),
+  MEDIA_LINK_SECRET: z.string().optional(),
   MEDIA_WORKER_URL: z.string().trim().optional(),
   MEDIA_WORKER_SECRET: z.string().optional(),
   /**

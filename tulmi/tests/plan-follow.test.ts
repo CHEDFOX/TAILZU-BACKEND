@@ -1106,3 +1106,26 @@ describe("review fixes", () => {
     expect(f.people.map((p) => p.name)).not.toContain("Mom");
   });
 });
+
+// ===================================================================== the next step never promises a phone call that cannot come
+
+describe("the next step, with and without real phone calls", () => {
+  it("with no phone provider set up, the in-app call is the loudest step: the line never says a phone call is next", async () => {
+    const r = rig(ist(12, 8));
+    r.set(U, { phoneCall: true });
+    await medicine(r, []);
+    for (const m of [0, 5, 10]) await r.at(12, 21, m);
+    const v = await r.follows.view(U, (await r.only()).id);
+    expect(v?.next?.line ?? "").not.toMatch(/phone call/);
+  });
+
+  it("with the provider ready and their switch on, the line says a phone call is next", async () => {
+    setFollowChannels({ phone: { ready: () => true, canCall: async () => "ok", call: async () => ({ id: "c1" }), numberOf: async () => null } } as never);
+    const r = rig(ist(12, 8));
+    r.set(U, { phoneCall: true });
+    await medicine(r, []);
+    for (const m of [0, 5, 10]) await r.at(12, 21, m);
+    const v = await r.follows.view(U, (await r.only()).id);
+    expect(v?.next?.line ?? "").toMatch(/phone call/);
+  });
+});
