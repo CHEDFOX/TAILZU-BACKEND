@@ -1338,6 +1338,12 @@ function navItem(labelText: string, glyph: Node, active: boolean, onPress: Actio
 }
 
 /** The window's sidebar: the mark, the three tabs as living icons, your bots (live), Make a bot, the desk's pages, settings. */
+/**
+ * THE SIDEBAR'S PLACES ARE PLACES, NOT STEPS. Each one opens with nothing behind it, as a tab does (`root`): pushed, a few minutes
+ * moving between bots in the sidebar left a stack of every one, and Back walked the whole way back through them.
+ */
+const asRoot = (a: ActionSpec): ActionSpec => (a.kind === "navigate" ? { ...a, root: true } : a);
+
 export function sidebar(ctx: BotsCtx, active?: string): Node {
   const live = ctx.live;
   const plain = (name: IconName, on: boolean) => icon(name, { size: 20, color: on ? C.ink : C.meta });
@@ -1345,19 +1351,19 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
     const dot = statusMark("working", { color: b.color, still: !b.working });
     const right = b.needs ? statusMark("needs")
       : b.working ? text("working", { size: 12, weight: 500, color: b.color }) : undefined;
-    return navItem(b.name, dot, active === b.slug, botRoute(b.slug), 38, right);
+    return navItem(b.name, dot, active === b.slug, asRoot(botRoute(b.slug)), 38, right);
   });
   return col([
     row([tailzuMark(28), text("X0 Bot", { size: 17, weight: 700, tracking: -0.3 })], { gap: 10, paddingHorizontal: 8, paddingBottom: 16 }),
     ...TABS.map((t) => navItem(t.title, tabGlyph(t.id, active === t.id, live.tab, 22), active === t.id, toTab(t.id), 44)),
     sectionLabel("Your bots", { style: { paddingTop: 16, paddingBottom: 6, paddingHorizontal: 10 } }),
     ...botItems,
-    navItem("Make a bot", icon("plus", { size: 18, color: C.meta }), active === "make", open(SCREENS.make), 38),
+    navItem("Make a bot", icon("plus", { size: 18, color: C.meta }), active === "make", asRoot(open(SCREENS.make)), 38),
     box([], { height: 1, backgroundColor: C.divider, marginVertical: 8, marginHorizontal: 10 }),
-    ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", open(SCREENS.today), 40)] : []),
-    ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", open(SCREENS.notes), 40)] : []),
+    ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", asRoot(open(SCREENS.today)), 40)] : []),
+    ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", asRoot(open(SCREENS.notes)), 40)] : []),
     grow(),
-    navItem("Settings", plain("settings", active === "settings"), active === "settings", open(SCREENS.settings), 40),
+    navItem("Settings", plain("settings", active === "settings"), active === "settings", asRoot(open(SCREENS.settings)), 40),
   ], {
     width: 240, flexShrink: 0, height: "100%", borderRightWidth: 1, borderRightColor: C.divider, paddingTop: 22, paddingHorizontal: 14, paddingBottom: 18, gap: 2,
     backgroundColor: C.paper,
