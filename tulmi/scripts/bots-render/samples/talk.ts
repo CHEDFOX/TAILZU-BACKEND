@@ -140,3 +140,10 @@ export const TALK_THREADS_API: Record<string, unknown> = {
 export const TALK_EMPTY_API: Record<string, unknown> = {
   "GET /v1/botsapp/talk?limit=40": { turns: [], session: null, people, commands: [{ name: "new", line: "Start a new thread" }] },
 };
+
+/** The first visit: the welcome is due, so the bot says hello on the empty thread before the box draws in around him. */
+export const TALK_WELCOME_API: Record<string, unknown> = {
+  ...TALK_EMPTY_API,
+  "GET /v1/bots/first-run/arrival": { due: true, kind: "first" },
+  "GET /v1/you/ai-consent": { agreed: true, asked: true },
+};

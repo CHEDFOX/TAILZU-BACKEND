@@ -17,6 +17,8 @@ vi.hoisted(() => {
   process.env.GROQ_API_KEY = "k";
   process.env.DEV_SKIP_AUTH = "true";
   process.env.NODE_ENV = "test";
+  // Reading files is a deployment switch (MEDIA_INGEST); the attach is drawn only where the server can take a file.
+  process.env.MEDIA_INGEST = "true";
 });
 
 vi.mock("../src/auth/supabase.js", async (orig) => {
@@ -39,7 +41,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
 const { TALK_API, TALK_EMPTY_API, TALK_JOB } = await import("../scripts/bots-render/samples/talk.js");
-const { lintTree } = await import("../src/experience/bots/lint.js");
+const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 
 const RL = { rateLimit: { max: 1000, timeWindow: 60_000 } };
 const NONE = { code: null, jobs: null, connectors: null, media: null, artifacts: null };
@@ -117,7 +119,7 @@ describe("the two marks", () => {
 describe("the Talk door", () => {
   beforeEach(() => resetAreaTablesForTests());
 
-  function served(o: { answer?: () => { status: number; body: unknown } } = {}) {
+  function served(o: { answer?: () => { status: number; body: unknown }; pictures?: unknown } = {}) {
     const app = Fastify();
     const asked: Array<Record<string, unknown>> = [];
     // The front door, stubbed: what it decides is its own business and is tested in front-*.test.ts. What is tested here
@@ -142,7 +144,7 @@ describe("the Talk door", () => {
     registerBotsShellRoutes(app, { rateLimit: RL, ...NONE, bots } as never, { events });
     const parts = botsAreaParts({ bots, connectors: null });
     const threads = { contacts: async () => ({ people: [{ userId: "u-mom", name: "Mom", spaces: ["s1"], bot: null }] }) } as never;
-    registerTalkRoutes(app, { rateLimit: RL, ...NONE, bots }, { chat: parts.chat, sessions: parts.sessions, threads });
+    registerTalkRoutes(app, { rateLimit: RL, ...NONE, bots }, { chat: parts.chat, sessions: parts.sessions, threads, ...(o.pictures !== undefined ? { pictures: () => o.pictures as never } : {}) });
     const say = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: "/v1/botsapp/talk", headers: who, payload });
     // `session` names one conversation to read instead of whichever is current (routes/bots/botsTalk.ts).
     const read = (o: { session?: string } = {}) => app.inject({
@@ -158,6 +160,8 @@ describe("the Talk door", () => {
     expect(r.statusCode).toBe(200);
     // It went through the door that already exists, as a message with no bot named.
     expect(t.asked[0]).toMatchObject({ message: "what's on tomorrow?", draw: true });
+    // Talk's bot, whichever answers, may use every app they connected and knows their sites (docs/talk-door.md 6b).
+    expect(t.asked[0]).toMatchObject({ everyApp: true });
     const turns = (await t.read()).json().turns as Array<Record<string, unknown>>;
     expect(turns.map((x) => x.role)).toEqual(["me", "bot"]);
     expect(turns[0]).toMatchObject({ text: "what's on tomorrow?" });
@@ -261,6 +265,107 @@ describe("the Talk door", () => {
     const after = (await t.read()).json().turns as Array<{ text: string }>;
     expect(after[2]!.text).toContain("As a task");
   });
+
+  // A PHOTO, THE WAY A CHAT APP SENDS ONE: with words or without, kept on the person's own turn.
+  const PHOTO = { id: "11111111-1111-4111-8111-111111111111", kind: "image", mime: "image/png", bytes: 2048, sha256: "a".repeat(64), name: "receipt.png" };
+  const PDF = { id: "22222222-2222-4222-8222-222222222222", kind: "document", mime: "application/pdf", bytes: 9000, sha256: "b".repeat(64), name: "lease.pdf" };
+
+  it("a photo on its own is a message: the bot is told what came, and the photo goes with it", async () => {
+    const t = served();
+    const r = await t.say({ message: "", attachments: [PHOTO] });
+    expect(r.statusCode).toBe(200);
+    expect(t.asked[0]).toMatchObject({ message: "Have a look at this photo.", attachments: [expect.objectContaining({ id: PHOTO.id })] });
+    // The person's own turn keeps no made-up words, only what they sent.
+    const mine = (await t.read()).json().turns[0];
+    expect(mine).toMatchObject({ role: "me", text: "", files: [{ id: PHOTO.id, name: "receipt.png", kind: "image", mime: "image/png", bytes: 2048 }] });
+  });
+
+  it("with words, the words are the question and the files ride with them", async () => {
+    const t = served();
+    await t.say({ message: "split this bill", attachments: [PHOTO, PDF] });
+    expect(t.asked[0]).toMatchObject({ message: "split this bill" });
+    expect((t.asked[0]!.attachments as unknown[]).length).toBe(2);
+    const mine = (await t.read()).json().turns[0];
+    expect(mine.text).toBe("split this bill");
+    expect(mine.files.map((f: { name: string }) => f.name)).toEqual(["receipt.png", "lease.pdf"]);
+  });
+
+  it("a file taken off from the middle leaves a gap in the app's list: the gap is skipped, the rest go", async () => {
+    const t = served();
+    await t.say({ message: "", attachments: [null, PDF, null] });
+    expect(t.asked[0]).toMatchObject({ message: "Have a look at this file: lease.pdf", attachments: [expect.objectContaining({ id: PDF.id })] });
+    expect((t.asked[0]!.attachments as unknown[]).length).toBe(1);
+  });
+
+  it("a list of only gaps, or refs that are not refs, is still nothing to send", async () => {
+    const t = served();
+    expect((await t.say({ message: "", attachments: [null, null] })).statusCode).toBe(400);
+    expect((await t.say({ message: "", attachments: [{ id: "../etc", name: "x" }] })).statusCode).toBe(400);
+    expect(t.asked.length).toBe(0);
+  });
+
+  // A PICTURE, ASKED FOR: the picture engine makes it and the cinema bot answers with it.
+  const engine = (o: { fail?: { status: number; message: string } } = {}) => {
+    const calls: Array<{ userId: string; words: string; photoIds: string[] }> = [];
+    return {
+      calls,
+      make: async (userId: string, x: { words: string; photoIds: string[] }) => {
+        calls.push({ userId, ...x });
+        if (o.fail) throw Object.assign(new Error(o.fail.message), o.fail);
+        return { id: "pic_1", type: "image/png", note: null };
+      },
+    };
+  };
+
+  it("\"make a poster…\" is made by the picture engine and kept as the cinema bot's answer, the picture on its turn", async () => {
+    const e = engine();
+    const t = served({ pictures: e });
+    const r = await t.say({ message: "make a poster for Riya's birthday, gold and pink" });
+    expect(r.statusCode).toBe(200);
+    expect(e.calls).toEqual([{ userId: U, words: "make a poster for Riya's birthday, gold and pink", photoIds: [] }]);
+    // The door is not asked: the picture is the answer.
+    expect(t.asked.length).toBe(0);
+    const turns = (await t.read()).json().turns;
+    expect(turns[1]).toMatchObject({ role: "bot", text: "Here it is.", by: { slug: "cinema", name: "Cinema" }, images: [{ id: "pic_1", type: "image/png" }] });
+  });
+
+  it("a photo with \"remove the background\" is an edit: the photo goes to the engine as its reference", async () => {
+    const e = engine();
+    const t = served({ pictures: e });
+    await t.say({ message: "remove the background", attachments: [PHOTO] });
+    expect(e.calls[0]).toMatchObject({ words: "remove the background", photoIds: [PHOTO.id] });
+    const mine = (await t.read()).json().turns[0];
+    expect(mine.files[0].id).toBe(PHOTO.id);
+  });
+
+  it("its own refusal is said as the answer, so the thread says why there is no picture", async () => {
+    const t = served({ pictures: engine({ fail: { status: 429, message: "Today's films and pictures are used up. It starts again tomorrow, or see the plans." } }) });
+    const r = await t.say({ message: "draw a cat on a skateboard" });
+    expect(r.statusCode).toBe(200);
+    const turns = (await t.read()).json().turns;
+    expect(turns[1].text).toContain("used up");
+    expect(turns[1].images).toBeUndefined();
+  });
+
+  it("anything that is not an ask for a picture goes through the door as always", async () => {
+    const e = engine();
+    const t = served({ pictures: e });
+    await t.say({ message: "show me photos of hotels in Goa" });
+    expect(e.calls.length).toBe(0);
+    expect(t.asked.length).toBe(1);
+  });
+
+  it("with no picture engine (the cinema bot off), an ask for a picture goes through the door", async () => {
+    const t = served({ pictures: null });
+    await t.say({ message: "make a poster for Riya's birthday" });
+    expect(t.asked.length).toBe(1);
+  });
+
+  it("several photos with no words are named as photos", async () => {
+    const t = served();
+    await t.say({ message: "", attachments: [PHOTO, { ...PHOTO, id: "33333333-3333-4333-8333-333333333333" }] });
+    expect(t.asked[0]).toMatchObject({ message: "Have a look at these 2 photos." });
+  });
 });
 
 // ===================================================================== 3. the screen
@@ -362,7 +467,9 @@ describe("Talk's screen", () => {
 
   it("an empty thread offers things to say and the two marks, never a list of bots", async () => {
     const s = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>));
-    expect(s).toContain("Say what you need");
+    // The bot in his box, with the line of the day under him (FIXED_NOW is 7:40 pm in India: the evening).
+    expect(s).toMatch(/Evening, Aanya|Wrapping up the day\?|Golden-hour chat\?/);
+    expect(s).toContain("Whichever bot it belongs to answers here");
     expect(s).toContain("names a bot");
     expect(s).toContain("names a person");
     // The "@" is the CHARACTER and not a catalog key, so it draws (kit.ts atText).
@@ -387,5 +494,210 @@ describe("Talk's screen", () => {
     expect(s).not.toContain("Whichever bot it belongs to answers here");
     // The box stays: a thread that could not be read is no reason to stop someone saying something.
     expect(s).toContain("/v1/botsapp/talk");
+  });
+});
+
+// ===================================================================== 4. the welcome, and the line of the day
+
+describe("Talk's welcome and its line of the day", () => {
+  const ARRIVAL = "GET /v1/bots/first-run/arrival";
+  const due = (kind: "first" | "back" = "first") => ({ ...(TALK_EMPTY_API as Record<string, unknown>), [ARRIVAL]: { due: true, kind } });
+  const build = (api: Record<string, unknown>, o: { client?: "phone" | "desktop"; can?: (c: string) => boolean; now?: number } = {}) =>
+    buildBotsScreen({
+      screenId: SCREENS.talk, client: o.client ?? "phone", params: {}, tzOffsetMinutes: IST, user: { id: U, name: "Aanya" },
+      can: { has: o.can ?? (() => true) } as unknown as Set<string>, desk: { pages: o.client === "desktop", notes: true },
+    }, fakeDeps({ api, ...(o.now ? { now: o.now } : {}) }));
+  /** A time in India on 24 Nov 2026, as the server's clock would hold it. */
+  const ist = (hour: number, day = 24) => Date.UTC(2026, 10, day) + (hour * 60 - IST) * 60_000;
+
+  it("the first visit: he waves by their name, then the box draws in around him and his words change", async () => {
+    const screen = await build(due());
+    const s = JSON.stringify(screen);
+    expect(s).toContain("Hi Aanya, I'm X0");
+    expect(s).toContain("Every bot here is me, ready for one job.");
+    // What his words change to, and the box that draws in (a Rise behind him, shown once helloSeen is set).
+    expect(s).toContain("Say what you need");
+    expect(s).toContain('"path":"helloSeen"');
+    expect(screen.state).toMatchObject({ helloSeen: false, cardDue: false });
+    // He never walks off: one bot in one place.
+    expect(s).not.toContain("BlipWalkOut");
+    expect(s).not.toContain("MorphOut");
+    // Not jumped to the end while it plays, or the head would leave the top when the words change size.
+    expect(s).not.toContain('"startAtEnd":true');
+  });
+
+  it("while he waves there is only him: the head and the bar wait, keeping their room, and fade in with the box", async () => {
+    const screen = await build(due());
+    const waits = walk(screen.root!).filter((n) => n.type === "Rise" && n.props?.delayMs === 3000 && !n.visibleIf);
+    // The head, and the bar's parts (the field, and what sits above it).
+    expect(waits.length).toBeGreaterThanOrEqual(2);
+    const inside = JSON.stringify(waits);
+    expect(inside).toContain("Search everything");
+    expect(inside).toContain("/v1/botsapp/talk");
+  });
+
+  it("on any other visit nothing waits", async () => {
+    const screen = await build(TALK_EMPTY_API as Record<string, unknown>);
+    expect(walk(screen.root!).some((n) => n.type === "Rise" && n.props?.delayMs === 3000)).toBe(false);
+  });
+
+  it("the card waits for the box, so the two never land in the same moment", async () => {
+    const s = JSON.stringify(await build({ ...due(), "GET /v1/you/ai-consent": { agreed: true, asked: true } }));
+    expect(s).toContain('"path":"cardDue"');
+    expect(s).toContain('{"truthy":"cardDue"}');
+  });
+
+  it("after a long time away: welcome back, by name", async () => {
+    const s = JSON.stringify(await build(due("back")));
+    expect(s).toContain("Welcome back, Aanya");
+    expect(s).toContain("X0 and your bots missed you.");
+    expect(s).not.toContain("Hi Aanya, I'm X0");
+  });
+
+  it("only on an empty thread: someone with turns gets their thread, not a hello over it", async () => {
+    const s = JSON.stringify(await build({ ...(TALK_API as Record<string, unknown>), [ARRIVAL]: { due: true, kind: "back" } }));
+    expect(s).not.toContain("Welcome back");
+    expect(s).not.toContain('"path":"helloSeen"');
+    expect(s).toContain("Plan Ease");
+  });
+
+  it("a build that cannot move draws the hello still, in the box, with nothing waiting on a timer", async () => {
+    const screen = await build(due(), { can: (c) => c !== "BotsMotion" });
+    const s = JSON.stringify(screen);
+    expect(s).toContain("Hi Aanya, I'm X0");
+    expect(s).toContain("Whichever bot it belongs to answers here");
+    expect(s).not.toContain('"path":"helloSeen"');
+    expect(screen.state?.helloSeen).toBeUndefined();
+  });
+
+  it("keeps to the kit on both clients, moving or still (lintTree)", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      // DeskAskSetup is the desktop's own card for the setup steps, declared only by a window that has it; not the welcome's.
+      for (const can of [(c: string) => c !== "DeskAskSetup", (c: string) => c !== "BotsMotion" && c !== "DeskAskSetup"]) {
+        const s = await build(due(), { client, can });
+        expect(lintTree(s.root!), client).toEqual([]);
+      }
+    }
+  });
+
+  it("every visit after: a short line for the hour, in the person's own time", async () => {
+    const lineAt = async (hour: number, day?: number) => {
+      const s = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>, { now: ist(hour, day) }));
+      return s;
+    };
+    expect(await lineAt(8)).toMatch(/Morning, Aanya|Coffee and a plan\?|Fresh start\?/);
+    expect(await lineAt(14)).toMatch(/Afternoon, Aanya|Midday ask\?|Busy hands\? Just talk/);
+    expect(await lineAt(19)).toMatch(/Evening, Aanya|Wrapping up the day\?|Golden-hour chat\?/);
+    expect(await lineAt(1)).toMatch(/Moonlit chat\?|Up late, Aanya\?|Night owl mode/);
+    // 10 pm is still the evening (touches.ts dayPart), not "Moonlit chat?".
+    expect(await lineAt(22)).not.toMatch(/Moonlit chat|Up late|Night owl/);
+  });
+
+  it("the line holds for the day and moves on the next", async () => {
+    const { dayLine } = await import("../src/experience/bots/screens/bots/talkWelcome.js");
+    const at = (hour: number, day: number) => dayLine({ tzOffsetMinutes: IST, live: { now: ist(hour, day) }, user: { id: U, name: "Aanya" } } as never);
+    expect(at(18, 24)).toBe(at(21, 24));
+    const week = new Set([24, 25, 26].map((d) => at(19, d)));
+    expect(week.size).toBe(3);
+  });
+});
+
+// ===================================================================== 5. files, the way a chat app does them
+
+describe("Talk's files", () => {
+  const ME = "00000000-0000-4000-8000-00000000aaaa";
+  const build = (api: Record<string, unknown>, can: (c: string) => boolean = () => true) =>
+    buildBotsScreen({
+      screenId: SCREENS.talk, client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: ME, name: "Aanya" },
+      can: { has: can } as unknown as Set<string>, desk: { pages: false, notes: true },
+    }, fakeDeps({ api }));
+  const photo = { id: "11111111-1111-4111-8111-111111111111", name: "receipt.png", kind: "image", mime: "image/png", bytes: 2048 };
+  const pdf = { id: "22222222-2222-4222-8222-222222222222", name: "lease.pdf", kind: "document", mime: "application/pdf", bytes: 9000 };
+  const thread = (files: unknown[], text = "") => ({
+    "GET /v1/botsapp/talk?limit=40": {
+      session: null, people: [], commands: [],
+      turns: [{ id: "t1", role: "me", text, at: Date.UTC(2026, 9, 28, 13), opens: [], approvals: [], paise: 0, files }],
+    },
+  });
+
+  it("a photo the person sent is drawn as itself, by a signed link to their own upload", async () => {
+    const s = JSON.stringify(await build(thread([photo])));
+    expect(s).toMatch(new RegExp(`/v1/files/${ME}/${photo.id}/picture\\?exp=\\d+&sig=`));
+  });
+
+  it("any other file is its name, and the words still come under what was sent", async () => {
+    const s = JSON.stringify(await build(thread([pdf], "what does clause 4 say?")));
+    expect(s).toContain("lease.pdf");
+    expect(s).toContain("what does clause 4 say?");
+    expect(s).not.toContain("/picture?");
+  });
+
+  it("the bar shows what is on the ask, with a send of its own, because a photo on its own is a message", async () => {
+    const screen = await build(TALK_EMPTY_API as Record<string, unknown>);
+    const all = walk(screen.root!);
+    const send = all.find((n) => n.props?.accessibilityLabel === "Send" && JSON.stringify(n.on?.onPress ?? {}).includes('"attachments":"$state.attach"'));
+    expect(send, "a send beside the files").toBeTruthy();
+    // It sends the words too, whatever was typed, through the same door.
+    expect(JSON.stringify(send!.on!.onPress)).toContain("/v1/botsapp/talk");
+    expect(all.filter((n) => n.props?.accessibilityLabel === "Remove this file").length).toBe(8);
+  });
+
+  it("a build that cannot upload has no strip and sends no files", async () => {
+    const s = JSON.stringify(await build(TALK_EMPTY_API as Record<string, unknown>, (c) => c !== "FileUpload"));
+    expect(s).not.toContain("Remove this file");
+    expect(s).not.toContain('"attachments"');
+  });
+
+  it("keeps to the kit with files in the thread and on the bar", async () => {
+    const s = await build(thread([photo, pdf], "both of these"));
+    expect(lintTree(s.root!)).toEqual([]);
+  });
+});
+
+// ===================================================================== 6. pictures the bot made, and what counts as asking for one
+
+describe("an ask for a picture (botsBots/pictureAsk.ts)", () => {
+  it("is a verb of making and a picture, close together — in English and in Hinglish", async () => {
+    const { isPictureAsk } = await import("../src/botsBots/pictureAsk.js");
+    for (const w of [
+      "make a poster for Riya's birthday", "draw a cat on a skateboard", "generate an image of the Red Fort at dusk",
+      "create a logo for my bakery", "Can you make me a cute sticker of a mango?", "design 3 wallpapers with mountains",
+      "ek photo bana do jisme Goa ka beach ho", "logo banao mere cafe ke liye", "imagine a city made of glass", "paint my dog as a king",
+    ]) expect(isPictureAsk(w), w).toBe(true);
+  });
+  it("is not a question about a picture, a how-to, or finding, sending and opening photos", async () => {
+    const { isPictureAsk } = await import("../src/botsBots/pictureAsk.js");
+    for (const w of [
+      "show me photos of hotels in Goa", "what is in this photo?", "send the picture to Mom", "how do I make a poster in Canva?",
+      "can you read this image?", "make a reservation for two", "create a reminder to call Mom", "find the photos from Riya's wedding",
+      "make a card payment", "what's on tomorrow?",
+    ]) expect(isPictureAsk(w), w).toBe(false);
+  });
+  it("with a photo attached, an edit counts; without one, it does not", async () => {
+    const { isPictureAsk } = await import("../src/botsBots/pictureAsk.js");
+    expect(isPictureAsk("remove the background", { photos: 1 })).toBe(true);
+    expect(isPictureAsk("make it look like a ghibli movie", { photos: 1 })).toBe(true);
+    expect(isPictureAsk("remove the background")).toBe(false);
+    expect(isPictureAsk("what does this say?", { photos: 1 })).toBe(false);
+  });
+});
+
+describe("a picture the bot made, in the thread", () => {
+  const ME = "00000000-0000-4000-8000-00000000aaaa";
+  it("is drawn under its words by a signed link, and a tap opens it whole", async () => {
+    const s = await buildBotsScreen({
+      screenId: SCREENS.talk, client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: ME, name: "Aanya" },
+      can: { has: () => true } as unknown as Set<string>, desk: { pages: false, notes: true },
+    }, fakeDeps({ api: { "GET /v1/botsapp/talk?limit=40": { session: null, people: [], commands: [], turns: [
+      { id: "t1", role: "me", text: "make a poster for Riya's birthday", at: Date.UTC(2026, 9, 28, 13), opens: [], approvals: [], paise: 0 },
+      { id: "t2", role: "bot", text: "Here it is.", at: Date.UTC(2026, 9, 28, 13, 1), opens: [], approvals: [], paise: 0, by: { slug: "cinema", name: "Cinema", color: "#6b3a5e" }, images: [{ id: "pic_1", type: "image/png" }] },
+    ] } } }));
+    const all = walk(s.root!);
+    const open = all.find((n) => n.props?.accessibilityLabel === "Open the picture");
+    expect(open, "the picture, pressable").toBeTruthy();
+    const url = (open!.on!.onPress as { url: string }).url;
+    expect(url).toMatch(new RegExp(`/v1/cinema/media/u/${ME}/cinema/pictures/pic_1\\.png\\?exp=\\d+&sig=`));
+    expect(JSON.stringify(open)).toContain(url);
+    expect(lintTree(s.root!)).toEqual([]);
   });
 });

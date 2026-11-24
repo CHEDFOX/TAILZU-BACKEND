@@ -26,7 +26,7 @@
  * A build that cannot draw a living card (canMove) gets the attach SCREEN instead, which is what the Ask screen's
  * own attach has always fallen back to. A build that cannot upload at all gets the bar as it was, with no key.
  */
-import type { ActionRef, ActionSpec, Node } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Condition, Node } from "../../../../shared/types/sdui.js";
 import {
   askAction, botCard, box, C, canMove, type Client, col, FACE, icon, labelled, meta, micKey, open, RADIUS, roundButton,
   grow, row, SCREENS, sectionLabel, seq, statusMark, text, when, type BotsCtx,
@@ -51,10 +51,15 @@ export const ASK_BAR_STATE = { [INSERT]: false, [ATTACH]: [] as unknown[], [SHOT
 
 const shut: ActionSpec = { kind: "setState", path: INSERT, value: false };
 
+/** Any file on the ask. One can be taken off from the middle and leave a gap, so it is any of them, not the first. */
+const anyOnAsk: Condition = { any: Array.from({ length: MOST }, (_, i) => ({ truthy: `${ATTACH}.${i}` })) };
+/** Take ONE file off the ask: its ref and its picture, at the same place in both lists (the gap is skipped when sent). */
+const takeOff = (i: number): ActionRef => seq({ kind: "clearState", path: `${ATTACH}.${i}` }, { kind: "clearState", path: `${SHOTS}.${i}` });
+
 /**
- * One way in, on the card: its icon, its name, and what it opens. It does NOT shut the card — the picker is a native
- * sheet and goes above everything, this modal included, so the card is still there when the picker closes, with the
- * new file in it. Only Paste shuts it, and it passes that in itself, because there is nothing to come back to.
+ * One way in, on the card: its icon, its name, and what it opens. A pick SHUTS the card once the file is up, as an
+ * attach menu does: the next thing anyone sees is the bar with the file on it, ready to send (askFiles). A pick that is
+ * cancelled or fails leaves the card where it was.
  */
 function wayIn(name: string, glyph: "clip" | "camera" | "folder" | "computer" | "keyboard", go: ActionRef): Node {
   return labelled(row([
@@ -73,7 +78,19 @@ function wayIn(name: string, glyph: "clip" | "camera" | "folder" | "computer" | 
  * file's bytes back, so this local copy is the only picture of it there is; a file with no picture leaves the source
  * undefined, the Image draws nothing, and the glyph underneath is what shows.
  */
-function chosen(i: number, size = 64): Node {
+function chosen(i: number, size = 64, desk = false): Node {
+  // THE WINDOW SHOWS THE FILE'S NAME. The installed window draws a picture only from the tree, never from state (its
+  // renderer reads a bound picture from the release after 0.4.9), so there the file is a chip with its name, which it
+  // can bind; the phone draws the picture itself.
+  if (desk) {
+    return when({ truthy: `${ATTACH}.${i}` }, row([
+      icon("clip", { size: 14, color: C.meta }),
+      text("File", { size: 13, lineHeight: 17, lines: 1, bind: `${ATTACH}.${i}.name`, style: { flexShrink: 1 } }),
+    ], {
+      gap: 6, height: size > 48 ? 40 : 32, maxWidth: 180, paddingHorizontal: 12, borderRadius: 12, backgroundColor: C.surface,
+      borderWidth: 1, borderColor: C.line, alignItems: "center", flexShrink: 0,
+    }));
+  }
   return when({ truthy: `${ATTACH}.${i}` }, box([
     icon("clip", { size: size > 48 ? 17 : 13, color: C.meta }),
     {
@@ -88,24 +105,35 @@ function chosen(i: number, size = 64): Node {
 }
 
 /**
- * WHAT IS ON THE ASK, ABOVE THE BAR. It used to be drawn in the card and nowhere else, on the reasoning that the
- * card is where it was chosen — but the card is a modal you close to type, and the moment it shuts the composer
- * looks exactly as it did before you picked anything. The file was on the ask and being sent; nothing said so.
+ * WHAT IS ON THE ASK, ABOVE THE BAR, the way a chat app shows an attachment before it goes: each file as a small
+ * picture (its glyph where there is no picture) with a cross that takes THAT one off, and a send button.
  *
- * `uploadChip` could not say it either: it reads `up` and `sent`, and `uploadAdd` CLEARS `sent` once the file is
- * on the list, so after a successful pick there is nothing left for it to draw.
+ * The send is here and not only in the box because a photo on its own is a message, and the box's own send stays
+ * greyed until something is typed (the apps' field decides that, and an app release is the only way to change it). It
+ * sends whatever is typed too, so it is the one send while files are on the ask.
  *
- * Small pictures, and the same "Clear" the card has, because taking ONE item out of a list is still not in the
- * vocabulary (appendState adds, clearState empties, nothing removes an index).
+ * The picture is BOUND to where the upload left one (`shots.<i>`): the phone's own copy of what was picked, or the
+ * server's signed link to it (routes/files.ts `pic`) on a window that keeps none. A file with no picture shows its glyph.
  */
-function onTheAsk(): Node {
-  return when({ truthy: `${ATTACH}.0` }, row([
-    ...Array.from({ length: MOST }, (_, i) => chosen(i, 40)),
-    grow(),
-    labelled(row([text("Clear", { size: 13, weight: 500, lineHeight: 17, color: C.meta })], { minHeight: 30, paddingHorizontal: 4 }),
-      "Take them all off"),
-  ], { gap: 6, flexWrap: "wrap", alignItems: "center", paddingHorizontal: 4 },
-  seq({ kind: "clearState", path: ATTACH }, { kind: "clearState", path: SHOTS })));
+export function askFiles(o: { send?: ActionRef; desk?: boolean } = {}): Node {
+  return when(anyOnAsk, row([
+    row(Array.from({ length: MOST }, (_, i) => fileTile(i, !!o.desk)), { gap: 8, flexWrap: "wrap", flexShrink: 1, alignItems: "center" }),
+    // On the phone the send sits over the box's own, at the right; the window's column is wide and its box is not, so
+    // there the send stays beside the files.
+    ...(o.desk ? [] : [grow()]),
+    ...(o.send ? [roundButton("send", o.send, { size: 40, label: "Send" })] : []),
+  ], { gap: 8, alignItems: "flex-end", paddingHorizontal: 4, paddingBottom: 2 }));
+}
+
+/** One file on the ask: its picture, and a cross in the corner that takes it off. */
+function fileTile(i: number, desk = false): Node {
+  return when({ truthy: `${ATTACH}.${i}` }, box([
+    chosen(i, 56, desk),
+    box([labelled(box([icon("close", { size: 11, color: C.paper })], {
+      width: 22, height: 22, borderRadius: 11, backgroundColor: C.ink, alignItems: "center", justifyContent: "center",
+      borderWidth: 2, borderColor: C.paper,
+    }, takeOff(i)), "Remove this file")], { position: "absolute", top: 0, right: 0 }),
+  ], desk ? { paddingTop: 6, paddingRight: 6 } : { width: 62, height: 62, paddingTop: 6, paddingRight: 6 }));
 }
 
 /**
@@ -126,7 +154,7 @@ function onTheAsk(): Node {
 export function insertCard(ctx: BotsCtx, path: string): Node[] {
   if (!canUpload(ctx) || !canMove(ctx)) return [];
   const desk = ctx.client === "desktop";
-  const add = (kind: "photo" | "camera" | "file" | "screenshot"): ActionSpec => uploadAdd(kind, { list: ATTACH, shots: SHOTS, max: MOST });
+  const add = (kind: "photo" | "camera" | "file" | "screenshot"): ActionSpec => uploadAdd(kind, { list: ATTACH, shots: SHOTS, max: MOST, then: shut });
   const ways: Node[] = [
     wayIn("Photo", "clip", add("photo")),
     // The camera is a pick of its own, not a photo from the library: the renderer opens it (pickImage, source camera).
@@ -136,11 +164,11 @@ export function insertCard(ctx: BotsCtx, path: string): Node[] {
     wayIn("Paste", "keyboard", seq(shut, { kind: "readClipboard", assignTo: path })),
   ];
   // What is on the ask, above the ways in: it grows the card as it fills.
-  const strip = when({ truthy: `${ATTACH}.0` }, col([
+  const strip = when(anyOnAsk, col([
     row([sectionLabel("On the ask"), grow(), labelled(row([
       text("Clear", { size: 13, weight: 500, lineHeight: 17, color: C.meta }),
     ], { minHeight: 30 }, seq({ kind: "clearState", path: ATTACH }, { kind: "clearState", path: SHOTS })), "Take them all off")], { gap: 8 }),
-    row(Array.from({ length: MOST }, (_, i) => chosen(i)), { gap: 8, flexWrap: "wrap" }),
+    row(Array.from({ length: MOST }, (_, i) => chosen(i, 64, desk)), { gap: 8, flexWrap: "wrap" }),
   ], { gap: 8, paddingBottom: 6 }));
   // THE WAY OUT IS THE SERVER'S (firstRun/parts.ts cardBack). The apps draw nothing: an overlay card is a modal, so
   // they answer only what markup cannot — a swipe to the right, and the phone's own back. An iPhone has neither a
@@ -212,7 +240,8 @@ export function askBar(client: Client, o: { placeholder?: string; path?: string;
     // A file on its way, then the files on the ask, above the row they belong to. The chip is the one ON ITS WAY
     // (uploadChip reads `up`); the strip under it is what is already attached, which the card alone used to show —
     // so closing the card left a composer that looked empty and an ask that was carrying a photo.
-    ...(inserts ? [uploadChip(ATTACH, { wide: true }), onTheAsk()] : []),
+    // (Its send is the box's: Ask asks a question, so words come first here. Talk's strip has a send of its own.)
+    ...(inserts ? [uploadChip(ATTACH, { wide: true }), askFiles({ desk: client === "desktop" })] : []),
     key.length ? row([...key, bar], { gap: 10, alignItems: "flex-end" }) : bar,
     ctx
       ? askMoment(ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking your bots…", bubble: "surface" })

@@ -52,6 +52,10 @@ export interface ChatTurnRow {
     did?: TurnDid;
     /** The person the message was for ("@Mom"), as it was shown when it was sent. A name, never an id. */
     forName?: string;
+    /** What the person sent with their words (a photo, a file): refs only, never the bytes. Talk's thread draws them. */
+    files?: TurnFile[];
+    /** Pictures a bot made as its answer (Talk: the cinema bot's picture engine), by id and type; drawn by a signed link. */
+    images?: TurnImage[];
   };
   at_ms: number;
 }
@@ -83,6 +87,55 @@ export interface ChatTurn {
   did?: TurnDid;
   /** The person this turn was for, by name. */
   forName?: string;
+  /** What the person sent with it: a photo, a file. */
+  files?: TurnFile[];
+  /** Pictures the bot made as its answer. */
+  images?: TurnImage[];
+}
+
+/** A picture a bot made: the cinema bot's own picture, by id and type (its key is made from them, cinema/media.ts pictureKey). */
+export interface TurnImage { id: string; type: string }
+
+/** Pictures read off a row or a reply: an id the store could have made and a picture type, at most four. */
+export function imagesOf(v: unknown): TurnImage[] {
+  if (!Array.isArray(v)) return [];
+  const out: TurnImage[] = [];
+  for (const x of v) {
+    const f = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    if (typeof f.id !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(f.id)) continue;
+    const type = typeof f.type === "string" && /^image\/(png|jpeg|webp|svg\+xml)$/.test(f.type) ? f.type : "";
+    if (!type) continue;
+    out.push({ id: f.id, type });
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+/** A file the person sent with their words: the ref the upload gave back, so the chat can draw it (never its bytes). */
+export interface TurnFile { id: string; name: string; kind: string; mime: string; bytes: number }
+
+const FILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The most files one turn keeps: the door's own cap (routes/bots/botsShell.ts). */
+export const TURN_FILES_MAX = 8;
+
+/** Files read off a request or a row: only well-formed refs, at most TURN_FILES_MAX, every field cut to what it can hold. */
+export function filesOf(v: unknown): TurnFile[] {
+  if (!Array.isArray(v)) return [];
+  const out: TurnFile[] = [];
+  for (const x of v) {
+    if (!x || typeof x !== "object") continue;
+    const f = x as Record<string, unknown>;
+    if (typeof f.id !== "string" || !FILE_ID.test(f.id)) continue;
+    out.push({
+      id: f.id.toLowerCase(),
+      name: String(f.name ?? "file").replace(/[\u0000-\u001f]/g, "").trim().slice(0, 120) || "file",
+      kind: String(f.kind ?? "file").replace(/[^a-z]/g, "").slice(0, 16) || "file",
+      mime: String(f.mime ?? "").replace(/[^A-Za-z0-9.+/-]/g, "").slice(0, 80),
+      bytes: Number.isFinite(Number(f.bytes)) ? Math.max(0, Math.round(Number(f.bytes))) : 0,
+    });
+    if (out.length >= TURN_FILES_MAX) break;
+  }
+  return out;
 }
 
 /** What the person picked and typed in a drawing (experience/bots/show.ts): the bot turn it answers, and the screen's values. */
@@ -127,11 +180,14 @@ function turnOf(r: ChatTurnRow): ChatTurn {
   const by = r.role === "bot" ? byOf(r.extra?.by) : null;
   const did = r.role === "bot" ? didOf(r.extra?.did) : null;
   const forName = typeof r.extra?.forName === "string" ? r.extra.forName.replace(/\s+/g, " ").trim().slice(0, 40) : "";
+  const files = r.role === "me" ? filesOf(r.extra?.files) : [];
+  const images = r.role === "bot" ? imagesOf(r.extra?.images) : [];
   return {
     id: r.id, role: r.role, text: r.text, at: Number(r.at_ms) || 0,
     ...(r.session_id ? { session: r.session_id } : {}),
     opens: r.extra?.opens ?? [], approvals: r.extra?.approvals ?? [], paise: r.extra?.paise ?? 0, ...(show ? { show } : {}),
-    ...(by ? { by } : {}), ...(did ? { did } : {}), ...(forName ? { forName } : {}),
+    ...(by ? { by } : {}), ...(did ? { did } : {}), ...(forName ? { forName } : {}), ...(files.length ? { files } : {}),
+    ...(images.length ? { images } : {}),
   };
 }
 
@@ -218,30 +274,38 @@ export class BotChat {
   async keepDoor(userId: string, slug: string, o: {
     /** `show` is whatever the door handed back: it goes through the checker here, as a drawing read off a row does. */
     said: string; text: string; by?: TurnBy | null; did?: TurnDid | null; show?: unknown; forName?: string; session?: string | null;
+    /** What the person sent with their words. With files, the words may be empty: a photo on its own is a message. */
+    files?: unknown;
+    /** Pictures the bot made as its answer. */
+    images?: unknown;
   }): Promise<ChatTurn[]> {
     const said = String(o.said ?? "").trim().slice(0, LIMITS.message);
-    if (!said) throw new BotError("bad_request", "Type what you want first.");
+    const files = filesOf(o.files);
+    if (!said && !files.length) throw new BotError("bad_request", "Type what you want first.");
     const bot = slug.toLowerCase();
     const at = this.now();
-    const session = await this.sessionFor(userId, bot, said, o.session);
+    // A thread named by a photo alone is named for what was sent.
+    const label = said || (files.length === 1 ? files[0]!.name : `${files.length} files`);
+    const session = await this.sessionFor(userId, bot, label, o.session);
     const forName = String(o.forName ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
     const show = keptShown(o.show);
     const by = byOf(o.by);
     const did = didOf(o.did);
+    const images = imagesOf(o.images);
     const mine: ChatTurnRow = {
       id: randomUUID(), user_id: userId, bot, session_id: session, role: "me", text: said,
-      extra: { ...(forName ? { forName } : {}) }, at_ms: at,
+      extra: { ...(forName ? { forName } : {}), ...(files.length ? { files } : {}) }, at_ms: at,
     };
     const theirs: ChatTurnRow = {
       id: randomUUID(), user_id: userId, bot, session_id: session, role: "bot", text: String(o.text ?? "").slice(0, LIMITS.message), at_ms: at + 1,
-      extra: { ...(by ? { by } : {}), ...(did ? { did } : {}), ...(show ? { show } : {}), ...(forName ? { forName } : {}) },
+      extra: { ...(by ? { by } : {}), ...(did ? { did } : {}), ...(show ? { show } : {}), ...(forName ? { forName } : {}), ...(images.length ? { images } : {}) },
     };
     await this.turns.insert(mine);
     // The answer's turn is kept even when it has no words of its own: a job started or a payment filled in IS the answer,
     // and its card is on that turn. A turn with neither words nor anything done is the one case there is nothing to keep.
-    const empty = !theirs.text.trim() && !by && !did && !show;
+    const empty = !theirs.text.trim() && !by && !did && !show && !images.length;
     if (!empty) await this.turns.insert(theirs);
-    await this.sessions.touch(userId, session, said);
+    await this.sessions.touch(userId, session, label);
     return empty ? [turnOf(mine)] : [turnOf(mine), turnOf(theirs)];
   }
 

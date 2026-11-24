@@ -229,6 +229,8 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       // Talk's thread draws the answer, so the bot that answers is asked what to draw under its words (docs/show.md
       // section 2, docs/talk-door.md). Only a caller that passes this gets a drawing; Ask and the outbox pass none.
       ...(b.draw === true ? { draw: true } : {}),
+      // Talk: every app the person connected, and their sites (docs/talk-door.md section 6b). Only Talk passes it.
+      ...(b.everyApp === true ? { everyApp: true } : {}),
     };
     // An ask from the apps' outbox (typed offline) carries the id it got when it was typed: it is answered once, however often it is sent
     // (src/shell/sentAsks.ts). A retry of one that was answered gets that answer; one still out is told so (409) and tries again later.

@@ -53,6 +53,25 @@ row ([front-door.md](front-door.md), [bots.md](bots.md) section 7). This is a *t
 `bots.talk` is the first tab and `initialTabId`, so it is what the app opens on. The **Bots** tab keeps the grid,
 because a bot's own page — a trip, a day's plan, a mailbox, a film — is a place and not a message.
 
+### 1a. The welcome, and the line of the day (`screens/bots/talkWelcome.ts`)
+
+An empty thread opens on the bot in a dashed box. **One bot, in one place:**
+
+* **The first visit** (the welcome Home used to play, due on the same read, `GET /v1/bots/first-run/arrival`): he waves
+  with "Hi Aanya, I'm X0 · Every bot here is me, ready for one job." for `HELLO_MS` (3 s), **alone on the screen**: the head
+  and the bar wait, keeping their room, and fade in with the box (`fadeInWithBox`), so he never moves. He does **not** walk off: the
+  box draws in around him where he stands, he turns to listening, and his words change to "Say what you need". The
+  chips and the two marks come in under it, and the microphone and keyboard card (which keeps its own bot) waits
+  `CARD_AFTER_MS` more (`cardDue`), so the two never land together. The thread does not jump to its end while this
+  plays (`startAtEnd` off), or the head would be carried off the top when the words change size.
+* **Back after a long time away** (`kind: "back"`): the same, with "Welcome back, Aanya · X0 and your bots missed you."
+* **Every visit after**: the same box, with a short line for the hour in the person's own time under him — "Morning,
+  Aanya", "Midday ask?", "Golden-hour chat?", "Moonlit chat?" (`DAY_LINES`; the parts of the day are Home's,
+  `touches.ts dayPart`). One line a part of the day, the next one the next day.
+
+Only on an empty thread: someone who already has turns gets their thread and no hello over it. A build that cannot
+move (no `BotsMotion`) draws the hello still, inside the box. Closing the card ends the welcome on Talk and Home alike.
+
 ## 2. The two marks: "/" and "@"
 
 Both are read **for nothing** (`botsBots/talkWords.ts`, pure, no model), and neither is taken on the client's word.
@@ -106,6 +125,47 @@ and are routed on their own merits.
 not such a place ([show.md](show.md) section 2). Talk is: `POST /v1/ask` takes `draw: true`, which reaches a **bot's**
 answer only. The front door's own roads keep their visual ladder ([front-door.md](front-door.md) section 4), and an API
 caller, a routine and a voice call still pay for no drawing.
+
+### 3a. Photos and files, the way a chat app does them
+
+```
+  (+) → Photo · Camera · File · Screenshot · Paste     the insert card; a pick closes it once the file is up
+  ┌────┐ ┌────┐
+  │ ▣ ×│ │ ▤ ×│                              (↑)       on the ask: each file with its own ×, and a send
+  └────┘ └────┘
+  (+)  [ Say it…  / a bot, @ someone       ]
+```
+
+* **A pick closes the card** once the file is up (`ask.ts` `uploadAdd … then: shut`), so the next thing anyone sees is the bar with
+  the file on it. A cancelled pick leaves the card open.
+* **What is on the ask sits above the bar** (`askFiles`): on the phone a picture per file (its own copy of what was picked), its
+  kind's glyph where there is no picture; on the window a chip with the file's name, because the installed window draws a
+  picture only from the tree and never from state (no release needed for any of this). Each has a **×** that
+  takes that one off (`clearState attach.<i>` and `shots.<i>`; the gap it leaves is skipped when the ask goes).
+* **A photo on its own is a message.** The strip has a **send of its own**, because the box's send stays grey until something is
+  typed (that is the apps' field, and only a release changes it). It sends whatever is typed with the files. With no words, the
+  bot is told what came ("Have a look at this photo.") and the person's turn keeps no made-up words, only the files.
+* **The thread shows what was sent**, on the person's own turn above their words: a photo as itself, by a signed link to their own
+  upload made fresh each time the thread is drawn (`media/link.ts`), any other file as a chip with its name. The turn keeps the
+  refs (`extra.files`: id, name, kind, mime, size), never the bytes.
+* **Not yet:** pictures in a bot's answer, and a picture that is not kept (a server with no R2) shows as an empty frame.
+
+### 3b. Pictures, made when asked
+
+"Make a poster for Riya's birthday", "draw a cat on a skateboard", "logo banao mere cafe ke liye", or a photo sent with "remove
+the background": Talk makes the picture and the **Cinema** bot answers with it, under its words. A tap opens it whole.
+
+* **What counts** is read off the words alone, with no model (`botsBots/pictureAsk.ts`): a verb of making and a picture word close
+  together, in English or Hinglish, or an edit with a photo attached. Narrow on purpose: a picture costs money and most of a
+  minute, so a question about a photo, a how-to ("…in Canva"), or finding and sending photos is never one.
+* **The engine is the cinema bot's** (`cinema/service.ts picture`): it reads the ask, picks the model for what the picture needs
+  (words to spell, a face to keep, a logo), makes it, checks it, charges it to the person and keeps it, under the bot's own
+  daily cap and the AI permission. The photos they attached go as its references (`server.ts` reads them from their files).
+* **Its refusals are the answer** (no AI permission yet, today's pictures used up), so the thread says why there is no picture.
+* **The turn keeps the picture's id and type** (`extra.images`); the thread draws it by a signed link made fresh each time
+  (`cinema/media.ts`).
+* **Off with the cinema bot** (`CINEMA`): with no engine, an ask for a picture goes through the door like anything else.
+* The door is not asked for these, so a picture has no Activity row.
 
 ## 4. Xode is a pill, not a turn
 
@@ -190,6 +250,24 @@ an answer that was lost.
 
 `BOTS` off: every route here is 404 `bots_off`, as the rest of the bots area is.
 
+### 6b. Every app they connected, and their sites
+
+Talk is one thread every bot answers in, so the bot answering there is not held to its own short list of apps. Talk's door
+marks its messages `everyApp` (`botsTalk.ts` → `/v1/shell/ask` → `/v1/ask`), and then:
+
+* **The answering bot gets every app the person connected** (`bots/run.ts`: its own list first, then the rest), each app's
+  tools under its usual name (`gmail__search_mail`). The apps' own permission tiers hold: a read runs, a change asks first.
+* **It is told what it can reach**: the apps by name, the sites they are signed in to, and what is being watched there with
+  its latest card ("Headphones order — Out for delivery · arriving 6 pm"), so "where is my order?" is answered from it.
+* **Sites stay read only** (`docs/sites.md`): the one thing it may do with one is watch another page (`site_watch`), and it is
+  told it cannot press, type, order or pay on them.
+* **An ask about something they connected that no bot fits** ("anything from HDFC in my Gmail?", "is my Amazon refund done?")
+  goes to Talk's own bot instead of the front door's road, which has no tools and would answer from nothing
+  (`bots/service.ts target`, `touchesWhatTheyConnected`: an app or site named, or what they hold, "my inbox", "my order").
+  Plain chat keeps its road.
+
+Outside Talk nothing changes: a bot keeps to its own list, and no site is offered.
+
 ## 7. The asks that moved with the landing
 
 Home carried the app's asks because Home was where everyone landed. Moving the landing without moving them would have
@@ -270,6 +348,11 @@ four above say otherwise.
 nothing while the thread keeps what was typed, "@Mom" with the name read off their own people and a stranger's id
 simply not found, a job-only turn, a refusal keeping nothing, picks going back through the door); the screen (who
 answered, the cards in the chat, the pills, the empty thread, an older build's box, the thread that would not read).
+The welcome and the line of the day: the hello by name and what it changes to, the card waiting on `cardDue`, welcome
+back, no hello over a thread, the still build, the line for each part of the day and the next day's line.
+Files: a photo on its own, words with files, a gap in the list skipped, refs that are not refs refused, the photo drawn by its
+signed link and a file by its name, the strip's send and its crosses (`tests/bots-ask-insert.test.ts` the card closing on a pick;
+`tests/ingest-routes.test.ts` the picture link). `tests/talk-every-app.test.ts`: every app and the sites in Talk, only there, the site tool reading only, and which asks go to Talk's own bot.
 `tests/bots-app-boot.test.ts` holds the tab order and the landing; `tests/ai-asks-once.test.ts` the two landing screens
 and the one answer. The field: `mentionCore.test.ts` (phone) and `mention.test.js` (window), plus `fill.test.ts` for the
 `\@` escape. The render check: `npx tsx scripts/bots-render/render.ts bots.talk --api "$(…samples…)"`.

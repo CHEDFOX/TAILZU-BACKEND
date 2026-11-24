@@ -30,7 +30,7 @@ import {
   SHARE_ASKED_NEWEST, SHARE_ASKED_NEWEST_FREE, SHARE_OWNER, SHARE_WAITING, person, share,
 } from "./planShare.js";
 import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_SESSION_AT } from "./cinema.js";
-import { TALK_API, TALK_EMPTY_API, TALK_THREADS_API } from "./talk.js";
+import { TALK_API, TALK_EMPTY_API, TALK_THREADS_API, TALK_WELCOME_API } from "./talk.js";
 import { ACTIVITIES_API, ACTIVITIES_EMPTY_API, ALL_BOTS } from "./activities.js";
 import { MEET_ADMIN, MEET_BOT, MEET_EMPTY, MEET_OVERVIEW, MEET_PAGE_API, MEET_STATES } from "./meet.js";
 
@@ -80,6 +80,7 @@ export const SAMPLES: Sample[] = [
   // and a message that was for Mom with a choice to tap. And the empty thread a new account lands on.
   { id: S.talk, area: "shell", api: TALK_API },
   { id: S.talk, area: "shell", variant: "empty", api: TALK_EMPTY_API },
+  { id: S.talk, area: "shell", variant: "welcome", api: TALK_WELCOME_API },
   { id: S.talkThreads, area: "shell", api: TALK_THREADS_API },
   // THE REPORT CARD under a bot's answer (screens/safety.ts answerCard): it reads its params, so there is nothing to answer.
   {

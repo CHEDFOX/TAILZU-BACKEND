@@ -72,7 +72,26 @@ export interface ToolEnv {
   record: ToolRecord;
   /** Which tool names may be built at all. A name it refuses gets no definition AND no handler, so run() refuses it too. */
   allow?: (name: string) => boolean;
+  /** Offer the person's signed-in sites (read only: watching a page). Talk's runs, where the bot may use everything they connected. */
+  sites?: boolean;
 }
+
+/** Watching one more page on a site they are signed in to: the one thing a bot does with a site, and it only reads. */
+export const SITE_WATCH_TOOL: ToolDef = {
+  name: "site_watch",
+  description:
+    "Keep an eye on a page of a site the person is signed in to (an order, a parcel, an application, a bill), so its latest state "
+    + "shows in their Activity and you can read it next time. Give the page's full https address and a short label. READ ONLY: "
+    + "nothing on the site is pressed, typed, bought or paid, and you must never say you did any of that. Only for a site in the "
+    + "list of sites they are signed in to.",
+  parameters: {
+    type: "object", additionalProperties: false, required: ["url", "label"],
+    properties: {
+      url: { type: "string", description: "The page's full https address, on a site they are signed in to." },
+      label: { type: "string", description: "What it is, in a few words: \"Amazon order — headphones\"." },
+    },
+  },
+};
 
 export interface ToolResult { content: string; ok: boolean }
 
@@ -305,6 +324,24 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
         });
       }
     }
+  }
+
+  // ---- the sites they are signed in to: read only (docs/sites.md). Watching a page is the one thing a bot does with one.
+  const sitesNow = env.sites ? ports.sites?.() ?? null : null;
+  if (sitesNow) {
+    defs.push(SITE_WATCH_TOOL);
+    handlers.set(SITE_WATCH_TOOL.name, async (a) => {
+      const url = typeof a.url === "string" ? a.url.trim() : "";
+      const label = typeof a.label === "string" ? a.label.trim().slice(0, 80) : "";
+      if (!/^https:\/\/[^\s/]+\.[^\s]+$/i.test(url)) return { content: "site_watch needs the page's full https address.", ok: false };
+      try {
+        const w = await sitesNow.watch(userId, url, label || url);
+        return { content: `Now watching "${w.label}" on ${w.site}. Its latest state will show in their Activity.`, ok: true };
+      } catch (err) {
+        const m = (err as { message?: unknown } | null)?.message;
+        return { content: typeof m === "string" && m ? m : "Couldn't watch that page.", ok: false };
+      }
+    });
   }
 
   return {

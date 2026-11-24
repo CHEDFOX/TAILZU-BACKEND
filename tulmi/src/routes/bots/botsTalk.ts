@@ -24,7 +24,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { isBotError, type Bots } from "../../bots/index.js";
-import type { BotChat, TurnBy, TurnDid } from "../../botsBots/chat.js";
+import type { BotChat, TurnBy, TurnDid, TurnFile } from "../../botsBots/chat.js";
+import { filesOf, TURN_FILES_MAX } from "../../botsBots/chat.js";
+import { isPictureAsk } from "../../botsBots/pictureAsk.js";
 import type { Sessions } from "../../botsBots/sessions.js";
 import { readTalk, slashBots, talkName, TALK_COMMANDS } from "../../botsBots/talkWords.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
@@ -48,7 +50,21 @@ export interface TalkRoutesParts {
   sessions: Sessions;
   /** Who the person shares a space with: the "@" list, and the one check on an "@" that came in (botsBots/threads.ts). */
   threads: Threads;
+  /**
+   * THE PICTURE ENGINE, when there is one (the cinema bot's, cinema/service.ts picture: read the ask, pick the model, make
+   * it, check it, charge it, keep it). Asked for at each message, because the server builds it after this route. Null, or
+   * absent: no pictures here, and an ask for one goes through the door like any other.
+   */
+  pictures?: () => TalkPictures | null;
 }
+
+/** What Talk needs of the picture engine: one picture from the words, with the person's attached photos as references. */
+export interface TalkPictures {
+  make(userId: string, o: { words: string; photoIds: string[] }): Promise<{ id: string; type: string; note: string | null }>;
+}
+
+/** Who answers with a picture: the cinema bot, as itself. */
+const PICTURE_BY: TurnBy = { slug: "cinema", name: "Cinema", color: botLook("cinema").color };
 
 /** A person as the "@" list draws it: their own tiny bot, never initials (docs/spaces.md personLook.ts). */
 interface TalkPersonOut { id: string; name: string; bot?: unknown }
@@ -145,7 +161,11 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
     if (b.picks && typeof b.picks === "object") {
       try { said = await s.chat.wordsOfPicks(s.user.id, TALK_SLUG, b.picks as Parameters<BotChat["wordsOfPicks"]>[2]); } catch (err) { return fail(req, reply, err); }
     }
-    if (!said) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
+    // A PHOTO ON ITS OWN IS A MESSAGE. What was sent with the words (the upload's refs); a list the app thinned by taking one
+    // off can hold gaps, so only the refs themselves go on.
+    const sent = Array.isArray(b.attachments) ? (b.attachments as unknown[]).filter((x) => !!x && typeof x === "object").slice(0, TURN_FILES_MAX) : [];
+    const files = filesOf(sent);
+    if (!said && !files.length) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
     if (said.length > MESSAGE_MAX) return reply.code(413).send({ code: "too_large", message: `A message may be ${MESSAGE_MAX} characters at most.` });
 
     try {
@@ -161,7 +181,35 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
         const made = await parts.sessions.open(s.user.id, TALK_SLUG);
         return reply.send({ turns: [], session: made.id, started: true });
       }
-      if (!read.message) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
+      // With no words of their own (or only "/plan"), the bot is told what came, so the file is the question.
+      const message = read.message || (files.length ? filesLine(files) : "");
+      if (!message) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
+
+      // A PICTURE, ASKED FOR: made by the picture engine and kept as the cinema bot's answer, with the picture on its turn.
+      // Read off the words alone (botsBots/pictureAsk.ts, no model), and narrowly, because a picture costs money.
+      const engine = parts.pictures?.() ?? null;
+      const photoIds = files.filter((f) => f.mime.startsWith("image/")).map((f) => f.id);
+      if (engine && isPictureAsk(read.message || said, { photos: photoIds.length })) {
+        let text: string, images: Array<{ id: string; type: string }> = [];
+        try {
+          const made = await engine.make(s.user.id, { words: read.message || said, photoIds });
+          images = [{ id: made.id, type: made.type }];
+          text = made.note ? `Here it is. ${made.note}` : "Here it is.";
+        } catch (err) {
+          // Its own refusals are written for a person (no AI permission yet, today's pictures used up): said as the answer,
+          // so the thread says why there is no picture. Anything else is a failure like any other.
+          const e = err as { status?: number; message?: string } | null;
+          if (!e || typeof e.status !== "number" || e.status >= 500 || !e.message) return fail(req, reply, err);
+          text = e.message;
+        }
+        const turns = await s.chat.keepDoor(s.user.id, TALK_SLUG, {
+          said, text, by: PICTURE_BY, images,
+          ...(read.forName ? { forName: read.forName } : {}),
+          ...(session ? { session } : {}),
+          ...(files.length ? { files } : {}),
+        });
+        return reply.send({ turns, shell: { bot: PICTURE_BY, text }, ...(turns[0]?.session ? { session: turns[0].session } : {}) });
+      }
 
       // THE DOOR, UNCHANGED: the same route Ask has always used, so the guards, the money, the routine drafts, the outbox's
       // answer-once and the Activity row are all the ones that already exist. `draw` is the one thing Talk asks for that Ask
@@ -169,9 +217,11 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
       const r = await app.inject({
         method: "POST", url: "/v1/shell/ask",
         payload: {
-          message: read.message, bot: read.bot, device: b.device === "desktop" ? "desktop" : "phone", mode: b.mode === "voice" ? "voice" : "text", draw: true,
+          message, bot: read.bot, device: b.device === "desktop" ? "desktop" : "phone", mode: b.mode === "voice" ? "voice" : "text", draw: true,
+          // Talk's bot, whichever answers, may use every app they connected and knows their signed-in sites.
+          everyApp: true,
           ...(typeof b.tz === "number" ? { tz: b.tz } : {}),
-          ...(Array.isArray(b.attachments) && b.attachments.length ? { attachments: b.attachments.slice(0, 8) } : {}),
+          ...(sent.length ? { attachments: sent } : {}),
           ...(typeof b.streamId === "string" && b.streamId ? { streamId: b.streamId } : {}),
           ...(typeof b.projectId === "string" && b.projectId ? { projectId: b.projectId } : {}),
           ...(typeof b.clientId === "string" && b.clientId ? { clientId: b.clientId } : {}),
@@ -207,6 +257,7 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
         ...(j.answer?.show ? { show: j.answer.show } : {}),
         ...(read.forName ? { forName: read.forName } : {}),
         ...(session ? { session } : {}),
+        ...(files.length ? { files } : {}),
       });
       return reply.send({ turns, shell, ...(turns[0]?.session ? { session: turns[0].session } : {}) });
     } catch (err) { return fail(req, reply, err); }
@@ -224,3 +275,10 @@ interface DoorReply {
 }
 
 export { talkName };
+
+/** What the bot is told when a photo or a file came with no words: the file is the question. */
+export function filesLine(files: readonly TurnFile[]): string {
+  const pics = files.every((f) => f.kind === "image" || f.mime.startsWith("image/"));
+  if (files.length === 1) return pics ? "Have a look at this photo." : `Have a look at this file: ${files[0]!.name}`;
+  return pics ? `Have a look at these ${files.length} photos.` : `Have a look at these ${files.length} files.`;
+}

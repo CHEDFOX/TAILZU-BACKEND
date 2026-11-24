@@ -67,6 +67,8 @@ import { SITE_READ_PAISE } from "./sites/read.js";
 import { Sites } from "./sites/service.js";
 import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
+import type { TalkPictures } from "./routes/bots/botsTalk.js";
+import type { BotSites } from "./bots/ports.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
 import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
@@ -517,7 +519,9 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // The bots platform (src/bots, docs/bots.md): everything is a bot (Code, Keylessbord, Plan, Travel), and a person makes their own, each with its tools, knowledge, memory and an
 // API endpoint for their own apps. Off unless BOTS is true: /v1/bots answers 404 bots_off and "Ask any bot" on POST /v1/ask does too. It runs on what is above: the connected
 // apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
-const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
+// The person's signed-in sites, for the bots (read only): built further down, with the sites themselves.
+let botSites: BotSites | null = null;
+const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code, sites: () => botSites }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 // A fitness bot's days, on their own, away from the file that hosts POST .../ask (docs: perms §4.6).
 registerBotHealthRoutes(app, { rateLimit: AUTHED_RL, bots });
@@ -574,8 +578,10 @@ routineChat = botsParts.chat;
 // `readFiles`: a file attached to a bot's chat is read exactly as one attached to Ask is — the SAME reader, so there is
 // one set of caps, one secret scan and one cache by SHA-256 (front/index.ts). Null while FRONT_DOOR is off, and then a
 // chat message's files are simply ignored and its words asked as before.
+// Talk's pictures are the cinema bot's engine, which is built further down: Talk asks for it at each message.
+let talkPictures: TalkPictures | null = null;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, {
-  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}),
+  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}), pictures: () => talkPictures,
 });
 // Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
 // account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
@@ -595,6 +601,11 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
   if (cloudBrowserOn()) {
     const visit = getVisitor();
     const sites = new Sites({ ...(visit ? { visit } : {}), read: { maxPaise: SITE_READ_PAISE } });
+    // What Talk's bot knows of them, and the one thing it may do: watch one more page (read only, bots/ports.ts BotSites).
+    botSites = {
+      snapshot: async (userId) => ({ logins: await sites.logins(userId), watches: await sites.list(userId) }),
+      watch: async (userId, url, label) => { const w = await sites.watch(userId, url, label); return { id: w.id, site: w.site, label: w.label }; },
+    };
     const hold = getHolder();
     const panels = hold ? new Panels({ hold }) : undefined;
     registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
@@ -680,6 +691,20 @@ const cinema = bots && cinemaOn() ? buildCinemaService() : null;
 const scenes = cinema ? buildSceneService() : null;
 registerCinemaRoutes(app, { rateLimit: AUTHED_RL, bots, service: cinema, scenes });
 if (cinema) {
+  // TALK MAKES PICTURES (docs/talk-door.md section 3b): "make a poster…" asked in Talk is the cinema bot's picture, with the
+  // photos the person attached as its references, read from their own files here (pictures only, four at most).
+  talkPictures = {
+    make: async (userId, o) => {
+      const photos: Array<{ url: string; type: string }> = [];
+      for (const id of o.photoIds.slice(0, 4)) {
+        const item = media ? await media.store.get(userId, id, { light: true }).catch(() => null) : null;
+        const bytes = item && item.mime.startsWith("image/") ? await media!.bytesOf(item).catch(() => null) : null;
+        if (item && bytes) photos.push({ url: `data:${item.mime};base64,${bytes.toString("base64")}`, type: item.mime });
+      }
+      const p = await cinema.picture(userId, { words: o.words, photos });
+      return { id: p.id, type: p.type, note: p.note ?? null };
+    },
+  };
   const stopCinema = cinema.start();
   app.addHook("onClose", async () => { stopCinema(); });
   // A restart leaves creations saying they are building that nothing is building: the process that was is gone. They are failed once,
