@@ -96,7 +96,7 @@ export function deskNav(notes: boolean, tasks = false): NavigationShell {
  * Anything else — an older build, or a publish with no checksum recorded —
  * gets the link, which is all it could do before.
  */
-function updateCard(u: { version: string; url: string; sha512?: string }, selfUpdate = false): Node {
+export function updateCard(u: { version: string; url: string; sha512?: string }, selfUpdate = false): Node {
   if (selfUpdate && u.sha512) {
     const install: ActionRef = {
       kind: "installUpdate", version: u.version, url: u.url, sha512: u.sha512,

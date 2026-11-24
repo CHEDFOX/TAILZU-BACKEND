@@ -2,6 +2,8 @@
  * The server-driven app: POST /v1/app/bootstrap, POST /v1/app/screen, and the screens' cache version.
  */
 
+import { updateCard as deskUpdateCard } from "../../experience/desk/screens.js";
+import { DESKTOP_LATEST, updateFor } from "../../experience/desktopRelease.js";
 import { greetingName, providerNameToSave } from "../bots/botsFirstRun.js";
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
@@ -45,6 +47,9 @@ import { AUTH_RESUME_SCHEME_URL } from "../site/demo.js";
 import { noStoreSdui, clip, gzipLargeJson } from "../../http/helpers.js";
 import { getMediaRegistry } from "./media.js";
 import { clientVocab, serveScreen } from "../../experience/sdui2/gate.js";
+
+/** The Bots app pages a desktop window lands on, where an older build is offered its update. */
+const BOTS_UPDATE_PAGES: ReadonlySet<string> = new Set(["bots.home", "bots.talk", "bots.activities", "bots.you"]);
 
 export interface AppScreenRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -592,6 +597,14 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,
         desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },
       }, deps);
+      // THE UPDATE CARD, IN THE BOTS APP TOO. It was only ever added to the old desk pages (buildDeskScreen), so a window
+      // on the Bots app never showed one — and the tray's "X0 Bot … is ready. Click to update." opened a window with
+      // nothing about it. The same card, at the top of the window's main pages, for an older build that can be updated
+      // from here (never a Store install: the Store updates it).
+      if (screenFormFactor === "desktop" && screen.root && BOTS_UPDATE_PAGES.has(botsId) && !comps.has("DeskStore")) {
+        const u = updateFor(body.capabilities?.appVersion, body.capabilities?.device?.os, DESKTOP_LATEST);
+        if (u) screen.root.children = [deskUpdateCard(u, comps.has("DeskSelfUpdate")), ...(screen.root.children ?? [])];
+      }
       // Vocabulary 2's one door: a screen that states `needs` is checked with the device's own compiler and
       // served only to a client that declared every block it needs (experience/sdui2). A screen that says
       // nothing comes back untouched, which is every screen today.
