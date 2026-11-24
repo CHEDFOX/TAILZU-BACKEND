@@ -379,9 +379,6 @@ function head(ctx: BotsCtx): Node {
 
 // ===================================================================== the page
 
-/** Talk's column in the window at most this wide. */
-export const TALK_DESK_WIDTH = 1400;
-
 /** What the screen's state starts with: the box empty, nothing on its way, no drawing answered yet. */
 export const TALK_STATE: Record<string, unknown> = {
   [DRAFT]: {}, [BOT]: "", [TO]: "", [ATTACH]: [] as unknown[], [SHOTS]: [] as unknown[], talk: "", fixed: "", asking: false, sent: null, reply: null, stopped: false,
@@ -400,9 +397,7 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
     leaving: nt.leaving, push: nt.push === true, about: nt.about, ai: nt.ai, back: nt.back === true,
   });
   return page(ctx, {
-    tab: "talk", title: "Talk", nav: "talk", // THE WHOLE WINDOW'S WIDTH, near enough: at 760 the thread and its bar stopped two thirds across a wide window, with
-    // a blank strip beside them. The cap only keeps lines readable on a very wide screen.
-    ...(ctx.client === "desktop" ? { maxWidth: TALK_DESK_WIDTH, fixed: true } : {}),
+    tab: "talk", title: "Talk", nav: "talk", ...(ctx.client === "desktop" ? { fixed: true } : {}),
     state: { ...TALK_STATE, ...n.state, ...(rt ? routineCardState(ctx, rt, newest?.by?.slug ?? "") : {}) },
     // Opens at the newest turn and stays there as answers come in, as a chat should (only for a build that keeps it).
     startAtEnd: true,

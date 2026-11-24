@@ -201,9 +201,10 @@ function turnActions(ctx: BotsCtx, t: Turn): Node[] {
 
 export function bubble(ctx: BotsCtx, s: string, big = false): Node {
   const desk = isDesk(ctx);
+  // White on black in the window as on the phone: the grey the window had read as one more card beside the bot's.
   return row([
-    box([text(s, { size: big ? 15 : 14, lineHeight: big ? 21 : 20, color: desk ? C.ink : C.paper })], {
-      maxWidth: desk ? "82%" : "80%", backgroundColor: desk ? C.surface : C.ink, paddingVertical: 10, paddingHorizontal: 14,
+    box([text(s, { size: big ? 15 : 14, lineHeight: big ? 21 : 20, color: C.paper })], {
+      maxWidth: desk ? "82%" : "80%", backgroundColor: C.ink, paddingVertical: 10, paddingHorizontal: 14,
       borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: 18, borderBottomRightRadius: 6,
     }),
   ], { justifyContent: "flex-end" });
