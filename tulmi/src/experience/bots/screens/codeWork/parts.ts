@@ -13,6 +13,7 @@ import {
   botLook, C, call, seq, labelled, box, icon, back, row, botAvatar, col, text, statusMark, type Mark, duration, FACE, type BotsCtx, open,
   SCREENS, meta, RADIUS, page, emptyState, button, shapes, mono, blip, card, divider, sectionLabel, grow,
   picture,
+  up,
 } from "../../kit.js";
 import { reportAnswer } from "../../reportAction.js";
 import { toProject } from "../code/parts.js";
@@ -56,7 +57,7 @@ export function write(method: "POST" | "PUT" | "DELETE", path: string, body: Rec
 
 /** A 44 x 44 back chevron (pulled 10 left), as the boards draw it. */
 export const backButton = (to?: ActionRef): Node =>
-  labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center", flexShrink: 0 }, to ?? back()), "Back");
+  labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center", flexShrink: 0 }, to ? up(to) : back()), "Back");
 
 /** A screen's head: back, an optional avatar, a title over a line, something on the right. */
 export function head(o: { title: string; size?: number; weight?: 600 | 700; sub?: Node; avatar?: boolean; right?: Node; back?: ActionRef }): Node {

@@ -20,6 +20,7 @@ import {
   botAvatar, botBuddy, box, button, C, call, canBuddy, col, divider, duration, emptyState, FACE, grow, icon, labelled, meta, mono,
   notice, open, page, primaryButton, quietButton, RADIUS, row, secondaryButton, sectionLabel, seq, statusMark, text, title, when, whenEq,
   PALETTE_HEX, SCREENS, type BotsCtx,
+  up,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import type { BotsDeps } from "../live.js";
@@ -380,7 +381,7 @@ function notePage(ctx: BotsCtx, d: NoteData | undefined) {
   const backTo = row([icon("back", { size: 22, color: C.grey70 }), text("Notes", { size: 14, color: C.grey70, lineHeight: 18 })], { gap: 2, minHeight: 44, alignSelf: "flex-start" }, open(SCREENS.notes));
   const n = d?.note;
   if (!n) {
-    return page(ctx, { ...(desk ? { nav: "notes" } : { back: true }), title: "Notes", body: [...(desk ? [backTo] : []), emptyState({ pose: "think", title: "Couldn't open this meeting", body: "It may have been deleted.", action: { label: "All meetings", onPress: open(SCREENS.notes) } })] });
+    return page(ctx, { ...(desk ? { nav: "notes" } : { back: true }), title: "Notes", body: [...(desk ? [backTo] : []), emptyState({ pose: "think", title: "Couldn't open this meeting", body: "It may have been deleted.", action: { label: "All meetings", onPress: up(open(SCREENS.notes)) } })] });
   }
   const tz = ctx.tzOffsetMinutes;
   const at = Date.parse(n.startedAt);
