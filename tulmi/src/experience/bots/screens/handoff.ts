@@ -78,12 +78,20 @@ export function botsFlowArm(base: ScreenResponse): ScreenResponse {
   ], { flex: 1, justifyContent: "center", paddingHorizontal: 28, paddingBottom: 48 }), base.root?.on));
 }
 
-/** Today's flow_arm leaves for the Stats tab, which the Bots app does not have: it leaves for Home. */
+/** The tab the Bots app opens on (bots/index.ts initialTabId): where the Flow screen leaves for. */
+export const FLOW_LEAVES_FOR = "talk";
+
+/**
+ * Today's flow_arm leaves for the Stats tab, which the Bots app does not have. It leaves for Talk, the tab the app
+ * opens on, BY SWITCHING TO IT: the switch puts that tab's own screen alone on the stack, with the tab bar. It used to
+ * navigate to "home", which the Bots app serves as its Home page pushed on top of the Flow screen — a page nothing
+ * leads to any more, with no tab bar under it, and which drew nothing at all while its welcome waited to play.
+ */
 function homeNotStats<T>(v: T): T {
   if (Array.isArray(v)) return v.map(homeNotStats) as T;
   if (!v || typeof v !== "object") return v;
   const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, homeNotStats(x)])) as Record<string, unknown>;
-  if (o.kind === "navigate" && o.screenId === "stats") o.screenId = "home";
+  if (o.kind === "navigate" && o.screenId === "stats") return { kind: "switchTab", tabId: FLOW_LEAVES_FOR } as T;
   return o as T;
 }
 

@@ -15,8 +15,8 @@ const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { CREAM } = await import("../src/experience/bots/screens/handoff.js");
 
 const IDS = ["flow_arm", "keyboard_record", "keyboard_primer"] as const;
-/** Where today's screens leave for the Stats tab, the Bots app's leave for Home. */
-const home = (s: string) => s.replaceAll('"screenId":"stats"', '"screenId":"home"');
+/** Where today's screens leave for the Stats tab, the Bots app's switch to Talk, the tab it opens on. */
+const home = (s: string) => s.replaceAll('{"kind":"navigate","screenId":"stats"}', '{"kind":"switchTab","tabId":"talk"}');
 const build = (id: string, bots: boolean) => buildScreen(id, {
   personality: {}, language: "en", onboarded: true, email: "a@b.com", params: { session: "s-1", host: "Notes" }, bots,
 } as never) as ScreenResponse;
@@ -45,10 +45,11 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     expect(doing(build(id, true).root!)).toEqual(doing(build(id, false).root!).map(home));
   });
 
-  it("flow_arm leaves for Home, not the Stats tab the Bots app does not have", () => {
+  it("flow_arm leaves by switching to Talk, the tab the app opens on: never Stats, never Home pushed over it", () => {
     const s = JSON.stringify(build("flow_arm", true));
     expect(s).not.toContain('"screenId":"stats"');
-    expect(s).toContain('"screenId":"home"');
+    expect(s).not.toContain('"screenId":"home"');
+    expect(s).toContain('{"kind":"switchTab","tabId":"talk"}');
   });
 
   it("the mic and the field it writes into are the catalog's own nodes", () => {
