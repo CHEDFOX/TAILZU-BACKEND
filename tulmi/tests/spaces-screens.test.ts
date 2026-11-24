@@ -49,7 +49,7 @@ describe("Spaces' screens", () => {
     ["bots.space.bot", { id: "s1", bot: "code" }, ["Xode in Home", "Rohan · shares some", "school-site", "Working · add the results page · 20 min", "What you share here", "shop"], [`PUT ${A}/spaces/s1/bots/code/mine`]],
     ["bots.space.member", { id: "s1", member: "r" }, ["Rohan", "Home · Member · joined 4 Aug", "Rohan can share, message, give tasks and plans, and ask for money here, like everyone in Home.", "Message Rohan", "Remove Rohan from Home", "Report or block Rohan"], [`DELETE ${A}/spaces/s1/members/r`, `POST ${A}/threads/direct`]],
     ["bots.space.member", { id: "s1", member: "u" }, ["You", "You made Home, so you are its admin. You can see everyone's work there, let people in and remove them."], []],
-    ["bots.space.invite", { id: "s1" }, ["Bring someone into Home", "Their email", "The space's code", "7KQ-29D", "Anyone with it can ask to join. You let them in.", "Invites waiting · 1", "Send the invite", "Email isn't switched on yet"], [`POST ${A}/spaces/s1/invite`]],
+    ["bots.space.invite", { id: "s1" }, ["Bring someone into Home", "Their username or email", "The space's code", "7KQ-29D", "Anyone with it can ask to join. You let them in.", "Invites waiting · 1", "Send the invite", "Email isn't switched on yet"], [`POST ${A}/spaces/s1/invite`]],
     ["bots.space.item", { item: "i-groceries" }, ["Groceries", "Mom: For the week", "Chakki atta · 5 kg", "Paneer · 400 g"], [`PUT ${A}/items/i-groceries`, `DELETE ${A}/items/i-groceries`]],
     ["bots.space.pay", { id: "s1" }, ["Ask for a payment", "Pay to (UPI ID)", "X0 Bot never pays by itself"], [`POST ${A}/spaces/s1/payments`]],
     ["bots.space.tasks", {}, ["Given to you", "Call Nani", "Home · For you"], [`PUT ${A}/spaces/s1/tasks/t-nani`]],

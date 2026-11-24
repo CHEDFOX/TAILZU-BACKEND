@@ -29,6 +29,7 @@ import { inviteMail, inviteSender, type InviteMailOut } from "./inviteMail.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { shownLook, looksIn, type PersonLook } from "./personLook.js";
 import { PersonNames, shownName } from "./personNames.js";
+import { usernameOf } from "../profile/username.js";
 import { table, type Table } from "./rows.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { ADMIN_ONLY, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
@@ -42,6 +43,11 @@ export interface SpaceRow {
   draft_ms?: number | null;
   /** False while a draft has no name of its own yet. */
   named?: boolean;
+  /**
+   * A friendship (migration 0113, docs/social.md §3): exactly two people, made by "Add a person". Hidden from the spaces list,
+   * named for each viewer by the other person, and gone as soon as either of them leaves.
+   */
+  pair?: boolean;
 }
 export interface MemberRow {
   [k: string]: unknown; space_id: string; user_id: string; name: string; can_approve: boolean; joined_ms: number;
@@ -63,6 +69,8 @@ export interface InviteRow {
   email?: string | null; perms?: string[]; role?: string | null; used_by?: string | null; used_ms?: number | null;
   /** The invited person said no. */
   dismissed_ms?: number | null;
+  /** An invite to an account found by its username (migration 0113), where `email` is someone not on the app yet. */
+  user_id?: string | null;
 }
 export interface ActivityRow { [k: string]: unknown; id: string; space_id: string; actor_id: string | null; kind: string; text: string; at_ms: number }
 
@@ -71,7 +79,10 @@ export interface MemberView {
   /** Their tiny bot in this space (personLook.ts): the viewer's own is their X0 bot. */
   bot: PersonLook;
 }
-export interface InviteView { code: string; link: string; email: string | null; expiresAt: number; roleName: string; perms: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
+export interface InviteView {
+  /** An invite to an account by its username: `email` then holds "@name", and nothing is mailed. */
+  toAccount?: boolean;
+  code: string; link: string; email: string | null; expiresAt: number; roleName: string; perms: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
 export interface SpaceView {
   id: string;
   name: string;
@@ -110,6 +121,12 @@ export type Publish = (userIds: Iterable<string>, topic: string, data?: Record<s
 
 export const SPACES_MAX = 10;
 export const MEMBERS_MAX = 20;
+/** The people one person may have added one to one (pair spaces). They never count against SPACES_MAX. */
+export const PAIRS_MAX = 50;
+/** A pair space's stored name: the column needs one, and nobody ever sees it (each person sees the other's name). */
+export const PAIR_NAME = "Two of you";
+/** Member rows a person can have at most: their spaces and their pairs, with room for drafts. */
+const ROWS_MAX = SPACES_MAX * 2 + PAIRS_MAX;
 const SPACE_BOTS_MAX = 12;
 const INVITES_A_DAY = 30;
 const INVITE_MS = 7 * 24 * 3600_000;
@@ -145,6 +162,9 @@ const forbid = (msg: string) => new BotError("not_allowed", msg, 403);
 /** "m•••@gmail.com": an address shown to someone who may not know it whole. */
 const maskEmail = (e: string): string => { const [l, d] = e.split("@"); return `${(l ?? "").slice(0, 1)}•••@${d ?? ""}`; };
 const isDraft = (s: Pick<SpaceRow, "draft_ms">): boolean => s.draft_ms !== null && s.draft_ms !== undefined;
+export const isPair = (s: Pick<SpaceRow, "pair"> | null | undefined): boolean => s?.pair === true;
+/** An invite somebody could still be holding: to an address or to an account (an old build's bare "link" row is neither). */
+const isPersonal = (i: InviteRow): boolean => !!i.email || !!i.user_id;
 const isOpen = (i: InviteRow, now: number): boolean => Number(i.expires_ms) > now && !i.used_by && (i.dismissed_ms === null || i.dismissed_ms === undefined);
 
 function randomCode(len: number): string {
@@ -270,13 +290,28 @@ export class Spaces {
 
   /** The spaces this person is in, with what they may do in each. Never a draft: every list a person sees is made from this or list(). */
   async mine(userId: string): Promise<Array<{ id: string; name: string; perms: Perm[]; admin: boolean }>> {
-    const rows = await this.members.select({ user_id: userId }, { order: "joined_ms", limit: SPACES_MAX * 2 });
+    const rows = await this.members.select({ user_id: userId }, { order: "joined_ms", limit: ROWS_MAX });
     const out: Array<{ id: string; name: string; perms: Perm[]; admin: boolean }> = [];
     for (const m of rows) {
       const a = await this.access(userId, m.space_id).catch(() => null);
-      if (a && !isDraft(a.s)) out.push({ id: a.s.id, name: a.s.name, perms: a.perms, admin: a.admin });
+      if (!a || isDraft(a.s)) continue;
+      // A pair is shared like any space, under the other person's name. Only while they are both in it.
+      if (isPair(a.s)) {
+        const other = await this.otherIn(a.s.id, userId);
+        if (other) out.push({ id: a.s.id, name: other.name, perms: a.perms, admin: a.admin });
+        continue;
+      }
+      out.push({ id: a.s.id, name: a.s.name, perms: a.perms, admin: a.admin });
     }
     return out;
+  }
+
+  /** The other person in a pair, as this viewer calls them; null until they are in it. */
+  private async otherIn(spaceId: string, userId: string): Promise<{ userId: string; name: string } | null> {
+    const rows = await this.members.select({ space_id: spaceId }, { limit: 3 });
+    const o = rows.find((r) => r.user_id !== userId);
+    if (!o) return null;
+    return { userId: o.user_id, name: shownName(await this.names.known(userId), o.user_id, o.name) };
   }
 
   async nameOf(spaceId: string): Promise<string> {
@@ -310,11 +345,12 @@ export class Spaces {
 
   /** The spaces the person is in, never a draft. It only reads: Home and both apps' launches read it every time. */
   async list(userId: string): Promise<SpaceView[]> {
-    const mine = await this.members.select({ user_id: userId }, { order: "joined_ms", limit: SPACES_MAX * 2 });
+    const mine = await this.members.select({ user_id: userId }, { order: "joined_ms", limit: ROWS_MAX });
     const out: SpaceView[] = [];
     for (const m of mine) {
       const a = await this.access(userId, m.space_id).catch(() => null);
-      if (a && !isDraft(a.s)) out.push(await this.view(userId, a));
+      // A pair is a person, not a space: it is in pairs(), never in the spaces list.
+      if (a && !isDraft(a.s) && !isPair(a.s)) out.push(await this.view(userId, a));
     }
     return out;
   }
@@ -324,7 +360,7 @@ export class Spaces {
     const a = await this.access(userId, spaceId).catch(() => null);
     if (!a?.admin) return 0;
     const at = this.now();
-    return (await this.invites.select({ space_id: spaceId }, { limit: 200 })).filter((i) => !!i.email && isOpen(i, at)).length;
+    return (await this.invites.select({ space_id: spaceId }, { limit: 200 })).filter((i) => isPersonal(i) && isOpen(i, at)).length;
   }
 
   async detail(userId: string, spaceId: string): Promise<SpaceDetail> {
@@ -338,7 +374,8 @@ export class Spaces {
       for (const i of rows.slice(0, 12)) {
         const mail = i.email ? await this.outbox.byRef("space_invite", i.code) : null;
         invites.push({
-          code: i.code, link: this.linkOf(code), email: i.email ?? null,
+          ...(!i.email && i.user_id ? { toAccount: true } : {}),
+          code: i.code, link: this.linkOf(code), email: i.email ?? (i.user_id ? await this.handleOf(i.user_id) : null),
           expiresAt: Number(i.expires_ms), perms: [...MEMBER_PERMS], roleName: "Member", byYou: i.created_by === userId,
           by: v.members.find((m) => m.userId === i.created_by)?.name ?? "someone",
           mail: mail ? (mail.status === "sent" ? "sent" : mail.status === "failed" ? "failed" : "queued") : null,
@@ -375,8 +412,23 @@ export class Spaces {
     return n;
   }
 
+  /** Their member rows split into spaces (drafts included) and pairs. */
+  private async rowsOf(userId: string): Promise<{ spaces: number; pairs: number }> {
+    let spaces = 0, pairs = 0;
+    for (const m of await this.members.select({ user_id: userId }, { limit: ROWS_MAX + 1 })) {
+      if (isPair(await this.spaceRow(m.space_id))) pairs++; else spaces++;
+    }
+    return { spaces, pairs };
+  }
+
   private async roomForOneMore(userId: string): Promise<void> {
-    if ((await this.members.select({ user_id: userId }, { limit: SPACES_MAX + 1 })).length >= SPACES_MAX) throw new BotError("space_limit", `You can be in ${SPACES_MAX} spaces.`, 409);
+    if ((await this.rowsOf(userId)).spaces >= SPACES_MAX) throw new BotError("space_limit", `You can be in ${SPACES_MAX} spaces.`, 409);
+  }
+
+  private async roomForOnePair(userId: string, mine: boolean): Promise<void> {
+    if ((await this.rowsOf(userId)).pairs >= PAIRS_MAX) {
+      throw new BotError("pair_limit", mine ? `You can add ${PAIRS_MAX} people one to one.` : "They can't add anyone else right now.", 409);
+    }
   }
 
   /** A real, named space at once (an old build's Start a space, and Done with no draft). */
@@ -427,9 +479,14 @@ export class Spaces {
 
   private async draftView(s: SpaceRow): Promise<DraftView> {
     const at = this.now();
-    const rows = (await this.invites.select({ space_id: s.id }, { order: "created_ms", limit: MEMBERS_MAX * 2 })).filter((i) => !!i.email && isOpen(i, at));
+    const rows = (await this.invites.select({ space_id: s.id }, { order: "created_ms", limit: MEMBERS_MAX * 2 })).filter((i) => isPersonal(i) && isOpen(i, at));
     const invites: DraftView["invites"] = [];
     for (const i of rows) {
+      // Someone on the app, invited by username: shown as the name typed, and never their address (they get it in the app).
+      if (!i.email) {
+        invites.push({ code: i.code, email: await this.handleOf(i.user_id ?? ""), at: Number(i.created_ms), mail: null });
+        continue;
+      }
       const mail = await this.outbox.byRef("space_invite", i.code);
       invites.push({ code: i.code, email: i.email ?? "", at: Number(i.created_ms), mail: mail ? (mail.status === "sent" ? "sent" : mail.status === "failed" ? "failed" : "queued") : null });
     }
@@ -601,6 +658,125 @@ export class Spaces {
     return { code, email };
   }
 
+  /** "@name" for an account, or "someone on X0 Bot" when it has none to show. */
+  async handleOf(userId: string): Promise<string> {
+    const u = userId ? await usernameOf(userId).catch(() => "") : "";
+    return u ? `@${u}` : "someone on X0 Bot";
+  }
+
+  /**
+   * The admin invites an ACCOUNT, found by its username (spaceJoin.ts resolves and brakes the look-up): a row naming it, seven days,
+   * good once. No mail and no address: they find it in the app (and a push, from the caller). Counted with the email invites.
+   */
+  async inviteAccount(user: { id: string }, spaceId: string, targetId: string, me: string): Promise<{ code: string }> {
+    const a = await this.need(user.id, spaceId, "invite");
+    if (isPair(a.s)) throw new BotError("bad_request", "Only the two of you are in this one.");
+    if (targetId === user.id) throw new BotError("bad_request", "That's you.");
+    if (await this.isMember(spaceId, targetId)) throw new BotError("already_in", "They're already in it.", 409);
+    const at = this.now();
+    const mineToday = (await this.invites.select({ created_by: user.id }, { order: "created_ms", desc: true, limit: INVITES_A_DAY + 1 }))
+      .filter((i) => Number(i.created_ms) > at - 24 * 3600_000 && !i.email).length;
+    if (mineToday + (await this.outbox.sentBy("space_invite", user.id, at - 24 * 3600_000, INVITES_A_DAY)) >= INVITES_A_DAY) {
+      throw new BotError("invite_limit", `That's ${INVITES_A_DAY} invites today. Try again tomorrow.`, 429);
+    }
+    if ((await this.invites.select({ space_id: spaceId, user_id: targetId }, { limit: 20 })).some((i) => isOpen(i, at))) {
+      throw new BotError("already_invited", "They're already invited.", 409);
+    }
+    const code = randomCode(8);
+    await this.invites.insert({
+      code, space_id: spaceId, created_by: user.id, created_ms: at, expires_ms: at + INVITE_MS,
+      email: null, user_id: targetId, perms: [...MEMBER_PERMS], role: null, used_by: null, used_ms: null,
+    });
+    const from = a.me.name || clean(me, 40) || "Someone";
+    await this.note(spaceId, user.id, "invited", `${from} invited ${await this.handleOf(targetId)}`);
+    await this.changed(spaceId);
+    this.publish([targetId], "spaces");
+    return { code };
+  }
+
+  /** Call Your People by username: the draft (made if none), and an invite to that account on it. */
+  async draftInviteAccount(user: { id: string }, targetId: string, me: string): Promise<DraftView> {
+    const d = await this.draft(user, {}, me);
+    await this.inviteAccount(user, d.id, targetId, me);
+    const s = await this.spaceRow(d.id);
+    return s ? this.draftView(s) : d;
+  }
+
+  /** The open invites to this account (spaceJoin.ts narrows them to the invitations it lists). */
+  async invitesToUser(userId: string): Promise<InviteRow[]> {
+    if (!userId) return [];
+    const at = this.now();
+    return (await this.invites.select({ user_id: userId }, { order: "created_ms", desc: true, limit: 40 })).filter((i) => isOpen(i, at));
+  }
+
+  // ------------------------------------------------------------------ one to one (pairs)
+
+  /** The pair between these two, made by either of them, if there is one: whether they are both in it, and its open invite. */
+  async pairBetween(userId: string, otherId: string): Promise<{ s: SpaceRow; both: boolean; invite: InviteRow | null } | null> {
+    const at = this.now();
+    for (const m of await this.members.select({ user_id: userId }, { limit: ROWS_MAX })) {
+      const s = await this.spaceRow(m.space_id);
+      if (!isPair(s)) continue;
+      if (await this.isMember(s!.id, otherId)) return { s: s!, both: true, invite: null };
+      const [invite] = (await this.invites.select({ space_id: s!.id, user_id: otherId }, { limit: 5 })).filter((i) => isOpen(i, at));
+      if (invite) return { s: s!, both: false, invite };
+    }
+    return null;
+  }
+
+  /** "Add a person": a pair space with only them in it, and an invite to the other account (spaceJoin.ts checks blocks and brakes). */
+  async makePair(user: { id: string }, otherId: string, me: string): Promise<{ id: string; code: string }> {
+    if (otherId === user.id) throw new BotError("bad_request", "That's you.");
+    await this.sweepPairs(user.id);
+    const have = await this.pairBetween(user.id, otherId);
+    if (have?.both) throw new BotError("already_in", "You're already connected.", 409);
+    if (have?.invite) throw new BotError("already_invited", "You've already asked them.", 409);
+    await this.roomForOnePair(user.id, true);
+    const id = randomUUID();
+    const at = this.now();
+    await this.spaces.insert({ id, owner_id: user.id, name: PAIR_NAME, created_ms: at, pair: true });
+    await this.members.insert({ space_id: id, user_id: user.id, name: clean(me, 40) || "You", can_approve: true, joined_ms: at, perms: [...PERMS], role: null });
+    const code = randomCode(8);
+    await this.invites.insert({
+      code, space_id: id, created_by: user.id, created_ms: at, expires_ms: at + INVITE_MS,
+      email: null, user_id: otherId, perms: [...MEMBER_PERMS], role: null, used_by: null, used_ms: null,
+    });
+    this.publish([user.id, otherId], "spaces");
+    return { id, code };
+  }
+
+  /** Their pairs nobody else ever came into (the ask ran out or was said no to): gone, so they never count against PAIRS_MAX. */
+  private async sweepPairs(userId: string): Promise<void> {
+    const at = this.now();
+    for (const m of await this.members.select({ user_id: userId }, { limit: ROWS_MAX })) {
+      const s = await this.spaceRow(m.space_id);
+      if (!isPair(s) || s!.owner_id !== userId || (await this.otherIn(s!.id, userId))) continue;
+      const open = (await this.invites.select({ space_id: s!.id }, { limit: 5 })).some((i) => isOpen(i, at));
+      if (!open) await this.leave(userId, s!.id).catch(() => undefined);
+    }
+  }
+
+  /**
+   * The people this person added one to one, or who added them: everyone they are connected with, and anyone they asked who has not
+   * said yes yet (`waiting`, shown by the username they typed).
+   */
+  async pairs(userId: string): Promise<Array<{ spaceId: string; userId: string; name: string; bot: PersonLook; waiting: boolean }>> {
+    const at = this.now();
+    const out: Array<{ spaceId: string; userId: string; name: string; bot: PersonLook; waiting: boolean }> = [];
+    for (const m of await this.members.select({ user_id: userId }, { order: "joined_ms", limit: ROWS_MAX })) {
+      const s = await this.spaceRow(m.space_id);
+      if (!isPair(s)) continue;
+      const other = await this.otherIn(s!.id, userId);
+      if (other) {
+        out.push({ spaceId: s!.id, userId: other.userId, name: other.name, bot: shownLook(looksIn([s!.owner_id, other.userId, userId]), other.userId, userId), waiting: false });
+        continue;
+      }
+      const [invite] = (await this.invites.select({ space_id: s!.id }, { limit: 5 })).filter((i) => !!i.user_id && isOpen(i, at));
+      if (invite) out.push({ spaceId: s!.id, userId: invite.user_id!, name: await this.handleOf(invite.user_id!), bot: shownLook(looksIn([invite.user_id!]), invite.user_id!, userId), waiting: true });
+    }
+    return out;
+  }
+
   /**
    * An old build's invite. The admin only; a role or permissions it names are ignored (there are none). With an email, inviteEmail;
    * without one (an old build's "link"), no new row: the space's own code and its link.
@@ -686,6 +862,11 @@ export class Spaces {
 
   /** 409 unless there is room: the space has fewer than 20 people, and the person is in fewer than 10 spaces. */
   async roomFor(s: SpaceRow, userId: string): Promise<void> {
+    if (isPair(s)) {
+      if ((await this.members.select({ space_id: s.id }, { limit: 3 })).length >= 2) throw new BotError("space_full", "Only two people are in this one.", 409);
+      await this.roomForOnePair(userId, true);
+      return;
+    }
     if ((await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX + 1 })).length >= MEMBERS_MAX) throw new BotError("space_full", `A space can have ${MEMBERS_MAX} people.`, 409);
     await this.roomForOneMore(userId);
   }
@@ -740,7 +921,8 @@ export class Spaces {
       const [m] = await this.members.select({ space_id: id, user_id: who }, { limit: 1 });
       if (!m) throw new BotError("not_found", "They aren't in this space.", 404);
     }
-    if (who === a.s.owner_id) {
+    // A pair is the two of them: either one leaving (or removing the other) ends it for both.
+    if (who === a.s.owner_id || isPair(a.s)) {
       const everyone = await this.memberIds(id);
       // Any invite mail still waiting to go stops with the space.
       for (const i of await this.invites.select({ space_id: id }, { limit: 500 })) await this.outbox.cancel("space_invite", i.code);

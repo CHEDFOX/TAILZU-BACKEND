@@ -21,7 +21,7 @@ export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "
 /** `bot`: their tiny bot in this space (src/botsBots/personLook.ts). */
 export interface Member { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string; bot?: PersonLookSpec }
 export interface Role { id: string; name: string; perms: Perm[]; preset: boolean }
-interface Invite { code: string; link: string; email: string | null; expiresAt: number; roleName?: string; perms?: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
+interface Invite { toAccount?: boolean; code: string; link: string; email: string | null; expiresAt: number; roleName?: string; perms?: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
 interface SpaceBot { slug: string; name: string; colour: string; addedBy: string; byYou: boolean }
 export interface Space {
   id: string; name: string; mine: boolean; me: { admin: boolean; perms: Perm[] }; members: Member[]; bots: SpaceBot[];
@@ -153,7 +153,8 @@ export const messagePerson = (userId: string): ActionRef => call("POST", `${A}/t
 export function inviteRows(ctx: BotsCtx, s: Space, mailReady: boolean): Node[] {
   return (s.invites ?? []).map((i) => {
     const msg = `Join ${s.name} on X0 Bot: ${i.link}`;
-    const mail = !i.email ? `Anyone with the link · good till ${shortDate(ctx, i.expiresAt)}`
+    const mail = i.toAccount ? `Waiting for them in X0 Bot · good till ${shortDate(ctx, i.expiresAt)}`
+      : !i.email ? `Anyone with the link · good till ${shortDate(ctx, i.expiresAt)}`
       : i.mail === "sent" ? "Email sent" : i.mail === "failed" ? "The email didn't go. Send the link yourself."
         : mailReady ? "Email on its way" : "Email waits to go out (email isn't switched on yet). Send the link yourself meanwhile.";
     return col([

@@ -811,10 +811,10 @@ export function messageText(ctx: BotsCtx, content: string, o: { color?: string; 
  * The radius is the prototype's dotted box's: 18. A build without KitExtras may draw a dotted radius as dashed or solid, so it goes
  * only into the new trees.
  */
-export function dottedButton(label: string, onPress: ActionRef, o: { size?: "md" | "lg" } = {}): Node {
+export function dottedButton(label: string, onPress: ActionRef, o: { size?: "md" | "lg"; minWidth?: number } = {}): Node {
   const lg = o.size === "lg";
   return labelled(row([text(label, { size: lg ? 17 : 15, weight: 600, lineHeight: 20 })], {
-    height: lg ? 48 : 44, paddingHorizontal: lg ? 20 : 16, borderRadius: 18, borderWidth: 2, borderStyle: "dotted", borderColor: C.ink,
+    height: lg ? 48 : 44, paddingHorizontal: lg ? 20 : 16, ...(o.minWidth ? { minWidth: o.minWidth } : {}), borderRadius: 18, borderWidth: 2, borderStyle: "dotted", borderColor: C.ink,
     justifyContent: "center", alignSelf: "flex-start", flexShrink: 0,
   }, onPress), label);
 }

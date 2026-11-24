@@ -74,7 +74,12 @@ person's own messages. So:
 
 `personLook.ts` is unaffected: a look is hashed from the user id, never the name.
 
-## 3. Adding someone — PLANNED
+## 3. Adding someone — BUILT
+
+Migration 0113; `botsBots/spaceJoin.ts` (inviteByName, addPerson, people), `botsBots/spaces.ts` (inviteAccount, makePair, pairs),
+`routes/bots/botsSpaces.ts` (`POST .../spaces/people`; the invite routes take a username in `email`), Spaces' start screen
+(`screens/spaces/start.ts`: Add · One Person, Your people). Tests: `tests/spaces-username.test.ts`.
+
 
 **By username**, which is the point of having one. The existing paths keep their own jobs:
 
@@ -205,7 +210,7 @@ plus a hand-reviewed catalogue in `catalog.ts` that ships like code. No authors,
 2. ~~no automatic admin access~~ — **done** (migration 0112; the meeting bot, the mail bot and `to_id`'s admin clause with it)
 3. `@` mentions
 4. the share registry, and shared things in each bot's list
-5. adding by username, and the two-person space
+5. ~~adding by username, and the two-person space~~ — **done** (migration 0113)
 6. the feed, once it is designed
 
 ## Things that must stay true

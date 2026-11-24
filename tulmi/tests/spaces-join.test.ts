@@ -67,7 +67,8 @@ describe("Create: a draft, Call Your People, Name your space", () => {
     expect((await full(s, A_)).draft).toMatchObject({ id: draftId, name: null, invites: [{ email: "mom@example.in" }] });
     // Twice the same address: refused in words.
     expect((await s.call("POST", `${AREA}/spaces/draft/invite`, A_, { email: "MOM@example.in" })).body.code).toBe("already_invited");
-    expect((await s.call("POST", `${AREA}/spaces/draft/invite`, A_, { email: "not an email" })).body.code).toBe("bad_email");
+    // Not an address, so it is read as a username (the one box takes both: docs/social.md §3), and that is no username either.
+    expect((await s.call("POST", `${AREA}/spaces/draft/invite`, A_, { email: "not an email" })).body.code).toBe("bad_username");
   });
 
   it("Done names it, and then the invitation waits for Mom", async () => {
