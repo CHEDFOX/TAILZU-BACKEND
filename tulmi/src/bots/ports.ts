@@ -56,6 +56,21 @@ export interface BotPorts {
   discover?: Discover | null;
   /** Lingo's course (src/lingo): the one thing its chat can do besides talk — write down a word they reached for. */
   lingo?: LingoWords | null;
+  /**
+   * The sites the person signed in to (src/sites, docs/sites.md), asked for at each run because the server builds them after
+   * the bots. READ ONLY, as the sites are: what they are signed in to, what is being watched and its latest card, and
+   * watching one more page. Nothing here presses, types or pays. Absent, or null: no sites.
+   */
+  sites?: () => BotSites | null;
+}
+
+/** A person's signed-in sites, as a bot sees them (read only). */
+export interface BotSites {
+  snapshot(userId: string): Promise<{
+    logins: Array<{ site: string; onPhone?: boolean; needsSignIn?: boolean }>;
+    watches: Array<{ id: string; site: string; label: string; state: string; card?: { title: string; line: string; detail?: string; done?: boolean }; readAt?: number }>;
+  }>;
+  watch(userId: string, url: string, label: string): Promise<{ id: string; site: string; label: string }>;
 }
 
 /** The connectors the server has, as a bot sees them. */

@@ -68,6 +68,7 @@ import { Sites } from "./sites/service.js";
 import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import type { TalkPictures } from "./routes/bots/botsTalk.js";
+import type { BotSites } from "./bots/ports.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
 import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
@@ -518,7 +519,9 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // The bots platform (src/bots, docs/bots.md): everything is a bot (Code, Keylessbord, Plan, Travel), and a person makes their own, each with its tools, knowledge, memory and an
 // API endpoint for their own apps. Off unless BOTS is true: /v1/bots answers 404 bots_off and "Ask any bot" on POST /v1/ask does too. It runs on what is above: the connected
 // apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
-const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
+// The person's signed-in sites, for the bots (read only): built further down, with the sites themselves.
+let botSites: BotSites | null = null;
+const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code, sites: () => botSites }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 // A fitness bot's days, on their own, away from the file that hosts POST .../ask (docs: perms §4.6).
 registerBotHealthRoutes(app, { rateLimit: AUTHED_RL, bots });
@@ -598,6 +601,11 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
   if (cloudBrowserOn()) {
     const visit = getVisitor();
     const sites = new Sites({ ...(visit ? { visit } : {}), read: { maxPaise: SITE_READ_PAISE } });
+    // What Talk's bot knows of them, and the one thing it may do: watch one more page (read only, bots/ports.ts BotSites).
+    botSites = {
+      snapshot: async (userId) => ({ logins: await sites.logins(userId), watches: await sites.list(userId) }),
+      watch: async (userId, url, label) => { const w = await sites.watch(userId, url, label); return { id: w.id, site: w.site, label: w.label }; },
+    };
     const hold = getHolder();
     const panels = hold ? new Panels({ hold }) : undefined;
     registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });

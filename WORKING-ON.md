@@ -1,5 +1,18 @@
 # Being built right now (read before you start)
 
+## 24 Nov: TALK REACHES EVERY APP THEY CONNECTED, AND KNOWS THEIR SITES
+
+Talk could not use most of what people connected. Every bot has a short fixed list of apps (Plan Ease: calendar and tasks;
+Travel: maps and booking), so Gmail, Notion or Zapier were on nobody's list; and an ask no bot fitted went down the front
+door's road, which has no tools at all, so "anything from HDFC in my Gmail?" was answered from nothing. The signed-in sites
+were never offered to any bot.
+
+Now Talk marks its messages `everyApp`: the bot answering gets every app the person connected (the apps' permission tiers
+unchanged: a change still asks), is told which apps and which signed-in sites it can reach and what is being watched there,
+may watch one more page (`site_watch`; sites stay read only), and an ask about something connected that no bot fits goes to
+Talk's own bot (`touchesWhatTheyConnected`). Outside Talk nothing changes. The Talk bot's rule about what it can do now
+now covers using their apps through its tools. docs/talk-door.md section 6b.
+
 ## 24 Nov: TALK MAKES A PICTURE WHEN ASKED FOR ONE
 
 "Make a poster…", "draw…", "logo banao…", or a photo with "remove the background": Talk made none, because nothing in the door

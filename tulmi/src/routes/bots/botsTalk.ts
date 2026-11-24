@@ -218,6 +218,8 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
         method: "POST", url: "/v1/shell/ask",
         payload: {
           message, bot: read.bot, device: b.device === "desktop" ? "desktop" : "phone", mode: b.mode === "voice" ? "voice" : "text", draw: true,
+          // Talk's bot, whichever answers, may use every app they connected and knows their signed-in sites.
+          everyApp: true,
           ...(typeof b.tz === "number" ? { tz: b.tz } : {}),
           ...(sent.length ? { attachments: sent } : {}),
           ...(typeof b.streamId === "string" && b.streamId ? { streamId: b.streamId } : {}),

@@ -160,6 +160,8 @@ describe("the Talk door", () => {
     expect(r.statusCode).toBe(200);
     // It went through the door that already exists, as a message with no bot named.
     expect(t.asked[0]).toMatchObject({ message: "what's on tomorrow?", draw: true });
+    // Talk's bot, whichever answers, may use every app they connected and knows their sites (docs/talk-door.md 6b).
+    expect(t.asked[0]).toMatchObject({ everyApp: true });
     const turns = (await t.read()).json().turns as Array<Record<string, unknown>>;
     expect(turns.map((x) => x.role)).toEqual(["me", "bot"]);
     expect(turns[0]).toMatchObject({ text: "what's on tomorrow?" });

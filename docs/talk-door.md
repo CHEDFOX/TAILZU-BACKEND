@@ -250,6 +250,24 @@ an answer that was lost.
 
 `BOTS` off: every route here is 404 `bots_off`, as the rest of the bots area is.
 
+### 6b. Every app they connected, and their sites
+
+Talk is one thread every bot answers in, so the bot answering there is not held to its own short list of apps. Talk's door
+marks its messages `everyApp` (`botsTalk.ts` → `/v1/shell/ask` → `/v1/ask`), and then:
+
+* **The answering bot gets every app the person connected** (`bots/run.ts`: its own list first, then the rest), each app's
+  tools under its usual name (`gmail__search_mail`). The apps' own permission tiers hold: a read runs, a change asks first.
+* **It is told what it can reach**: the apps by name, the sites they are signed in to, and what is being watched there with
+  its latest card ("Headphones order — Out for delivery · arriving 6 pm"), so "where is my order?" is answered from it.
+* **Sites stay read only** (`docs/sites.md`): the one thing it may do with one is watch another page (`site_watch`), and it is
+  told it cannot press, type, order or pay on them.
+* **An ask about something they connected that no bot fits** ("anything from HDFC in my Gmail?", "is my Amazon refund done?")
+  goes to Talk's own bot instead of the front door's road, which has no tools and would answer from nothing
+  (`bots/service.ts target`, `touchesWhatTheyConnected`: an app or site named, or what they hold, "my inbox", "my order").
+  Plain chat keeps its road.
+
+Outside Talk nothing changes: a bot keeps to its own list, and no site is offered.
+
 ## 7. The asks that moved with the landing
 
 Home carried the app's asks because Home was where everyone landed. Moving the landing without moving them would have
@@ -334,7 +352,8 @@ The welcome and the line of the day: the hello by name and what it changes to, t
 back, no hello over a thread, the still build, the line for each part of the day and the next day's line.
 Files: a photo on its own, words with files, a gap in the list skipped, refs that are not refs refused, the photo drawn by its
 signed link and a file by its name, the strip's send and its crosses (`tests/bots-ask-insert.test.ts` the card closing on a pick;
-`tests/ingest-routes.test.ts` the picture link). `tests/bots-app-boot.test.ts` holds the tab order and the landing; `tests/ai-asks-once.test.ts` the two landing screens
+`tests/ingest-routes.test.ts` the picture link). `tests/talk-every-app.test.ts`: every app and the sites in Talk, only there, the site tool reading only, and which asks go to Talk's own bot.
+`tests/bots-app-boot.test.ts` holds the tab order and the landing; `tests/ai-asks-once.test.ts` the two landing screens
 and the one answer. The field: `mentionCore.test.ts` (phone) and `mention.test.js` (window), plus `fill.test.ts` for the
 `\@` escape. The render check: `npx tsx scripts/bots-render/render.ts bots.talk --api "$(…samples…)"`.
 

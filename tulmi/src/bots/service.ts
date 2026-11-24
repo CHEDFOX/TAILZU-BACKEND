@@ -113,6 +113,8 @@ export interface AskInput {
   call?: boolean;
   /** Where the answer is drawn (the app's chat, botsBots/chat.ts): ask what to draw under its words (run.ts step 7, src/show). */
   draw?: boolean;
+  /** Talk: the bot may use every app the person connected, and knows their signed-in sites (run.ts everyApp). */
+  everyApp?: boolean;
 }
 
 export interface KeyAnswer {
@@ -473,7 +475,7 @@ export class Bots {
       ...(i.emit ? { emit: i.emit } : {}), ...(i.ctx ? { ctx: i.ctx } : {}), ...(i.pickedBy ? { pickedBy: i.pickedBy } : {}),
       ...(i.attached?.length ? { attached: i.attached } : {}), ...(i.extraPaise ? { extraPaise: i.extraPaise } : {}),
       ...(i.onText ? { onText: i.onText } : {}), ...(i.onReset ? { onReset: i.onReset } : {}),
-      ...(i.fresh ? { fresh: true } : {}), ...(i.draw ? { draw: true } : {}),
+      ...(i.fresh ? { fresh: true } : {}), ...(i.draw ? { draw: true } : {}), ...(i.everyApp ? { everyApp: true } : {}),
     };
   }
 
@@ -612,12 +614,24 @@ export class Bots {
   // ------------------------------------------------------------------ the front door
 
   /** "Ask any bot" (`bot` is "any"), or a bot the person chose: where the message goes. */
-  async target(userId: string, bot: string, message: string, ctx: Pick<FrontCtx, "projectId" | "attachments" | "recent" | "mode">, signal?: AbortSignal): Promise<Target> {
+  async target(userId: string, bot: string, message: string, ctx: Pick<FrontCtx, "projectId" | "attachments" | "recent" | "mode">, signal?: AbortSignal, o: { everyApp?: boolean } = {}): Promise<Target> {
     if (bot === "any" || bot === "auto") {
       // Which apps they have connected: a bot given an app they have not connected is no better a fit for it.
       const apps = await this.ports.connectors?.catalog(userId).catch(() => null);
       const connected = apps ? new Set(apps.filter((a) => a.connected).map((a) => a.id)) : undefined;
-      const picked = await pickBot({ ...(connected ? { connected } : {}), ...(this.call ? { call: this.call } : {}), ...(this.gateway ? { gateway: this.gateway } : {}), ...(signal ? { signal } : {}) }, userId, message, await this.defs(userId), ctx);
+      const defs = await this.defs(userId);
+      const picked = await pickBot({ ...(connected ? { connected } : {}), ...(this.call ? { call: this.call } : {}), ...(this.gateway ? { gateway: this.gateway } : {}), ...(signal ? { signal } : {}) }, userId, message, defs, ctx);
+      // TALK, AND NONE OF THEM FITS, BUT IT IS ABOUT SOMETHING THEY CONNECTED ("anything from the bank in my Gmail?", "where
+      // is my Amazon order?"): the front door's own road has no tools, so it would answer from nothing. Talk's own bot answers
+      // instead, with every app they connected and their sites (run.ts everyApp). Anything else keeps the road it had.
+      if (o.everyApp && !picked.bot) {
+        const talk = defs.find((d) => d.ownerId === null && d.slug === "talk");
+        const logins = talk ? await this.siteLogins(userId) : [];
+        const named = (apps ?? []).filter((a) => a.connected).map((a) => ({ id: a.id, name: a.name }));
+        if (talk && touchesWhatTheyConnected(message, named, logins)) {
+          return { kind: "bot", bot: talk, by: "rules", message: picked.message, confidence: picked.confidence, reasons: [...picked.reasons, "connected"], paise: picked.paise };
+        }
+      }
       if (!picked.bot || picked.bot.slug === CODE_SLUG) {
         return { kind: "front", bot: picked.bot, by: picked.by === "none" ? "none" : picked.by, message: picked.message, confidence: picked.confidence, reasons: picked.reasons, paise: picked.paise };
       }
@@ -627,6 +641,14 @@ export class Bots {
     if (!found) throw notFound();
     if (found.def.slug === CODE_SLUG) return { kind: "front", bot: found.def, by: "chosen", message, confidence: 1, reasons: ["chosen"], paise: 0 };
     return { kind: "bot", bot: found.def, by: "chosen", message, confidence: 1, reasons: ["chosen"], paise: 0 };
+  }
+
+  /** The sites they are signed in to, by name (read only; nothing when sites are off). */
+  private async siteLogins(userId: string): Promise<string[]> {
+    const sites = this.ports.sites?.() ?? null;
+    if (!sites) return [];
+    const snap = await sites.snapshot(userId).catch(() => null);
+    return (snap?.logins ?? []).map((l) => l.site);
   }
 
   // ------------------------------------------------------------------ keys
@@ -761,4 +783,31 @@ export class Bots {
     return { bots: mine.map((b) => viewOf(defOf(b), b)), keys, commands, memory, health, exportedAt: this.now() };
   }
 }
+
+/**
+ * IS THIS ABOUT SOMETHING THEY CONNECTED? A connected app named by its name or id ("Gmail", "notion"), a site they are
+ * signed in to ("amazon", "swiggy.in"), or the things those hold ("my inbox", "my order", "my calendar"). Words only, no
+ * model; used only when no bot fitted, to keep Talk from answering about their apps without them.
+ */
+export function touchesWhatTheyConnected(message: string, apps: ReadonlyArray<{ id: string; name: string }>, sites: readonly string[]): boolean {
+  if (!apps.length && !sites.length) return false;
+  const m = ` ${message.toLowerCase().replace(/[^a-z0-9.\s-]/g, " ").replace(/\s+/g, " ")} `;
+  const word = (w: string): boolean => w.length >= 3 && m.includes(` ${w.toLowerCase()} `);
+  for (const a of apps) {
+    if (word(a.id) || word(a.name) || a.name.toLowerCase().split(/\s+/).some((p) => p.length >= 4 && !GENERIC_APP_WORDS.has(p) && word(p))) return true;
+  }
+  for (const s of sites) {
+    const host = s.toLowerCase().replace(/^www\./, "");
+    if (word(host) || word(host.split(".")[0] ?? "")) return true;
+  }
+  const things = apps.length ? APP_THINGS : [];
+  const siteThings = sites.length ? SITE_THINGS : [];
+  return [...things, ...siteThings].some((r) => r.test(m));
+}
+
+const GENERIC_APP_WORDS = new Set(["google", "microsoft", "apple", "calendar", "drive", "mail"]);
+/** What a connected app holds, as people ask for it. */
+const APP_THINGS = [/\b(?:my|the)\s+(?:inbox|emails?|mails?|calendar|meetings?|events?|docs?|documents?|sheets?|spreadsheet|drive|files?|notes?|tasks?|to-?dos?|tickets?|issues?|channels?|messages?)\b/, /\b(?:send|reply|forward|draft|email|mail)\b.{0,40}\b(?:email|mail|to)\b/, /\b(?:schedule|book|add|move|cancel)\b.{0,30}\b(?:meeting|event|call|calendar)\b/];
+/** What a signed-in site holds. */
+const SITE_THINGS = [/\b(?:my|the)\s+(?:order|orders|parcel|package|delivery|shipment|booking|bill|application|refund|return|subscription)\b/, /\bwhere\s+is\s+my\b/, /\b(?:track|tracking)\b/];
 

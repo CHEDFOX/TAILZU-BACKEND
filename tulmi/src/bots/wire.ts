@@ -21,7 +21,7 @@ import type { CallFn } from "../code/work/model.js";
 import type { Connectors } from "../connectors/index.js";
 import type { MediaService } from "../media/service.js";
 import { calendar, withOwnDays } from "../calendar/index.js";
-import { connectorsPort, type BotPorts, type CodeAsk } from "./ports.js";
+import { connectorsPort, type BotPorts, type BotSites, type CodeAsk } from "./ports.js";
 import { everyday } from "../everyday/index.js";
 import { discover } from "../discover/server.js";
 
@@ -32,6 +32,8 @@ export interface WireOptions {
   code?: Code | null;
   call?: CallFn;
   gateway?: GatewayDeps;
+  /** The person's signed-in sites, built after the bots (server.ts): asked for at each run. */
+  sites?: () => BotSites | null;
 }
 
 /** A question about a person's project, answered by Xode's chat: the cheap tier, a short answer, nothing kept. Null while Xode or its brain is off. */
@@ -61,5 +63,6 @@ export function botPorts(o: WireOptions): BotPorts {
     discover: discover({ ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}) }),
     // Lingo's own: writing down a word somebody reached for, mid-conversation. buildTools gives it to Lingo alone.
     lingo: lingoWords(),
+    ...(o.sites ? { sites: o.sites } : {}),
   };
 }
