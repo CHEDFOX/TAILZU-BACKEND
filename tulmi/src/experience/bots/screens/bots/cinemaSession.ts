@@ -73,13 +73,19 @@ function whenWord(at: number, now: number): string {
   return `${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 }
 
+/** Longer than any column is wide. */
+const DOTS_W = 2400;
+
 /** The dotted line across the talk where the session was left and come back to. */
 function pickedUp(label: string): Node {
-  const dots = (): Node => shapes([{ d: "M0 1 H 120", stroke: "#c0adbd", strokeWidth: 2, dash: "1 7", linecap: "round" }], { viewBox: "0 0 120 2", width: 120, height: 2 });
+  // EDGE TO EDGE: a long run of dots, clipped to each side's room. At a fixed 120 the dots stopped short of the label on a wide
+  // column and the line read as two stray dashes. The left run is held at its right end, so both sides meet the label evenly.
+  const dots = (): Node => shapes([{ d: `M1 1 H ${DOTS_W}`, stroke: "#c0adbd", strokeWidth: 2, dash: "1 7", linecap: "round" }], { viewBox: `0 0 ${DOTS_W} 2`, width: DOTS_W, height: 2 });
+  const side = (end: "flex-start" | "flex-end"): Node => row([dots()], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, overflow: "hidden", justifyContent: end, alignItems: "center", height: 2 });
   return row([
-    box([dots()], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    side("flex-end"),
     meta(`picked up again · ${label}`, { size: 11, lines: 1, style: { flexShrink: 0 } }),
-    box([dots()], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    side("flex-start"),
   ], { gap: 10, alignItems: "center", marginVertical: 8 });
 }
 
