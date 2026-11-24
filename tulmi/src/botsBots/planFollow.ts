@@ -45,7 +45,7 @@ import { planCalls, type PlanCalls } from "./planCall.js";
 import { planCapture } from "./planCapture.js";
 import { dueReminder } from "./planDue.js";
 import type { PlanAct } from "./planEase.js";
-import { followChannels } from "./planFollowChannels.js";
+import { followChannels, phoneReady } from "./planFollowChannels.js";
 import { FollowPeople } from "./planFollowPeople.js";
 import {
   followStores, isDuplicate, type FollowRow, type FollowStores, type StepRow,
@@ -1274,7 +1274,10 @@ export class PlanFollows {
       if (role === "holder" && !asker && tell && f.importance === "must") next = { at: tell.at, line: `If it isn't done by ${clockAt(tell.at, f.tz_min)}, X0 tells ${firstName(askerName)}.` };
       else if (f.state === "nobody") next = null;
       else if (holder.id === viewer && f.importance === "must") {
-        const n = ladder.find((s) => RUNG_RANK[s.rung] > RUNG_RANK[f.state === "snoozed" ? "line" : f.rung]);
+        // A real phone call is a step only where it can happen: the provider set up and their switch on. Otherwise the in-app
+        // call is the loudest step, and the line never promises a call that will not come.
+        const phoneStep = phoneReady() && (await this.settingsOf(holder.id).catch(() => null))?.notify.phoneCall === true;
+        const n = ladder.find((s) => RUNG_RANK[s.rung] > RUNG_RANK[f.state === "snoozed" ? "line" : f.rung] && (s.rung !== "phone" || phoneStep));
         if (n) next = { at: n.at, line: `Next: ${n.rung === "push" ? "a reminder" : n.rung === "loud" ? "a louder reminder" : n.rung === "call" ? "X0 calls" : n.rung === "phone" ? "a phone call, if you turned that on" : "X0 tells the family"} at ${clockAt(n.at, f.tz_min)}` };
       } else if (asker && holder.id !== viewer && f.importance === "must" && tell && RUNG_RANK[f.rung] < RUNG_RANK.tell) {
         next = { at: tell.at, line: `At ${clockAt(tell.at, f.tz_min)} X0 tells you if ${firstName(holderName)} hasn't said done.` };

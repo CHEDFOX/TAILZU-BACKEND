@@ -1,5 +1,12 @@
 # Being built right now (read before you start)
 
+## 24 Nov: NO PLIVO FOR NOW: THE IN-APP CALL IS THE LOUDEST STEP
+
+There is no Plivo account, so real phone calls stay off (`CHANNEL_PHONE_CALLS` unset: the routes answer 404, What pings you
+shows no "X0 may call my phone" switch, and the ladder's phone step passes quietly). The in-app "X0 is calling" is the
+loudest step a must-not-miss item climbs to. One leftover fixed: the follow page's "Next: a phone call, if you turned that
+on" was promised even with no provider; the phone step is now counted only when the provider is ready and their switch is on.
+
 ## 24 Nov: START SOMETHING IS THE LIVING TILES AGAIN, ONE A ROW, SAYING WHAT EACH CAN DO
 
 The launcher had gone to small still cards in twos. It is Home's living tiles again (the bot playing on his fabric,
