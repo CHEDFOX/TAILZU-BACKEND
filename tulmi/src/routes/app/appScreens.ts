@@ -26,7 +26,7 @@ import { deskVoices } from "../../experience/appLists.js";
 import { ASSISTANT_SCREENS } from "../../experience/assistant/screens.js";
 import { buildBootstrap } from "../../experience/bootstrap/bootstrap.js";
 import { FONT_BRICOLAGE_CAPABILITY } from "../../../../shared/types/sdui.js";
-import { botsAppOn, botsOnly, isBotsScreen, botsDepsFor, emptyDeps, buildBotsScreen } from "../../experience/bots/index.js";
+import { botsAppOn, botsOnly, isBotsScreen, botsDepsFor, emptyDeps, buildBotsScreen, RETIRED_SCREENS } from "../../experience/bots/index.js";
 import { looksCan, playsFormat } from "../../experience/bots/looks.js";
 import { BOTS_HANDOFF_IDS } from "../../experience/bots/screens/handoff.js";
 import { bumpCacheVersion, currentCacheVersion } from "../../experience/cacheVersion.js";
@@ -573,7 +573,8 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
       if (!botsOn) return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
       // The X0 widget's "last thing done" is news until it is opened: its job's page, or Activity (everything until now). Never in the way.
       if (user && botsId === "bots.code.job" && typeof botsParams?.id === "string") void markSeen(user.id, { ids: [botsParams.id] });
-      else if (user && botsId === "bots.activity") void markSeen(user.id, { all: true });
+      // Activities (or a link from before to the old Activity page, drawn as it): everything until now has been seen.
+      else if (user && (botsId === "bots.activity" || botsId === "bots.activities")) void markSeen(user.id, { all: true });
       const tz = typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes) ? body.tzOffsetMinutes : 0;
       // Through the looks' own gate: with BOTS_SCENES off, a BotMoments2 build is treated as a format-1 one here
       // too, so momentProps, idleSurprises, playable and canScenes all send what today's builds already get.
@@ -586,8 +587,10 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
               .then((r) => ({ statusCode: r.statusCode, body: r.body })),
           }, user, String(req.headers["authorization"] ?? ""), tz)
         : emptyDeps();
-      const screen = await buildBotsScreen({
-        screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
+      // A screen that is gone (the old Bots home, the old Activity): drawn as the one that replaced it, answered under the id asked.
+      const drawn = RETIRED_SCREENS[botsId] ?? botsId;
+      const built = await buildBotsScreen({
+        screenId: drawn, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
         // The vocabulary-2 blocks this client really has, so a builder can tell before it writes a screen that needs one
         // (empty while SDUI_V2 is off). The same reading `serveScreen` gates with below.
         blocks: new Set(clientVocab({ ...body.capabilities, platform: platformOf(body.capabilities?.platform) },
@@ -597,6 +600,7 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,
         desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },
       }, deps);
+      const screen = drawn === botsId ? built : { ...built, screenId: botsId };
       // THE UPDATE CARD, IN THE BOTS APP TOO. It was only ever added to the old desk pages (buildDeskScreen), so a window
       // on the Bots app never showed one — and the tray's "X0 Bot … is ready. Click to update." opened a window with
       // nothing about it. The same card, at the top of the window's main pages, for an older build that can be updated

@@ -248,7 +248,7 @@ describe("the bootstrap", () => {
     const off = buildBootstrap({ onboarded: true, botsApp: true });
     expect(off.warmScreenIds).not.toContain("bots.spaces");
     expect(off.warmScreenIds).not.toContain("bots.chats");
-    expect(off.warmScreenIds).toEqual(expect.arrayContaining(["bots.home", "bots.you", "bots.plan"]));
+    expect(off.warmScreenIds).toEqual(expect.arrayContaining(["bots.talk", "bots.you", "bots.plan"]));
     expect(ids(off, "app.quickActions.ios")).toEqual(ids(on, "app.quickActions.ios").filter((x) => x !== "spaces"));
     expect(ids(off, "app.quickActions.android")).toEqual(ids(on, "app.quickActions.android").filter((x) => x !== "spaces"));
     expect(botsWarmScreenIds(true)).toContain("bots.spaces");

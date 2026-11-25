@@ -144,6 +144,11 @@ describe("the screen route", () => {
     expect(phone.statusCode).toBe(200);
     expect(phone.json()).toMatchObject({ screenId: "bots.home", look: "bots", hideChrome: true });
     expect(phone.body).toContain('"type":"SafeArea"');
+    // The old Bots home is gone (experience/bots/index.ts RETIRED_SCREENS): asked for, it is drawn as Talk under the id asked.
+    expect(phone.body).toContain('"screenId":"bots.talk.threads"');
+    const ledger = await post("/v1/app/screen", { screenId: "bots.activity", capabilities: caps(["BotsKit"]) });
+    expect(ledger.json().screenId).toBe("bots.activity");
+    expect(ledger.json().title).toBe((await post("/v1/app/screen", { screenId: "bots.activities", capabilities: caps(["BotsKit"]) })).json().title);
     const desk = await post("/v1/app/screen", { screenId: "bots.home", capabilities: caps(["BotsKit", "DeskShell"], "desktop") });
     // A person who has done nothing yet lands on the empty home (EmptyHome); anyone else on "What should we do?". Someone who has not
     // agreed to AI processing is asked that first (firstRun/aiConsentCard.ts), and the welcome waits.

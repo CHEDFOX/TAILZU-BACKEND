@@ -106,24 +106,23 @@ export const PUSH_DEFAULTS: PushPayload = {
     // Xode's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
     // waiting for a computer, its changes need a yes to be committed, it moved to another place, it
     // finished, it stopped, and (the agent loop, docs/code-agent.md) it needs the person: a question,
-    // a plan to approve, an OK, more budget. The push carries data.jobId. The Code screen is the phone's to come, so
-    // they open home until the control plane points them at it (push.code_*.screenId).
+    // a plan to approve, an OK, more budget. The push carries data.jobId and data.id: each opens that job's own page.
     "push.code_compute_ask.enabled": true,
-    "push.code_compute_ask.screenId": "home",
+    "push.code_compute_ask.screenId": "bots.code.job",
     "push.code_compute_paused.enabled": true,
-    "push.code_compute_paused.screenId": "home",
+    "push.code_compute_paused.screenId": "bots.code.job",
     "push.code_commit_ask.enabled": true,
-    "push.code_commit_ask.screenId": "home",
+    "push.code_commit_ask.screenId": "bots.code.job",
     "push.code_job_moved.enabled": true,
-    "push.code_job_moved.screenId": "home",
+    "push.code_job_moved.screenId": "bots.code.job",
     "push.code_job_done.enabled": true,
-    "push.code_job_done.screenId": "home",
+    "push.code_job_done.screenId": "bots.code.job",
     "push.code_job_failed.enabled": true,
-    "push.code_job_failed.screenId": "home",
+    "push.code_job_failed.screenId": "bots.code.job",
     "push.code_needs_you.enabled": true,
-    "push.code_needs_you.screenId": "home",
+    "push.code_needs_you.screenId": "bots.code.job",
     "push.code_minutes_low.enabled": true,
-    "push.code_minutes_low.screenId": "home",
+    "push.code_minutes_low.screenId": "bots.code",
 
     // A bot that said something worth an answer, and its answer to a reply typed into a notification (src/bots/notifyReply.ts,
     // docs/widgets.md §5). Both open the chat with that bot (data.slug, data.thread). The Reply button's category is NOT set here:
@@ -137,7 +136,7 @@ export const PUSH_DEFAULTS: PushPayload = {
 
     // The Bots app's daily summary (src/you/push.ts): sent only to a person who turned it on, at the hour they chose, on a day something happened.
     "push.bots_summary.enabled": true,
-    "push.bots_summary.screenId": "bots.activity",
+    "push.bots_summary.screenId": "bots.activities",
 
     // Spaces (src/botsBots/spaceTasks.ts, threads.ts): someone in a space gave you a task, put something on your day, or messaged you.
     // A message push never carries the words; a muted chat sends none. The push carries data.spaceId / data.threadId.

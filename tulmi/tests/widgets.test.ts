@@ -435,7 +435,7 @@ describe("buildNow", () => {
     }, { flags: { ...WIDGETS_DEFAULTS.flags, "widgets.people.limits": { small: 1 } }, labels: { ...WIDGETS_DEFAULTS.labels, "widgets.time.hour": "{n} hr ago" } });
     expect(doc.people.rows[0]).toMatchObject({ when: "3 hr ago", detail: "Home", new: true });
     expect(doc.people.limits).toEqual({ small: 1, medium: 3, large: 6, lock: 0, android: 4 });
-    expect(doc.needs).toMatchObject({ rows: [], lock: { line: "Nothing needs you" }, empty: { title: "All clear", url: "tulmi://screen/bots.home" } });
+    expect(doc.needs).toMatchObject({ rows: [], lock: { line: "Nothing needs you" }, empty: { title: "All clear", url: "tulmi://screen/bots.talk" } });
   });
 });
 

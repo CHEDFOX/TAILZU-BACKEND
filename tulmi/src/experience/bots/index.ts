@@ -108,6 +108,19 @@ const STILL: Record<string, TabGlyph> = {
  * YOU IS NOT ONE EITHER. It is the person button in the header, which is where a profile belongs; a tab as well was
  * the same page twice.
  */
+/**
+ * SCREENS THAT ARE GONE, and what stands in their place. The app opens on Talk with Talk and Activities as its two tabs: the old
+ * Bots home, its empty state and the old Activity ledger are reached by nothing any more, but an old link, a notification already
+ * on a phone, a widget or a build from before can still ask for one. The screen route (routes/app/appScreens.ts) answers such a
+ * request with the screen that replaced it, under the id that was asked for (so a build that matches answers to requests by id
+ * draws it), and no button in the app may lead to one (tests/nav-audit.test.ts). The builders stay for their own tests.
+ */
+export const RETIRED_SCREENS: Readonly<Record<string, string>> = {
+  "bots.home": "bots.talk",
+  "bots.empty-home": "bots.talk",
+  "bots.activity": "bots.activities",
+};
+
 export function botsNav(): NavigationShell {
   return {
     kind: "tabs",
@@ -128,7 +141,7 @@ export function botsNav(): NavigationShell {
  * params and are kept (never a decision, a job in flight or the first run).
  */
 export const BOTS_WARM_SCREEN_IDS = [
-  "bots.talk", "bots.activities", "bots.start", "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
+  "bots.talk", "bots.activities", "bots.start", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
   "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
   "bots.usage", "bots.billing", "bots.notify", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
   "bots.keybot.style", "bots.keybot.tone", "bots.keybot.words", "bots.keybot.voices", "bots.keybot.settings", "bots.keybot.haptics", "bots.keybot.name",

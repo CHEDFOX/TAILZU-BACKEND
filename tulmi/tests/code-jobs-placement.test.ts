@@ -701,7 +701,8 @@ describe("the pushes", () => {
       ["Couldn't finish", "“make the build pass” stopped. It kept going quiet."],
     ]);
     expect(sent.map((m) => m.data.kind)).toEqual(["code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed"]);
-    expect(sent.every((m) => m.data.jobId === "job-1" && m.data.screenId === "home")).toBe(true);
+    // Each opens the job's own page (bots.code.job reads `id`), not a home page.
+    expect(sent.every((m) => m.data.jobId === "job-1" && m.data.id === "job-1" && m.data.screenId === "bots.code.job")).toBe(true);
     // The same moment again is not sent again; a later one is.
     await notifyCodeJob("user-a", "job_done", data({ at: 5000 }));
     expect(sent).toHaveLength(6);
@@ -722,7 +723,7 @@ describe("the pushes", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.title).toBe("GitHub minutes running low");
     expect(sent[0]!.body).toBe("You have used 1612 of your 2000 GitHub Actions minutes this month. Past 95% X0 Bot uses your own computer instead, or waits.");
-    expect(sent[0]!.data).toMatchObject({ kind: "code_minutes_low", jobId: "job-1", screenId: "home" });
+    expect(sent[0]!.data).toMatchObject({ kind: "code_minutes_low", jobId: "job-1", screenId: "bots.code" });
     await notifyCodeJob("user-a", "minutes_low", data({ at: 8000, reason }));
     expect(sent).toHaveLength(1);
   });

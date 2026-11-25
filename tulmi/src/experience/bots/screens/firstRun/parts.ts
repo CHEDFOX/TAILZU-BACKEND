@@ -245,7 +245,8 @@ export const fromApp = (ctx: BotsCtx): boolean => ctx.params.from === "app";
  * link instead (the keyboard's "Tap to set it up", a widget, the setup list) it is the app's only page, and back has
  * nowhere to go: so it is Home.
  */
-export const leave = (ctx: BotsCtx): ActionSpec => (fromApp(ctx) ? back : go(SCREENS.home, undefined, true));
+// Talk, the app's first tab: the old Bots home is gone (experience/bots/index.ts RETIRED_SCREENS).
+export const leave = (ctx: BotsCtx): ActionSpec => (fromApp(ctx) ? back : { kind: "switchTab", tabId: "talk" });
 
 /** A window that reads this computer's Accessibility into $state.axGranted (TAILZU-DESKTOP sdui.js axFollow). */
 export const AX_STATE = "DeskAxState";

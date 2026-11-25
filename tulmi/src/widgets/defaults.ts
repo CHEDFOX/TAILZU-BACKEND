@@ -124,11 +124,11 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
       people: "bots.spaces",
       needs: "bots.tasks",
       peopleEmpty: "bots.spaces",
-      needsEmpty: "bots.home",
+      needsEmpty: "bots.talk",
       // The X0 widget (glance v2): a built-in bot's page, a person's own bot's page, Activity.
       botBuiltin: "bots.{slug}",
       bot: "bots.bot?slug={slug}",
-      activity: "bots.activity",
+      activity: "bots.activities",
     },
 
     // How a row's time is written: "minutes" (the widget counts in whole minutes, hours, days, in the widgets.time.* words sent

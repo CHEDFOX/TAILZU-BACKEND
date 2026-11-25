@@ -97,7 +97,8 @@ export async function notifyCodeJob(userId: string, kind: NotifyKind, data: Noti
         task: data.task,
         where: MOVED_TO[data.to ?? ""] ?? "somewhere else", reason: pushReason(kind, data.reason),
       },
-      data: { jobId: data.jobId },
+      // `id` is what the job's page reads (bots.code.job); jobId stays for the builds that read it.
+      data: { jobId: data.jobId, id: data.jobId },
     });
   } catch { /* a missed push is not a failed job: the job is still in the app */ }
 }

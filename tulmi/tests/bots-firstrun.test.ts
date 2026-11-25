@@ -273,13 +273,14 @@ describe("Turn on Keylessbord, First words", () => {
     expect(goes.visibleIf).toEqual({ any: [{ truthy: "keyboardReady" }, { all: [{ not: { platform: "android" } }, { truthy: "keyboardEnabled" }] }] });
     expect(conts.filter((x) => JSON.stringify(x).includes("app-settings:") || JSON.stringify(x).includes('"target":"keyboard"'))).toHaveLength(2);
   });
-  it("its ways out work wherever it was opened from: back to the page in the app, or Home when a link opened it", async () => {
+  it("its ways out work wherever it was opened from: back to the page in the app, or Talk when a link opened it", async () => {
     // A link (the keyboard's "Tap to set it up", a widget) makes it the app's only page: back would have nowhere to go.
     const linked = await build("bots.keybot.on", "phone");
     const outs = (r: Node) => walk(r)
       .filter((x) => x.on?.onPress && (texts(x).join("") === "Not now" || x.props?.accessibilityLabel === "Back"))
       .map((x) => x.on!.onPress);
-    expect(outs(linked.root!)).toEqual([{ kind: "navigate", screenId: "bots.home", replace: true }, { kind: "navigate", screenId: "bots.home", replace: true }]);
+    // Talk, the first tab: the old Bots home is gone (experience/bots/index.ts RETIRED_SCREENS).
+    expect(outs(linked.root!)).toEqual([{ kind: "switchTab", tabId: "talk" }, { kind: "switchTab", tabId: "talk" }]);
     const inApp = await build("bots.keybot.on", "phone", { params: { from: "app" } });
     expect(outs(inApp.root!)).toEqual([{ kind: "navigateBack" }, { kind: "navigateBack" }]);
     expect(actions(inApp.root)).toEqual(expect.arrayContaining([
@@ -288,7 +289,7 @@ describe("Turn on Keylessbord, First words", () => {
     // First words is the same: Done never lands back on Turn on Keylessbord.
     const words = await build("bots.first-words", "phone");
     const done = walk(words.root!).find((x) => x.on?.onPress && texts(x).join("") === "Done")!;
-    expect(actions(done)[0]).toEqual({ kind: "navigate", screenId: "bots.home", replace: true });
+    expect(actions(done)[0]).toEqual({ kind: "switchTab", tabId: "talk" });
     const wordsIn = await build("bots.first-words", "phone", { params: { from: "app" } });
     expect(actions(walk(wordsIn.root!).find((x) => x.on?.onPress && texts(x).join("") === "Done")!)[0]).toEqual({ kind: "navigateBack" });
   });

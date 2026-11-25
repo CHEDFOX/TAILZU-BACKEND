@@ -36,7 +36,6 @@ import {
  * they wanted was out. A screen that says where its Back goes turns that trail into a tree, and the way out of
  * the bot is never more than two taps from anywhere in it.
  */
-export const outOfCode = (): ActionRef => open(SCREENS.home);
 /** A project's own page, which is the parent of every screen that is about one job, one PR or one set of rules. */
 export const toProject = (id: string): ActionRef => open(SCREENS.code, { project: id });
 
