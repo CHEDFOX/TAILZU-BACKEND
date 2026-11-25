@@ -133,18 +133,18 @@ const TOUCH = "flowTouch";
 const TYPED = "flowTyped";
 
 /**
- * A REAL KEYBOARD, every key where it is on a phone: q to p, a to l, shift z to m delete, then 123, Keylessbord's clay
- * mic, the space bar and return. The keys wear their letters; a touched key lights for a moment. "Say it" builds up in
- * the space bar as its keys are touched and stays there once typed, so the words are on the keyboard and nowhere else.
+ * A REAL KEYBOARD, every key where it is on a phone (q to p, a to l, shift z to m delete, then 123, Keylessbord's clay
+ * mic, the space bar and return), the keys BLANK: the only words on it are "Say it", which builds up in the space bar as
+ * its keys are touched (each lit for a moment) and stays there once typed.
  */
 function realKeyboard(): Node {
   const H = 42;
   const label = (t: string, size = 17, color = KEY_INK): Node => text(t, { size, weight: 400, lineHeight: size + 4, color, align: "center" });
-  const letter = (ch: string): Node => box([label(ch)], {
+  const letter = (ch: string): Node => box([], {
     height: H, borderRadius: 6, flexGrow: 1, flexBasis: 0, alignItems: "center", justifyContent: "center",
     backgroundColor: whenEq(TOUCH, ch, LIT, KEYS_DARK.key),
   });
-  const mod = (t: string, grow: number, size = 15): Node => box([label(t, size)], {
+  const mod = (grow: number): Node => box([], {
     height: H, borderRadius: 6, flexGrow: grow, flexBasis: 0, alignItems: "center", justifyContent: "center", backgroundColor: KEYS_DARK.mod,
   });
   const letters = (row_: string, pad = 0): Node => row([...row_].map(letter), { gap: 6, paddingHorizontal: pad });
@@ -166,8 +166,8 @@ function realKeyboard(): Node {
   return labelled(col([
     letters("qwertyuiop"),
     letters("asdfghjkl", 18),
-    row([mod("⇧", 1.4, 18), ...[..."zxcvbnm"].map(letter), mod("⌫", 1.4, 17)], { gap: 6 }),
-    row([mod("123", 1.3), mic, space, mod("return", 2.1)], { gap: 6 }),
+    row([mod(1.4), ...[..."zxcvbnm"].map(letter), mod(1.4)], { gap: 6 }),
+    row([mod(1.3), mic, space, mod(2.1)], { gap: 6 }),
   ], { backgroundColor: KEYS_DARK.board, borderRadius: 22, paddingTop: 10, paddingHorizontal: 5, paddingBottom: 14, gap: 11 }), "Keylessbord, typing: Say it");
 }
 

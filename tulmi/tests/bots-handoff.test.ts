@@ -68,10 +68,12 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     // Each letter: its key touched, the letter in, the key let go.
     const steps = JSON.stringify(walk(s.root!).map((n) => n.on?.onAppear).filter(Boolean));
     for (const k of ["s", "a", "y", " ", "i", "t"]) expect(steps).toContain(`{"kind":"setState","path":"flowTouch","value":"${k}"}`);
-    // A real keyboard: every letter on its key, in its place, each lit while touched.
-    const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => n.props?.content);
-    for (const ch of "qwertyuiopasdfghjklzxcvbnm") expect(texts, ch).toContain(ch);
-    for (const k of ["123", "return"]) expect(texts).toContain(k);
+    // A real keyboard with blank keys: no letter on any key, each lit while touched; the only words are "Say it".
+    const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => String(n.props?.content));
+    for (const ch of "qwertyuiopasdfghjklzxcvbnm") expect(texts, ch).not.toContain(ch);
+    for (const k of ["123", "return"]) expect(texts).not.toContain(k);
+    const keyboard = texts.filter((t) => !/Switch to the app|Apple has/.test(t));
+    expect(new Set(keyboard)).toEqual(new Set(["S", "Sa", "Say", "Say ", "Say i", "Say it"]));
     for (const k of ["s", "a", "y", "i", "t"]) expect(json).toContain(`{"eq":["flowTouch","${k}"]`);
     // The words build up in the space bar, and once typed they stay: "Say it" is shown from the last letter on.
     for (const [n, w] of [[1, "S"], [3, "Say"], [6, "Say it"]] as const) {
