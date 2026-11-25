@@ -53,19 +53,20 @@ export const NOT_TILED: readonly string[] = ["talk", "keybot"];
 export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slugs);
 
 /**
- * WHAT EACH CAN DO, IN A LINE THAT FITS TWO LINES OF A TILE. The built-ins' own words for this page (their `purpose` is
- * written for the door that routes to them, and runs longer); a bot someone made says its purpose, cut to fit.
+ * WHAT EACH CAN DO, IN THE FEWEST WORDS: what you say to it, then what it does for you, in plain words anyone reads at a
+ * glance. Two lines of a tile at most (the phone's tile shows two). The built-ins' own words for this page (their
+ * `purpose` is written for the door that routes to them, and runs longer); a bot someone made says its purpose, cut to fit.
  */
 export const START_LINES: Readonly<Record<string, string>> = {
-  plan: "Turns a goal into timed steps and puts them on your calendar.",
-  oracle: "Reads your birth chart to answer about love, work and timing.",
-  meet: "Joins your calls, takes the notes and turns what's agreed into to-dos.",
-  mail: "Sorts your business email and drafts replies in your voice.",
-  notes: "Keeps what was said in your meetings, and what was agreed.",
-  code: "Reads your projects, answers about the code, ships changes as PRs.",
-  cinema: "Makes films shot by shot, and pictures: posters, portraits, logos.",
-  travel: "Plans trips: routes, stays and timings, with sources.",
-  lingo: "Teaches a language by talking, and brings words back before you forget.",
+  plan: "Tell it the goal. It plans the steps, sets the times and keeps after you until it's done.",
+  oracle: "Ask about love, work or timing. Answers read from your own birth chart.",
+  meet: "Joins your calls, takes the notes and turns every promise made into a to-do.",
+  mail: "Your business inbox, sorted and answered in your voice. You only see what needs you.",
+  notes: "Everything said in your meetings, kept. Ask it what was agreed, any time.",
+  code: "Say what's broken. It reads your code, fixes it and sends you the change to approve.",
+  cinema: "Describe a film or a poster. It shoots it, cuts it and hands it to you finished.",
+  travel: "Say where and when. It plans the route, the stays and the timings, with sources.",
+  lingo: "Learn a language by talking. It brings each word back just before you'd forget it.",
 };
 const LINE_MAX = 90;
 
