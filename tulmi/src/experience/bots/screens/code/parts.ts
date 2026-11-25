@@ -8,6 +8,7 @@ import { start as momentStart, SENT_WORDS, failed, streamed, askMoment } from ".
 import {
   botLook, labelled, box, icon, back, row, text, C, type BotsCtx, col, title, FACE, page, emptyState, seq, call, SCREENS, keptOffline,
   canBuddy, botBuddy, meta, grow, open,
+  up,
 } from "../../kit.js";
 
 /**
@@ -114,7 +115,7 @@ export function ago(at: number, now: number, tz: number): string {
 
 /** The back chevron, 44 x 44, pulled 10 to the left (STYLE.md). */
 export const backButton = (to?: ActionRef): Node =>
-  labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center", flexShrink: 0 }, to ?? back()), "Back");
+  labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center", flexShrink: 0 }, to ? up(to) : back()), "Back");
 
 /** A line of words and code names: "salon-booking · plan · nothing changed yet". */
 export function subLine(parts: Array<string | { code: string }>, size = 12): Node {

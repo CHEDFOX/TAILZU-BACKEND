@@ -202,6 +202,10 @@ describe("the screens, for the phone and the window", () => {
       expect(list.json, "nothing leads out to Bots").not.toContain('"screenId":"bots.home"');
       const inside = await build("bots.code", client, { project: P });
       expect(inside.json, "a project is one step under the list").toContain('"screenId":"bots.code"');
+      // Going up is a replace (kit.ts up): Back from a job, then its project, never piles the parent on top, so Back cannot
+      // loop between the list and a page above it (the recording: list, Bots, list, Bots...).
+      expect(inside.json).toContain('{"kind":"navigate","screenId":"bots.code","replace":true}');
+      expect(inside.json, "nothing on a project leads out to Bots").not.toContain('"screenId":"bots.home"');
       const job = await build("bots.code.job", client, { id: J });
       expect(job.json, "a job is reached from four places and goes up to the one parent it has").toContain(`"screenId":"bots.code","params":{"project":"${P}"}`);
     });
