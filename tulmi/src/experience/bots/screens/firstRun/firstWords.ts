@@ -58,19 +58,25 @@ function practiceField(desk: boolean): Node {
  * as the real keyboard's does: tap it and speak, tap it again (the app's own VoiceButton: /v1/transcribe-clean, which
  * counts the words and the seconds), and the words land in the box above; then the numbers are worked out again.
  */
-function keyboardArt(mic: Node | null): Node {
-  const key = (style: Style = {}): Node => box([], { height: 32, borderRadius: 7, backgroundColor: C.paper, flexGrow: 1, flexBasis: 0, ...style });
+/** The keyboard's colours: the light board of the setup, or a dark one for a black screen (the Flow screen). */
+export const KEYS_LIGHT = { board: C.surface, key: C.paper, mod: C.track } as const;
+export const KEYS_DARK = { board: "#1C1C1E", key: "#3A3A3C", mod: "#2C2C2E" } as const;
+
+export function keyboardArt(mic: Node | null, o: { strip?: Node; key?: (row: number, i: number) => Style; keyIn?: (row: number, i: number) => Node[]; bar?: Style; label?: string; keys?: { board: string; key: string; mod: string } } = {}): Node {
+  const k = o.keys ?? KEYS_LIGHT;
+  const key = (style: Style = {}, kids: Node[] = []): Node => box(kids, { height: 32, borderRadius: 7, backgroundColor: k.key, flexGrow: 1, flexBasis: 0, alignItems: "center", justifyContent: "center", ...style });
   const wave = [8, 16, 22, 12, 18, 9, 14, 6];
   return labelled(col([
-    row(Array.from({ length: 10 }, () => key()), { gap: 5 }),
-    row(Array.from({ length: 9 }, () => key()), { gap: 5, paddingHorizontal: 16 }),
+    ...(o.strip ? [o.strip] : []),
+    row(Array.from({ length: 10 }, (_, i) => key(o.key?.(0, i), o.keyIn?.(0, i))), { gap: 5 }),
+    row(Array.from({ length: 9 }, (_, i) => key(o.key?.(1, i), o.keyIn?.(1, i))), { gap: 5, paddingHorizontal: 16 }),
     row([
-      key({ height: 38, backgroundColor: C.track, flexGrow: 1.3 }),
+      key({ height: 38, backgroundColor: k.mod, flexGrow: 1.3 }),
       mic ?? box([icon("mic", { size: 18, color: C.paper })], { height: 38, borderRadius: 7, backgroundColor: CLAY, flexGrow: 1.1, flexBasis: 0, alignItems: "center", justifyContent: "center" }),
-      row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { height: 38, borderRadius: 7, backgroundColor: C.paper, flexGrow: 4, flexBasis: 0, gap: 3, justifyContent: "center" }),
-      key({ height: 38, backgroundColor: C.track, flexGrow: 1.4 }),
+      row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { height: 38, borderRadius: 7, backgroundColor: k.key, flexGrow: 4, flexBasis: 0, gap: 3, justifyContent: "center", ...(o.bar ?? {}) }),
+      key({ height: 38, backgroundColor: k.mod, flexGrow: 1.4 }),
     ], { gap: 5 }),
-  ], { backgroundColor: C.surface, borderRadius: 22, paddingTop: 10, paddingHorizontal: 8, paddingBottom: 12, gap: 8 }), mic ? "Keyboard: tap the clay key to speak" : "Keyboard with the clay Keylessbord mic key");
+  ], { backgroundColor: k.board, borderRadius: 22, paddingTop: 10, paddingHorizontal: 8, paddingBottom: 12, gap: 8 }), o.label ?? (mic ? "Keyboard: tap the clay key to speak" : "Keyboard with the clay Keylessbord mic key"));
 }
 
 /**

@@ -11,9 +11,11 @@
  * it writes into are the catalog's own nodes, untouched. flow_arm's demo clip (a keyboard on black) is left out: the
  * screen still leaves when its clip would have ended.
  */
-import type { Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import { hangUrl } from "../art.js";
-import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when } from "../kit.js";
+import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when, box, whenEq, seq, icon, labelled } from "../kit.js";
+import { KEYS_DARK } from "./firstRun/firstWords.js";
+import { CLAY } from "./firstRun/parts.js";
 
 /** The launch's ground: the app icon's cream (the phone's splash, app/src/launch). */
 export const CREAM = "#F7F3EC";
@@ -69,21 +71,136 @@ const head = (label: string, heading: string, line: string): Node[] => [
 /** The keyboard's handoff screens: today's ids (the keyboard's config names them), drawn in the Bots app's look. */
 export const BOTS_HANDOFF_IDS: ReadonlySet<string> = new Set(["keyboard_record", "keyboard_primer", "flow_arm"]);
 
-/** flow_arm: armed on appear, says what changed, leaves on its own. Centred on the screen; nothing to tap. */
+/**
+ * flow_arm: armed on appear, leaves on its own, nothing to tap. What it says is what to do next — switch to the app you
+ * want to write in — on black, over a real keyboard (every key in its place, Keylessbord's clay mic among them), on which
+ * "Say it" is typed out as a person would: one key at a time, each lit for a moment by a light touch, the words building
+ * up in the space bar and staying there.
+ * The typing is state and time only (a delay and a setState a letter), so every build draws it, with nothing new.
+ */
 export function botsFlowArm(base: ScreenResponse): ScreenResponse {
-  return homeNotStats(page(base, col([
-    bot(), gap(24),
-    title("The mic goes with you.", { align: "center" }), gap(10),
-    body("Tap the mic in any app and talk — the words land written.", { align: "center", color: C.grey70 }),
-  ], { flex: 1, justifyContent: "center", paddingHorizontal: 28, paddingBottom: 48 }), base.root?.on));
+  const typing: Node = {
+    ...col([
+      gap(8),
+      title("Switch to the app you want to write in", { align: "center", color: C.paper }), gap(10),
+      body("We feel the inconvenience too. Apple has a little trauma about microphones.", { align: "center", color: DIM }),
+      { ...box([], { flexGrow: 1 }) },
+      realKeyboard(),
+    ], { flex: 1, paddingHorizontal: 20, paddingTop: 40, paddingBottom: 20 }),
+    on: { onAppear: typeSayIt() },
+  };
+  return homeNotStats(dark(page({ ...base, actions: heldForTyping(base.actions), state: { ...(base.state ?? {}), [TOUCH]: "", [TYPED]: 0 } }, typing, base.root?.on)));
 }
 
-/** Today's flow_arm leaves for the Stats tab, which the Bots app does not have: it leaves for Home. */
+/** The Flow screen is on black: the moment between the keyboard and the app you are going back to. */
+const BLACK = "#000000";
+const DIM = "#9A9A9F";
+/** A touched key: lit, its letter dark on it. */
+const LIT = "#8E8E93";
+/** The space bar, touched: lit a little less than a letter key. */
+const LIT_SPACE = "#5A5A5E";
+/** A key's letter, white on the dark key. */
+const KEY_INK = "#FFFFFF";
+
+/** The cream page made black: its theme, its ground and a light status bar. */
+function dark(s: ScreenResponse): ScreenResponse {
+  const root = s.root!;
+  return {
+    ...s,
+    theme: { ...s.theme, color: { ...(s.theme?.color ?? {}), bg: BLACK, surface: BLACK, tabBar: BLACK } } as ScreenResponse["theme"],
+    root: { ...root, props: { ...(root.props ?? {}), barStyle: "light-content" }, style: { ...(root.style ?? {}), backgroundColor: BLACK } },
+  };
+}
+
+/** How long "Say it" takes to type, from the screen's first frame. */
+const TYPE_MS = 1100 + [230, 190, 270, 320, 210, 250].reduce((a, g) => a + 130 + g, 0);
+/** And how long it stays typed before the screen leaves, so it is read and not cut off. */
+const READ_MS = 1500;
+
+/**
+ * The screen leaves on its own once the mic is armed (doArm's delay, then away). Held here until "Say it" has been typed
+ * and read: never shorter than it was, only long enough for the typing.
+ */
+function heldForTyping(actions: ScreenResponse["actions"]): ScreenResponse["actions"] {
+  const arm = actions?.doArm as { kind?: string; actions?: Array<{ kind?: string; ms?: number }> } | undefined;
+  if (!actions || !arm || arm.kind !== "sequence" || !Array.isArray(arm.actions)) return actions;
+  return { ...actions, doArm: { ...arm, actions: arm.actions.map((x) => (x.kind === "delay" ? { ...x, ms: Math.max(Number(x.ms) || 0, TYPE_MS + READ_MS) } : x)) } as never };
+}
+
+/** What is typed, and which key is being touched right now ("" none, " " the bar). */
+const SAY = "Say it";
+const TOUCH = "flowTouch";
+const TYPED = "flowTyped";
+
+/**
+ * A REAL KEYBOARD, every key where it is on a phone (q to p, a to l, shift z to m delete, then 123, Keylessbord's clay
+ * mic, the space bar and return), the keys BLANK: as "Say it" is typed, each of its keys lights for its touch and its
+ * letter shows on it, where it is on a real keyboard, and stays. Nothing else is written anywhere on it.
+ */
+function realKeyboard(): Node {
+  const H = 42;
+  const label = (t: string, size = 17, color = KEY_INK): Node => text(t, { size, weight: 400, lineHeight: size + 4, color, align: "center" });
+  // A key is blank until it is touched: then its letter shows on it, a capital as on a phone's keys, and stays.
+  const at = (ch: string): number => [...SAY].findIndex((c) => c.toLowerCase() === ch);
+  const letter = (ch: string): Node => box(at(ch) < 0 ? [] : [when({ gte: [TYPED, at(ch) + 1] }, label(SAY[at(ch)]!.toUpperCase()))], {
+    height: H, borderRadius: 6, flexGrow: 1, flexBasis: 0, alignItems: "center", justifyContent: "center",
+    backgroundColor: whenEq(TOUCH, ch, LIT, KEYS_DARK.key),
+  });
+  const mod = (grow: number): Node => box([], {
+    height: H, borderRadius: 6, flexGrow: grow, flexBasis: 0, alignItems: "center", justifyContent: "center", backgroundColor: KEYS_DARK.mod,
+  });
+  const letters = (row_: string, pad = 0): Node => row([...row_].map(letter), { gap: 6, paddingHorizontal: pad });
+  // The space bar: no words on it, only Keylessbord's waves; it lights for its touch like any key.
+  const wave = [6, 12, 18, 10, 15, 8, 12, 5];
+  const space = box([row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { gap: 3, justifyContent: "center" })], {
+    height: H, borderRadius: 6, flexGrow: 4.6, flexBasis: 0, alignItems: "center", justifyContent: "center",
+    backgroundColor: whenEq(TOUCH, " ", LIT_SPACE, KEYS_DARK.key),
+  });
+  const mic = box([icon("mic", { size: 18, color: C.paper })], {
+    height: H, borderRadius: 6, flexGrow: 1.1, flexBasis: 0, alignItems: "center", justifyContent: "center", backgroundColor: CLAY,
+  });
+  return labelled(col([
+    letters("qwertyuiop"),
+    letters("asdfghjkl", 18),
+    row([mod(1.4), ...[..."zxcvbnm"].map(letter), mod(1.4)], { gap: 6 }),
+    row([mod(1.3), mic, space, mod(2.1)], { gap: 6 }),
+  ], { backgroundColor: KEYS_DARK.board, borderRadius: 22, paddingTop: 10, paddingHorizontal: 5, paddingBottom: 14, gap: 11 }), "Keylessbord, typing: Say it");
+}
+
+/**
+ * "Say it", typed: a beat to settle, then for each letter its key lit and the letter into the space bar, then the key let
+ * go; the gaps between letters uneven, as a person's are. Typed, it stays in the bar.
+ */
+function typeSayIt(): ActionRef {
+  const steps: ActionSpec[] = [{ kind: "delay", ms: 1100 }];
+  const gaps = [230, 190, 270, 320, 210, 250]; // TYPE_MS adds these up: change them together
+  [...SAY].forEach((ch, i) => {
+    const k = ch === " " ? " " : ch.toLowerCase();
+    steps.push(
+      { kind: "setState", path: TOUCH, value: k },
+      { kind: "setState", path: TYPED, value: i + 1 },
+      { kind: "delay", ms: 130 },
+      { kind: "setState", path: TOUCH, value: "" },
+      { kind: "delay", ms: gaps[i] ?? 140 },
+    );
+  });
+  return seq(...steps);
+}
+
+/** The tab the Bots app opens on (bots/index.ts initialTabId): where the Flow screen leaves for. */
+export const FLOW_LEAVES_FOR = "talk";
+
+/**
+ * Today's flow_arm leaves for the Stats tab, which the Bots app does not have. It leaves for Talk, the tab the app
+ * opens on, BY SWITCHING TO IT: the switch puts that tab's own screen alone on the stack, with the tab bar. It used to
+ * navigate to "home", which the Bots app serves as its Home page pushed on top of the Flow screen — a page nothing
+ * leads to any more, with no tab bar under it, and which drew nothing at all while its welcome waited to play.
+ */
 function homeNotStats<T>(v: T): T {
   if (Array.isArray(v)) return v.map(homeNotStats) as T;
   if (!v || typeof v !== "object") return v;
   const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, homeNotStats(x)])) as Record<string, unknown>;
-  if (o.kind === "navigate" && o.screenId === "stats") o.screenId = "home";
+  if (o.kind === "navigate" && o.screenId === "stats") return { kind: "switchTab", tabId: FLOW_LEAVES_FOR } as T;
   return o as T;
 }
 
