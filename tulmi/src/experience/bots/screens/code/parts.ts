@@ -10,6 +10,7 @@ import {
   canBuddy, botBuddy, meta, grow, open,
   up,
 } from "../../kit.js";
+import { modeHead, pinnedHead } from "../shell/modeHead.js";
 
 /**
  * THE TWO WAYS TO ANOTHER PROJECT, and they belong on a PROJECT'S OWN PAGE as much as on the overview.
@@ -190,10 +191,13 @@ export function withAside(resp: ScreenResponse, aside: Node[], width = 380): Scr
   return resp;
 }
 
-/** The failure page: what could not be read, and the way back. */
-export function unreachable(ctx: BotsCtx, what: string, o: { nav?: string } = {}): ScreenResponse {
+/**
+ * The failure page: what could not be read, and the way back. `home`: it IS Xode's home (the list could not be read), which has
+ * the Talk/Xode switch over it and no back arrow, like the home it stands in for (shell/modeHead.ts).
+ */
+export function unreachable(ctx: BotsCtx, what: string, o: { nav?: string; home?: boolean } = {}): ScreenResponse {
   return page(ctx, {
-    back: true, nav: o.nav ?? "code", title: "Xode",
+    ...(o.home ? { back: false, pinned: [pinnedHead(ctx, modeHead(ctx, "code"))] } : { back: true }), nav: o.nav ?? "code", title: "Xode",
     body: [emptyState({ pose: "think", title: `I couldn't open ${what}`, body: "It may have been removed, or X0 Bot can't reach GitHub right now.", action: { label: "Try again", onPress: REFRESH } })],
   });
 }
@@ -309,9 +313,12 @@ export const setupTop = (top: Node, stage: Node): Node => col([top, stage], { ga
 /** While a plan is being made or Xode is asked (taskBar's `starting` / `asking`): his tiny bot thinks. */
 export const CODE_BUSY = { any: [{ truthy: "starting" }, { truthy: "asking" }] };
 
-/** The window's top line on the getting-started pages: back, "Bots · Xode", the steps. */
-export const enterTop = (to: ActionRef, current: number): Node =>
-  row([backButton(to), meta("Bots · Xode", { size: 13 }), grow(), enterSteps(current)], { gap: 6 });
+/**
+ * The window's top line on the getting-started pages: back (the step before), "Xode", the steps. `null`: no back — the last step
+ * is Xode's own home, and Xode's home has no way back out (the Talk/Xode switch is how you leave it: shell/modeHead.ts).
+ */
+export const enterTop = (to: ActionRef | null, current: number): Node =>
+  row([...(to ? [backButton(to)] : []), meta("Xode", { size: 13 }), grow(), enterSteps(current)], { gap: 6 });
 
 export interface MeetData { gh?: Github; installUrl?: string; off?: boolean }
 

@@ -117,7 +117,7 @@ async function loadHome(ctx: BotsCtx, deps: BotsDeps): Promise<HomeData> {
 }
 
 function codeHome(ctx: BotsCtx, d: HomeData | undefined): ScreenResponse {
-  if (!d || d.kind === "off") return unreachable(ctx, "Xode");
+  if (!d || d.kind === "off") return unreachable(ctx, "Xode", { home: true });
   if (d.kind === "meet") return meet(ctx, d.meet);
   if (d.kind === "overview") return overview(ctx, d.overview);
   return projectHome(ctx, d);

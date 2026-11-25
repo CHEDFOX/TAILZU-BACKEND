@@ -8,7 +8,7 @@ import {
   statusMark, icon, sectionLabel, box,
 } from "../../kit.js";
 import { type MeetData, openUrl, setupBuddy, setupTop, numberDot } from "./parts.js";
-import { modeHead } from "../shell/modeHead.js";
+import { modeHead, pinnedHead } from "../shell/modeHead.js";
 
 /** Enter1 / DEnter1: who Xode is, and Connect GitHub. */
 export function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
@@ -32,9 +32,11 @@ export function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
   if (!desk) {
     return page(ctx, {
       title: "Xode", nav: "code",
+      // The Talk/Xode switch over the scroll, where Talk has it (shell/modeHead.ts). With his stage he stands in the top slot's
+      // place, as on every getting-started step.
+      ...(stage ? {} : { pinned: [pinnedHead(ctx, modeHead(ctx, "code"))] }),
       body: [
-        // With his stage the switch rides in the top slot, so he stands where he does on every getting-started step.
-        ...(stage ? [setupTop(modeHead(ctx, "code"), stage)] : [modeHead(ctx, "code"), row([blip("think", 210)], { justifyContent: "center" })]),
+        ...(stage ? [setupTop(modeHead(ctx, "code"), stage)] : [row([blip("think", 210)], { justifyContent: "center" })]),
         col([title("Hi, I'm Xode.", { size: 30, tracking: -0.8, lineHeight: 36 }), body("Tell me what you want built or fixed. I'll do the work and show you the proof.", { color: C.grey70 })], { gap: 8 }),
         col(how.map((h, i) => row([numberDot(i + 1, "plain", 24), body(h, { style: { flexShrink: 1 } })], { gap: 12 })), { gap: 14 }),
         ...offLine,
@@ -51,8 +53,8 @@ export function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
   const allow = [["check", "Reading the projects you pick"], ["check", "Making branches and pull requests"], ["lock", "Changing main: never without you"]] as const;
   return page(ctx, {
     title: "Xode", nav: "code", maxWidth: 1100, gap: 18,
+    pinned: [pinnedHead(ctx, modeHead(ctx, "code"))],
     body: [
-      modeHead(ctx, "code"),
       row([
         col([
           stage ?? blip("think", 176),

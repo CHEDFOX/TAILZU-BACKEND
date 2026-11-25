@@ -4,7 +4,7 @@
 
 import type { ScreenResponse, ActionRef } from "../../../../../../shared/types/sdui.js";
 import { firstTasks, builtWith, testsLine } from "../../../../botsCode/brain.js";
-import { modeHead } from "../shell/modeHead.js";
+import { modeHead, pinnedHead } from "../shell/modeHead.js";
 import {
   type BotsCtx, type Mark, C, row, box, text, icon, open, SCREENS, col, grow, statusMark, meta, botAvatar, headerBuddy, page, needsCard,
   sectionLabel, duration, meter, percent, title, secondaryButton,
@@ -29,7 +29,7 @@ function projectNow(ctx: BotsCtx, p: Project, jobs: Job[]): { mark: Mark; line: 
 /** The projects overview: Xode's home with several projects, and the last getting-started step (`setup`). */
 export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = false): ScreenResponse {
   const desk = ctx.client === "desktop";
-  if (!d) return unreachable(ctx, "your projects");
+  if (!d) return unreachable(ctx, "your projects", { home: true });
   const week = ctx.live.now - 7 * 86_400_000;
   const working = d.jobs.filter((j) => j.state === "running" || j.state === "queued");
   const needsN = d.jobs.filter((j) => j.state === "waiting_for_you").length;
@@ -71,8 +71,11 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
     return page(ctx, {
       back: false, nav: "code", title: "Xode",
       // With his stage (getting started), the switch rides in the top slot so he stands where he does on every step.
+      // The Talk/Xode switch over the scroll, where Talk has it (shell/modeHead.ts). While getting started (his stage) it rides in
+      // the steps' top slot instead, so he stands in the same place on every step.
+      ...(stage ? {} : { pinned: [pinnedHead(ctx, modeHead(ctx, "code"))] }),
       body: [
-        ...(stage ? [setupTop(col([modeHead(ctx, "code"), head], { gap: 14 }), stage)] : [modeHead(ctx, "code"), head]),
+        ...(stage ? [setupTop(col([modeHead(ctx, "code"), head], { gap: 14 }), stage)] : [head]),
         ...(need ? [needsCard(need)] : []),
         col([sectionLabel("Projects"), ...cards, addRow], { gap: 10 }),
       ],
@@ -113,9 +116,9 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
   ], { width: 300, flexShrink: 0, gap: 8 });
   return page(ctx, {
     title: "Xode", nav: "code", maxWidth: 1100, gap: 18,
+    pinned: [pinnedHead(ctx, modeHead(ctx, "code"))],
     body: [
-      modeHead(ctx, "code"),
-      ...(stage ? [enterTop(open(SCREENS.codeStart, { step: "pick" }), 4), stage] : []),
+      ...(stage ? [enterTop(null, 4), stage] : []),
       row([
         botAvatar(CODE, 44),
         col([title("Xode"), row(status.length ? status.map((s) => row([statusMark(s.mark, { color: MOSS }), text(s.w, { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 6 })) : [meta(statusLine, { size: 13 })], { gap: 14 })], { gap: 3, flexGrow: 1 }),

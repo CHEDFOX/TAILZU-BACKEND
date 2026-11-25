@@ -13,7 +13,7 @@
  * Back on either is therefore never a way to the other, nor to Bots.
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, SCREENS, appMark, grow, open, pillSwitch, roundButton, row, toTab } from "../../kit.js";
+import { type BotsCtx, C, DESK_COLUMN, SCREENS, appMark, col, grow, open, pillSwitch, roundButton, row, toTab } from "../../kit.js";
 
 export type Mode = "talk" | "code";
 
@@ -30,6 +30,17 @@ export function modeSwitch(here: Mode): Node {
     { label: "Xode", here: here === "code", onPress: toXode, label2: here === "code" ? "Xode, where you are" : "Xode, your code" },
   // A little clear of the mark: against it the track read as one lump with the logo.
   ], { marginLeft: 8 });
+}
+
+/**
+ * THE HEAD STAYS PUT. Given as the page's `pinned` (kit.ts page), so it sits over the scroll on both clients — on the phone
+ * above its Screen, in the window above its column — and the thread or the list moves under it. In the body it scrolled away
+ * with the first swipe, switch and all. The page's own side room, so it lines up with what is under it.
+ */
+export function pinnedHead(ctx: BotsCtx, head: Node): Node {
+  return ctx.client === "desktop"
+    ? col([col([head], { width: "100%", maxWidth: DESK_COLUMN })], { paddingTop: 28, paddingHorizontal: 48, flexShrink: 0, backgroundColor: C.paper })
+    : col([head], { paddingTop: 12, paddingHorizontal: 20, flexShrink: 0, backgroundColor: C.paper });
 }
 
 /**

@@ -45,7 +45,7 @@ import { didCards } from "../shell/doorCards.js";
 import { nameOf, avatarOf } from "../shell/parts.js";
 // Home's asks, drawn here because this is the screen the app opens on (see TalkData.notices).
 import { homeNotices } from "../shell/home.js";
-import { modeHead } from "../shell/modeHead.js";
+import { modeHead, pinnedHead } from "../shell/modeHead.js";
 import { WELCOME_CARD_AFTER, WELCOME_STATE, afterWelcome, fadeInWithBox, talkFrame, welcomeFrame, welcomeMoves } from "./talkWelcome.js";
 import { type DeletionState, DELETION_PATH } from "../accountGrace.js";
 import { type AiConsent, AI_CONSENT_PATH } from "../firstRun/aiConsentCard.js";
@@ -408,10 +408,11 @@ export function talkPage(ctx: BotsCtx, d: TalkData | undefined): ReturnType<type
     // Pull-a-bot at both ends; what is new is a turn, and new turns land at the bottom.
     pullBot: { top: true, bottom: true, newAt: "bottom", items: turns.map((t) => t.id) },
     // The topics are live/topics.ts's, where every screen's are: this thread, every bot, and Activity.
+    // The head carries the notifications check where that ask is due, as Home's does (n.head), and stays over the scroll on
+    // both clients (shell/modeHead.ts pinnedHead). During the hello there is only the bot: the head comes in with the box (it
+    // keeps its room meanwhile, so he never moves).
+    pinned: [pinnedHead(ctx, moving ? fadeInWithBox(n.head(head(ctx))) : n.head(head(ctx)))],
     body: [
-      // The head carries the notifications check where that ask is due, as Home's does (n.head).
-      // During the hello there is only the bot: the head comes in with the box (it keeps its room meanwhile, so he never moves).
-      moving ? fadeInWithBox(n.head(head(ctx))) : n.head(head(ctx)),
       // The deletion notice comes before anything else and nothing else asks while it is up (homeNotices' own rule).
       ...n.leaving,
       // The AI permission, or the username card: whichever is due, in the one slot Home gives them.
