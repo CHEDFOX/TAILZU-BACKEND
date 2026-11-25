@@ -68,18 +68,16 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     // Each letter: its key touched, the letter in, the key let go.
     const steps = JSON.stringify(walk(s.root!).map((n) => n.on?.onAppear).filter(Boolean));
     for (const k of ["s", "a", "y", " ", "i", "t"]) expect(steps).toContain(`{"kind":"setState","path":"flowTouch","value":"${k}"}`);
-    // A real keyboard with blank keys: no letter on any key, each lit while touched; the only words are "Say it".
+    // A real keyboard with blank keys: a key shows its letter only from the moment it is touched, and keeps it.
     const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => String(n.props?.content));
-    for (const ch of "qwertyuiopasdfghjklzxcvbnm") expect(texts, ch).not.toContain(ch);
     for (const k of ["123", "return"]) expect(texts).not.toContain(k);
-    const keyboard = texts.filter((t) => !/Switch to the app|Apple has/.test(t));
-    expect(new Set(keyboard)).toEqual(new Set(["S", "Sa", "Say", "Say ", "Say i", "Say it"]));
-    for (const k of ["s", "a", "y", "i", "t"]) expect(json).toContain(`{"eq":["flowTouch","${k}"]`);
-    // The words build up in the space bar, and once typed they stay: "Say it" is shown from the last letter on.
-    for (const [n, w] of [[1, "S"], [3, "Say"], [6, "Say it"]] as const) {
-      const shown = walk(s.root!).find((x) => JSON.stringify(x.visibleIf) === JSON.stringify({ eq: ["flowTyped", n] }));
-      expect(JSON.stringify(shown), w).toContain(`"content":"${w}"`);
+    const keyboard = texts.filter((t) => !/Switch to the app|Apple has/.test(t)).sort();
+    expect(keyboard).toEqual(["S", "a", "i", "t", "y"].sort());
+    for (const [ch, n] of [["S", 1], ["a", 2], ["y", 3], ["i", 5], ["t", 6]] as const) {
+      const shown = walk(s.root!).find((x) => x.type === "Text" && x.props?.content === ch);
+      expect(shown?.visibleIf, ch).toEqual({ gte: ["flowTyped", n] });
     }
+    for (const k of ["s", "a", "y", "i", "t"]) expect(json).toContain(`{"eq":["flowTouch","${k}"]`);
     expect(steps).toContain('{"kind":"setState","path":"flowTyped","value":6}');
     expect(steps).not.toContain('{"kind":"setState","path":"flowTyped","value":0}');
   });

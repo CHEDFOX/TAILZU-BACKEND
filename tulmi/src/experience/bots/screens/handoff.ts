@@ -97,7 +97,7 @@ const BLACK = "#000000";
 const DIM = "#9A9A9F";
 /** A touched key: lit, its letter dark on it. */
 const LIT = "#8E8E93";
-/** The space bar keeps its words readable when touched: lit a little less. */
+/** The space bar, touched: lit a little less than a letter key. */
 const LIT_SPACE = "#5A5A5E";
 /** A key's letter, white on the dark key. */
 const KEY_INK = "#FFFFFF";
@@ -134,13 +134,15 @@ const TYPED = "flowTyped";
 
 /**
  * A REAL KEYBOARD, every key where it is on a phone (q to p, a to l, shift z to m delete, then 123, Keylessbord's clay
- * mic, the space bar and return), the keys BLANK: the only words on it are "Say it", which builds up in the space bar as
- * its keys are touched (each lit for a moment) and stays there once typed.
+ * mic, the space bar and return), the keys BLANK: as "Say it" is typed, each of its keys lights for its touch and its
+ * letter shows on it, where it is on a real keyboard, and stays. Nothing else is written anywhere on it.
  */
 function realKeyboard(): Node {
   const H = 42;
   const label = (t: string, size = 17, color = KEY_INK): Node => text(t, { size, weight: 400, lineHeight: size + 4, color, align: "center" });
-  const letter = (ch: string): Node => box([], {
+  // A key is blank until it is touched: then its letter shows on it, as it was typed ("S" capital), and stays.
+  const at = (ch: string): number => [...SAY].findIndex((c) => c.toLowerCase() === ch);
+  const letter = (ch: string): Node => box(at(ch) < 0 ? [] : [when({ gte: [TYPED, at(ch) + 1] }, label(SAY[at(ch)]!))], {
     height: H, borderRadius: 6, flexGrow: 1, flexBasis: 0, alignItems: "center", justifyContent: "center",
     backgroundColor: whenEq(TOUCH, ch, LIT, KEYS_DARK.key),
   });
@@ -148,15 +150,9 @@ function realKeyboard(): Node {
     height: H, borderRadius: 6, flexGrow: grow, flexBasis: 0, alignItems: "center", justifyContent: "center", backgroundColor: KEYS_DARK.mod,
   });
   const letters = (row_: string, pad = 0): Node => row([...row_].map(letter), { gap: 6, paddingHorizontal: pad });
-  // The space bar: what has been typed so far, with the caret, and it stays once typed; the waves before anything is.
+  // The space bar: no words on it, only Keylessbord's waves; it lights for its touch like any key.
   const wave = [6, 12, 18, 10, 15, 8, 12, 5];
-  const space = box([
-    when({ eq: [TYPED, 0] }, row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { gap: 3, justifyContent: "center" })),
-    ...Array.from({ length: SAY.length }, (_, i) => when({ eq: [TYPED, i + 1] }, row([
-      label(SAY.slice(0, i + 1), 16, KEY_INK),
-      box([], { width: 2, height: 18, borderRadius: 1, backgroundColor: CLAY, marginLeft: 1 }),
-    ], { alignItems: "center", justifyContent: "center" }))),
-  ], {
+  const space = box([row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { gap: 3, justifyContent: "center" })], {
     height: H, borderRadius: 6, flexGrow: 4.6, flexBasis: 0, alignItems: "center", justifyContent: "center",
     backgroundColor: whenEq(TOUCH, " ", LIT_SPACE, KEYS_DARK.key),
   });
