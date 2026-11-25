@@ -15,8 +15,8 @@ const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { CREAM } = await import("../src/experience/bots/screens/handoff.js");
 
 const IDS = ["flow_arm", "keyboard_record", "keyboard_primer"] as const;
-/** Where today's screens leave for the Stats tab, the Bots app's leave for Home. */
-const home = (s: string) => s.replaceAll('"screenId":"stats"', '"screenId":"home"');
+/** Where today's screens leave for the Stats tab, the Bots app's switch to Talk, the tab it opens on. */
+const home = (s: string) => s.replaceAll('{"kind":"navigate","screenId":"stats"}', '{"kind":"switchTab","tabId":"talk"}');
 const build = (id: string, bots: boolean) => buildScreen(id, {
   personality: {}, language: "en", onboarded: true, email: "a@b.com", params: { session: "s-1", host: "Notes" }, bots,
 } as never) as ScreenResponse;
@@ -33,22 +33,67 @@ describe("the keyboard's handoff screens in the Bots app", () => {
   it.each(IDS)("%s keeps its id, state, actions and timing", (id) => {
     const old = build(id, false), now = build(id, true);
     expect(now.screenId).toBe(id);
-    expect(now.state).toEqual(old.state);
+    // flow_arm adds its typing ("Say it", typed on the keyboard); everything the catalog keeps is kept.
+    expect(now.state).toEqual(id === "flow_arm" ? { ...old.state, flowTouch: "", flowTyped: 0 } : old.state);
     // The same actions; the words in them in the Bots app's sentence case, where the catalog capitalises every word.
     const folded = (x: unknown) => JSON.parse(home(JSON.stringify(x)).toLowerCase());
-    expect(folded(now.actions)).toEqual(folded(old.actions));
+    // flow_arm waits for its typing before it leaves: the one delay that changes, and only ever longer.
+    const held = (x: unknown) => JSON.parse(JSON.stringify(x), (k, v) => (k === "ms" ? "ms" : v));
+    if (id === "flow_arm") {
+      expect(held(folded(now.actions))).toEqual(held(folded(old.actions)));
+      const ms = (a: unknown) => ((a as { doArm: { actions: Array<{ kind: string; ms?: number }> } }).doArm.actions.find((x) => x.kind === "delay")!.ms!);
+      expect(ms(now.actions)).toBeGreaterThanOrEqual(ms(old.actions));
+      expect(ms(now.actions)).toBeGreaterThanOrEqual(4500);
+    } else expect(folded(now.actions)).toEqual(folded(old.actions));
     expect(now.root!.props?.keepCase).toBe(true);
     expect(now.cacheTtlSeconds).toEqual(old.cacheTtlSeconds);
   });
 
-  it.each(IDS)("%s does exactly what it did: every action fired, binding and condition", (id) => {
-    expect(doing(build(id, true).root!)).toEqual(doing(build(id, false).root!).map(home));
+  it.each(IDS)("%s does everything it did: every action fired, binding and condition (flow_arm adds only its typing)", (id) => {
+    const now = doing(build(id, true).root!), old = doing(build(id, false).root!).map(home);
+    if (id !== "flow_arm") expect(now).toEqual(old);
+    else {
+      for (const x of old) expect(now, x).toContain(x);
+      // What it adds is the typing alone: its letters and its touches, nothing that leaves, asks or arms.
+      const added = now.filter((x) => !old.includes(x)).join("\n");
+      expect(added).not.toMatch(/navigate|switchTab|armFlowSession|requestPermission|callEndpoint/);
+    }
   });
 
-  it("flow_arm leaves for Home, not the Stats tab the Bots app does not have", () => {
+  it("flow_arm says what to do next, over Keylessbord's keyboard, with \"Say it\" typed out a letter and a touch at a time", () => {
+    const s = build("flow_arm", true);
+    const json = JSON.stringify(s);
+    expect(json).toContain("Switch to the app you want to write in");
+    expect(json).toContain("Apple has a little trauma about microphones");
+    // Each letter: its key touched, the letter in, the key let go.
+    const steps = JSON.stringify(walk(s.root!).map((n) => n.on?.onAppear).filter(Boolean));
+    for (const k of ["s", "a", "y", " ", "i", "t"]) expect(steps).toContain(`{"kind":"setState","path":"flowTouch","value":"${k}"}`);
+    // A real keyboard with blank keys: a key shows its letter only from the moment it is touched, and keeps it.
+    const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => String(n.props?.content));
+    for (const k of ["123", "return"]) expect(texts).not.toContain(k);
+    const keyboard = texts.filter((t) => !/Switch to the app|Apple has/.test(t)).sort();
+    expect(keyboard).toEqual(["S", "A", "I", "T", "Y"].sort());
+    for (const [ch, n] of [["S", 1], ["A", 2], ["Y", 3], ["I", 5], ["T", 6]] as const) {
+      const shown = walk(s.root!).find((x) => x.type === "Text" && x.props?.content === ch);
+      expect(shown?.visibleIf, ch).toEqual({ gte: ["flowTyped", n] });
+    }
+    for (const k of ["s", "a", "y", "i", "t"]) expect(json).toContain(`{"eq":["flowTouch","${k}"]`);
+    expect(steps).toContain('{"kind":"setState","path":"flowTyped","value":6}');
+    expect(steps).not.toContain('{"kind":"setState","path":"flowTyped","value":0}');
+  });
+
+  it("flow_arm is on black, with a light status bar", () => {
+    const s = build("flow_arm", true);
+    expect(s.theme?.color?.bg).toBe("#000000");
+    expect(s.root!.style?.backgroundColor).toBe("#000000");
+    expect(s.root!.props?.barStyle).toBe("light-content");
+  });
+
+  it("flow_arm leaves by switching to Talk, the tab the app opens on: never Stats, never Home pushed over it", () => {
     const s = JSON.stringify(build("flow_arm", true));
     expect(s).not.toContain('"screenId":"stats"');
-    expect(s).toContain('"screenId":"home"');
+    expect(s).not.toContain('"screenId":"home"');
+    expect(s).toContain('{"kind":"switchTab","tabId":"talk"}');
   });
 
   it("the mic and the field it writes into are the catalog's own nodes", () => {
@@ -56,13 +101,17 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     for (const t of ["VoiceToggle", "TextField"]) expect(pick(build("keyboard_record", true), t)).toEqual(pick(build("keyboard_record", false), t));
   });
 
-  it.each(IDS)("%s is drawn on the cream with the icon's bot, in the kit, with no old chrome", (id) => {
+  it.each(IDS)("%s is drawn in the launch's look, in the kit, with no old chrome", (id) => {
     const s = build(id, true);
     expect(s.hideChrome).toBe(true);
-    expect(s.theme?.color?.bg).toBe(CREAM);
-    expect(s.root!.style?.backgroundColor).toBe(CREAM);
+    // flow_arm is on black (the next test); the other two on the cream.
+    if (id !== "flow_arm") {
+      expect(s.theme?.color?.bg).toBe(CREAM);
+      expect(s.root!.style?.backgroundColor).toBe(CREAM);
+    }
     const art = walk(s.root!).filter((n) => n.type === "Image").map((n) => (n.props?.source as { url: string }).url);
-    expect(art).toEqual([expect.stringMatching(/\/blip\/bots\/x0-hang\.png\?v=\d+$/)]);
+    // flow_arm draws Keylessbord's keyboard in the bot's place; the other two keep the icon's bot.
+    expect(art).toEqual(id === "flow_arm" ? [] : [expect.stringMatching(/\/blip\/bots\/x0-hang\.png\?v=\d+$/)]);
     // The kit's rules, save the mic (a phone part the kit has no helper for).
     expect(lintTree(s.root!).filter((m) => m !== "type VoiceToggle")).toEqual([]);
   });
