@@ -4,13 +4,14 @@
 
 import type { ScreenResponse, ActionRef } from "../../../../../../shared/types/sdui.js";
 import { firstTasks, builtWith, testsLine } from "../../../../botsCode/brain.js";
+import { modeHead } from "../shell/modeHead.js";
 import {
   type BotsCtx, type Mark, C, row, box, text, icon, open, SCREENS, col, grow, statusMark, meta, botAvatar, headerBuddy, page, needsCard,
   sectionLabel, duration, meter, percent, title, secondaryButton,
 } from "../../kit.js";
 import {
-  type Project, type Job, cut, MOSS, ago, type OverviewData, unreachable, short, startTask, codeAsk, setupBuddy, backButton, CODE,
-  CODE_BUSY, setupTop, taskBar, enterTop, addProjectRow, outOfCode,
+  type Project, type Job, cut, MOSS, ago, type OverviewData, unreachable, short, startTask, codeAsk, setupBuddy, CODE,
+  CODE_BUSY, setupTop, taskBar, enterTop, addProjectRow,
 } from "./parts.js";
 
 /** A project's "now": what its jobs are doing, or when it last shipped. */
@@ -63,13 +64,15 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
         ...(facts.length ? [row(facts.map((f) => meta(f)), { gap: 14, flexWrap: "wrap" })] : []),
       ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 8 }, open(SCREENS.code, { project: p.id }));
     });
-    // Xode's home, so Back is the way OUT of Xode rather than one step down whatever path they took to get here.
-    const head = row([backButton(outOfCode()), botAvatar(CODE, 40), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+    // Xode's home opens with the Talk/Xode switch where Talk has it (shell/modeHead.ts): that is the way back to Talk, and
+    // there is no back arrow out to Bots any more.
+    const head = row([botAvatar(CODE, 40), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
       ...(stage ? [] : headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY }))], { gap: 10 });
     return page(ctx, {
       back: false, nav: "code", title: "Xode",
+      // With his stage (getting started), the switch rides in the top slot so he stands where he does on every step.
       body: [
-        stage ? setupTop(head, stage) : head,
+        ...(stage ? [setupTop(col([modeHead(ctx, "code"), head], { gap: 14 }), stage)] : [modeHead(ctx, "code"), head]),
         ...(need ? [needsCard(need)] : []),
         col([sectionLabel("Projects"), ...cards, addRow], { gap: 10 }),
       ],
@@ -111,6 +114,7 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
   return page(ctx, {
     title: "Xode", nav: "code", maxWidth: 1100, gap: 18,
     body: [
+      modeHead(ctx, "code"),
       ...(stage ? [enterTop(open(SCREENS.codeStart, { step: "pick" }), 4), stage] : []),
       row([
         botAvatar(CODE, 44),

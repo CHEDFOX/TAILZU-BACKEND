@@ -31,9 +31,9 @@ import type { Card } from "../../../../everyday/index.js";
 import type { ChatTurn } from "../../../../botsBots/chat.js";
 import { TALK_COMMANDS, slashBots } from "../../../../botsBots/talkWords.js";
 import {
-  type BotsCtx, page, col, row, text, meta, grow, C, open, SCREENS, seq, chip, atText,
-  emptyState, botLook, botKind, canPersonBot, appMark, roundButton, picture, icon, box,
-  pillSwitch, mentionField, hasSpaces,
+  type BotsCtx, page, col, row, text, meta, C, seq, chip, atText,
+  emptyState, botLook, botKind, canPersonBot, picture, icon, box,
+  mentionField, hasSpaces,
 } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
 import { askMoment, SENT_WORDS, start as momentStart, streamed, failed as momentFailed, done as momentDone } from "../../askMoment.js";
@@ -45,6 +45,7 @@ import { didCards } from "../shell/doorCards.js";
 import { nameOf, avatarOf } from "../shell/parts.js";
 // Home's asks, drawn here because this is the screen the app opens on (see TalkData.notices).
 import { homeNotices } from "../shell/home.js";
+import { modeHead } from "../shell/modeHead.js";
 import { WELCOME_CARD_AFTER, WELCOME_STATE, afterWelcome, fadeInWithBox, talkFrame, welcomeFrame, welcomeMoves } from "./talkWelcome.js";
 import { type DeletionState, DELETION_PATH } from "../accountGrace.js";
 import { type AiConsent, AI_CONSENT_PATH } from "../firstRun/aiConsentCard.js";
@@ -372,28 +373,8 @@ function bar(ctx: BotsCtx, d: TalkData): Node[] {
  * header that took a third of the first screen (Home's does, on purpose) would push the conversation off it.
  */
 function head(ctx: BotsCtx): Node {
-  const desk = ctx.client === "desktop";
-  const size = desk ? 34 : 30;
-  const working = ctx.live.bots.filter((b) => b.working).map((b) => b.color);
-  const quiet = (glyph: "search" | "person" | "balloons", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 36 : 34, light: true, label });
-  return row([
-    // The mark is the way to your people and your spaces (kit appMark). The person button on the right is YOU; this
-    // one is everyone else.
-    appMark(ctx, size, working),
-    pillSwitch([
-      { label: "Talk", here: true },
-      // Xode keeps its own page: a project, a branch and a job are a place, not a message (see this file's head).
-      { label: "Xode", onPress: open(SCREENS.code), label2: "Xode, your code" },
-    // A little clear of the mark: against it the track read as one lump with the logo.
-    ], { marginLeft: 8 }),
-    grow(),
-    // THE WAY TO THE OTHER CONVERSATIONS. Talk is one at a time, and until this there was no way to put one down and
-    // pick it up later, nor to see what had been talked about — "/new" was the only way to start another and nothing
-    // said so (screens/bots/talkThreads.ts).
-    quiet("balloons", open(SCREENS.talkThreads), "Your conversations"),
-    quiet("search", open(SCREENS.search), "Search everything"),
-    quiet("person", open(SCREENS.you), "Profile and settings"),
-  ], { gap: 10, alignItems: "center", paddingBottom: desk ? 8 : 10 });
+  // The same row Xode opens with, so the Talk/Xode switch never moves (shell/modeHead.ts).
+  return modeHead(ctx, "talk");
 }
 
 // ===================================================================== the page

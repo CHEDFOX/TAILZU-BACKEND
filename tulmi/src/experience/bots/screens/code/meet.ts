@@ -5,9 +5,10 @@
 import type { ScreenResponse, ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, open, SCREENS, seq, primaryButton, button, secondaryButton, meta, notice, page, row, blip, col, title, body, C, text, grow,
-  statusMark, back, icon, sectionLabel, box,
+  statusMark, icon, sectionLabel, box,
 } from "../../kit.js";
-import { type MeetData, openUrl, setupBuddy, setupTop, backButton, numberDot, enterTop } from "./parts.js";
+import { type MeetData, openUrl, setupBuddy, setupTop, numberDot } from "./parts.js";
+import { modeHead } from "../shell/modeHead.js";
 
 /** Enter1 / DEnter1: who Xode is, and Connect GitHub. */
 export function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
@@ -32,7 +33,8 @@ export function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
     return page(ctx, {
       title: "Xode", nav: "code",
       body: [
-        ...(stage ? [setupTop(backButton(), stage)] : [backButton(), row([blip("think", 210)], { justifyContent: "center" })]),
+        // With his stage the switch rides in the top slot, so he stands where he does on every getting-started step.
+        ...(stage ? [setupTop(modeHead(ctx, "code"), stage)] : [modeHead(ctx, "code"), row([blip("think", 210)], { justifyContent: "center" })]),
         col([title("Hi, I'm Xode.", { size: 30, tracking: -0.8, lineHeight: 36 }), body("Tell me what you want built or fixed. I'll do the work and show you the proof.", { color: C.grey70 })], { gap: 8 }),
         col(how.map((h, i) => row([numberDot(i + 1, "plain", 24), body(h, { style: { flexShrink: 1 } })], { gap: 12 })), { gap: 14 }),
         ...offLine,
@@ -50,7 +52,7 @@ export function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
   return page(ctx, {
     title: "Xode", nav: "code", maxWidth: 1100, gap: 18,
     body: [
-      enterTop(back(), 1),
+      modeHead(ctx, "code"),
       row([
         col([
           stage ?? blip("think", 176),

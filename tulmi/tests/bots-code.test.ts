@@ -194,10 +194,12 @@ describe("the screens, for the phone and the window", () => {
      * in — project, job, project, task, overview, project — when what they wanted was out of the bot.
      */
     it(`bots.code (${client}): the list leaves Xode, a project goes up to it, a job to its project`, async () => {
-      // On the phone the list is Xode's home, so its Back is the way out of the bot. The window leaves by its own
-      // nav down the side and draws no back bar on a bot's home at all.
+      // The list is Xode's home: it opens with the Talk/Xode switch where Talk has it (shell/modeHead.ts), and no back arrow
+      // out to Bots. Talk is the Talk tab; Xode is itself, as a place of its own.
       const list = await build("bots.code", client, {});
-      if (client === "phone") expect(list.json, "the list's Back is the way out").toContain('"screenId":"bots.home"');
+      expect(list.words).toEqual(expect.arrayContaining(["Talk", "Xode"]));
+      expect(list.json).toContain('{"kind":"switchTab","tabId":"talk"}');
+      expect(list.json, "nothing leads out to Bots").not.toContain('"screenId":"bots.home"');
       const inside = await build("bots.code", client, { project: P });
       expect(inside.json, "a project is one step under the list").toContain('"screenId":"bots.code"');
       const job = await build("bots.code.job", client, { id: J });

@@ -36,3 +36,20 @@ describe("up", () => {
     for (const a of navs) expect(a, a.screenId).toMatchObject({ root: true, replace: true });
   });
 });
+
+describe("Talk and Xode: one switch, in one place, swapping", () => {
+  it("both heads open with the mark and the same two pills; Xode replaces Talk (root), Talk is the Talk tab", async () => {
+    const { modeHead, toXode, toTalk } = await import("../src/experience/bots/screens/shell/modeHead.js");
+    expect(toXode).toEqual({ kind: "navigate", screenId: SCREENS.code, root: true, replace: true });
+    expect(toTalk).toEqual({ kind: "switchTab", tabId: "talk" });
+    for (const client of ["phone", "desktop"] as const) {
+      const ctx = ctxFor(SCREENS.talk, client);
+      const talk = modeHead(ctx, "talk"), code = modeHead(ctx, "code");
+      // The mark and the switch are the first two children of both, at the same sizes: the switch never moves.
+      expect(JSON.stringify(talk.children![0])).toBe(JSON.stringify(code.children![0]));
+      expect(talk.children![1]!.style).toEqual(code.children![1]!.style);
+      expect(actions(talk.children![1])).toEqual([toXode]);
+      expect(actions(code.children![1])).toEqual([toTalk]);
+    }
+  });
+});
