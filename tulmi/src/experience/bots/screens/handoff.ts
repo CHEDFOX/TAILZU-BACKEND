@@ -13,8 +13,8 @@
  */
 import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import { hangUrl } from "../art.js";
-import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when, box, whenEq, seq } from "../kit.js";
-import { keyboardArt, KEYS_DARK } from "./firstRun/firstWords.js";
+import { body, BOTS_THEME, C, col, gap, picture, primaryButton, row, secondaryButton, sectionLabel, text, title, when, box, whenEq, seq, icon, labelled } from "../kit.js";
+import { KEYS_DARK } from "./firstRun/firstWords.js";
 import { CLAY } from "./firstRun/parts.js";
 
 /** The launch's ground: the app icon's cream (the phone's splash, app/src/launch). */
@@ -73,8 +73,9 @@ export const BOTS_HANDOFF_IDS: ReadonlySet<string> = new Set(["keyboard_record",
 
 /**
  * flow_arm: armed on appear, leaves on its own, nothing to tap. What it says is what to do next — switch to the app you
- * want to write in — on black, over Keylessbord's own keyboard (the one its setup ends on, dark here), on which "Say it" is
- * typed out as a person would: one key at a time, each lit for a moment by a light touch with its letter showing on it.
+ * want to write in — on black, over a real keyboard (every key in its place, Keylessbord's clay mic among them), on which
+ * "Say it" is typed out as a person would: one key at a time, each lit for a moment by a light touch, the words building
+ * up in the space bar and staying there.
  * The typing is state and time only (a delay and a setState a letter), so every build draws it, with nothing new.
  */
 export function botsFlowArm(base: ScreenResponse): ScreenResponse {
@@ -84,27 +85,22 @@ export function botsFlowArm(base: ScreenResponse): ScreenResponse {
       title("Switch to the app you want to write in", { align: "center", color: C.paper }), gap(10),
       body("We feel the inconvenience too. Apple has a little trauma about microphones.", { align: "center", color: DIM }),
       { ...box([], { flexGrow: 1 }) },
-      keyboardArt(null, {
-        keys: KEYS_DARK,
-        key: (r, i) => touchStyle(keyAt(r, i)),
-        // The letter shows on its key while it is touched, and only then: the words are the keys, there is no box.
-        keyIn: (r, i) => (keyAt(r, i) ? [when({ eq: [TOUCH, keyAt(r, i)] }, text(keyAt(r, i).toUpperCase(), { size: 16, weight: 600, lineHeight: 19, color: INK_ON_LIT }))] : []),
-        // The space is the long bar: a touch rims it in clay.
-        bar: { borderWidth: 1.5, borderColor: whenEq(TOUCH, " ", CLAY, KEYS_DARK.key) },
-        label: "Keylessbord, typing: Say it",
-      }),
+      realKeyboard(),
     ], { flex: 1, paddingHorizontal: 20, paddingTop: 40, paddingBottom: 20 }),
     on: { onAppear: typeSayIt() },
   };
-  return homeNotStats(dark(page({ ...base, actions: heldForTyping(base.actions), state: { ...(base.state ?? {}), [TOUCH]: "" } }, typing, base.root?.on)));
+  return homeNotStats(dark(page({ ...base, actions: heldForTyping(base.actions), state: { ...(base.state ?? {}), [TOUCH]: "", [TYPED]: 0 } }, typing, base.root?.on)));
 }
 
 /** The Flow screen is on black: the moment between the keyboard and the app you are going back to. */
 const BLACK = "#000000";
 const DIM = "#9A9A9F";
 /** A touched key: lit, its letter dark on it. */
-const LIT = "#E5E5EA";
-const INK_ON_LIT = "#111111";
+const LIT = "#8E8E93";
+/** The space bar keeps its words readable when touched: lit a little less. */
+const LIT_SPACE = "#5A5A5E";
+/** A key's letter, white on the dark key. */
+const KEY_INK = "#FFFFFF";
 
 /** The cream page made black: its theme, its ground and a light status bar. */
 function dark(s: ScreenResponse): ScreenResponse {
@@ -134,19 +130,50 @@ function heldForTyping(actions: ScreenResponse["actions"]): ScreenResponse["acti
 /** What is typed, and which key is being touched right now ("" none, " " the bar). */
 const SAY = "Say it";
 const TOUCH = "flowTouch";
+const TYPED = "flowTyped";
 
-/** Where each letter sits on the drawn keyboard's two letter rows (QWERTY: q-p, then a-l). */
-const ROWS = ["qwertyuiop", "asdfghjkl"];
-const keyAt = (r: number, i: number): string => ROWS[r]?.[i] ?? "";
-
-/** A key lit for a moment while its letter lands: a light touch, not a press. */
-function touchStyle(letter: string): Record<string, unknown> {
-  return letter ? { backgroundColor: whenEq(TOUCH, letter, LIT, KEYS_DARK.key) } : {};
+/**
+ * A REAL KEYBOARD, every key where it is on a phone: q to p, a to l, shift z to m delete, then 123, Keylessbord's clay
+ * mic, the space bar and return. The keys wear their letters; a touched key lights for a moment. "Say it" builds up in
+ * the space bar as its keys are touched and stays there once typed, so the words are on the keyboard and nowhere else.
+ */
+function realKeyboard(): Node {
+  const H = 42;
+  const label = (t: string, size = 17, color = KEY_INK): Node => text(t, { size, weight: 400, lineHeight: size + 4, color, align: "center" });
+  const letter = (ch: string): Node => box([label(ch)], {
+    height: H, borderRadius: 6, flexGrow: 1, flexBasis: 0, alignItems: "center", justifyContent: "center",
+    backgroundColor: whenEq(TOUCH, ch, LIT, KEYS_DARK.key),
+  });
+  const mod = (t: string, grow: number, size = 15): Node => box([label(t, size)], {
+    height: H, borderRadius: 6, flexGrow: grow, flexBasis: 0, alignItems: "center", justifyContent: "center", backgroundColor: KEYS_DARK.mod,
+  });
+  const letters = (row_: string, pad = 0): Node => row([...row_].map(letter), { gap: 6, paddingHorizontal: pad });
+  // The space bar: what has been typed so far, with the caret, and it stays once typed; the waves before anything is.
+  const wave = [6, 12, 18, 10, 15, 8, 12, 5];
+  const space = box([
+    when({ eq: [TYPED, 0] }, row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { gap: 3, justifyContent: "center" })),
+    ...Array.from({ length: SAY.length }, (_, i) => when({ eq: [TYPED, i + 1] }, row([
+      label(SAY.slice(0, i + 1), 16, KEY_INK),
+      box([], { width: 2, height: 18, borderRadius: 1, backgroundColor: CLAY, marginLeft: 1 }),
+    ], { alignItems: "center", justifyContent: "center" }))),
+  ], {
+    height: H, borderRadius: 6, flexGrow: 4.6, flexBasis: 0, alignItems: "center", justifyContent: "center",
+    backgroundColor: whenEq(TOUCH, " ", LIT_SPACE, KEYS_DARK.key),
+  });
+  const mic = box([icon("mic", { size: 18, color: C.paper })], {
+    height: H, borderRadius: 6, flexGrow: 1.1, flexBasis: 0, alignItems: "center", justifyContent: "center", backgroundColor: CLAY,
+  });
+  return labelled(col([
+    letters("qwertyuiop"),
+    letters("asdfghjkl", 18),
+    row([mod("⇧", 1.4, 18), ...[..."zxcvbnm"].map(letter), mod("⌫", 1.4, 17)], { gap: 6 }),
+    row([mod("123", 1.3), mic, space, mod("return", 2.1)], { gap: 6 }),
+  ], { backgroundColor: KEYS_DARK.board, borderRadius: 22, paddingTop: 10, paddingHorizontal: 5, paddingBottom: 14, gap: 11 }), "Keylessbord, typing: Say it");
 }
 
 /**
- * "Say it", typed: a beat to settle, then for each letter its key lit with the letter on it, then let go; the spaces
- * between letters uneven, as a person's are.
+ * "Say it", typed: a beat to settle, then for each letter its key lit and the letter into the space bar, then the key let
+ * go; the gaps between letters uneven, as a person's are. Typed, it stays in the bar.
  */
 function typeSayIt(): ActionRef {
   const steps: ActionSpec[] = [{ kind: "delay", ms: 1100 }];
@@ -155,6 +182,7 @@ function typeSayIt(): ActionRef {
     const k = ch === " " ? " " : ch.toLowerCase();
     steps.push(
       { kind: "setState", path: TOUCH, value: k },
+      { kind: "setState", path: TYPED, value: i + 1 },
       { kind: "delay", ms: 130 },
       { kind: "setState", path: TOUCH, value: "" },
       { kind: "delay", ms: gaps[i] ?? 140 },

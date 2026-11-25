@@ -34,7 +34,7 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     const old = build(id, false), now = build(id, true);
     expect(now.screenId).toBe(id);
     // flow_arm adds its typing ("Say it", typed on the keyboard); everything the catalog keeps is kept.
-    expect(now.state).toEqual(id === "flow_arm" ? { ...old.state, flowTouch: "" } : old.state);
+    expect(now.state).toEqual(id === "flow_arm" ? { ...old.state, flowTouch: "", flowTyped: 0 } : old.state);
     // The same actions; the words in them in the Bots app's sentence case, where the catalog capitalises every word.
     const folded = (x: unknown) => JSON.parse(home(JSON.stringify(x)).toLowerCase());
     // flow_arm waits for its typing before it leaves: the one delay that changes, and only ever longer.
@@ -68,13 +68,18 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     // Each letter: its key touched, the letter in, the key let go.
     const steps = JSON.stringify(walk(s.root!).map((n) => n.on?.onAppear).filter(Boolean));
     for (const k of ["s", "a", "y", " ", "i", "t"]) expect(steps).toContain(`{"kind":"setState","path":"flowTouch","value":"${k}"}`);
-    // No box for the words: each letter shows on its own key, and only while that key is touched.
-    expect(json).not.toContain("flowTyped");
-    for (const k of ["s", "a", "y", "i", "t"]) {
-      const shown = walk(s.root!).find((n) => JSON.stringify(n.visibleIf) === JSON.stringify({ eq: ["flowTouch", k] }));
-      expect(shown, k).toBeTruthy();
-      expect(JSON.stringify(shown)).toContain(`"content":"${k.toUpperCase()}"`);
+    // A real keyboard: every letter on its key, in its place, each lit while touched.
+    const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => n.props?.content);
+    for (const ch of "qwertyuiopasdfghjklzxcvbnm") expect(texts, ch).toContain(ch);
+    for (const k of ["123", "return"]) expect(texts).toContain(k);
+    for (const k of ["s", "a", "y", "i", "t"]) expect(json).toContain(`{"eq":["flowTouch","${k}"]`);
+    // The words build up in the space bar, and once typed they stay: "Say it" is shown from the last letter on.
+    for (const [n, w] of [[1, "S"], [3, "Say"], [6, "Say it"]] as const) {
+      const shown = walk(s.root!).find((x) => JSON.stringify(x.visibleIf) === JSON.stringify({ eq: ["flowTyped", n] }));
+      expect(JSON.stringify(shown), w).toContain(`"content":"${w}"`);
     }
+    expect(steps).toContain('{"kind":"setState","path":"flowTyped","value":6}');
+    expect(steps).not.toContain('{"kind":"setState","path":"flowTyped","value":0}');
   });
 
   it("flow_arm is on black, with a light status bar", () => {
