@@ -47,7 +47,7 @@ const MEET = new Set(["meet_ready", "meet_waiting", "meet_failed"]);
 const CINEMA = new Set(["cinema_board", "cinema_hold", "cinema_ready"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
 const PEOPLE = new Set([
-  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
+  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_invited", "space_person", "space_feed", "space_meet", "space_meet_sent",
   "space_mail", "space_mail_handle",
 ]);
 

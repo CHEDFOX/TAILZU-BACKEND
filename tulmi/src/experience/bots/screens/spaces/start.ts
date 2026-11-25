@@ -11,6 +11,12 @@
  *           on the server (its mails go at once); Back deletes it and he walks back in.
  *   MADE    just after Done (param `made`): every bot cheers, he walks back in, "{name} is ready" and Open.
  *   JOINED  the person's spaces, each with its last line and what is new.
+ *   PEOPLE  under either: "Add · One Person" (one to one by username: docs/social.md §3), and the people they are connected with
+ *           (Message) or asked (waiting for a yes). Someone on the app is called into a space by their username too, in the same
+ *           box as an email.
+ *
+ * In the window everything sits in one column, centred, as wide as the box (as the phone's screen is), so his top area is right
+ * over the box and nothing is stranded at the left of a wide window.
  *
  * FIRST, CREATE and MADE are one tree with conditions, so Create plays out on the device without a fetch. Reads only
  * GET .../spaces?full=1 (src/botsBots: spaces, spaceJoin); every refusal's toast says the server's own words (said.ts).
@@ -23,14 +29,19 @@ import {
 } from "../../kit.js";
 import { said } from "../../said.js";
 import { idParam } from "./memberPage.js";
-import { A, clearState, enc, facesRow, facesWidth, field, ifFilled, iconButton, inputBox, isDesk, mailPreview, personMark, PREVIEW_STATE, refresh, shareLook, toast, type MailPreview, type Space } from "./parts.js";
+import { A, clearState, enc, facesRow, facesWidth, field, ifFilled, iconButton, inputBox, isDesk, mailPreview, messagePerson, personMark, PREVIEW_STATE, refresh, shareLook, toast, type MailPreview, type Space } from "./parts.js";
 import { pickContact } from "./pickContact.js";
 import { countDot, facesLine, plural, quietLinks } from "./spaceDetail.js";
 
 // ===================================================================== what it reads (GET .../spaces?full=1, as the route answers)
 
-/** An email invite waiting for this person (src/botsBots/spaceJoin.ts Invitation); `byBot`, the admin who sent it as their tiny bot. */
-export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; byBot?: PersonLookSpec; people: number; expiresAt: number }
+/**
+ * An invite waiting for this person, to their email or their username (src/botsBots/spaceJoin.ts Invitation); `byBot`, the admin who
+ * sent it as their tiny bot; `pair`, someone asking to add them one to one.
+ */
+export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; byBot?: PersonLookSpec; people: number; expiresAt: number; pair?: boolean }
+/** Someone this person is connected with one to one, or asked and is waiting on (botsBots/spaces.ts pairs). */
+export interface PersonView { spaceId: string; userId: string; name: string; bot?: PersonLookSpec; waiting: boolean }
 /** Someone asking to join a space this person made; `bot`, the tiny bot they would be there. */
 export interface JoinRequestView { id: string; spaceId: string; spaceName: string; name: string; bot?: PersonLookSpec; at: number }
 /** This person's own open requests: the code they typed (7KQ-29D), never the space's name (a code alone never says whose space it is). */
@@ -44,6 +55,8 @@ export interface DraftView {
 }
 export interface SpacesFull {
   spaces: Space[]; you: string; unread: number;
+  /** One to one: connected, and asked (a server before "Add a person" sends none). */
+  people?: PersonView[];
   invitations: Invitation[]; requests: JoinRequestView[]; asked: MyRequest[]; draft: DraftView | null;
   /**
    * The invite mail as it will read before there is any draft at all (botsBots/spaces.ts blankPreview). The first Invite
@@ -79,11 +92,13 @@ const heading = (words: string): Node => text(words, { size: 26, weight: 700, tr
 function invRow(ctx: BotsCtx, i: Invitation): Node {
   const path = `${A}/spaces/invitations/${enc(i.code)}`;
   const acc = call("PUT", path, { decision: "accept" }, {
-    ok: seq(toast(`You joined ${i.spaceName}`), setState("thOpen", false), refresh), fail: said("Couldn't join it. Try again."),
+    ok: seq(toast(i.pair ? `You're connected with ${i.by}` : `You joined ${i.spaceName}`), setState("thOpen", false), refresh), fail: said("Couldn't join it. Try again."),
   });
-  const dis = call("PUT", path, { decision: "dismiss" }, { ok: seq(toast(`Dismissed. ${i.by} can invite you again.`), refresh), fail: said("Couldn't do that. Try again.") });
+  const dis = call("PUT", path, { decision: "dismiss" }, { ok: seq(toast(`Dismissed. ${i.by} can ask you again.`), refresh), fail: said("Couldn't do that. Try again.") });
+  const title = i.pair ? `${i.by} wants to add you` : i.spaceName;
+  const line = i.pair ? "One to one. Say yes and you can message each other." : `${i.by} invited you · ${plural(i.people, "person", "people")}`;
   return col([
-    row([personMark(ctx, { seed: `${i.spaceId}:${i.by}`, bot: i.byBot }, 36), col([text(i.spaceName, { size: 16, weight: 600, lineHeight: 21, lines: 1 }), meta(`${i.by} invited you · ${plural(i.people, "person", "people")}`, { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12 }),
+    row([personMark(ctx, { seed: `${i.spaceId}:${i.by}`, bot: i.byBot }, 36), col([text(title, { size: 16, weight: 600, lineHeight: 21, lines: 1 }), meta(line, { size: 13, lines: i.pair ? 2 : 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12 }),
     row([primaryButton("Accept", acc, { size: "md" }), button("Dismiss", dis, { kind: "secondary", size: "md" })], { gap: 8 }),
   ], { gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper });
 }
@@ -149,9 +164,9 @@ function inviteAction(): ActionRef {
     setState("sending", true), setState("sendingEmail", "$state.email"),
     call("POST", `${A}/spaces/draft/invite`, { email: "$state.email" }, {
       ok: seq(clearState("email"), setState("sending", false), refresh),
-      fail: seq(setState("sending", false), said("Couldn't invite them. Check the email and try again.")),
+      fail: seq(setState("sending", false), said("Couldn't invite them. Check it and try again.")),
     }),
-  ), "Type their email first");
+  ), "Type their username or email first");
 }
 
 /** Done: the draft becomes the space, and Spaces opens on the moment it is ready. */
@@ -177,10 +192,10 @@ function people(ctx: BotsCtx, d: SpacesFull): Node {
     col([
       ...(draft?.name ? [sectionLabel(draft.name)] : []),
       heading("Call Your People"),
-      meta("Each one gets an email with an invite and a code.", { size: 13 }),
+      meta("Someone on X0 Bot by their username, anyone else by email.", { size: 13 }),
     ], { gap: 4 }),
     row([
-      box([inputBox([field("email", "email", "Their email", { onSubmit: invite, extras: { kind: "email", autoFocus: true, maxLength: 200 } })], { radius: 27 })], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      box([inputBox([field("email", "email", "Their username or email", { onSubmit: invite, extras: { kind: "email", autoFocus: true, maxLength: 200 } })], { radius: 27 })], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
       when({ falsy: "sending" }, primaryButton("Invite", invite, { size: "md" })),
       when({ truthy: "sending" }, button("Sending", undefined, { kind: "disabled", size: "md" })),
     ], { gap: 8 }),
@@ -250,6 +265,66 @@ function spaceRow2(ctx: BotsCtx, s: Space): Node {
   ], { gap: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 64, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper }, open(SCREENS.spaces, { id: s.id }));
 }
 
+// ===================================================================== one to one
+
+const ADDING: Condition = { truthy: "adding" };
+/** Create and Add one width, so "Your Own Space" and "One Person" start in one line. */
+const ROW_BUTTON = 100;
+
+/** "Add a person": asked (they see it in Spaces), or connected at once when they had already asked you. */
+function addPersonAction(): ActionRef {
+  return ifFilled("who", call("POST", `${A}/spaces/people`, { username: "$state.who" }, {
+    assignTo: "added",
+    ok: seq(
+      { kind: "condition", if: { eq: ["added.status", "joined"] }, then: toast("You're connected. Message them any time."), else: toast("Asked. They'll see it in Spaces.") },
+      clearState("who"), setState("adding", false), refresh,
+    ),
+    fail: said("Couldn't add them. Check the username and try again."),
+  }), "Type their username first");
+}
+
+/** The row under Create: a dotted Add and "One Person", in the same shape. */
+const addRow = (desk: boolean): Node => row([
+  dottedButton("Add", setState("adding", true), { size: "lg", minWidth: ROW_BUTTON }),
+  text("One Person", { size: desk ? 27 : 26, weight: 700, tracking: -0.6, lineHeight: 34, style: { flexShrink: 1 } }),
+], { gap: 14, alignItems: "center" });
+
+/** The little form "Add" opens: a username, Add, and Cancel. */
+function addPersonCard(): Node {
+  const add = addPersonAction();
+  return col([
+    col([heading("Add a person"), meta("By their username. Once they say yes, you can message each other.", { size: 13 })], { gap: 4 }),
+    row([
+      box([inputBox([field("who", "who", "Their username", { onSubmit: add, extras: { autoFocus: true, maxLength: 21 } })], { radius: 27 })], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      primaryButton("Add", add, { size: "md" }),
+    ], { gap: 8 }),
+    button("Cancel", seq(setState("adding", false), clearState("who")), { kind: "secondary", size: "md" }),
+  ], { gap: 12, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper });
+}
+
+/** Someone connected (tap to message), or asked and not yet said yes. */
+function personRow(ctx: BotsCtx, p: PersonView): Node {
+  return row([
+    personMark(ctx, { seed: p.userId, bot: p.bot }, 32),
+    col([
+      text(p.name, { size: 16, weight: 600, lineHeight: 21, lines: 1 }),
+      meta(p.waiting ? "Asked. Waiting for a yes." : "Message them", { size: 13, lines: 1 }),
+    ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    ...(p.waiting ? [statusMark("waiting")] : [icon("chevron", { size: 16, color: C.meta })]),
+  ], { gap: 10, paddingVertical: 12, paddingHorizontal: 14, minHeight: 60, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper },
+  p.waiting ? undefined : messagePerson(p.userId));
+}
+
+/** Add · One Person (or its form), then the people. */
+function peopleBlock(ctx: BotsCtx, d: SpacesFull, withRow: boolean): Node[] {
+  const list = d.people ?? [];
+  return [
+    ...(withRow ? [when({ falsy: "adding" }, addRow(isDesk(ctx)))] : []),
+    when(ADDING, addPersonCard()),
+    ...(list.length ? [col([sectionLabel("Your people"), ...list.map((p) => personRow(ctx, p))], { gap: 10 })] : []),
+  ];
+}
+
 // ===================================================================== bots.spaces
 
 /**
@@ -262,6 +337,8 @@ const grownHeight = (desk: boolean, d: SpacesFull): number =>
   Math.max(desk ? GROWN.desk : GROWN.phone, GROWN.head + GROWN.row * ((d.draft?.invites.length ?? 0) + 1));
 /** The window's box of tiny bots: square, and small enough that the row under it stays in a window of the usual height. */
 const DESK_CROWD = 400;
+/** The window's column once there are spaces to list: a list reads best a little wider than the box. */
+const DESK_LIST = 560;
 
 export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResponse {
   const desk = isDesk(ctx);
@@ -294,6 +371,7 @@ export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResp
     body.push(
       text("Your spaces", { size: 26, weight: 700, tracking: -0.5, lineHeight: 32 }),
       col(d.spaces.map((s) => spaceRow2(ctx, s)), { gap: 10 }),
+      ...peopleBlock(ctx, d, true),
       quietLinks(),
     );
   } else {
@@ -306,21 +384,26 @@ export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResp
       when({ all: [CREATING, { eq: ["step", "name"] }] }, naming()),
     ]);
     body.push(
-      desk ? box([crowd], { width: DESK_CROWD, maxWidth: "100%" }) : crowd,
+      crowd,
       vanish({ key: "spaces.create", goneWhen: { any: [CREATING, MADE] } }, [
-        // The dotted Create on the left, the words on its right (the prototype's size).
-        row([dottedButton("Create", setState("creating", true), { size: "lg" }), text("Your Own Space", { size: desk ? 27 : 26, weight: 700, tracking: -0.6, lineHeight: 34, style: { flexShrink: 1 } })], { gap: 14, alignItems: "center" }),
+        col([
+          // The dotted Create on the left, the words on its right (the prototype's size); "Add · One Person" under it, the same.
+          when({ falsy: "adding" }, row([dottedButton("Create", setState("creating", true), { size: "lg", minWidth: ROW_BUTTON }), text("Your Own Space", { size: desk ? 27 : 26, weight: 700, tracking: -0.6, lineHeight: 34, style: { flexShrink: 1 } })], { gap: 14, alignItems: "center" })),
+          ...peopleBlock(ctx, d, true),
+        ], { gap: 14 }),
       ]),
       ...(made ? [when(MADE, madeLines(ctx, d, made))] : []),
     );
   }
+  // THE WINDOW: one centred column, as wide as the box (or a list's width once they have spaces), the way the phone's screen is.
+  const column = desk ? [col(body, { gap: 18, width: "100%", maxWidth: L === "joined" ? DESK_LIST : DESK_CROWD, alignSelf: "center" })] : body;
   return page(ctx, {
     back: !desk, title: "Spaces", nav: "you", gap: 18, maxWidth: 720,
     state: {
       code, thOpen, news: d.invitations.length + d.requests.length, creating: !!d.draft, step: "people", email: "", sending: false, sendingEmail: "", ...PREVIEW_STATE,
-      spaceName: "", newName: "", made: !!made,
+      spaceName: "", newName: "", made: !!made, adding: false, who: "",
     },
     live: ["spaces", ...d.spaces.map((s) => `space:${s.id}`)],
-    body,
+    body: column,
   });
 }

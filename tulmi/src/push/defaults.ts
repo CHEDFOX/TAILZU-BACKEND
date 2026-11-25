@@ -157,6 +157,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_request.screenId": "bots.spaces",
     "push.space_accepted.enabled": true,
     "push.space_accepted.screenId": "bots.spaces",
+    // By username (docs/social.md §3): someone invited your account into a space, or asked to add you one to one. Both open Spaces
+    // with his thought open (data.thought "1"), where the invitation waits with Accept and Dismiss.
+    "push.space_invited.enabled": true,
+    "push.space_invited.screenId": "bots.spaces",
+    "push.space_person.enabled": true,
+    "push.space_person.screenId": "bots.spaces",
     "push.space_feed.enabled": true,
     "push.space_feed.screenId": "bots.spaces",
     // Sharing a plan (src/billing/planShare.ts, docs/plan-share.md; PLAN_SHARE, off). Someone asked you to share yours: it opens
@@ -286,6 +292,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_request.body": "Let them in from Spaces.",
     "push.space_accepted.title": "You're in {space}",
     "push.space_accepted.body": "{admin} let you in.",
+    "push.space_invited.title": "{name} invited you to {space}",
+    "push.space_invited.body": "Say yes or no in Spaces.",
+    "push.space_person.title": "{name} wants to add you",
+    "push.space_person.body": "Say yes in Spaces and you can message each other.",
     "push.space_feed.title": "{chat}",
     "push.space_feed.body": "{name} sent a message",
     "push.plan_share_ask.title": "{name} is asking for your plan",
@@ -345,7 +355,7 @@ export const EVENT_PUSH_KINDS = [
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
   "bot_ask", "bot_reply",
-  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
+  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_invited", "space_person", "space_feed", "space_meet", "space_meet_sent",
   "space_mail", "space_mail_handle",
   "plan_share_ask", "plan_share_on",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,

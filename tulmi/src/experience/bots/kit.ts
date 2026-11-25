@@ -811,10 +811,10 @@ export function messageText(ctx: BotsCtx, content: string, o: { color?: string; 
  * The radius is the prototype's dotted box's: 18. A build without KitExtras may draw a dotted radius as dashed or solid, so it goes
  * only into the new trees.
  */
-export function dottedButton(label: string, onPress: ActionRef, o: { size?: "md" | "lg" } = {}): Node {
+export function dottedButton(label: string, onPress: ActionRef, o: { size?: "md" | "lg"; minWidth?: number } = {}): Node {
   const lg = o.size === "lg";
   return labelled(row([text(label, { size: lg ? 17 : 15, weight: 600, lineHeight: 20 })], {
-    height: lg ? 48 : 44, paddingHorizontal: lg ? 20 : 16, borderRadius: 18, borderWidth: 2, borderStyle: "dotted", borderColor: C.ink,
+    height: lg ? 48 : 44, paddingHorizontal: lg ? 20 : 16, ...(o.minWidth ? { minWidth: o.minWidth } : {}), borderRadius: 18, borderWidth: 2, borderStyle: "dotted", borderColor: C.ink,
     justifyContent: "center", alignSelf: "flex-start", flexShrink: 0,
   }, onPress), label);
 }
@@ -1050,9 +1050,18 @@ export function stepper(value: string, onMinus: ActionRef | undefined, onPlus: A
 }
 
 /** A back bar: a 44 x 44 chevron (pulled 10 left), an optional title, and something on the right. */
+/**
+ * GOING UP, NOT FORWARD. A link that leaves a screen for its parent (a back arrow that names where, "Stop for now", "All meetings")
+ * was an ordinary navigate, so every build PUSHED the parent on top of where the person had been: the stack grew with each one
+ * and Back then walked through every step again (a lesson, its Done, Lingo; Lingo again). Sent as `replace`, every build that
+ * exists swaps the screen up for the parent instead, and a build that knows the stack (the window's go, the phone's navStack)
+ * goes back down to the parent when it is already there. Anything that is not a navigate is left as it is.
+ */
+export const up = (a: ActionRef): ActionRef => (typeof a === "object" && a.kind === "navigate" ? { ...a, replace: true } : a);
+
 export function backBar(o: { title?: string; onBack?: ActionRef; right?: Node } = {}): Node {
   return row([
-    labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, o.onBack ?? { kind: "navigateBack" }), "Back"),
+    labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, o.onBack ? up(o.onBack) : { kind: "navigateBack" }), "Back"),
     ...(o.title ? [text(o.title, { size: 17, weight: 600, lineHeight: 22, lines: 1, style: { flexShrink: 1 } })] : []),
     grow(),
     ...(o.right ? [o.right] : []),
@@ -1338,6 +1347,14 @@ function navItem(labelText: string, glyph: Node, active: boolean, onPress: Actio
 }
 
 /** The window's sidebar: the mark, the three tabs as living icons, your bots (live), Make a bot, the desk's pages, settings. */
+/**
+ * THE SIDEBAR'S PLACES ARE PLACES, NOT STEPS. Each one opens with nothing behind it, as a tab does (`root`): pushed, a few minutes
+ * moving between bots in the sidebar left a stack of every one, and Back walked the whole way back through them.
+ */
+// `replace` as well: a window build from before `root` swaps the page up for the place instead of pushing it, so even there
+// the stack stops growing with every click in the sidebar.
+const asRoot = (a: ActionSpec): ActionSpec => (a.kind === "navigate" ? { ...a, root: true, replace: true } : a);
+
 export function sidebar(ctx: BotsCtx, active?: string): Node {
   const live = ctx.live;
   const plain = (name: IconName, on: boolean) => icon(name, { size: 20, color: on ? C.ink : C.meta });
@@ -1345,19 +1362,19 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
     const dot = statusMark("working", { color: b.color, still: !b.working });
     const right = b.needs ? statusMark("needs")
       : b.working ? text("working", { size: 12, weight: 500, color: b.color }) : undefined;
-    return navItem(b.name, dot, active === b.slug, botRoute(b.slug), 38, right);
+    return navItem(b.name, dot, active === b.slug, asRoot(botRoute(b.slug)), 38, right);
   });
   return col([
     row([tailzuMark(28), text("X0 Bot", { size: 17, weight: 700, tracking: -0.3 })], { gap: 10, paddingHorizontal: 8, paddingBottom: 16 }),
     ...TABS.map((t) => navItem(t.title, tabGlyph(t.id, active === t.id, live.tab, 22), active === t.id, toTab(t.id), 44)),
     sectionLabel("Your bots", { style: { paddingTop: 16, paddingBottom: 6, paddingHorizontal: 10 } }),
     ...botItems,
-    navItem("Make a bot", icon("plus", { size: 18, color: C.meta }), active === "make", open(SCREENS.make), 38),
+    navItem("Make a bot", icon("plus", { size: 18, color: C.meta }), active === "make", asRoot(open(SCREENS.make)), 38),
     box([], { height: 1, backgroundColor: C.divider, marginVertical: 8, marginHorizontal: 10 }),
-    ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", open(SCREENS.today), 40)] : []),
-    ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", open(SCREENS.notes), 40)] : []),
+    ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", asRoot(open(SCREENS.today)), 40)] : []),
+    ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", asRoot(open(SCREENS.notes)), 40)] : []),
     grow(),
-    navItem("Settings", plain("settings", active === "settings"), active === "settings", open(SCREENS.settings), 40),
+    navItem("Settings", plain("settings", active === "settings"), active === "settings", asRoot(open(SCREENS.settings)), 40),
   ], {
     width: 240, flexShrink: 0, height: "100%", borderRightWidth: 1, borderRightColor: C.divider, paddingTop: 22, paddingHorizontal: 14, paddingBottom: 18, gap: 2,
     backgroundColor: C.paper,

@@ -144,11 +144,19 @@ describe("Spaces (bots.spaces)", () => {
       expect(ofType(nodes, "BotCrowd")).toHaveLength(1);
       // A square box: no height (as tall as it is wide); the window's held to a square that fits it.
       expect(ofType(nodes, "BotCrowd")[0]!.props!.height).toBeUndefined();
-      if (client === "desktop") expect(nodes.find((n) => n.children?.some((c) => c.type === "BotCrowd"))!.style).toMatchObject({ width: 400, maxWidth: "100%" });
-      const row = ofType(nodes, "Vanish")[0]!.children![0]!;
+      // The window: his stage, the box and the rows in ONE centred column as wide as the box, so he is right over it (as on the phone).
+      if (client === "desktop") {
+        const column = nodes.find((n) => n.children?.some((c) => c.type === "BotStage") && n.children?.some((c) => c.type === "BotCrowd"))!;
+        expect(column.style).toMatchObject({ maxWidth: 400, width: "100%", alignSelf: "center" });
+      }
+      const rows = ofType(nodes, "Vanish")[0]!.children![0]!;
+      const row = rows.children![0]!;
       expect(row.children![0]!.style).toMatchObject({ borderStyle: "dotted", borderWidth: 2 });
       expect(texts(walk(row.children![0]!))).toEqual(["Create"]);
       expect(texts(walk(row.children![1]!))).toEqual(["Your Own Space"]);
+      // And under it, the same shape: one person, by username (docs/social.md §3).
+      expect(texts(walk(rows.children![1]!))).toEqual(["Add", "One Person"]);
+      expect(callTo(rows, "POST", `${A}/spaces/people`)?.body).toEqual({ username: "$state.who" });
       expect(texts(nodes)).not.toContain("Your spaces");
       // An invitation waiting on the first Spaces screen is shown, not hidden behind a tap; he hops for it.
       expect(s.state).toMatchObject({ thOpen: true, news: 1, creating: false, made: false });
@@ -169,7 +177,7 @@ describe("Spaces (bots.spaces)", () => {
       expect(lintTree(s.root!)).toEqual([]);
       expect(s.state).toMatchObject({ creating: true, step: "people" });
       const t = texts(nodes);
-      for (const w of ["Call Your People", "Each one gets an email with an invite and a code.", "meera@example.in", "rohan@example.in", "Continue", "Name your space", "Done"]) expect(t, w).toContain(w);
+      for (const w of ["Call Your People", "Someone on X0 Bot by their username, anyone else by email.", "meera@example.in", "rohan@example.in", "Continue", "Name your space", "Done"]) expect(t, w).toContain(w);
       expect(t.filter((x) => x === "Sent")).toHaveLength(2);
       const crowd = ofType(nodes, "BotCrowd")[0]!;
       expect(crowd.props).toMatchObject({ grownWhen: { truthy: "creating" }, grownHeight: client === "desktop" ? 600 : 560, cheerWhen: { truthy: "made" } });

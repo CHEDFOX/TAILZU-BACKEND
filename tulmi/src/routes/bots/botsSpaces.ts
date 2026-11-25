@@ -120,6 +120,8 @@ const param = (req: FastifyRequest, k: string): string => String((req.params as 
 const queryOf = (req: FastifyRequest): Record<string, unknown> => (req.query as Record<string, unknown> | undefined) ?? {};
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 /** Who is joining, as spaceJoin.ts reads them: their address counts only once it is confirmed. */
+/** An email address, not a username: "@aanya" and "aanya" are usernames; "a@b.in" is an address. */
+const looksLikeEmail = (v: unknown): boolean => typeof v === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v.trim());
 const joinerOf = (user: AuthedUser): Joiner => ({ id: user.id, email: user.email ?? null, emailConfirmed: user.emailConfirmed === true });
 /** No roles any more: what the old routes for them answer. */
 const GONE = { code: "gone", message: "Roles are gone. Everyone in a space can do the same things; its admin can do a few more." };
@@ -169,7 +171,7 @@ export interface SpaceParts {
   names: PersonNames;
 }
 
-type SpacePush = "space_task" | "space_plan" | "space_message" | "space_joined" | "space_feed" | "space_request" | "space_accepted";
+type SpacePush = "space_task" | "space_plan" | "space_message" | "space_joined" | "space_feed" | "space_request" | "space_accepted" | "space_invited" | "space_person";
 /** A push to someone's phones (push/defaults.ts space_*): never throws, and says nothing private. */
 const push = async (userId: string, msg: { kind: SpacePush; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
   try { await pushEngine()?.notify(userId, msg); } catch { /* a missed push is not a lost task or message: both are in the app */ }
@@ -286,7 +288,7 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
     const lines = q.last === "1" || q.last === "true";
     const list = await Promise.all((await spaces.list(user.id)).map((s) => withoutHidden(threads, user.id, s)));
     // Without full=1 this is what it always was: Home reads it at every load and both apps at launch, so it only reads.
-    const [rows, unread, invitations, requests, asked, draft] = await Promise.all([
+    const [rows, unread, invitations, requests, asked, draft, people] = await Promise.all([
       Promise.all(list.map(async (s) => {
         const waiting = await payments.waitingFor(user.id, s.id).catch(() => 0);
         if (!full && lines) {
@@ -303,18 +305,36 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
       full ? join.askedBy(user.id).catch(() => []) : null,
       // The person's open draft (Create, Call Your People): its read sweeps their drafts left a day.
       full ? spaces.draftOf(user.id).catch(() => null) : null,
+      // The people they added one to one, or asked (docs/social.md §3): two-person spaces, never in the spaces list.
+      full ? join.people(user.id).catch(() => []) : null,
     ]);
     // The invite mail as it will read, for the start screen's Add from contacts BEFORE the first Invite has made a draft
     // (App Review 5.1.2(v): the preview comes before anything is sent). The draft's own preview wins once there is one.
     return {
       spaces: rows, you: shownName(user), unread,
-      ...(full ? { invitations, requests, asked, draft, mailPreview: spaces.blankPreview(shownName(user)) } : {}),
+      ...(full ? { invitations, requests, asked, draft, people, mailPreview: spaces.blankPreview(shownName(user)) } : {}),
     };
   }));
   app.post(`${AREA}/spaces`, RL, run(async (user, req, reply) => { const r = await spaces.create(user.id, bodyOf(req.body).name, shownName(user)); reply.code(201); return r; }));
   // Create on the new Spaces screen (a draft until Done). These, and invitations, come before /spaces/:id.
   app.post(`${AREA}/spaces/draft`, tight(20), run(async (user, req, reply) => { const draft = await spaces.draft({ id: user.id }, { name: bodyOf(req.body).name }, shownName(user)); reply.code(201); return { draft }; }));
-  app.post(`${AREA}/spaces/draft/invite`, tight(20), run(async (user, req, reply) => { const draft = await spaces.draftInvite({ id: user.id }, bodyOf(req.body).email, shownName(user)); reply.code(201); return { draft }; }));
+  // Call Your People: an email (someone not on the app yet), or a username (someone who is: docs/social.md §3). One box takes
+  // both, under `email` as an older build already sends it, so the same build invites by username with no update.
+  app.post(`${AREA}/spaces/draft/invite`, tight(20), run(async (user, req, reply) => {
+    const to = bodyOf(req.body).email;
+    if (!looksLikeEmail(to)) {
+      const r = await join.inviteByName(joinerOf(user), "draft", to, shownName(user));
+      reply.code(201);
+      return { draft: r.draft };
+    }
+    const draft = await spaces.draftInvite({ id: user.id }, to, shownName(user)); reply.code(201); return { draft };
+  }));
+  // "Add a person": one to one, by username. Asked, or (they had asked you) connected at once.
+  app.post(`${AREA}/spaces/people`, tight(20), run(async (user, req, reply) => {
+    const r = await join.addPerson(joinerOf(user), bodyOf(req.body).username, shownName(user));
+    reply.code(201);
+    return r;
+  }));
   app.post(`${AREA}/spaces/draft/done`, RL, run(async (user, req) => spaces.finishDraft({ id: user.id }, { name: bodyOf(req.body).name }, shownName(user))));
   app.delete(`${AREA}/spaces/draft`, RL, run(async (user) => { await spaces.dropDraft(user.id); return { ok: true }; }));
   app.put(`${AREA}/spaces/invitations/:code`, tight(20), run(async (user, req) => {
@@ -337,7 +357,15 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.put(`${AREA}/spaces/:id`, RL, run(async (user, req) => { await spaces.rename(user.id, param(req, "id"), bodyOf(req.body).name); return { ok: true }; }));
   app.delete(`${AREA}/spaces/:id`, RL, run(async (user, req) => spaces.leave(user.id, param(req, "id"))));
   app.post(`${AREA}/spaces/:id/code`, tight(20), run(async (user, req) => ({ code: await spaces.newCode({ id: user.id }, param(req, "id")) })));
-  app.post(`${AREA}/spaces/:id/invite`, tight(20), run(async (user, req) => spaces.invite({ id: user.id }, param(req, "id"), { email: bodyOf(req.body).email }, shownName(user))));
+  app.post(`${AREA}/spaces/:id/invite`, tight(20), run(async (user, req) => {
+    const to = bodyOf(req.body).email;
+    // A username: an invite to that account, waiting in their invitations (no mail, no address). Else the email invite as it was.
+    if (to !== undefined && to !== null && to !== "" && !looksLikeEmail(to)) {
+      const r = await join.inviteByName(joinerOf(user), param(req, "id"), to, shownName(user));
+      return { code: r.code, email: null, mail: null, link: "", expiresAt: 0, mailReady: true };
+    }
+    return spaces.invite({ id: user.id }, param(req, "id"), { email: to }, shownName(user));
+  }));
   app.delete(`${AREA}/spaces/:id/invites/:code`, RL, run(async (user, req) => { await spaces.revokeInvite(user.id, param(req, "id"), param(req, "code")); return { ok: true }; }));
   app.put(`${AREA}/spaces/:id/requests/:rid`, RL, run(async (user, req) => join.decide(user.id, param(req, "id"), param(req, "rid"), bodyOf(req.body).decision)));
   // An older build's OK on the line about the admin. There is no such line any more and nothing is written; it answers so the

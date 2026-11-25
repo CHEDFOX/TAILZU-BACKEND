@@ -16,6 +16,13 @@
  * admin says no, the same person waits a week to ask that space again; nobody asks more than 10 spaces a day. Asking, and every
  * decision, is pushed and told live to the admin and to the person asking.
  *
+ * BY USERNAME (docs/social.md §3, migration 0113). Someone already on the app is invited by their username, into a space
+ * (inviteByName) or one to one ("Add a person", addPerson: a two-person space hidden from the list). The invite names the ACCOUNT, so
+ * nobody learns anybody's email, and it waits in their invitations exactly as an email invite does, with the same Accept. A name
+ * nobody holds and a name whose holder has a block with you read the same, "Nobody has that username", so a look-up never tells
+ * you that you were blocked. Look-ups are braked, 60 an hour a person (docs/username.md), because asking repeatedly is how a list
+ * of everyone would be made.
+ *
  * GUESSING. A space's own code is 6 characters and never expires, so a code alone must never say whose space it is: asking answers
  * "requested" with no name, the person's waiting line shows the code they typed, not the space, and peek names only an email
  * invite's own code (8 characters, seven days). Codes that don't work count against the person: after 20 in a day, every code
@@ -30,12 +37,17 @@ import { screenPost } from "./filter.js";
 import { cleanEmail } from "./mail.js";
 import { looksIn, lookOf, type PersonLook } from "./personLook.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
-import { codeOf, isJoinCodeShape, showCode, type InviteRow, type Publish, type SpaceRow, type Spaces } from "./spaces.js";
+import { checkShape, idFor } from "../profile/username.js";
+import { codeOf, isJoinCodeShape, isPair, showCode, type InviteRow, type Publish, type SpaceRow, type Spaces } from "./spaces.js";
 
 /** "requested" names no space: the code alone was all they had (the rules at the top). */
 export type JoinResult = { status: "joined" | "member"; id: string; name: string } | { status: "requested" } | { status: "dismissed"; name: string };
 /** `byBot`: the admin who invited them, as their tiny bot in that space (personLook.ts). */
-export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; byBot: PersonLook; people: number; expiresAt: number }
+export interface Invitation {
+  code: string; spaceId: string; spaceName: string; by: string; byBot: PersonLook; people: number; expiresAt: number;
+  /** "Add a person": they want to connect with you one to one, and there is no space name to show. */
+  pair?: boolean;
+}
 /** `bot`: the one asking, as the tiny bot they would be in that space once let in. */
 export interface JoinRequestView { id: string; spaceId: string; spaceName: string; name: string; bot: PersonLook; at: number }
 /** One of the person's own open requests: the code they typed (shown 7KQ-29D), never the space's name. */
@@ -59,7 +71,7 @@ export interface JoinRequestRow {
 export interface Joiner { id: string; email?: string | null; emailConfirmed?: boolean }
 
 /** A push to someone's phones (routes: the push engine). Never throws to the caller. */
-export type JoinNotify = (userId: string, msg: { kind: "space_request" | "space_accepted"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
+export type JoinNotify = (userId: string, msg: { kind: "space_request" | "space_accepted" | "space_invited" | "space_person"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
 
 const INVITATIONS_MAX = 10;
 const REQUESTS_MAX = 20;
@@ -70,6 +82,10 @@ const DAY_MS = 24 * 3600_000;
 const ASK_AGAIN_MS = 7 * DAY_MS;
 /** Codes that didn't work, a person, a day (the rules at the top). */
 const MISSES_A_DAY = 20;
+/** Usernames looked up, a person, an hour (docs/username.md "What a look-up gives away"). */
+const LOOKUPS_AN_HOUR = 60;
+const HOUR_MS = 3600_000;
+const noUser = () => new BotError("no_user", "Nobody has that username. Check it and try again.", 404);
 
 const badCode = () => new BotError("bad_code", "That code doesn't work. Check it and try again.", 404);
 const decisionOf = (v: unknown): "accept" | "dismiss" => {
@@ -88,6 +104,8 @@ export class SpaceJoin {
    * restart forgets a day at most, and the per-minute route limits still hold.
    */
   private readonly misses: Limiter;
+  /** Usernames looked up, per person (BY USERNAME at the top). */
+  private readonly lookups: Limiter;
 
   constructor(
     private readonly spaces: Spaces,
@@ -99,6 +117,7 @@ export class SpaceJoin {
     this.publish = o.publish ?? ((ids, topic, data) => live.publish(ids, topic, data));
     this.blocks = o.blocks ?? new Blocks(now);
     this.misses = new Limiter(MISSES_A_DAY, DAY_MS, { now });
+    this.lookups = new Limiter(LOOKUPS_AN_HOUR, HOUR_MS, { now });
     spaces.onMembers(async (e) => {
       if (e.deleted) await this.rows.remove({ space_id: e.spaceId });
       // In by another door (an invitation): their request for the space is answered.
@@ -126,15 +145,80 @@ export class SpaceJoin {
 
   async invitationsFor(user: Joiner): Promise<Invitation[]> {
     const email = this.emailOf(user);
-    if (!email) return [];
+    // To this account by its username first (no confirmed address needed: the account is who it was for), then to the address.
+    const rows = [...(await this.spaces.invitesToUser(user.id)), ...(email ? await this.spaces.invitesTo(email) : [])];
     const out: Invitation[] = [];
-    for (const i of await this.spaces.invitesTo(email)) {
+    for (const i of rows) {
       if (out.length >= INVITATIONS_MAX) break;
       if (out.some((x) => x.spaceId === i.space_id)) continue;
       const w = await this.invitation(user, i);
-      if (w) out.push({ code: i.code, spaceId: w.s.id, spaceName: w.s.name, by: w.by, byBot: w.byBot, people: w.people, expiresAt: Number(i.expires_ms) });
+      if (!w) continue;
+      const pair = isPair(w.s);
+      out.push({
+        code: i.code, spaceId: w.s.id, spaceName: pair ? w.by : w.s.name, by: w.by, byBot: w.byBot, people: w.people, expiresAt: Number(i.expires_ms),
+        ...(pair ? { pair: true } : {}),
+      });
     }
     return out;
+  }
+
+  // ------------------------------------------------------------------ by username
+
+  /** The people this person is connected with one to one, and the ones they asked (spaces.ts pairs), minus anyone with a block. */
+  async people(userId: string): Promise<Awaited<ReturnType<Spaces["pairs"]>>> {
+    const hidden = await this.blocks.hiddenFor(userId);
+    return (await this.spaces.pairs(userId)).filter((p) => !hidden.has(p.userId));
+  }
+
+  /** Whose this username is, braked; a block either way reads as nobody (BY USERNAME at the top). */
+  private async accountFor(userId: string, nameIn: unknown): Promise<string> {
+    if (!this.lookups.allow(userId)) throw new BotError("check_limit", "That's a lot of usernames this hour. Try again later.", 429);
+    const shape = checkShape(nameIn);
+    if (!shape.ok) throw new BotError("bad_username", shape.why, 422);
+    const id = await idFor(shape.name);
+    if (!id) throw noUser();
+    if (id === userId) throw new BotError("bad_request", "That's you.");
+    if (await this.blocks.between(userId, id)) throw noUser();
+    return id;
+  }
+
+  /**
+   * Invite someone on the app into a space by their username: the space's id, or the draft Call Your People is making ("draft").
+   * They get it in their invitations, and a push.
+   */
+  async inviteByName(user: Joiner, spaceId: string | "draft", nameIn: unknown, me: string): Promise<{ draft?: unknown; code?: string }> {
+    const id = await this.accountFor(user.id, nameIn);
+    let r: { draft?: unknown; code?: string };
+    let spaceName: string;
+    if (spaceId === "draft") {
+      const draft = await this.spaces.draftInviteAccount({ id: user.id }, id, me);
+      r = { draft };
+      spaceName = draft.name ?? "their space";
+    } else {
+      r = await this.spaces.inviteAccount({ id: user.id }, spaceId, id, me);
+      spaceName = await this.spaces.nameOf(spaceId);
+    }
+    const who = (me || "Someone").slice(0, 40);
+    await this.notify(id, { kind: "space_invited", key: `${spaceId}:${user.id}:${id}`, vars: { name: who, space: spaceName }, data: { thought: "1" } }).catch(() => undefined);
+    return r;
+  }
+
+  /**
+   * "Add a person": one to one, by username. If they already asked you, this is your yes and you are connected at once; else a
+   * two-person space with an ask waiting for them.
+   */
+  async addPerson(user: Joiner, nameIn: unknown, me: string): Promise<{ status: "asked" | "joined"; id: string }> {
+    const id = await this.accountFor(user.id, nameIn);
+    const theirs = await this.spaces.pairBetween(id, user.id);
+    if (theirs?.both) throw new BotError("already_in", "You're already connected.", 409);
+    if (theirs?.invite && theirs.invite.user_id === user.id) {
+      await this.accept(user, theirs.invite.code, theirs.s, me);
+      return { status: "joined", id: theirs.s.id };
+    }
+    const made = await this.spaces.makePair({ id: user.id }, id, me);
+    const who = (me || "Someone").slice(0, 40);
+    await this.notify(id, { kind: "space_person", key: `${made.id}:${id}`, vars: { name: who }, data: { thought: "1" } }).catch(() => undefined);
+    return { status: "asked", id: made.id };
   }
 
   /** Accept (join at once, as the invited address) or dismiss an invitation the person has. Anything else is 404 bad_code. */
@@ -200,6 +284,8 @@ export class SpaceJoin {
       throw badCode();
     }
     if (isDraft(s)) throw new BotError("not_ready", "That space isn't ready yet.", 409);
+    // Nobody comes into two people's one-to-one space by a code.
+    if (isPair(s)) throw badCode();
     if (await this.spaces.isMember(s.id, user.id)) return { status: "member", id: s.id, name: s.name };
     // The invited address, typing the code: as if they tapped Accept.
     const invited = (await this.invitationsFor(user)).find((i) => i.spaceId === s.id);

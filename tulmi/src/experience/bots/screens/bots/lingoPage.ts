@@ -24,6 +24,7 @@ import {
   back, botBuddy, botKind, botLook, botMoment, C, call, canBuddy, chip, chips, col, divider, emptyState, grow, icon, listCard,
   listRow, meta, meter, notice, open, page, primaryButton, quietButton, RADIUS, roundButton, row, SCREENS, secondaryButton,
   sectionLabel, seq, statusMark, text, title, when, type BotsCtx,
+  up,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { field, inputBox, isDesk, sendField } from "./parts.js";
@@ -228,7 +229,7 @@ export function doneScreen(ctx: BotsCtx, d: DoneData, target: string, next?: Nex
     ...(waiting
       ? [meta(`Lining up ${next?.goal ? "what's next" : "the next one"}…`, { size: 13 })]
       : [primaryButton("Keep going", open(SCREENS.lingoSet, { target }))]),
-    quietButton("Stop for now", open(SCREENS.lingo)),
+    quietButton("Stop for now", up(open(SCREENS.lingo))),
   ];
 }
 
@@ -584,7 +585,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
   const ended = when({ truthy: "done" }, col([
     ...endWords(),
     primaryButton("Keep going", { kind: "navigate", screenId: SCREENS.lingoSet, replace: true, params: { target, shape: "$state.done.next" } }),
-    quietButton("Stop for now", open(SCREENS.lingo)),
+    quietButton("Stop for now", up(open(SCREENS.lingo))),
   ], { gap: 14, paddingTop: 8 }));
 
   // THE APP REPORTS NOTHING. Every answer was marked and written into the set by the server as it was given
@@ -622,7 +623,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
    * draw ITS first exercise, which is why the counter read "1 of 12" for ever and no set ever ended.
    */
   const step = (ex: Exercise, i: number): Node => when({ all: [{ eq: ["i", i] }, { falsy: "done" }] }, col([
-    row([meta(`${i + 1} of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
+    row([meta(`${i + 1} of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, up(open(SCREENS.lingo))),
     meter(i + 1, exs.length, { color: look(ctx).color, height: 4 }),
     ...exerciseBody(ex, target, lang),
     markRow(),

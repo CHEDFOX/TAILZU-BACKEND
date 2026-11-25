@@ -18,8 +18,8 @@ export function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
     return page(ctx, { back: true, title: "Invite", nav: "you", body: [emptyState({ pose: "think", title: "Only the space's admin can invite people", body: admin ? `Ask ${admin.name} to invite them, or to send them the space's code.` : undefined })] });
   }
   const send = ifFilled("email", call("POST", `${A}/spaces/${enc(s.id)}/invite`, { email: "$state.email" }, {
-    assignTo: "made", ok: seq(clearState("email"), toast("Invite sent"), refresh), fail: said("Couldn't send it. Check the email, or try again."),
-  }), "Type their email");
+    assignTo: "made", ok: seq(clearState("email"), toast("Invite sent"), refresh), fail: said("Couldn't send it. Check it, or try again."),
+  }), "Type their username or email");
   const code = s.code ?? "";
   const words = `Join ${s.name} on X0 Bot: open Spaces and type the code ${code}`;
   const shareCode = isDesk(ctx) ? { kind: "copyText" as const, text: code, message: "Code copied" } : { kind: "share" as const, text: words, title: `Join ${s.name}` };
@@ -27,9 +27,9 @@ export function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
     back: true, title: `Invite to ${s.name}`, nav: "you", maxWidth: 720, live: [`space:${s.id}`],
     state: { email: "", ...PREVIEW_STATE },
     body: [
-      col([text(`Bring someone into ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("They get an email with an invite and the space's code.", { size: 13 })], { gap: 4 }),
-      section("Their email", [
-        inputBox([field("email", "email", "name@example.com", { keyboard: "email-address", onSubmit: send })]),
+      col([text(`Bring someone into ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("Someone on X0 Bot by their username: it waits in their Spaces. Anyone else gets an email with an invite and the space's code.", { size: 13 })], { gap: 4 }),
+      section("Their username or email", [
+        inputBox([field("email", "email", "username or name@example.com", { keyboard: "email-address", onSubmit: send })]),
         ...pickContact(ctx),
         ...mailPreview(s.mailPreview),
         meta("The email tells them that you, the space's admin, can see and share their work and messages there.", { size: 12 }),

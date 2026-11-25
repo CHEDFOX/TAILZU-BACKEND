@@ -1817,7 +1817,11 @@ export type ActionSpec =
   /** `replace: true` swaps the top of the stack instead of pushing onto it, so
    *  there is nothing behind to go back to — what a step in a linear flow
    *  wants: onboarding must not be walkable backwards. */
-  | { kind: "navigate"; screenId: string; params?: Record<string, unknown>; replace?: boolean }
+  /**
+   * `root`: a place of its own, opened afresh with nothing behind it, the way a tab is (the window's sidebar: a bot, Today, Notes,
+   * Settings). A build that does not know it pushes, as before.
+   */
+  | { kind: "navigate"; screenId: string; params?: Record<string, unknown>; replace?: boolean; root?: boolean }
   | { kind: "navigateBack" }
   | { kind: "switchTab"; tabId: string }
   /** `handoff: true` holds the link to the assistant's hand-off list (the phone's isHandoffUrl), not every link openUrl takes. A build without it ignores it. */
