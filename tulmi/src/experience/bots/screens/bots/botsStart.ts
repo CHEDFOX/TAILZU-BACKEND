@@ -79,8 +79,8 @@ export function startLine(b: LiveBot, ctx: BotsCtx): string {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40)).replace(/[,;:\s]+$/, "")}…`;
 }
 
-/** How tall a row is: Home's rows are 104; these carry two lines of what the bot can do. */
-export const START_TILE_HEIGHT = 128;
+/** How tall a row is: Home's rows are 104; these carry the name and what the bot can do, with room round them. */
+export const START_TILE_HEIGHT = 184;
 
 /** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
 function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
@@ -94,7 +94,7 @@ function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
 
 /** A group's bots, one a row: alive where the build draws it, else the same rows still. `make` adds Make a bot at the end. */
 export function groupRow(ctx: BotsCtx, bots: LiveBot[], o: { make?: boolean } = {}): Node {
-  const height = START_TILE_HEIGHT, padding = 16, gap = 12;
+  const height = START_TILE_HEIGHT, padding = 22, gap = 14;
   if (canMove(ctx)) {
     const surprises = homeSurprises(ctx);
     return botTiles([...bots.map((b) => tileSpec(b, ctx)), ...(o.make ? [{ ...makeTileSpec(open(SCREENS.make)), sub: "One sentence is enough" }] : [])],
