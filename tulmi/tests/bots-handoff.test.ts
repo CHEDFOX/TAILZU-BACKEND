@@ -72,8 +72,8 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => String(n.props?.content));
     for (const k of ["123", "return"]) expect(texts).not.toContain(k);
     const keyboard = texts.filter((t) => !/Switch to the app|Apple has/.test(t)).sort();
-    expect(keyboard).toEqual(["S", "a", "i", "t", "y"].sort());
-    for (const [ch, n] of [["S", 1], ["a", 2], ["y", 3], ["i", 5], ["t", 6]] as const) {
+    expect(keyboard).toEqual(["S", "A", "I", "T", "Y"].sort());
+    for (const [ch, n] of [["S", 1], ["A", 2], ["Y", 3], ["I", 5], ["T", 6]] as const) {
       const shown = walk(s.root!).find((x) => x.type === "Text" && x.props?.content === ch);
       expect(shown?.visibleIf, ch).toEqual({ gte: ["flowTyped", n] });
     }

@@ -140,9 +140,9 @@ const TYPED = "flowTyped";
 function realKeyboard(): Node {
   const H = 42;
   const label = (t: string, size = 17, color = KEY_INK): Node => text(t, { size, weight: 400, lineHeight: size + 4, color, align: "center" });
-  // A key is blank until it is touched: then its letter shows on it, as it was typed ("S" capital), and stays.
+  // A key is blank until it is touched: then its letter shows on it, a capital as on a phone's keys, and stays.
   const at = (ch: string): number => [...SAY].findIndex((c) => c.toLowerCase() === ch);
-  const letter = (ch: string): Node => box(at(ch) < 0 ? [] : [when({ gte: [TYPED, at(ch) + 1] }, label(SAY[at(ch)]!))], {
+  const letter = (ch: string): Node => box(at(ch) < 0 ? [] : [when({ gte: [TYPED, at(ch) + 1] }, label(SAY[at(ch)]!.toUpperCase()))], {
     height: H, borderRadius: 6, flexGrow: 1, flexBasis: 0, alignItems: "center", justifyContent: "center",
     backgroundColor: whenEq(TOUCH, ch, LIT, KEYS_DARK.key),
   });
