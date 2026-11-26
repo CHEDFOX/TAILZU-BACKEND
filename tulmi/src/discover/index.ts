@@ -23,6 +23,7 @@ import type { Fail } from "./builder.js";
 import { store as makeStore, type DiscoverStore } from "./store.js";
 import { decayAll, fold, known, likes, dislikes, type Taste, type TasteLine } from "./taste.js";
 import { weightOf, type Signal } from "./signals.js";
+import type { Experiences } from "./experiences.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
 export * from "./types.js";
@@ -34,6 +35,7 @@ export { commonsPhotos, photosFromConfig, parseCommons, COMMONS_URL, type PhotoS
 export { CURATED, curatedBySlug, curatedCountries } from "./catalog.js";
 export { store, type DiscoverStore } from "./store.js";
 export { pick, countFor } from "./query.js";
+export { experiences, FORUMS, KINDS, type Experiences, type Point, type Kind } from "./experiences.js";
 export { DISCOVER_TOOLS, runDiscover, discoverFor } from "./tools.js";
 export * from "./taste.js";
 export * from "./signals.js";
@@ -51,6 +53,11 @@ export interface DiscoverOptions {
    * limits. Left out — no model, a test — and `build` says so instead of pretending.
    */
   makeBuilder?: (userId: string) => { build(query: string, ask: { userId: string; against?: readonly Card[] }): Promise<Built | Fail> };
+  /**
+   * Makes a reader of forum threads for one person (server.ts), behind their own limits. Left out — a test, no
+   * model — and `felt` says so rather than returning an empty list, which would read as "nobody has been".
+   */
+  makeExperiences?: (userId: string) => { about(place: string, o?: { userId?: string }): Promise<Experiences> };
 }
 
 const WRITE_AT = 25;
@@ -60,17 +67,41 @@ export class Discover {
   private readonly store: DiscoverStore;
   private readonly writeAt: number;
   private readonly makeBuilder: DiscoverOptions["makeBuilder"];
+  private readonly makeExperiences: DiscoverOptions["makeExperiences"];
 
   constructor(o: DiscoverOptions = {}) {
     this.curated = o.curated ?? CURATED;
     this.store = o.store ?? makeStore();
     this.writeAt = o.writeAt ?? WRITE_AT;
     this.makeBuilder = o.makeBuilder;
+    this.makeExperiences = o.makeExperiences;
   }
 
   /** Whether a place we have not written can be built at all right now. */
   get canBuild(): boolean {
     return !!this.makeBuilder;
+  }
+
+  /** Whether forum threads can be read at all right now. */
+  get canFeel(): boolean {
+    return !!this.makeExperiences;
+  }
+
+  /**
+   * What people who actually went say about a place (experiences.ts). Our own words and the builder's both come
+   * off editorial pages; this is the only thing in the product that goes looking for somebody who was there.
+   *
+   * Takes a SLUG, because this is offered from an opened card: the card's own `where` is what gets searched, so
+   * a thread about a different place of the same name is not what comes back.
+   */
+  async felt(slug: string, userId: string): Promise<Experiences> {
+    const make = this.makeExperiences;
+    if (!make) return { ok: false, reason: "off", why: "Reading what other people said is switched off here." };
+
+    const card = await this.open(slug, userId);
+    if (!card) return { ok: false, reason: "nothing_found", why: "Nothing of ours by that name." };
+
+    return make(userId).about(`${card.title} — ${card.where}`, { userId });
   }
 
   /**
