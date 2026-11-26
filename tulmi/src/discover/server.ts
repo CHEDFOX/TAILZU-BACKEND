@@ -22,7 +22,10 @@ import { callModel, type GatewayDeps } from "../code/brain/gateway.js";
 import { makeWebTools } from "../code/webTools.js";
 import type { CallFn } from "../code/work/model.js";
 import { places } from "../places/index.js";
+import { readPage } from "../web/reader.js";
+import { search, searchEnvFromConfig } from "../web/search/engine.js";
 import { builder, sourcesFrom, type Found } from "./builder.js";
+import { experiences } from "./experiences.js";
 import { Discover } from "./index.js";
 import { photosFromConfig } from "./photos.js";
 
@@ -30,6 +33,8 @@ import { photosFromConfig } from "./photos.js";
 const BUILD_PAISE = 400;
 /** Enough pages to disagree with each other, not enough to write an essay. */
 const DEPTH = "quick" as const;
+/** Reading half a dozen threads and pulling the points out of them. Cheaper than a card: no geocoder, no slots. */
+const FELT_PAISE = 240;
 
 const slugOf = (label: string): string =>
   label
@@ -95,6 +100,41 @@ export function discoverService(o: DiscoverServerOptions = {}): Discover {
               photos: (place: string, want: number) => pics.find(place, { want }),
             }
           : {}),
+      }),
+
+    // What people who actually went say (experiences.ts). The search is handed a plan of its own rather than
+    // being asked to make one: the whole point is that these queries go to the forums and nowhere else, which a
+    // planner optimising for the best page would undo. `freshness: "year"` biases the engine the same way the
+    // staleness rule does afterwards — advice ages, and a thread from last season beats one from 2019.
+    makeExperiences: (userId: string) =>
+      experiences({
+        call,
+        userId,
+        maxPaise: FELT_PAISE,
+        async find(question, sites, limit) {
+          const out = await search(question, {
+            limit,
+            depth: "quick",
+            env: searchEnvFromConfig(),
+            plan: {
+              intent: "general",
+              queries: [question],
+              sources: [],
+              site: [...sites],
+              freshness: "year",
+              confidence: 1,
+            },
+          });
+          return out.results.map((r) => ({
+            title: r.title,
+            url: r.url,
+            ...(typeof r.published === "number" ? { published: r.published } : {}),
+          }));
+        },
+        async read(url, maxChars) {
+          const page = await readPage(url, { maxChars, purpose: "user" }).catch(() => null);
+          return page ? { url: page.finalUrl || page.url, text: page.text, at: page.fetchedAt } : null;
+        },
       }),
   });
 }

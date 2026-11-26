@@ -181,6 +181,20 @@ export function feedBlocks(ctx: BotsCtx, feed: FeedView | undefined, taste: Tast
 
 export interface PlaceView { card: FeedCard }
 
+/** One thing somebody who went said (discover/experiences.ts). */
+export interface FeltPoint {
+  note: string;
+  kind: "timing" | "cost" | "access" | "warning" | "worth_it" | "skip";
+  said: string;
+  host: string;
+  url: string;
+  at: string | null;
+}
+
+export type FeltView =
+  | { ok: true; read: number; points: FeltPoint[] }
+  | { ok: false; reason: string; why: string };
+
 export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType<typeof page> {
   const card = data?.card;
   if (!card) {
@@ -253,6 +267,9 @@ export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType
             text(card.dated.charAt(0).toUpperCase() + card.dated.slice(1) + ".", { size: 14, lineHeight: 20, color: C.grey70 }),
           ], { gap: 5 })]
         : []),
+      // Their words are a SEPARATE SCREEN, not a block here: reading half a dozen forum threads takes seconds,
+      // and the card has to open instantly. Nobody waits for something they did not ask for.
+      secondaryButton("What people who went say", { kind: "navigate", screenId: SCREENS.travelFelt, params: { slug: card.slug } }, { size: "md" }),
       ...(card.tags.length
         ? [row(card.tags.map((t) => box([text(t.replace(/_/g, " "), { size: 12, color: C.meta })], {
             paddingHorizontal: 10, paddingVertical: 5, borderRadius: RADIUS.chip, backgroundColor: C.surface,
@@ -283,10 +300,79 @@ function factRow(label: string, value: string): Node {
   ], { gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider });
 }
 
+/** What each kind of point is called on the screen. Theirs are keys; these are English. */
+const KIND_WORDS: Readonly<Record<FeltPoint["kind"], string>> = {
+  timing: "WHEN TO GO",
+  access: "GETTING IN",
+  cost: "WHAT IT COST",
+  warning: "WATCH OUT",
+  worth_it: "WORTH IT",
+  skip: "SKIP",
+};
+const KIND_ORDER: ReadonlyArray<FeltPoint["kind"]> = ["timing", "access", "cost", "warning", "worth_it", "skip"];
+
+/**
+ * ONE POINT, AND THE WORDS IT CAME FROM. The quote is shown, not just our paraphrase, because the paraphrase is
+ * ours and the authority is theirs — and because a reader can tell a person who went from a brochure far faster
+ * than any rule we wrote can. The host and the date are part of the point: advice ages.
+ */
+function feltRow(p: FeltPoint): Node {
+  return col([
+    text(p.note, { size: 14, lineHeight: 20, weight: 500 }),
+    row([
+      box([], { width: 2, alignSelf: "stretch", borderRadius: 1, backgroundColor: C.outline }),
+      text(`"${p.said}"`, { size: 13, lineHeight: 19, color: C.grey70 }),
+    ], { gap: 10, alignItems: "flex-start" }),
+    meta(p.at ? `${p.host} · ${p.at}` : `${p.host} · undated`, { size: 11 }),
+  ], { gap: 6, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider });
+}
+
+export function feltPage(ctx: BotsCtx, data: FeltView | undefined): ReturnType<typeof page> {
+  const head = { title: "What people say", nav: "travel" as const, back: true, backTitle: "Back" };
+
+  if (!data) {
+    return page(ctx, { ...head, body: [meta("I could not read anything just now. Try again.", { size: 13.5 })] });
+  }
+  if (!data.ok) {
+    // The reason is shown rather than an empty list: "nobody has written this up" and "nobody has ever been"
+    // are very different things, and only one of them is true.
+    return page(ctx, { ...head, body: [text(data.why, { size: 14, lineHeight: 20, color: C.grey70 })] });
+  }
+  if (data.points.length === 0) {
+    return page(ctx, {
+      ...head,
+      body: [text(`I read ${data.read} thread${data.read === 1 ? "" : "s"} and found nobody actually describing their own visit — just the usual lists.`, { size: 14, lineHeight: 20, color: C.grey70 })],
+    });
+  }
+
+  const groups = KIND_ORDER.map((kind) => ({ kind, rows: data.points.filter((p) => p.kind === kind) })).filter((g) => g.rows.length > 0);
+
+  return page(ctx, {
+    ...head,
+    body: [
+      col([
+        title("What people who went say"),
+        meta(`From ${data.read} forum thread${data.read === 1 ? "" : "s"}, read just now. Their words, not ours — every line is quoted from somebody describing their own visit.`, { size: 12, lineHeight: 17 }),
+      ], { gap: 6 }),
+      ...groups.map((g) =>
+        col([
+          meta(KIND_WORDS[g.kind], { size: 11, tracking: 0.8 }),
+          ...g.rows.map(feltRow),
+        ], { gap: 2 }),
+      ),
+    ],
+  });
+}
+
 export const discoverScreens: BotsScreen[] = [
   screen<PlaceView>({
     id: SCREENS.travelPlace,
     load: (ctx, deps) => deps.api<PlaceView>("GET", `${PLACE_PATH}/${enc(String(ctx.params.slug ?? ""))}`),
     build: placePage,
+  }),
+  screen<FeltView>({
+    id: SCREENS.travelFelt,
+    load: (ctx, deps) => deps.api<FeltView>("GET", `${PLACE_PATH}/${enc(String(ctx.params.slug ?? ""))}/felt`),
+    build: feltPage,
   }),
 ];

@@ -3,6 +3,7 @@
  *
  *   GET  /v1/discover/feed              ?tags=&month=&country=&budget=&limit= -> the cards, in their order
  *   GET  /v1/discover/place/:slug       one card in full
+ *   GET  /v1/discover/place/:slug/felt  what people who actually went say about it
  *   POST /v1/discover/build             { place } -> a card read off the web for a place nobody has written
  *   POST /v1/discover/signals           { signals: [...] } -> what they did; folded at once
  *   GET  /v1/discover/taste             what we think they like, in their own words
@@ -148,6 +149,26 @@ export function registerDiscoverRoutes(
     const card = await d.open(slug, userId);
     if (!card) return reply.code(404).send({ code: "not_found", message: "Nothing of ours by that name yet." });
     return reply.send({ card: cardView(card, new Date()) });
+  });
+
+  /**
+   * SLOW ON PURPOSE AND ON ITS OWN SCREEN. Half a dozen forum threads are fetched and read, so this takes
+   * seconds, not milliseconds — it is never loaded with the card, only when somebody asks for it.
+   */
+  app.get<{ Params: { slug: string } }>("/v1/discover/place/:slug/felt", RL, async (req, reply) => {
+    const userId = await who(req.headers["authorization"]);
+    if (!userId) return reply.code(401).send(unauthorized);
+    const d = deps.discover;
+    if (!d) return reply.code(503).send(off);
+
+    const slug = req.params.slug;
+    if (!SLUG.test(slug)) return reply.code(400).send({ code: "bad_slug", message: "Not a place." });
+
+    const out = await d.felt(slug, userId);
+    // A refusal is an ANSWER: nobody has written the place up, or the threads would not load. The screen says
+    // which, rather than showing an empty list, which would read as "nobody has ever been".
+    if (!out.ok) return reply.send({ ok: false, reason: out.reason, why: out.why });
+    return reply.send({ ok: true, read: out.read, points: out.points });
   });
 
   app.post<{ Body: { place?: unknown } }>("/v1/discover/build", RL, async (req, reply) => {

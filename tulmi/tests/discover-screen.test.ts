@@ -9,10 +9,64 @@ import { describe, expect, it } from "vitest";
 
 const { ctxFor } = await import("../src/experience/bots/fixtures.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
-const { feedBlocks, placePage } = await import("../src/experience/bots/screens/discoverFeed.js");
+const { feedBlocks, placePage, feltPage } = await import("../src/experience/bots/screens/discoverFeed.js");
+
+type FeltView = import("../src/experience/bots/screens/discoverFeed.js").FeltView;
 
 type FeedView = import("../src/experience/bots/screens/discoverFeed.js").FeedView;
 type TasteView = import("../src/experience/bots/screens/discoverFeed.js").TasteView;
+
+describe("what people who went say, on its own screen", () => {
+  const felt = (over: Partial<Extract<FeltView, { ok: true }>> = {}): FeltView => ({
+    ok: true,
+    read: 4,
+    points: [
+      { note: "Start at 2am, the cave is cold", kind: "timing", said: "The 2am start sounds mad but you want the light.", host: "reddit.com", url: "https://reddit.com/x", at: "2026-10-02" },
+      { note: "The permit office answers on Tuesdays only", kind: "access", said: "cost us a week", host: "quora.com", url: "https://quora.com/y", at: null },
+    ],
+    ...over,
+  });
+  const at = (v: FeltView | undefined) => JSON.stringify(feltPage(ctxFor(SCREENS.travelFelt, "phone"), v));
+
+  it("shows their words, not only our summary of them", () => {
+    const out = at(felt());
+    expect(out).toContain("Start at 2am, the cave is cold");
+    // the paraphrase is ours; the authority is theirs, so the quote has to be on the screen
+    expect(out).toContain("The 2am start sounds mad but you want the light.");
+  });
+
+  it("says where each one came from, and when — because advice ages", () => {
+    const out = at(felt());
+    expect(out).toContain("reddit.com · 2026-10-02");
+    expect(out).toContain("quora.com · undated");
+  });
+
+  it("groups them by what they are useful for", () => {
+    const out = at(felt());
+    expect(out).toContain("WHEN TO GO");
+    expect(out).toContain("GETTING IN");
+    expect(out).not.toContain("WATCH OUT");
+  });
+
+  it("makes clear these are other people's words and when they were read", () => {
+    expect(at(felt())).toContain("From 4 forum threads, read just now");
+  });
+
+  it("says WHY there is nothing, rather than showing an empty page", () => {
+    // "nobody has written this up" and "nobody has ever been" are very different, and only one is true.
+    expect(at({ ok: false, reason: "nothing_found", why: "Nobody seems to have written up Nowhere." }))
+      .toContain("Nobody seems to have written up Nowhere.");
+    expect(at(felt({ points: [] }))).toContain("nobody actually describing their own visit");
+    expect(at(undefined)).toContain("could not read anything");
+  });
+
+  it("is offered from the card rather than loaded with it, because it takes seconds", () => {
+    const minimal = { slug: "x", title: "T", where: "W", hook: "H", tags: [], budget: "budget", effort: 2, photos: [], origin: "ours" as const };
+    const out = JSON.stringify(placePage(ctxFor(SCREENS.travelPlace, "phone"), { card: minimal }));
+    expect(out).toContain("What people who went say");
+    expect(out).toContain("bots.travel.felt");
+  });
+});
 
 describe("the feed on the Travel bot's own screen", () => {
   const card = (over: Partial<FeedView["cards"][number]> = {}): FeedView["cards"][number] => ({
