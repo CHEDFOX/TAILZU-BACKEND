@@ -24,7 +24,7 @@
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type LiveBot, page, col, row, text, meta, grow, C, open, SCREENS, sectionLabel, botAvatar, icon,
-  grid, labelled, title as pageTitle, botRoute, canMove, botTiles, botTileSpec, makeTileSpec, botTile, makeBotTile, homeSurprises,
+  grid, labelled, title as pageTitle, botRoute, canMove, canStage, botTiles, botTileSpec, makeTileSpec, botTile, makeBotTile, homeSurprises,
 } from "../../kit.js";
 import { oracleTileLook } from "./oraclePage.js";
 import { mailTileLook } from "./mailPage.js";
@@ -83,6 +83,15 @@ export function startLine(b: LiveBot, ctx: BotsCtx): string {
 /** How tall a row is: Home's rows are 104; these carry the name and what the bot can do, with room round them. */
 export const START_TILE_HEIGHT = 184;
 
+/**
+ * A build that can (BotTilesStage): the bot keeps the top of the card as on Home, and the card grows DOWN for his name
+ * and what he can do, which start under him and may take three lines. The stage is the bot's full size (core.ts: his
+ * size tops out with a floor of about 80 px); the rest is the words and the padding under them.
+ */
+export const START_STAGE = 100;
+export const START_SUB_LINES = 3;
+export const START_STAGE_HEIGHT = START_STAGE + 21 + 3 + START_SUB_LINES * 16 + 24;
+
 /** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
 function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
   return {
@@ -99,7 +108,9 @@ export function groupRow(ctx: BotsCtx, bots: LiveBot[], o: { make?: boolean } = 
   if (canMove(ctx)) {
     const surprises = homeSurprises(ctx);
     return botTiles([...bots.map((b) => tileSpec(b, ctx)), ...(o.make ? [{ ...makeTileSpec(open(SCREENS.make)), sub: "One sentence is enough" }] : [])],
-      { columns: 1, height, padding, gap, ...(surprises ? { surprises } : {}) });
+      canStage(ctx)
+        ? { columns: 1, height: START_STAGE_HEIGHT, padding, gap, stage: START_STAGE, subLines: START_SUB_LINES, ...(surprises ? { surprises } : {}) }
+        : { columns: 1, height, padding, gap, ...(surprises ? { surprises } : {}) });
   }
   return grid([
     ...bots.map((b) => botTile({ ...b, working: false, needs: 0 }, { idle: startLine(b, ctx), onPress: botRoute(b.slug), height, padding })),

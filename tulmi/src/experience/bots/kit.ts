@@ -17,7 +17,7 @@
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
 import type { ActionRef, ActionSpec, BlockName, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
-import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STAGE, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, SITE_VIEW_COMPONENT, type LiveViewProps, type SiteViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
@@ -411,13 +411,14 @@ export function makeTileSpec(onPress?: ActionRef): BotTileSpec {
  * look at it before the tile opens. Only for a build that can draw it (canMove); others get botTile / makeBotTile.
  * `strip`: one more tile as a full-width row under the grid, in the same world (only for canStrip).
  */
-export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"] }): Node {
+export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"]; stage?: number; subLines?: number }): Node {
   return {
     type: "BotTiles",
     props: {
       tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold },
       ...(o.strip ? { strip: o.strip, stripHeight: o.stripHeight ?? 104 } : {}),
       ...(o.surprises ? { surprises: o.surprises } : {}),
+      ...(o.stage ? { stage: o.stage, subLines: o.subLines ?? 2 } : {}),
     },
   };
 }
@@ -445,6 +446,8 @@ export function homeSurprises(ctx: BotsCtx): BotTilesProps["surprises"] {
 
 /** A build that draws a strip under the living grid (BotTilesProps.strip). */
 export const canStrip = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_TILES_STRIP);
+/** A build that puts the bot at the top of a tile and its words under him (BotTilesProps.stage). */
+export const canStage = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_TILES_STAGE);
 
 /**
  * A card with the tiny bot playing across its top (BotCard) and its steps below: each step a node with its own

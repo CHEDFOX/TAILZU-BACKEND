@@ -1013,12 +1013,19 @@ export interface BotTilesProps {
   strip?: BotTileSpec;
   /** The strip's height. */
   stripHeight?: number;
+  /** BOT_TILES_STAGE: the bot's room at the top of each tile (px); the name and line start under it, top down. */
+  stage?: number;
+  /** BOT_TILES_STAGE: how many lines an idle tile's line may take (2). */
+  subLines?: number;
   /**
    * Home's rare idle surprises (BOT_MOMENTS_CAPABILITY): every `every` seconds, with `chance`, one bot at his own idle
    * play plays one of `moments` once (the bots near him answer as the recipe asks). Never while a tile is tapped.
    */
   surprises?: { every: number; chance: number; moments: string[] };
 }
+
+/** A build that draws BotTilesProps.stage and subLines: the bot at the top of each tile, its words under him. */
+export const BOT_TILES_STAGE = "BotTilesStage";
 
 /** A build that draws BotTilesProps.strip (the phone's BotTiles.tsx, the window's sdui.js). */
 export const BOT_TILES_STRIP = "BotTilesStrip";
