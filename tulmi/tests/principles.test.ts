@@ -331,8 +331,8 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   widget_digest: 853, // 776 measured
   site_read: 1531, // 1392 measured
   site_orders: 1438, // 1307 measured
-  site_taste: 2995, // 2723 measured
-  site_discover: 1778, // 1616 measured
+  site_taste: 3336, // 3033 measured
+  site_discover: 1804, // 1640 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured

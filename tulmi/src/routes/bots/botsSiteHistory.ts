@@ -8,6 +8,7 @@
  *   POST   /v1/botsapp/bots/sites/history/:site/read { url, title, text, elements }
  *                                                           -> { outcome, added }      the orders page, read on the phone
  *   DELETE /v1/botsapp/bots/sites/history/:site             -> { ok }                  forget everything learned there
+ *   POST   /v1/botsapp/bots/sites/did { site, ref, title, line? } -> { ok }             a cart filled on the phone, for "Done for you"
  *   POST   /v1/botsapp/bots/sites/order/plan { words, tz }  -> { options, line }       what X0 would order for them now
  *
  * There is no route that places an order. An order is a screen (screens/sites/order.ts) that opens the site on their
@@ -22,6 +23,7 @@ import type { SiteHistories } from "../../sites/history/service.js";
 import { SiteError } from "../../sites/service.js";
 import { heldFreeUse } from "../../trust/actions.js";
 import type { BotsAreaDeps } from "./botsArea.js";
+import type { DidView, SitePortrait } from "../../sites/history/types.js";
 
 const AREA = "/v1/botsapp/bots/sites";
 const OFF = { code: "sites_off", message: "That isn't switched on here." };
@@ -32,7 +34,19 @@ const body = (req: FastifyRequest): Record<string, unknown> =>
 const param = (req: FastifyRequest, k: string): string => String((req.params as Record<string, unknown>)[k] ?? "").trim().toLowerCase();
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
-export function registerSiteHistoryRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { histories: SiteHistories; now?: () => number }): void {
+/** What the watcher saw arrive (src/sites/service.ts list): a delivery is something done for them too. */
+export type WatchesOf = (userId: string) => Promise<Array<{ site: string; label: string; state: string; card?: { title: string; line: string }; readAt?: number }>>;
+
+/** A portrait with the deliveries the watcher saw through on that site among what was done, newest first. */
+async function withArrivals(p: SitePortrait, userId: string, watches?: WatchesOf): Promise<SitePortrait> {
+  if (!watches) return p;
+  const arrived: DidView[] = (await watches(userId).catch(() => [])).filter((w) => w.site === p.site && w.state === "done")
+    .map((w) => ({ kind: "arrived" as const, title: `Kept an eye on ${w.card?.title || w.label} until it arrived`, ...(w.card?.line ? { line: w.card.line } : {}), at: w.readAt ?? 0 }));
+  if (!arrived.length) return p;
+  return { ...p, did: [...(p.did ?? []), ...arrived].sort((a, b) => b.at - a.at).slice(0, 8) };
+}
+
+export function registerSiteHistoryRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { histories: SiteHistories; watches?: WatchesOf; now?: () => number }): void {
   const RL = { config: deps.rateLimit };
   const now = o.now ?? Date.now;
 
@@ -54,12 +68,13 @@ export function registerSiteHistoryRoutes(app: FastifyInstance, deps: BotsAreaDe
 
   app.get(`${AREA}/portraits`, RL, run(async (user) => {
     const [portraits, readers] = await Promise.all([o.histories.portraits(user.id), o.histories.readers(user.id)]);
-    return { portraits, readers };
+    return { portraits: await Promise.all(portraits.map((p) => withArrivals(p, user.id, o.watches))), readers };
   }));
 
   app.get(`${AREA}/portrait/:site`, RL, run(async (user, req) => {
     const site = param(req, "site");
-    const [portrait, readers] = await Promise.all([o.histories.portrait(user.id, site), o.histories.readers(user.id)]);
+    const [raw, readers] = await Promise.all([o.histories.portrait(user.id, site), o.histories.readers(user.id)]);
+    const portrait = await withArrivals(raw, user.id, o.watches);
     const reader = readers.find((r) => r.site === portrait.site);
     return { portrait, ...(reader ? { reader } : {}) };
   }));
@@ -75,6 +90,16 @@ export function registerSiteHistoryRoutes(app: FastifyInstance, deps: BotsAreaDe
     return o.histories.phoneRead(user.id, param(req, "site"), {
       finalUrl: str(b.url, 2000), title: str(b.title, 200), text: str(b.text, 20_000), elements,
     });
+  }));
+
+  // A cart filled on their phone, as the order screen opened (screens/sites/order.ts). `ref` is the order's own id, so the same
+  // order opened twice in a day is one line.
+  app.post(`${AREA}/did`, RL, run(async (user, req) => {
+    const b = body(req);
+    const ref = str(b.ref, 40).replace(/[^a-z0-9-]/gi, ""), title = str(b.title, 120);
+    if (!ref || !title) throw new SiteError("bad_request", "That isn't something I did.", 400);
+    await o.histories.noteCart(user.id, str(b.site, 120).toLowerCase(), { ref, title, ...(str(b.line, 160) ? { line: str(b.line, 160) } : {}) });
+    return { ok: true };
   }));
 
   app.delete(`${AREA}/history/:site`, RL, run(async (user, req) => {

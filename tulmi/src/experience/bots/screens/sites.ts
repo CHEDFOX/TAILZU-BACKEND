@@ -30,7 +30,7 @@ import { FIND_LOGIN, PAGE_SHAPE, READ_PAGE } from "../../../sites/phone.js";
 import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
 import { loadPortraits, type PortraitsView } from "./sites/data.js";
-import { historyReaders, portraitCard } from "./sites/portrait.js";
+import { historyReaders, siteCard } from "./sites/forYou.js";
 import { field, inputBox, refresh, toast } from "./bots/parts.js";
 
 /** The pips: one dot a stage, the last done one filled, the rest of the track grey. Drawn only when the site gave stages. */
@@ -180,12 +180,12 @@ function sitesPage(ctx: BotsCtx, d: (SitesView & { portraits?: PortraitsView }) 
   const done = d.watches.filter((w) => w.state !== "open");
   const body: Node[] = [];
 
-  // WHAT I KNOW ABOUT YOU, a card per site they order on (screens/sites/portrait.ts): the first thing here, because it is the
-  // thing a connected site is for.
+  // FOR YOU, a card per site they order on (screens/sites/forYou.ts): what X0 has ready there and the last thing it did.
+  // The first thing here, because it is what a connected site is for.
   const portraits = d.portraits?.portraits ?? [];
   if (portraits.length) {
-    body.push(sectionLabel("What I know about you"));
-    for (const p of portraits) body.push(portraitCard(p));
+    body.push(sectionLabel("For you"));
+    for (const p of portraits) body.push(siteCard(p));
   }
 
   if (open.length) {

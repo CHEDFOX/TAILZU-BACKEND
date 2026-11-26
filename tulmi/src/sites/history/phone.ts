@@ -53,8 +53,13 @@ export interface OrderStep {
   /** The order's own id: what it pressed is kept under it, so nothing is pressed twice. */
   id: string;
   place: string;
-  /** The dishes to add, as the site names them. Empty for a search: the person picks. */
+  /** The items to add, as the site names them. Empty for a search: the person picks. */
   items: string[];
+  /**
+   * How the site sells (history/kinds.ts cart): "menu", a restaurant whose page lists the dishes, each with its own Add; or
+   * "product", a shop where each item is its own page with one "Add to cart". Menu unless said.
+   */
+  mode?: "menu" | "product";
 }
 
 /**
@@ -64,6 +69,7 @@ export interface OrderStep {
 export function orderStep(o: OrderStep): string {
   return `(function () {
   var KEY = ${JSON.stringify(`x0-order-${o.id}`)};
+  var MODE = ${JSON.stringify(o.mode ?? "menu")};
   var PLACE = ${JSON.stringify(o.place)};
   var ITEMS = ${JSON.stringify(o.items)};
   if (window.__x0order === KEY) return { clicked: null };
@@ -74,7 +80,7 @@ export function orderStep(o: OrderStep): string {
     var s = getComputedStyle(el); if (!s || s.display === "none" || s.visibility === "hidden" || Number(s.opacity) === 0) return false;
     var r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1;
   }
-  function label(el) { return String(el.innerText || el.getAttribute("aria-label") || "").replace(/\\s+/g, " ").trim(); }
+  function label(el) { return String(el.innerText || (el.tagName === "INPUT" && /^(?:submit|button)$/i.test(el.type) ? el.value : "") || el.getAttribute("aria-label") || "").replace(/\\s+/g, " ").trim(); }
   var st = {};
   try { st = JSON.parse(sessionStorage.getItem(KEY) || "{}") || {}; } catch (e) { st = {}; }
   st.added = st.added || []; st.missed = st.missed || [];
@@ -83,7 +89,7 @@ export function orderStep(o: OrderStep): string {
   // The innermost of the elements that say a thing: a wrapper that only holds the button says it too.
   function innermost(list) { return list.filter(function (a) { return !list.some(function (b) { return b !== a && a.contains(b); }); }); }
   function buttons(root, re, max) {
-    return innermost(Array.prototype.slice.call(root.querySelectorAll("button, a, [role=button], div, span")).filter(function (b) {
+    return innermost(Array.prototype.slice.call(root.querySelectorAll("button, a, [role=button], input[type=submit], input[type=button], div, span")).filter(function (b) {
       var l = label(b); return l.length > 0 && l.length <= max && re.test(l) && visible(b);
     }));
   }
@@ -122,6 +128,47 @@ export function orderStep(o: OrderStep): string {
     }
     return null;
   }
+  // A PRODUCT: the item's own page, and its one "Add to cart". Names on a shop's search run long and an orders page may cut
+  // them short, so a product is matched on the first words of its name.
+  function key(name) { return norm(name).split(" ").slice(0, 4).join(" "); }
+  function productLink(name) {
+    var k = key(name), best = null, bestLen = 1e9;
+    Array.prototype.slice.call(document.querySelectorAll("a[href]")).forEach(function (a) {
+      if (!visible(a)) return;
+      var t = norm(a.innerText);
+      if (!t || t.indexOf(k) < 0) return;
+      if (t.length < bestLen) { best = a; bestLen = t.length; }
+    });
+    return best;
+  }
+  function onProduct(name) {
+    var h = document.querySelector("h1, #productTitle, [class*=title] h1");
+    var said = norm((h && h.innerText) || "") + " " + norm(document.title);
+    return said.indexOf(key(name)) >= 0;
+  }
+  var productTries = 0;
+  function productTick() {
+    productTries++;
+    if (!ITEMS.length || productTries > 40) return;
+    var name = ITEMS[0];
+    if (st.added.indexOf(name) >= 0) {
+      if (st.cart) return;
+      var cart = buttons(document, /^(?:go\\s+to\\s+cart|view\\s+cart|proceed\\s+to\\s+cart|cart)\\b/i, 30)[0];
+      if (cart) { st.cart = 1; save(); setTimeout(function () { press(cart); }, 1200); return; }
+      return setTimeout(productTick, 1200);
+    }
+    if (onProduct(name)) {
+      var add = buttons(document, /^add\\s+to\\s+(?:cart|basket|bag)\\b/i, 30)[0];
+      if (add) { st.added.push(name); save(); press(add); return setTimeout(productTick, 2000); }
+      return setTimeout(productTick, 1000);
+    }
+    var a = productLink(name);
+    if (a && !st.went) { st.went = 1; save(); press(a); return setTimeout(productTick, 2000); }
+    window.scrollBy(0, 500);
+    setTimeout(productTick, 1000);
+  }
+  if (MODE === "product") { setTimeout(productTick, 1400); return { clicked: null }; }
+
   var tries = 0, looks = 0;
   function tick() {
     tries++;

@@ -53,8 +53,8 @@ export interface SiteEntry {
    */
   search?: string;
   /**
-   * What the address of one restaurant's page has in it on this site ("/restaurants/"), so a link to it can be picked
-   * out of the orders page and an order can start there instead of at the search.
+   * What the address of one restaurant's or product's page has in it on this site ("/restaurants/", "/dp/"), so a link to
+   * it can be picked out of the orders page and an order can start there instead of at the search.
    */
   placePath?: string;
   /** What it is for, shown beside the name. */
@@ -71,11 +71,13 @@ export const SITE_CATALOG: readonly SiteEntry[] = [
   {
     id: "amazon-in", name: "Amazon", host: "amazon.in", category: "Shopping",
     signIn: "https://www.amazon.in/", orders: "https://www.amazon.in/gp/css/order-history",
+    search: "https://www.amazon.in/s?k={q}", placePath: "/dp/",
     aliases: ["amazon", "amazon india", "amzn", "orders", "parcel", "delivery"],
   },
   {
     id: "flipkart", name: "Flipkart", host: "flipkart.com", category: "Shopping",
     signIn: "https://www.flipkart.com/account/login", orders: "https://www.flipkart.com/account/orders",
+    search: "https://www.flipkart.com/search?q={q}", placePath: "/p/",
     aliases: ["flipkart", "orders", "parcel", "delivery"],
   },
   {

@@ -124,7 +124,8 @@ export function ordersOf(reply: z.infer<typeof OrdersReply>, site: string, links
     const local = localTime(r.at);
     const total = rupees(r.total);
     const area = clip(r.area, AREA_MAX);
-    const link = linkFor(place, site, links);
+    // A restaurant's link is named by the restaurant; a product's by the product.
+    const link = linkFor(place, site, links) ?? linkFor(items[0]!.name, site, links);
     const key = keyOf({ ...(r.no ? { no: r.no } : {}), place, items, ...(local ? { local } : {}) });
     if (keys.has(key)) continue;
     keys.add(key);

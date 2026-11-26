@@ -5,7 +5,7 @@
  * twice); the portrait is counting, not guessing; an ask to order is told from a question about an order; the planner
  * gives the same answer every time and an honest one when it has nothing; the card's token cannot be turned into a
  * link off the site; the reads keep the watcher's manners; and the step the phone runs presses each "Add" once, on the
- * right dish, and never anything past "View cart". That last is run in a real Chromium against a page made to look like
+ * right item, and never anything past "View cart". That last is run in a real Chromium against a page made to look like
  * a restaurant's menu, because a script that presses buttons is only as good as what it presses.
  *
  * No model: the one call is a function here.
@@ -21,7 +21,7 @@ process.env.CLOUD_BROWSER = "true";
 process.env.CONNECTOR_TOKEN_KEY = Buffer.alloc(32, 7).toString("base64");
 
 const { splitLinks, rupees, localTime, keyOf, linkFor, ordersOf, mergeOrders, LINKS_START, LINKS_END, readOrders } = await import("../src/sites/history/orders.js");
-const { portraitOf, slotOf, dishWords, portraitLines } = await import("../src/sites/history/portrait.js");
+const { portraitOf, slotOf, itemWords, portraitLines } = await import("../src/sites/history/portrait.js");
 const { readOrderAsk } = await import("../src/sites/history/ask.js");
 const { planOrder, startUrl, agoWords, planLine } = await import("../src/sites/history/plan.js");
 const { orderToken, readOrderToken } = await import("../src/sites/history/token.js");
@@ -165,9 +165,9 @@ describe("the portrait", () => {
   });
 
   it("writes dishes the way a person would", () => {
-    expect(dishWords([{ name: "A", qty: 1 }])).toBe("A");
-    expect(dishWords([{ name: "A", qty: 2 }, { name: "B", qty: 1 }])).toBe("2 × A and B");
-    expect(dishWords([{ name: "A", qty: 1 }, { name: "B", qty: 1 }, { name: "C", qty: 1 }, { name: "D", qty: 1 }])).toBe("A, B and 2 more");
+    expect(itemWords([{ name: "A", qty: 1 }])).toBe("A");
+    expect(itemWords([{ name: "A", qty: 2 }, { name: "B", qty: 1 }])).toBe("2 × A and B");
+    expect(itemWords([{ name: "A", qty: 1 }, { name: "B", qty: 1 }, { name: "C", qty: 1 }, { name: "D", qty: 1 }])).toBe("A, B and 2 more");
   });
 });
 
@@ -212,12 +212,12 @@ describe("what to order", () => {
     expect(plan("same as last time")[0]!.why).toBe("Same as your last order");
   });
 
-  it("a dish they name picks from the orders that have it", () => {
+  it("an item they name picks from the orders that have it", () => {
     const got = plan("get me a burger");
     expect(got.map((x) => x.place)).toEqual(["Truffles"]);
   });
 
-  it("a dish they have never ordered is the site's search, said as that, and the usual after it", () => {
+  it("an item they have never ordered is the site's search, said as that, and the usual after it", () => {
     const got = plan("order pizza");
     expect(got[0]).toMatchObject({ search: true, place: "pizza", url: "https://www.swiggy.com/search?query=pizza", items: [] });
     expect(got[1]!.place).toBe("Behrouz Biryani");
@@ -303,7 +303,7 @@ describe("learning from the orders page, with the watcher's manners", () => {
   it("refuses a page from another site, a site with no history, and a login not held on the phone", async () => {
     const r = await rig();
     await expect(r.h.phoneRead(U, SITE, { ...r.page(), finalUrl: "https://evil.example/orders" })).rejects.toMatchObject({ code: "wrong_site" });
-    await expect(r.h.phoneRead(U, "amazon.in", r.page())).rejects.toMatchObject({ code: "no_history" });
+    await expect(r.h.phoneRead(U, "irctc.co.in", r.page())).rejects.toMatchObject({ code: "no_history" });
     await r.logins.saveLogin(U, SITE, { cookies: [{ name: "a" }] });
     await expect(r.h.phoneRead(U, SITE, r.page())).rejects.toMatchObject({ code: "not_on_phone" });
   });
@@ -358,7 +358,7 @@ describe.skipIf(!playwright())("the step the phone runs, on a page made to look 
     } catch (e) { await browser.close(); throw e; }
   };
 
-  it("adds each dish once, the right one, then opens the cart and presses nothing past it", async () => {
+  it("adds each item once, the right one, then opens the cart and presses nothing past it", async () => {
     const r = await run(MENU, ["Chicken Dum Biryani", "Gulab Jamun"]);
     try {
       expect(r.answer).toEqual({ clicked: null });
@@ -394,7 +394,8 @@ describe.skipIf(!playwright())("the step the phone runs, on a page made to look 
 
 // ------------------------------------------------------------------ taste: the signals, the profile, the web
 
-const { featuresOf, chooserOf, flavoursOf, cuisineOf, momentOf } = await import("../src/sites/history/taste/features.js");
+const { featuresOf, chooserOf, traitsOf, categoryOf, momentOf, rebuysOf } = await import("../src/sites/history/taste/features.js");
+const { KINDS, kindOf } = await import("../src/sites/history/kinds.js");
 const { tasteFrom, tasteOf, tasteHash } = await import("../src/sites/history/taste/profile.js");
 const { picksFrom, discover, queryFor } = await import("../src/sites/history/taste/discover.js");
 const { wantsNew } = await import("../src/sites/history/plan.js");
@@ -409,11 +410,11 @@ const REPLY = {
   motives: [{ trait: "Reliability over novelty", why: "The same Saturday order", orders: [1, 3, 5] }],
   moods: [{ moment: "weekend dinner", wants: "a favourite and dessert", orders: [1] }],
   mightLike: [
-    { dish: "Mutton Haleem", cuisine: "Hyderabadi", why: "Slow-cooked like the biryani", reach: "near" as const, orders: [1, 3] },
-    { dish: "Chicken Dum Biryani", cuisine: "Hyderabadi", why: "Already their usual", reach: "near" as const, orders: [1] },
-    { dish: "Laksa", cuisine: "Malaysian", why: "A stretch", reach: "stretch" as const, orders: [2] },
-    { dish: "Ramen", cuisine: "Japanese", why: "A second stretch", reach: "stretch" as const, orders: [2] },
-    { dish: "Kolkata Biryani", cuisine: "Bengali", why: "No orders named", reach: "near" as const, orders: [] },
+    { item: "Mutton Haleem", category: "Hyderabadi", why: "Slow-cooked like the biryani", reach: "near" as const, orders: [1, 3] },
+    { item: "Chicken Dum Biryani", category: "Hyderabadi", why: "Already their usual", reach: "near" as const, orders: [1] },
+    { item: "Laksa", category: "Malaysian", why: "A stretch", reach: "stretch" as const, orders: [2] },
+    { item: "Ramen", category: "Japanese", why: "A second stretch", reach: "stretch" as const, orders: [2] },
+    { item: "Kolkata Biryani", category: "Bengali", why: "No orders named", reach: "near" as const, orders: [] },
   ],
   city: "Bengaluru",
 };
@@ -421,12 +422,12 @@ const REPLY = {
 describe("the signals in what they order", () => {
   const f = featuresOf(HISTORY);
 
-  it("reads flavour, cuisine and moment off the words and the clock", () => {
-    expect(flavoursOf("Andhra Chilli Chicken")).toContain("spicy");
-    expect(flavoursOf("Paneer Butter Masala")).toContain("rich");
-    expect(flavoursOf("Gulab Jamun")).toContain("sweet");
-    expect(cuisineOf({ place: "Somewhere", items: [{ name: "Masala Dosa", qty: 1 }] })).toBe("South Indian");
-    expect(cuisineOf({ place: "Behrouz Biryani", items: [{ name: "Something", qty: 1 }] })).toBe("Hyderabadi / biryani");
+  it("reads flavour, category and moment off the words and the clock", () => {
+    expect(traitsOf("Andhra Chilli Chicken")).toContain("spicy");
+    expect(traitsOf("Paneer Butter Masala")).toContain("rich");
+    expect(traitsOf("Gulab Jamun")).toContain("sweet");
+    expect(categoryOf({ place: "Somewhere", items: [{ name: "Masala Dosa", qty: 1 }] })).toBe("South Indian");
+    expect(categoryOf({ place: "Behrouz Biryani", items: [{ name: "Something", qty: 1 }] })).toBe("Hyderabadi / biryani");
     expect(momentOf("2026-11-21T20:40")).toBe("weekend dinner");
     expect(momentOf("2026-11-19T13:15")).toBe("weekday lunch");
     expect(momentOf("2026-11-02T23:45")).toBe("late night");
@@ -443,7 +444,7 @@ describe("the signals in what they order", () => {
 
   it("knows what each moment of the week wants, and where they order to", () => {
     expect(f.moments[0]).toMatchObject({ moment: "weekend dinner" });
-    expect(f.moments[0]!.flavours).toContain("rich");
+    expect(f.moments[0]!.traits).toContain("rich");
     expect(featuresOf([o(1, "2026-11-01T20:00", "A", [["x", 1]], 100, { area: "Koramangala" })]).areas).toEqual(["Koramangala"]);
   });
 });
@@ -457,7 +458,7 @@ describe("the taste profile, held to evidence", () => {
   });
 
   it("a discovery is something they have not had, with evidence, and one stretch at most", () => {
-    expect(t.mightLike.map((h) => h.dish)).toEqual(["Mutton Haleem", "Laksa"]);
+    expect(t.mightLike.map((h) => h.item)).toEqual(["Mutton Haleem", "Laksa"]);
   });
 
   it("carries how they choose and the hash of the orders it was made from", () => {
@@ -489,18 +490,18 @@ describe("somewhere new, from the web, vouched for in a reviewer's own words", (
 
   it("keeps a pick only when its quote and its place are on the page it names", () => {
     const picks = picksFrom({ picks: [
-      { place: "Shah Ghouse", dish: "Mutton Haleem", why: "Slow-cooked, like your biryani", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
-      { place: "Shah Ghouse", dish: "Haleem again", why: "a second pick at the same place", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
-      { place: "Pista House", dish: "Haleem", why: "made up", said: "Pista House has the best haleem in town, hands down", from: 1, hunch: 1 },
-      { place: "Pista House", dish: "Haleem", why: "a real quote about somewhere else", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
-      { place: "Shah Ghouse", dish: "x", why: "no such page", said: "The haleem here is cooked overnight and it shows.", from: 9, hunch: 1 },
+      { place: "Shah Ghouse", item: "Mutton Haleem", why: "Slow-cooked, like your biryani", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
+      { place: "Shah Ghouse", item: "Haleem again", why: "a second pick at the same place", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
+      { place: "Pista House", item: "Haleem", why: "made up", said: "Pista House has the best haleem in town, hands down", from: 1, hunch: 1 },
+      { place: "Pista House", item: "Haleem", why: "a real quote about somewhere else", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
+      { place: "Shah Ghouse", item: "x", why: "no such page", said: "The haleem here is cooked overnight and it shows.", from: 9, hunch: 1 },
     ] }, t.mightLike, [PAGE]);
-    expect(picks).toEqual([expect.objectContaining({ place: "Shah Ghouse", dish: "Mutton Haleem", host: "reddit.com", reach: "near" })]);
+    expect(picks).toEqual([expect.objectContaining({ place: "Shah Ghouse", item: "Mutton Haleem", host: "reddit.com", reach: "near" })]);
   });
 
   it("searches near where they order, reads the pages, and gives nothing when the web gives nothing", async () => {
     const asked: string[] = [];
-    const call = (async () => ({ json: { picks: [{ place: "Shah Ghouse", dish: "Mutton Haleem", why: "Slow-cooked, like your biryani", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" })) as never;
+    const call = (async () => ({ json: { picks: [{ place: "Shah Ghouse", item: "Mutton Haleem", why: "Slow-cooked, like your biryani", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" })) as never;
     const deps = {
       call,
       find: async (q: string) => { asked.push(q); return [{ title: "t", url: PAGE.url }]; },
@@ -514,7 +515,7 @@ describe("somewhere new, from the web, vouched for in a reviewer's own words", (
 });
 
 describe("the plan, read through their taste", () => {
-  const PICK = { place: "Shah Ghouse", dish: "Mutton Haleem", cuisine: "Hyderabadi", why: "Slow-cooked like your biryani", said: "The haleem here is cooked overnight", host: "reddit.com", url: "https://reddit.com/x", reach: "near" as const };
+  const PICK = { place: "Shah Ghouse", item: "Mutton Haleem", category: "Hyderabadi", why: "Slow-cooked like your biryani", said: "The haleem here is cooked overnight", host: "reddit.com", url: "https://reddit.com/x", reach: "near" as const };
   const h = (chooser: "creature of habit" | "explorer") => [{ site: SITE, orders: HISTORY, chooser, picks: [PICK] }];
 
   it("a creature of habit gets the usual first and one new thing beside it", () => {
@@ -529,7 +530,7 @@ describe("the plan, read through their taste", () => {
     expect(planOrder(h("explorer"), readOrderAsk("order my usual")!, NOW, 330)[0]!.place).toBe("Behrouz Biryani");
   });
 
-  it("a dish never ordered is a live find when there is one, and the site's search when there is not", () => {
+  it("an item never ordered is a live find when there is one, and the site's search when there is not", () => {
     const ask = readOrderAsk("order haleem")!;
     expect(wantsNew(h("creature of habit"), ask)).toBe(true);
     expect(wantsNew(h("creature of habit"), readOrderAsk("get me a burger")!)).toBe(false);
@@ -557,7 +558,7 @@ describe("taste, kept and refreshed with manners", () => {
     await store.setMark(U, SITE, { readAt: NOW });
     const call = (async (req: { purpose: string }) => {
       if (req.purpose === "site.taste") { tasteCalls++; return { json: REPLY, paise: 3, model: "m" }; }
-      return { json: { picks: [{ place: "Shah Ghouse", dish: "Mutton Haleem", why: "Slow-cooked", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" };
+      return { json: { picks: [{ place: "Shah Ghouse", item: "Mutton Haleem", why: "Slow-cooked", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" };
     }) as never;
     const page = { url: "https://reddit.com/x", text: "Shah Ghouse. The haleem here is cooked overnight and it shows. ".repeat(10) };
     const h = new SiteHistories({
@@ -604,4 +605,124 @@ describe("taste, kept and refreshed with manners", () => {
     await r.h.forget(U, SITE);
     expect(await r.store.insight(U, SITE)).toEqual({});
   });
+});
+
+// ------------------------------------------------------------------ one pipeline for every site
+
+const { sitesFor, readyFor } = await import("../src/sites/history/plan.js");
+const { historySite } = await import("../src/sites/history/service.js");
+
+const AMZ = "amazon.in";
+const buy = (n: number, local: string, place: string, name: string, total = 400): SiteOrder =>
+  ({ key: `no:70${n}`, site: AMZ, place, local, total, seenAt: 1, items: [{ name, qty: 1 }] });
+/** A detergent every four weeks, last bought 26 days before NOW; hair oil twice; a one-off protein tub. */
+const SHOPPING: SiteOrder[] = [
+  buy(1, "2026-10-31T21:00", "Surf Excel", "Surf Excel Matic Liquid Detergent 2L Refill"),
+  buy(2, "2026-10-22T10:10", "Mamaearth", "Mamaearth Onion Hair Oil 250ml", 349),
+  buy(3, "2026-10-03T20:40", "Surf Excel", "Surf Excel Matic Liquid Detergent 2L Refill"),
+  buy(4, "2026-09-20T11:00", "MuscleBlaze", "MuscleBlaze Whey Protein 1kg", 2199),
+  buy(5, "2026-09-05T21:15", "Surf Excel", "Surf Excel Matic Liquid Detergent 2L Refill"),
+  buy(6, "2026-08-24T10:30", "Mamaearth", "Mamaearth Onion Hair Oil 250ml", 349),
+];
+
+describe("one pipeline, any site", () => {
+  it("every site whose orders page the catalog knows is learned, whatever its kind", () => {
+    expect(historySite("swiggy.com")?.id).toBe("swiggy");
+    expect(historySite("amazon.in")?.id).toBe("amazon-in");
+    expect(historySite("flipkart.com")?.id).toBe("flipkart");
+    expect(historySite("irctc.co.in")).toBeUndefined();
+    expect([kindOf("swiggy.com").kind, kindOf("amazon.in").kind, kindOf("irctc.co.in").kind]).toEqual(["food", "shopping", "travel"]);
+  });
+
+  it("reads a product with the shop's lexicon: its category and how they like things", () => {
+    const f = featuresOf(SHOPPING, KINDS.shopping);
+    expect(f.kind).toBe("shopping");
+    expect(f.categories[0]!.name).toBe("Groceries & household");
+    expect(f.traits.map((t) => t.trait)).toContain("value packs");
+    expect(categoryOf({ place: "x", items: [{ name: "boAt Airdopes earbuds", qty: 1 }] }, KINDS.shopping)).toBe("Electronics");
+  });
+
+  it("knows the rhythm of what they buy again, and what is due", () => {
+    const r = rebuysOf(SHOPPING, "2026-11-26T20:00");
+    expect(r[0]).toMatchObject({ name: "Surf Excel Matic Liquid Detergent 2L Refill", everyDays: 28, due: true });
+    // Twice is a coincidence, not a rhythm; and a rhythm not yet due is not due.
+    expect(r.find((x) => x.name.startsWith("Mamaearth"))).toBeUndefined();
+    expect(rebuysOf(SHOPPING, "2026-11-05T20:00")[0]!.due).toBe(false);
+  });
+
+  it("hears a shopping ask, and takes it to a shop, not a kitchen", () => {
+    const both = [{ site: SITE, orders: HISTORY }, { site: AMZ, orders: SHOPPING }];
+    expect(readOrderAsk("reorder my detergent")).toMatchObject({ kind: "shopping", want: ["detergent"] });
+    expect(readOrderAsk("I'm out of coffee pods")?.kind).toBe("shopping");
+    expect(readOrderAsk("surf excel khatam ho gaya")?.kind).toBe("shopping");
+    expect(readOrderAsk("order a phone charger from amazon")).toMatchObject({ kind: "shopping", site: AMZ });
+    expect(readOrderAsk("book a cab")).toBeNull();
+    expect(sitesFor(both, readOrderAsk("reorder my detergent")!).map((h) => h.site)).toEqual([AMZ]);
+    expect(sitesFor(both, readOrderAsk("order dinner")!).map((h) => h.site)).toEqual([SITE]);
+    // "my usual" alone: the kind of site they order from most.
+    expect(sitesFor(both, readOrderAsk("my usual please")!).map((h) => h.site)).toEqual([SITE]);
+  });
+
+  it("what is due comes first, and a product starts at the shop's search for the product", () => {
+    const got = planOrder([{ site: AMZ, orders: SHOPPING }], readOrderAsk("reorder my detergent")!, NOW, 330);
+    expect(got[0]).toMatchObject({ why: "About time for more", url: "https://www.amazon.in/s?k=Surf%20Excel%20Matic%20Liquid%20Detergent%202L%20Refill" });
+    expect(planLine(got)).toBe("About time for more Surf Excel Matic Liquid Detergent 2L Refill. It's ready to reorder.");
+  });
+
+  it("what is ready, with nothing asked, is the same planner: the usual, what is due, something new", () => {
+    const pick = { place: "Minimalist", item: "Rosemary Hair Oil", category: "Personal care", why: "Like the hair oil you rebuy", said: "not greasy at all", host: "reddit.com", url: "https://reddit.com/x", reach: "near" as const };
+    const r = readyFor({ site: AMZ, orders: SHOPPING, chooser: "creature of habit", picks: [pick] }, NOW);
+    expect(r[0]!.why).toBe("About time for more");
+    expect(r.some((o) => o.fresh && o.place === "Minimalist")).toBe(true);
+    expect(r.length).toBeLessThanOrEqual(4);
+    const food = readyFor({ site: SITE, orders: HISTORY, chooser: "creature of habit" }, NOW);
+    expect(food[0]!.place).toBe("Behrouz Biryani");
+  });
+});
+
+describe("done for you", () => {
+  async function rig() {
+    const logins = new SiteStore(null);
+    const store = new HistoryStore(null);
+    await logins.saveLogin(U, SITE, { cookies: [], onPhone: true });
+    await store.saveOrders(U, SITE, HISTORY);
+    return { h: new SiteHistories({ store, logins, now: () => NOW }), store };
+  }
+
+  it("a filled cart is noted once, however often the order is opened", async () => {
+    const r = await rig();
+    await r.h.noteCart(U, SITE, { ref: "abc123", title: "Filled your cart at Behrouz Biryani", line: "Chicken Dum Biryani" });
+    await r.h.noteCart(U, SITE, { ref: "abc123", title: "Filled your cart at Behrouz Biryani" });
+    const p = await r.h.portrait(U, SITE);
+    expect(p.did).toEqual([{ kind: "cart", title: "Filled your cart at Behrouz Biryani", line: "Chicken Dum Biryani", at: NOW }]);
+    expect(p.ready?.[0]?.place).toBe("Behrouz Biryani");
+  });
+
+  it("forgetting the site forgets what was done there too", async () => {
+    const r = await rig();
+    await r.h.noteCart(U, SITE, { ref: "abc123", title: "Filled your cart" });
+    await r.h.forget(U, SITE);
+    expect(await r.store.didOf(U, SITE)).toEqual([]);
+  });
+});
+
+/** A shop's search and a product page, as Amazon draws them: a long product name, one "Add to Cart", a cart link. */
+const SHOP_SEARCH = `<!doctype html><html><head><title>Amazon.in : detergent</title></head><body>
+<a href="#other">Ariel Matic Liquid Detergent 2L</a>
+<a href="#surf">Surf Excel Matic Liquid Detergent 2L Refill Pack, Top Load, Removes Tough Stains</a>
+<script>window.cart=[];window.addEventListener("hashchange",function(){document.body.innerHTML='<h1 id="productTitle">Surf Excel Matic Liquid Detergent 2L Refill Pack</h1><span>₹420</span><input type="submit" value="Add to Cart" onclick="window.cart.push(\\'ADD\\')"><input type="submit" value="Buy Now" onclick="window.cart.push(\\'PAID\\')"><a href="#cart" onclick="window.cart.push(\\'CART\\')">Go to Cart</a>';});</script>
+</body></html>`;
+
+describe.skipIf(!playwright())("the step on a shop, on a page made to look like one", () => {
+  it("opens the product by its name, presses Add to Cart once, goes to the cart, and never Buy Now", async () => {
+    const browser = await playwright()!.chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      await page.route("https://www.amazon.in/**", (route: any) => route.fulfill({ contentType: "text/html", body: SHOP_SEARCH }));
+      await page.goto("https://www.amazon.in/s?k=Surf");
+      await page.evaluate(orderStep({ id: "s1", place: "Surf Excel", items: ["Surf Excel Matic Liquid Detergent 2L Refill"], mode: "product" }));
+      await page.waitForTimeout(9000);
+      expect(await page.evaluate("window.cart")).toEqual(["ADD", "CART"]);
+    } finally { await browser.close(); }
+  }, 30_000);
 });

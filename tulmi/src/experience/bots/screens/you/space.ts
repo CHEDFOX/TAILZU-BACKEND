@@ -9,7 +9,7 @@
 import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, C, box, button, call, chips, col, grid, grow, icon, listCard, listRow, meta, open, page, primaryButton, row, sectionLabel, seq, switchRow, text, when } from "../../kit.js";
 import { loadPortraits, type PortraitsView } from "../sites/data.js";
-import { historyReaders, portraitCard } from "../sites/portrait.js";
+import { historyReaders, siteCard } from "../sites/forYou.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { botRoute, SCREENS } from "../../ids.js";
 import type { IconName } from "../../glyphs.js";
@@ -106,7 +106,7 @@ function hub(ctx: BotsCtx, d: (SpaceOverview & { sites?: PortraitsView }) | unde
 }
 
 /**
- * FROM THEIR SITES: a section per site they order on, each its portrait in a card (screens/sites/portrait.ts). Learned from
+ * FROM THEIR SITES: a section per site they order on, each its portrait in a card (screens/sites/forYou.ts). Learned from
  * the site's own orders page, so it is not a line any bot wrote, and it is forgotten on the portrait itself.
  */
 function sitesPart(ctx: BotsCtx, v: PortraitsView | undefined): Node[] {
@@ -114,9 +114,9 @@ function sitesPart(ctx: BotsCtx, v: PortraitsView | undefined): Node[] {
   return [
     col([
       sectionLabel("From your sites"),
-      meta("What your orders say about you, one site at a time.", { size: 12 }),
+      meta("What I have ready for you, and what I did, one site at a time.", { size: 12 }),
     ], { gap: 4 }),
-    ...(v.portraits.length ? [grid(v.portraits.map(portraitCard), ctx.client === "desktop" ? 2 : 1, 10)] : [meta("Reading your orders now. This fills in by itself.", { size: 13 })]),
+    ...(v.portraits.length ? [grid(v.portraits.map(siteCard), ctx.client === "desktop" ? 2 : 1, 10)] : [meta("Getting your picks ready. They show up here by themselves.", { size: 13 })]),
     ...historyReaders(ctx, v.readers),
   ];
 }

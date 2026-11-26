@@ -10,7 +10,7 @@
  */
 
 export interface OrderItem {
-  /** As the site names the dish ("Chicken Dum Biryani"). */
+  /** As the site names the item ("Chicken Dum Biryani"). */
   name: string;
   qty: number;
 }
@@ -93,7 +93,13 @@ export interface SitePortrait {
   taste?: TasteView;
   /** New places found for it on the web (taste/discover.ts), each vouched for by a reviewer's own words. */
   picks?: PickView[];
+  /** WHAT X0 HAS READY FOR THEM here, best first: their usual, what is due again, something new (plan.ts planOrder). */
+  ready?: OrderOption[];
+  /** WHAT X0 DID FOR THEM here, newest first: carts filled, new places found, orders seen through to the door. */
+  did?: DidView[];
 }
+
+export interface DidView { kind: "cart" | "found" | "arrived"; title: string; line?: string; at: number }
 
 /** The taste as a screen and a bot see it: the conclusions, never the evidence numbers behind them. */
 export interface TasteView {
@@ -101,11 +107,11 @@ export interface TasteView {
   palate: string[];
   motives: string[];
   moods: Array<{ moment: string; wants: string }>;
-  mightLike: Array<{ dish: string; cuisine: string; why: string; reach: "near" | "stretch" }>;
+  mightLike: Array<{ item: string; category: string; why: string; reach: "near" | "stretch" }>;
   chooser: "creature of habit" | "explorer" | "balanced";
 }
 
-export interface PickView { place: string; dish: string; cuisine: string; why: string; said: string; host: string; reach: "near" | "stretch" }
+export interface PickView { place: string; item: string; category: string; why: string; said: string; host: string; reach: "near" | "stretch" }
 
 export interface OrderOption {
   site: string;

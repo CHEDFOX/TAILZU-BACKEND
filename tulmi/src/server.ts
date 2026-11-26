@@ -643,7 +643,7 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
     const hold = getHolder();
     const panels = hold ? new Panels({ hold }) : undefined;
     registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
-    registerSiteHistoryRoutes(app, botsAreaDeps, { histories });
+    registerSiteHistoryRoutes(app, botsAreaDeps, { histories, watches: (userId) => sites.list(userId) });
     talkOrders = {
       plan: async (userId, words, tz) => {
         const ask = readOrderAsk(words);

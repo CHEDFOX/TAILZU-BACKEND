@@ -1,9 +1,9 @@
 /**
  * SOMEWHERE NEW THEY WILL PROBABLY LOVE, FOUND ON THE WEB AND VOUCHED FOR BY PEOPLE WHO ATE THERE (docs/site-portrait.md §2c).
  *
- *   discover(taste, deps, o?)   for their best hunches (profile.ts mightLike), or for a dish they just asked for: the web is
+ *   discover(taste, deps, o?)   for their best hunches (profile.ts mightLike), or for an item they just asked for: the web is
  *                               searched near where they order, the pages read, and a model picks the restaurant and the
- *                               dish that fit THIS person — each pick carrying a reviewer's own words, checked on the page
+ *                               item that fit THIS person — each pick carrying a reviewer's own words, checked on the page
  *
  * WHY THE WEB. Their orders only know the places they already go. The game is the place they do not know yet: the Andhra
  * biryani two streets over that people who love Behrouz say is better. That lives in reviews, food blogs and threads.
@@ -22,6 +22,7 @@
 import { z } from "zod";
 import { askJson } from "../../../code/work/model.js";
 import type { Hunch, Taste } from "./profile.js";
+import { KINDS, type SiteKind } from "../kinds.js";
 
 /** One look for new places: a few searches, a handful of pages, one reasoning call. Done at most daily, and cached. */
 export const SITE_DISCOVER_PAISE = 160;
@@ -45,8 +46,8 @@ export interface DiscoverDeps {
 /** A place to try, and why it is for them. */
 export interface Discovery {
   place: string;
-  dish: string;
-  cuisine: string;
+  item: string;
+  category: string;
   /** Which of their likings it answers, said to them. */
   why: string;
   /** A reviewer's words, verbatim from `url`. */
@@ -54,13 +55,13 @@ export interface Discovery {
   host: string;
   url: string;
   reach: "near" | "stretch";
-  /** The dish they asked for, when this was found for an ask rather than ahead of time. */
+  /** The item they asked for, when this was found for an ask rather than ahead of time. */
   asked?: string;
 }
 
 export const DiscoverReply = z.object({
   picks: z.array(z.object({
-    place: z.string(), dish: z.string(), why: z.string(), said: z.string(), from: z.number(), hunch: z.number(),
+    place: z.string(), item: z.string(), why: z.string(), said: z.string(), from: z.number(), hunch: z.number(),
   })),
 }).strict();
 
@@ -71,20 +72,21 @@ const hostOf = (url: string): string => { try { return new URL(url).host.replace
 /** Where to look: the area they order to most, and the city when the profile knew it. */
 export const nearWords = (t: { areas: readonly string[]; city?: string }): string => [t.areas[0], t.city].filter(Boolean).join(" ");
 
-/** A search that finds reviews of a dish near them, not a recipe. */
-export const queryFor = (dish: string, near: string): string => `best ${dish} restaurant ${near} reviews`.replace(/\s+/g, " ").trim();
+/** A search that finds reviews of an item near them, not a recipe. */
+export const queryFor = (item: string, near: string, kind: SiteKind = "food"): string => KINDS[kind].query(item, near).replace(/\s+/g, " ").trim();
 
 /** What the model is told: who this person is as an eater, what to look for, and the pages, each fenced. */
 export function discoverUser(t: Taste, hunches: readonly Hunch[], pages: readonly Page[]): string {
   return [
-    "The person, as an eater:",
+    `The site is a ${t.kind} site: ${KINDS[t.kind].item}s from a ${KINDS[t.kind].place}.`,
+    "The person, as a buyer:",
     ...t.insights.map((s) => `- ${s}`),
     ...t.palate.map((p) => `- Palate: ${p.trait} (${p.why})`),
     ...t.motives.map((m) => `- Chooses for: ${m.trait}`),
     `- They are a ${t.chooser}. They order in ${nearWords(t) || "an area the pages will name"}.`,
     "",
     "What to look for (the numbers are what `hunch` refers to):",
-    ...hunches.map((h, i) => `${i + 1}. ${h.dish}${h.cuisine ? ` (${h.cuisine})` : ""}: ${h.why}`),
+    ...hunches.map((h, i) => `${i + 1}. ${h.item}${h.category ? ` (${h.category})` : ""}: ${h.why}`),
     "",
     ...pages.map((p, i) => [`PAGE ${i + 1} — ${hostOf(p.url)}`, `<<<UNTRUSTED ${i + 1}>>>`, p.text, "<<<END>>>"].join("\n")),
   ].join("\n");
@@ -96,15 +98,15 @@ export function picksFrom(reply: z.infer<typeof DiscoverReply>, hunches: readonl
   const places = new Set<string>();
   for (const p of reply.picks) {
     const page = pages[p.from - 1], hunch = hunches[p.hunch - 1];
-    const place = clip(p.place, 80), dish = clip(p.dish, 60), why = clip(p.why, 200), said = clip(p.said, 240);
-    if (!page || !hunch || !place || !dish || !why || said.length < 15) continue;
+    const place = clip(p.place, 80), item = clip(p.item, 60), why = clip(p.why, 200), said = clip(p.said, 240);
+    if (!page || !hunch || !place || !item || !why || said.length < 15) continue;
     if (!flat(page.text).includes(flat(said))) continue;
     // The place has to be on that page too: a quote about somewhere else is not a review of this one.
     if (!flat(page.text).includes(flat(place))) continue;
     if (places.has(flat(place))) continue;
     places.add(flat(place));
     out.push({
-      place, dish, why, said, cuisine: hunch.cuisine, reach: hunch.reach, url: page.url, host: hostOf(page.url),
+      place, item, why, said, category: hunch.category, reach: hunch.reach, url: page.url, host: hostOf(page.url),
       ...(asked ? { asked } : {}),
     });
     if (out.length >= 4) break;
@@ -113,19 +115,19 @@ export function picksFrom(reply: z.infer<typeof DiscoverReply>, hunches: readonl
 }
 
 /**
- * Picks for this person. Ahead of time (no `want`): their best near hunches. For an ask ("order pizza"): the dish they
+ * Picks for this person. Ahead of time (no `want`): their best near hunches. For an ask ("order pizza"): the item they
  * asked for, read through their taste. Never throws; nothing found is an empty list, and the card falls back to the
  * site's own search.
  */
 export async function discover(userId: string, t: Taste, d: DiscoverDeps, o: { want?: string } = {}): Promise<Discovery[]> {
   const near = nearWords(t);
   const hunches: Hunch[] = o.want
-    ? [{ dish: o.want, cuisine: "", why: "What they asked for just now; pick the version of it that fits their taste.", reach: "near", orders: [] }]
+    ? [{ item: o.want, category: "", why: "What they asked for just now; pick the version of it that fits their taste.", reach: "near", orders: [] }]
     : [...t.mightLike.filter((h) => h.reach === "near"), ...t.mightLike.filter((h) => h.reach === "stretch")].slice(0, HUNCHES);
   if (!hunches.length) return [];
   const pages: Page[] = [];
   for (const h of hunches) {
-    const hits = await d.find(queryFor(h.dish, near), PAGES_PER * 2).catch(() => [] as Hit[]);
+    const hits = await d.find(queryFor(h.item, near, t.kind), PAGES_PER * 2).catch(() => [] as Hit[]);
     const read = await Promise.all(hits.slice(0, PAGES_PER).map((x) => d.read(x.url, PAGE_CHARS).catch(() => null)));
     for (const p of read) if (p && p.text.length > 300 && !pages.some((q) => q.url === p.url)) pages.push(p);
   }

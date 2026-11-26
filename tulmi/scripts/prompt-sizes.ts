@@ -112,8 +112,8 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   site_read: 1392,
   // A role that replaced nothing: its first measured size is its own "before".
   site_orders: 1307,
-  site_taste: 2723,
-  site_discover: 1616,
+  site_taste: 3033,
+  site_discover: 1640,
   // The main assistant (agent/, pipeline/): what each builder sent at 61edee2, the commit before they became roles. The writer is buildAssistSystem with
   // no optional line on (5,645 with every one on), the planner AGENT_SYSTEM on a computer (11,895 with the connected apps' addendum), the picture
   // reader AGENT_VISION_SYSTEM (7,195 in Gemini's order), and the portrait writers' with no rhythms and no voice named (3,762 with rhythms).

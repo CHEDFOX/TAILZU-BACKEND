@@ -14,6 +14,9 @@ export const ORDERS_KEPT = 120;
 
 export interface HistoryMark { readAt?: number; hash?: string }
 
+/** Something X0 did for them on a site: a cart it filled, new places it found. */
+export interface Did { ref: string; kind: "cart" | "found"; title: string; line?: string; at: number }
+
 /** What was worked out from the orders (taste/profile.ts) and found for it on the web (taste/discover.ts). */
 export interface Insight { taste?: Taste; picks?: Discovery[]; picksAt?: number }
 
@@ -23,6 +26,7 @@ export class HistoryStore {
   private readonly orders = new Map<string, SiteOrder[]>();
   private readonly marks = new Map<string, HistoryMark>();
   private readonly insights = new Map<string, Insight>();
+  private readonly dids = new Map<string, Did[]>();
 
   constructor(private readonly db: SupabaseClient | null = supabase()) {}
 
@@ -92,9 +96,38 @@ export class HistoryStore {
     }, { onConflict: "owner_id,site" });
   }
 
+  /** Note something done. The same `ref` twice is one thing: the second report changes nothing. */
+  async addDid(ownerId: string, site: string, d: Did): Promise<void> {
+    if (!this.db) {
+      const k = this.key(ownerId, site);
+      const had = this.dids.get(k) ?? [];
+      if (!had.some((x) => x.ref === d.ref)) this.dids.set(k, [d, ...had].slice(0, 50));
+      return;
+    }
+    await this.db.from("site_did").upsert({
+      owner_id: ownerId, site, ref: d.ref, kind: d.kind, title: d.title, line: d.line ?? null, at: new Date(d.at).toISOString(),
+    }, { onConflict: "owner_id,site,ref", ignoreDuplicates: true });
+  }
+
+  /** What was done, newest first. */
+  async didOf(ownerId: string, site: string, limit = 8): Promise<Did[]> {
+    if (!this.db) return (this.dids.get(this.key(ownerId, site)) ?? []).slice(0, limit);
+    const { data } = await this.db.from("site_did").select("ref, kind, title, line, at").eq("owner_id", ownerId).eq("site", site)
+      .order("at", { ascending: false }).limit(limit);
+    return (data ?? []).map((r) => ({
+      ref: String(r.ref), kind: r.kind === "found" ? "found" as const : "cart" as const, title: String(r.title),
+      ...(r.line ? { line: String(r.line) } : {}), at: ms(r.at) ?? 0,
+    }));
+  }
+
   /** Forget everything learned from a site: its orders, when it was read, and what was worked out from them. */
   async forget(ownerId: string, site: string): Promise<void> {
-    if (!this.db) { this.orders.delete(this.key(ownerId, site)); this.marks.delete(this.key(ownerId, site)); this.insights.delete(this.key(ownerId, site)); return; }
+    if (!this.db) {
+      const k = this.key(ownerId, site);
+      this.orders.delete(k); this.marks.delete(k); this.insights.delete(k); this.dids.delete(k);
+      return;
+    }
+    await this.db.from("site_did").delete().eq("owner_id", ownerId).eq("site", site);
     await this.db.from("site_orders").delete().eq("owner_id", ownerId).eq("site", site);
     await this.db.from("site_history").delete().eq("owner_id", ownerId).eq("site", site);
   }

@@ -16,7 +16,7 @@
 
 import { cloudBrowserOn, mayUseCloudBrowser } from "../../../sites/gate.js";
 import { sitesScreens } from "./sites.js";
-import { portraitScreens } from "./sites/portrait.js";
+import { forYouScreens } from "./sites/forYou.js";
 import { orderScreens } from "./sites/order.js";
 import { spaceScreens } from "./you/space.js";
 import { devicesScreens } from "./you/devicesPage.js";
@@ -743,7 +743,7 @@ export const youScreens: BotsScreen[] = [
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
   ...planShareScreens, // Share with someone / Ask for a plan (screens/you/planShareCard.ts)
   ...sitesScreens, // What a site said about their order (screens/sites.ts; CLOUD_BROWSER, off: the screen then draws "not switched on")
-  ...portraitScreens, // What their orders on a site say about them (screens/sites/portrait.ts; CLOUD_BROWSER, off)
+  ...forYouScreens, // What X0 has ready for them on a site, and what it did there (screens/sites/forYou.ts; CLOUD_BROWSER, off)
   ...orderScreens, // An order filled into a site's cart on their phone (screens/sites/order.ts; CLOUD_BROWSER, off)
   ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({
     id,

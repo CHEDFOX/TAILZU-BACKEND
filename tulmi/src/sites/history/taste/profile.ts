@@ -26,6 +26,7 @@ import { fenced } from "../../../agent/prompt.js";
 import { DAY_NAMES, hourWords } from "../portrait.js";
 import type { SiteOrder } from "../types.js";
 import { chooserOf, featuresOf, momentOf, type TasteFeatures } from "./features.js";
+import { KINDS, kindOf, type SiteKind } from "../kinds.js";
 
 /** One profile: a long history read by a reasoning model, once each time the orders change. */
 export const SITE_TASTE_PAISE = 90;
@@ -40,14 +41,14 @@ export const TasteReply = z.object({
   motives: z.array(z.object({ trait: z.string(), why: z.string(), orders: z.array(z.number()) })),
   moods: z.array(z.object({ moment: z.string(), wants: z.string(), orders: z.array(z.number()) })),
   mightLike: z.array(z.object({
-    dish: z.string(), cuisine: z.string(), why: z.string(), reach: z.enum(["near", "stretch"]), orders: z.array(z.number()),
+    item: z.string(), category: z.string(), why: z.string(), reach: z.enum(["near", "stretch"]), orders: z.array(z.number()),
   })),
   city: z.string().optional(),
 }).strict();
 
 export interface Trait { trait: string; why: string; orders: number[] }
 export interface Mood { moment: string; wants: string; orders: number[] }
-export interface Hunch { dish: string; cuisine: string; why: string; reach: "near" | "stretch"; orders: number[] }
+export interface Hunch { item: string; category: string; why: string; reach: "near" | "stretch"; orders: number[] }
 
 export interface Taste {
   /** Plain sentences about them, in the second person: what they would nod at. Shown on their portrait. */
@@ -58,6 +59,8 @@ export interface Taste {
   /** What they would probably love and have not had. Mostly near what they love; one stretch at most. */
   mightLike: Hunch[];
   chooser: "creature of habit" | "explorer" | "balanced";
+  /** The kind of site it was worked out on: what its items and places are (history/kinds.ts). */
+  kind: SiteKind;
   /** Where they order to, for finding something new near it. */
   areas: string[];
   city?: string;
@@ -86,18 +89,19 @@ export function orderLine(o: SiteOrder, n: number): string {
 export function signalLines(f: TasteFeatures): string[] {
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return [
-    `Orders: ${f.orders}. First time at that place: ${pct(f.explore)} of orders. Exact repeats: ${pct(f.repeat)}. Cuisine breadth (0 one, 1 all equally): ${f.breadth}. Reads as: ${chooserOf(f)}.`,
-    `Flavour words in their dishes: ${f.flavours.map((x) => `${x.flavour} ${pct(x.share)}`).join(", ") || "none found"}.`,
-    `Cuisines: ${f.cuisines.map((x) => `${x.name} ${pct(x.weight)}`).join(", ") || "unclear"}.`,
-    `Proteins: ${f.proteins.map((x) => `${x.name} ${pct(x.weight)}`).join(", ") || "none named"}. Non-veg share of dishes: ${f.nonVeg === null ? "unknown" : pct(f.nonVeg)}.`,
-    ...f.moments.map((m) => `Moment "${m.moment}": ${m.orders} orders${m.medianSpend ? `, usually ₹${Math.round(m.medianSpend)}` : ""}${m.flavours.length ? `, ${m.flavours.join("/")}` : ""}${m.cuisines.length ? `, mostly ${m.cuisines.join(", ")}` : ""}.`),
+    `Orders: ${f.orders}. First time at that place: ${pct(f.explore)} of orders. Exact repeats: ${pct(f.repeat)}. Category breadth (0 one, 1 all equally): ${f.breadth}. Reads as: ${chooserOf(f)}.`,
+    `Traits in what they buy: ${f.traits.map((x) => `${x.trait} ${pct(x.share)}`).join(", ") || "none found"}.`,
+    `Categories: ${f.categories.map((x) => `${x.name} ${pct(x.weight)}`).join(", ") || "unclear"}.`,
+    ...f.moments.map((m) => `Moment "${m.moment}": ${m.orders} orders${m.medianSpend ? `, usually ₹${Math.round(m.medianSpend)}` : ""}${m.traits.length ? `, ${m.traits.join("/")}` : ""}${m.categories.length ? `, mostly ${m.categories.join(", ")}` : ""}.`),
     `Areas they order to: ${f.areas.join(", ") || "not shown"}.`,
   ];
 }
 
-export function tasteUser(orders: readonly SiteOrder[], f: TasteFeatures): string {
+export function tasteUser(orders: readonly SiteOrder[], f: TasteFeatures, site = ""): string {
   const shown = orders.filter((o) => !o.cancelled).slice(0, SHOWN);
+  const k = KINDS[f.kind];
   return [
+    `The site: ${fenced(site) || "a site they buy from"}, a ${k.kind} site: each order is ${k.item}s from a ${k.place}.`,
     "Signals counted from their orders:",
     ...signalLines(f).map((l) => `- ${l}`),
     "",
@@ -120,12 +124,12 @@ export function tasteFrom(reply: z.infer<typeof TasteReply>, orders: readonly Si
   const hunches: Hunch[] = [];
   let stretches = 0;
   for (const h of reply.mightLike) {
-    const dish = clip(h.dish, 60), cuisine = clip(h.cuisine, 40), why = clip(h.why, 220), ev = ok(h.orders);
-    if (!dish || !why || !ev.length) continue;
+    const item = clip(h.item, 60), category = clip(h.category, 40), why = clip(h.why, 220), ev = ok(h.orders);
+    if (!item || !why || !ev.length) continue;
     // Something they have already had is the usual, not a discovery.
-    if (had.has(norm(dish)) || [...had].some((d) => d.includes(norm(dish)) && norm(dish).length >= 6)) continue;
+    if (had.has(norm(item)) || [...had].some((d) => d.includes(norm(item)) && norm(item).length >= 6)) continue;
     if (h.reach === "stretch" && stretches++ >= 1) continue;
-    hunches.push({ dish, cuisine, why, reach: h.reach, orders: ev });
+    hunches.push({ item, category, why, reach: h.reach, orders: ev });
     if (hunches.length >= 5) break;
   }
   const insights = reply.insights.map((s) => clip(s, 180)).filter((s) => s.length > 12).slice(0, 5);
@@ -138,7 +142,7 @@ export function tasteFrom(reply: z.infer<typeof TasteReply>, orders: readonly Si
       const moment = clip(m.moment, 40), wants = clip(m.wants, 140), ev = ok(m.orders);
       return moment && wants && ev.length ? [{ moment, wants, orders: ev }] : [];
     }).slice(0, 4),
-    chooser: chooserOf(f), areas: f.areas, ...(city ? { city } : {}),
+    chooser: chooserOf(f), kind: f.kind, areas: f.areas, ...(city ? { city } : {}),
     hash: tasteHash(orders), at: now,
   };
 }
@@ -150,8 +154,8 @@ export interface TasteDeps {
 }
 
 /** The profile, or null: too few orders, or nothing grounded came back. Never throws. */
-export async function tasteOf(userId: string, orders: readonly SiteOrder[], d: TasteDeps, now = Date.now()): Promise<Taste | null> {
-  const f = featuresOf(orders);
+export async function tasteOf(userId: string, orders: readonly SiteOrder[], d: TasteDeps, now = Date.now(), site = ""): Promise<Taste | null> {
+  const f = featuresOf(orders, site ? kindOf(site) : KINDS.food);
   if (f.orders < TASTE_MIN_ORDERS) return null;
   try {
     const r = await askJson({
@@ -159,7 +163,7 @@ export async function tasteOf(userId: string, orders: readonly SiteOrder[], d: T
       userId, budget: { maxPaise: d.maxPaise },
     }, {
       tier: "cheap", purpose: "site.taste", role: "site_taste",
-      user: tasteUser(orders, f), schema: TasteReply, maxTokens: 1600,
+      user: tasteUser(orders, f, site), schema: TasteReply, maxTokens: 1600,
     });
     return r.ok ? tasteFrom(r.value, orders, f, now) : null;
   } catch {

@@ -31,7 +31,7 @@ import {
 } from "./planShare.js";
 import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_SESSION_AT } from "./cinema.js";
 import { TALK_API, TALK_EMPTY_API, TALK_THREADS_API, TALK_WELCOME_API } from "./talk.js";
-import { orderParams, SITE_PORTRAIT_API, talkOrderApi } from "./sitePortrait.js";
+import { AMAZON_PORTRAIT_API, orderParams, SITE_PORTRAIT_API, talkOrderApi } from "./sitePortrait.js";
 import { ACTIVITIES_API, ACTIVITIES_EMPTY_API, ALL_BOTS } from "./activities.js";
 import { MEET_ADMIN, MEET_BOT, MEET_EMPTY, MEET_OVERVIEW, MEET_PAGE_API, MEET_STATES } from "./meet.js";
 
@@ -86,6 +86,8 @@ export const SAMPLES: Sample[] = [
   // Talk asked "order my usual": the order card made from seven weeks of Swiggy orders (samples/sitePortrait.ts, docs/site-portrait.md).
   { id: S.talk, area: "shell", variant: "order", api: talkOrderApi() },
   { id: S.sitePortrait, area: "you", params: { site: "swiggy.com" }, api: SITE_PORTRAIT_API },
+  // The same page on a shop: what is about to run out, and something new with a buyer's words (the pipeline is one, history/kinds.ts).
+  { id: S.sitePortrait, area: "you", variant: "shop", params: { site: "amazon.in" }, api: AMAZON_PORTRAIT_API },
   { id: S.siteOrder, area: "you", params: orderParams(), api: {} },
   // THE REPORT CARD under a bot's answer (screens/safety.ts answerCard): it reads its params, so there is nothing to answer.
   {

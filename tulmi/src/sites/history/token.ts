@@ -39,13 +39,13 @@ function onSite(url: string, site: string): boolean {
   } catch { return false; }
 }
 
-export function readOrderToken(raw: unknown): OrderOption[] {
-  if (typeof raw !== "string" || !raw || raw.length > ORDER_TOKEN_MAX) return [];
+export function readOrderToken(raw: unknown, max = OPTIONS_KEPT, maxChars = ORDER_TOKEN_MAX): OrderOption[] {
+  if (typeof raw !== "string" || !raw || raw.length > maxChars) return [];
   let j: { options?: unknown };
   try { j = JSON.parse(raw) as { options?: unknown }; } catch { return []; }
   if (!Array.isArray(j?.options)) return [];
   const out: OrderOption[] = [];
-  for (const x of j.options.slice(0, OPTIONS_KEPT)) {
+  for (const x of j.options.slice(0, max)) {
     const o = (x ?? {}) as Record<string, unknown>;
     const site = clip(o.site, 120).toLowerCase(), place = clip(o.place, 80), why = clip(o.why, 200), url = clip(o.url, 600);
     if (!site || !place || !siteAllowed(site) || !onSite(url, site)) continue;

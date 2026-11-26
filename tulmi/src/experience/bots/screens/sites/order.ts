@@ -12,19 +12,23 @@
  * The page is the site's, so it is held to the site: the option's address must be https on that site, the site must be one
  * this server allows, and the SiteView may go nowhere else.
  */
+import { catalogFor } from "../../../../sites/catalog.js";
 import { createHash } from "node:crypto";
 import type { ActionRef, Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
 import { siteAllowed } from "../../../../sites/gate.js";
 import { ORDER_SHAPE, orderStep } from "../../../../sites/history/phone.js";
-import { dishWords, money } from "../../../../sites/history/portrait.js";
+import { itemWords, money } from "../../../../sites/history/portrait.js";
 import { readOrderToken } from "../../../../sites/history/token.js";
+import { SITES_API } from "../../sites.js";
+import { kindOf } from "../../../../sites/history/kinds.js";
 import type { OrderOption } from "../../../../sites/history/types.js";
 import { READ_PAGE } from "../../../../sites/phone.js";
 import { type BotsCtx, C, RADIUS, back, box, button, canSiteView, card, col, emptyState, grow, icon, meta, page, row, SCREENS, siteView, text } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { whyLine } from "./orderCard.js";
 
-const siteName = (site: string): string => (site === "swiggy.com" ? "Swiggy" : site === "zomato.com" ? "Zomato" : site);
+/** The site as people say it ("Swiggy", "Amazon"), from the catalog. */
+const siteName = (site: string): string => catalogFor(site)?.name ?? site;
 
 /**
  * The order's id: what was pressed is kept under it on the phone, so opening the same order twice in a day never adds the
@@ -43,7 +47,7 @@ function summary(o: OrderOption, watching: boolean): Node {
       col([
         text(o.search ? `Searching ${name}` : watching ? `Filling your cart on ${name}` : `Your order on ${name}`, { size: 11, weight: 600, color: C.meta, tracking: 0.4, lineHeight: 14 }),
         text(o.search ? `“${o.place}”` : o.place, { size: 17, weight: 600, lineHeight: 22, lines: 1 }),
-        ...(o.items.length ? [meta(dishWords(o.items), { size: 13, lines: 2 })] : []),
+        ...(o.items.length ? [meta(itemWords(o.items), { size: 13, lines: 2 })] : []),
       ], { gap: 2, flexShrink: 1, minWidth: 0 }),
       grow(),
       ...(o.total ? [text(`≈ ${money(o.total)}`, { size: 15, weight: 700, lineHeight: 20, lines: 1, style: { flexShrink: 0 } })] : []),
@@ -76,7 +80,8 @@ function orderPage(ctx: BotsCtx): ScreenResponse {
       back: back(),
     });
   }
-  const step = orderStep({ id: orderId(token), place: o.place, items: o.search ? [] : o.items.map((i) => i.name) });
+  const kind = kindOf(o.site);
+  const step = orderStep({ id: orderId(token), place: o.place, items: o.search || !kind.cart ? [] : o.items.map((i) => i.name), mode: kind.cart ?? "menu" });
   return page(ctx, {
     title: o.place,
     // The page holds nothing secret, but it is one order for one moment: it is not kept to be drawn again from a cache.
@@ -96,7 +101,17 @@ function orderPage(ctx: BotsCtx): ScreenResponse {
 export const orderScreens: BotsScreen[] = [
   screen<undefined>({
     id: SCREENS.siteOrder,
-    load: () => Promise.resolve(undefined),
+    // Filling the cart is something done for them: noted for that site's "Done for you", once per order (its id is per day).
+    load: async (ctx, deps) => {
+      const token = String(ctx.params.o ?? "");
+      const o = readOrderToken(token)[0];
+      if (!o || o.search || !o.items.length || !canSiteView(ctx) || !kindOf(o.site).cart) return undefined;
+      await deps.api("POST", `${SITES_API}/did`, {
+        site: o.site, ref: orderId(token), title: `Filled your cart ${kindOf(o.site).kind === "food" ? "at" : "with"} ${kindOf(o.site).kind === "food" ? o.place : itemWords(o.items)}`,
+        line: kindOf(o.site).kind === "food" ? itemWords(o.items) : siteName(o.site),
+      }).catch(() => undefined);
+      return undefined;
+    },
     build: (ctx) => orderPage(ctx),
   }),
 ];

@@ -409,11 +409,11 @@ describe("a known-good answer for each role", () => {
         + '"palate":[{"trait":"Rich, slow-cooked and mildly spicy","why":"Dum biryani again and again, with something sweet after","orders":[1,3]}],'
         + '"motives":[{"trait":"Reliability over novelty","why":"The same Saturday order most weeks","orders":[1,3]}],'
         + '"moods":[{"moment":"weekend dinner","wants":"an indulgent favourite","orders":[1,3]}],'
-        + '"mightLike":[{"dish":"Mutton Haleem","cuisine":"Hyderabadi","why":"Slow-cooked and rich like the dum biryani you love, with more depth","reach":"near","orders":[1,3]}],"city":"Bengaluru"}',
+        + '"mightLike":[{"item":"Mutton Haleem","category":"Hyderabadi","why":"Slow-cooked and rich like the dum biryani you love, with more depth","reach":"near","orders":[1,3]}],"city":"Bengaluru"}',
       reads: (t) => TasteReply.parse(JSON.parse(t)),
     },
     site_discover: {
-      text: '{"picks":[{"place":"Shah Ghouse","dish":"Mutton Haleem","why":"You love slow-cooked, rich biryani; this haleem is cooked overnight","said":"the haleem here is cooked overnight and it shows","from":1,"hunch":1}]}',
+      text: '{"picks":[{"place":"Shah Ghouse","item":"Mutton Haleem","why":"You love slow-cooked, rich biryani; this haleem is cooked overnight","said":"the haleem here is cooked overnight and it shows","from":1,"hunch":1}]}',
       reads: (t) => DiscoverReply.parse(JSON.parse(t)),
     },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.

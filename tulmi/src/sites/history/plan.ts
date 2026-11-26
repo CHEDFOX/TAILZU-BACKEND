@@ -7,7 +7,7 @@
  * BY RULES, NOT A MODEL, and for the same reason the portrait is: "order my usual" has one right answer and it should be
  * the same answer every time it is asked. What it weighs, all of it counted from their own orders:
  *
- *   what they said     a dish or a place they named ("biryani", "from Truffles") picks from the orders that match it
+ *   what they said     an item or a place they named ("biryani", "from Truffles") picks from the orders that match it
  *   "the usual"        the order they come back to most; "same as last time", the newest one
  *   the time           what they order at this part of the day, on this day of the week
  *   how often, how lately
@@ -16,8 +16,10 @@
  * When they have no history at all there is no plan: Talk answers in words, as it did before.
  */
 import { catalogFor } from "../catalog.js";
+import { kindOf } from "./kinds.js";
+import { rebuysOf } from "./taste/features.js";
 import type { OrderAsk } from "./ask.js";
-import { comboKey, dayOf, dishWords, DAY_NAMES, hourOf, SLOT_WORDS, slotOf } from "./portrait.js";
+import { comboKey, dayOf, itemWords, DAY_NAMES, hourOf, SLOT_WORDS, slotOf } from "./portrait.js";
 import type { OrderItem, OrderOption, SiteOrder, Slot } from "./types.js";
 import type { Discovery } from "./taste/discover.js";
 
@@ -35,7 +37,14 @@ export interface SiteHistory {
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, " ").replace(/\s+/g, " ").trim();
 
-/** Where an order starts on a site: the restaurant's own page if it is known, else the site's search for it, else the site. */
+/**
+ * Where an order starts on a site: the place's or product's own page if it is known, else the site's search, else the
+ * site. What the search looks for is the kind's (history/kinds.ts searchBy): a restaurant has a menu; a product is a page.
+ */
+export function startFor(site: string, place: string, items: readonly OrderItem[], link?: string): string {
+  return startUrl(site, kindOf(site).searchBy === "item" && items[0] ? items[0].name : place, link);
+}
+
 export function startUrl(site: string, place: string, link?: string): string {
   if (link) {
     try {
@@ -130,30 +139,42 @@ function optionOf(x: Scored): OrderOption {
   const total = median(x.c.orders.map((o) => o.total).filter((t): t is number => !!t));
   return {
     site: x.c.site, place: x.c.place, items: x.c.items, why: x.why,
-    url: startUrl(x.c.site, x.c.place, x.c.link),
+    url: startFor(x.c.site, x.c.place, x.c.items, x.c.link),
     ...(x.c.area ? { area: x.c.area } : {}), ...(total ? { total } : {}),
   };
+}
+
+/**
+ * THE SITES AN ASK IS FOR. A site they named; else the kind the words are for (a dish to a food site, a product to a shop);
+ * else, for "my usual" and no more, the kind of site they order from most. Only sites with an order that went through.
+ */
+export function sitesFor(histories: readonly SiteHistory[], ask: OrderAsk): SiteHistory[] {
+  const live = histories.filter((h) => h.orders.some((o) => !o.cancelled));
+  if (ask.site) return live.filter((h) => h.site === ask.site);
+  if (ask.kind) return live.filter((h) => kindOf(h.site).kind === ask.kind);
+  const most = [...live].sort((a, b) => b.orders.filter((o) => !o.cancelled).length - a.orders.filter((o) => !o.cancelled).length)[0];
+  return most ? live.filter((h) => kindOf(h.site).kind === kindOf(most.site).kind) : [];
 }
 
 /** Whether the words name something they have never ordered: then the web is worth a live look (service.ts discoverFor). */
 export function wantsNew(histories: readonly SiteHistory[], ask: OrderAsk): boolean {
   if (!ask.want.length) return false;
-  return !histories.flatMap(combosOf).some((c) => matches(c, ask.want) > 0);
+  return !sitesFor(histories, ask).flatMap(combosOf).some((c) => matches(c, ask.want) > 0);
 }
 
-/** A place found on the web for them, as an order: the dish, at that place, starting at the site's search for the place. */
+/** A place found on the web for them, as an order: the item, at that place, starting at the site's search for the place. */
 function discoveryOption(site: string, d: Discovery): OrderOption {
   return {
-    site, place: d.place, items: [{ name: d.dish, qty: 1 }], why: d.why, url: startUrl(site, d.place),
+    site, place: d.place, items: [{ name: d.item, qty: 1 }], why: d.why, url: startFor(site, d.place, [{ name: d.item, qty: 1 }]),
     fresh: true, said: d.said, host: d.host,
   };
 }
 
-/** The new place that suits this ask best: one for the dish they named, else the nearest hunch first. */
+/** The new place that suits this ask best: one for the item they named, else the nearest hunch first. */
 function bestDiscovery(picks: readonly Discovery[], ask: OrderAsk, tried: ReadonlySet<string>): Discovery | undefined {
   const fresh = picks.filter((d) => !tried.has(norm(d.place)));
   if (ask.want.length) {
-    const hit = fresh.find((d) => ask.want.some((w) => ` ${norm(`${d.dish} ${d.place} ${d.cuisine} ${d.asked ?? ""}`)} `.includes(` ${w}`)));
+    const hit = fresh.find((d) => ask.want.some((w) => ` ${norm(`${d.item} ${d.place} ${d.category} ${d.asked ?? ""}`)} `.includes(` ${w}`)));
     if (hit) return hit;
     return undefined;
   }
@@ -167,13 +188,13 @@ function bestDiscovery(picks: readonly Discovery[], ask: OrderAsk, tried: Readon
  * chooserOf). Someone who comes back to what they trust is shown their usual first and one new thing beside it, because a
  * stranger's favourite pushed at them reads as not being listened to. Someone who rarely repeats is shown the new place
  * first: their usual is the thing they are least likely to want. Asked for "the usual" or "the same as last time", that is
- * what comes first, whoever they are; asked for a dish they have never ordered, a place found for it on the web comes first,
+ * what comes first, whoever they are; asked for an item they have never ordered, a place found for it on the web comes first,
  * with what a reviewer said, and the site's search if nothing was found.
  *
  * Empty when there is nothing to go on: no history on any site that can take an order.
  */
 export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now: number, tz: number, live: readonly Discovery[] = []): OrderOption[] {
-  const usable = histories.filter((h) => (!ask.site || h.site === ask.site) && h.orders.some((o) => !o.cancelled));
+  const usable = sitesFor(histories, ask);
   if (!usable.length) return [];
   const nowLocal = localNow(now, tz);
   const slot = ask.slot ?? slotOf(hourOf(nowLocal) ?? 20);
@@ -198,10 +219,21 @@ export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now:
     known.push(optionOf(x));
   }
 
+  // What runs out and is due again (taste/features.ts rebuysOf), on sites where things run out. Named by what they asked
+  // for, or all of them when they asked for nothing in particular.
+  const due = usable.filter((h) => kindOf(h.site).rebuy).flatMap((h) => rebuysOf(h.orders, nowLocal).filter((r) => r.due).map((r) => ({ h, r })))
+    .filter(({ r }) => !ask.want.length || ask.want.some((w) => ` ${norm(`${r.name} ${r.place}`)} `.includes(` ${w}`)))
+    .map(({ h, r }): OrderOption => ({
+      site: h.site, place: r.place, items: [{ name: r.name, qty: 1 }], why: "About time for more",
+      url: startFor(h.site, r.place, [{ name: r.name, qty: 1 }], r.link), ...(r.total ? { total: r.total } : {}),
+    }));
+
   const out: OrderOption[] = [];
   const add = (o: OrderOption | undefined) => { if (o && out.length < OPTIONS_MAX && !out.some((x) => norm(x.place) === norm(o.place))) out.push(o); };
   const discovery = found ? discoveryOption(ask.site ?? home, found) : undefined;
 
+  // Running out comes before everything: the thing they will need anyway.
+  due.forEach(add);
   if (ask.want.length && !named.length) {
     // Something they have never had here: what the web found for it, else the site's own search, then what they usually have.
     add(discovery);
@@ -224,14 +256,30 @@ export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now:
   return out;
 }
 
+/**
+ * WHAT IS READY FOR THEM ON ONE SITE, with nothing asked: the page's "Ready for you". The same planner Talk answers with,
+ * asked for nothing in particular — so the usual, what is due again and one new thing, in the order this person takes
+ * them — and then the other new finds after it, up to four in all.
+ */
+export function readyFor(h: SiteHistory, now: number, tz = 330): OrderOption[] {
+  const out = planOrder([h], { usual: false, last: false, want: [] }, now, tz);
+  for (const d of h.picks ?? []) {
+    if (out.length >= 4) break;
+    if (!out.some((o) => norm(o.place) === norm(d.place))) out.push(discoveryOption(h.site, d));
+  }
+  return out;
+}
+
 /** The line Talk says over the card: the first option, said the way a person would. */
 export function planLine(options: readonly OrderOption[]): string {
   const first = options[0];
   if (!first) return "";
   if (first.search) return first.why;
-  if (first.fresh) return `Something new I think you'll love: ${dishWords(first.items)} at ${first.place}. ${first.why}`;
+  const at = kindOf(first.site).kind === "food" ? "at" : "from";
+  if (first.why === "About time for more") return `About time for more ${itemWords(first.items)}. It's ready to reorder.`;
+  if (first.fresh) return `Something new I think you'll love: ${itemWords(first.items)} ${at} ${first.place}. ${first.why}`;
   const newOne = options.find((o) => o.fresh);
-  if (newOne) return `Ready when you are: ${dishWords(first.items)} from ${first.place}. And something new I think you'd like, below.`;
+  if (newOne) return `Ready when you are: ${itemWords(first.items)} from ${first.place}. And something new I think you'd like, below.`;
   const others = options.length - 1;
-  return `Ready when you are: ${dishWords(first.items)} from ${first.place}.${others ? ` ${others === 1 ? "One other idea" : `${others === 2 ? "Two" : others} other ideas`} below.` : ""}`;
+  return `Ready when you are: ${itemWords(first.items)} from ${first.place}.${others ? ` ${others === 1 ? "One other idea" : `${others === 2 ? "Two" : others} other ideas`} below.` : ""}`;
 }

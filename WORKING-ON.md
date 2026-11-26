@@ -1,5 +1,15 @@
 # Being built right now (read before you start)
 
+## 26 Nov: ANY CONNECTED SITE, AND THE PAGE SHOWS WHAT IS READY AND WHAT WAS DONE
+
+The site page no longer shows how X0 learned someone (no taste, habits, moments or charts): it shows **Ready for you**
+(their usual, what is about to run out, something new with a reviewer's words, each one tap from a filled cart) and
+**Done for you** (carts filled, new things found, orders seen to the door; table site_did, migration 0116). The
+analysis still runs and decides everything. And it is one pipeline for every site with an orders page: Amazon and
+Flipkart are learned like Swiggy; what differs by kind is history/kinds.ts. New: the rebuy rhythm ("about time for more
+detergent"), shopping asks in Talk ("reorder my detergent", "I'm out of coffee pods", "surf excel khatam ho gaya"), and
+the cart filled on a product page. docs/site-portrait.md §1b and §4.
+
 ## 26 Nov: X0 WORKS OUT YOUR TASTE, AND FINDS PLACES YOU'D LOVE WITH REVIEWS TO SHOW FOR IT
 
 On top of the orders: taste. Signals by rules (flavour, cuisine, protein; repeat versus explore; what each moment of the

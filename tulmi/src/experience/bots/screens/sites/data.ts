@@ -5,7 +5,8 @@
  * Everything in a portrait was written by a site (the places, the dishes) or counted from that, so it is cleaned here as
  * any payload is: capped, typed, and anything the wrong shape dropped.
  */
-import { SLOTS, type OrderItem, type PickView, type SitePortrait, type Slot, type TasteView } from "../../../../sites/history/types.js";
+import { readOrderToken } from "../../../../sites/history/token.js";
+import { SLOTS, type DidView, type OrderItem, type PickView, type SitePortrait, type Slot, type TasteView } from "../../../../sites/history/types.js";
 import type { BotsDeps } from "../../live.js";
 import { SITES_API, sitesOn } from "../../sites.js";
 
@@ -40,8 +41,8 @@ function tasteOf(v: unknown): TasteView | undefined {
   const t = rec(v);
   const insights = arr(t.insights, 5).map((x) => str(x, 180)).filter(Boolean);
   const mightLike = arr(t.mightLike, 5).flatMap((x) => {
-    const h = rec(x); const dish = str(h.dish, 60), why = str(h.why, 220);
-    return dish && why ? [{ dish, why, cuisine: str(h.cuisine, 40), reach: reach(h.reach) }] : [];
+    const h = rec(x); const item = str(h.item, 60), why = str(h.why, 220);
+    return item && why ? [{ item, why, category: str(h.category, 40), reach: reach(h.reach) }] : [];
   });
   if (!insights.length && !mightLike.length) return undefined;
   return {
@@ -56,8 +57,18 @@ function tasteOf(v: unknown): TasteView | undefined {
 function picksOf(v: unknown): PickView[] {
   return arr(v, 4).flatMap((x) => {
     const p = rec(x);
-    const place = str(p.place, 80), dish = str(p.dish, 60), why = str(p.why, 200), said = str(p.said, 240);
-    return place && dish && why && said ? [{ place, dish, why, said, cuisine: str(p.cuisine, 40), host: str(p.host, 60).replace(/[^a-z0-9.-]/gi, ""), reach: reach(p.reach) }] : [];
+    const place = str(p.place, 80), item = str(p.item, 60), why = str(p.why, 200), said = str(p.said, 240);
+    return place && item && why && said ? [{ place, item, why, said, category: str(p.category, 40), host: str(p.host, 60).replace(/[^a-z0-9.-]/gi, ""), reach: reach(p.reach) }] : [];
+  });
+}
+
+/** What was done for them: three kinds, each a line of words and a time. */
+function didOf(v: unknown): DidView[] {
+  return arr(v, 8).flatMap((x) => {
+    const d = rec(x);
+    const kind = d.kind === "found" || d.kind === "arrived" ? d.kind : d.kind === "cart" ? "cart" : null;
+    const title = str(d.title, 120);
+    return kind && title ? [{ kind, title, at: num(d.at) ?? 0, ...(str(d.line, 160) ? { line: str(d.line, 160) } : {}) }] : [];
   });
 }
 
@@ -108,6 +119,9 @@ export function cleanPortrait(raw: unknown): SitePortrait | undefined {
     },
     noticed: arr(r.noticed, 5).map((x) => str(x, 160)).filter(Boolean),
     recent,
+    // What is ready goes through the same checks as Talk's card (token.ts): every address on the site, every field capped.
+    ...(Array.isArray(r.ready) && r.ready.length ? { ready: readOrderToken(JSON.stringify({ v: 1, options: r.ready.slice(0, 4) }), 4, 12_000) } : {}),
+    ...(didOf(r.did).length ? { did: didOf(r.did) } : {}),
     ...(tasteOf(r.taste) ? { taste: tasteOf(r.taste) } : {}),
     ...(picksOf(r.picks).length ? { picks: picksOf(r.picks) } : {}),
     ...(local(r.since) ? { since: local(r.since) } : {}),

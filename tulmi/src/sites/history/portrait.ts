@@ -44,7 +44,7 @@ export function hourWords(h: number): string {
 }
 
 /** "Chicken Biryani", "Chicken Biryani and Raita", "Chicken Biryani, Raita and 2 more". */
-export function dishWords(items: readonly OrderItem[]): string {
+export function itemWords(items: readonly OrderItem[]): string {
   const names = items.map((i) => (i.qty > 1 ? `${i.qty} × ${i.name}` : i.name));
   if (names.length <= 1) return names[0] ?? "";
   if (names.length === 2) return `${names[0]} and ${names[1]}`;
@@ -120,7 +120,7 @@ function placesOf(orders: readonly SiteOrder[]): PlacePortrait[] {
  */
 function noticedOf(p: Omit<SitePortrait, "noticed">, valid: readonly SiteOrder[]): string[] {
   const out: string[] = [];
-  if (p.usual) out.push(`${dishWords(p.usual.items)} from ${p.usual.place} is your go-to.`);
+  if (p.usual) out.push(`${itemWords(p.usual.items)} from ${p.usual.place} is your go-to.`);
   const topSlot = [...p.slots].sort((a, b) => b.count - a.count)[0];
   const timed = p.slots.reduce((n, s) => n + s.count, 0);
   if (topSlot && topSlot.count >= 2 && topSlot.count / Math.max(1, timed) >= 0.4) {
@@ -186,14 +186,14 @@ export function portraitOf(site: string, all: readonly SiteOrder[], now = Date.n
 export function portraitLines(p: SitePortrait): string[] {
   if (!p.orders) return [];
   const lines = [`${p.name}: ${p.orders} orders read from their orders page.`];
-  if (p.usual) lines.push(`Their usual there: ${dishWords(p.usual.items)} from ${p.usual.place}${p.usual.slot ? `, for ${SLOT_WORDS[p.usual.slot]}` : ""}.`);
+  if (p.usual) lines.push(`Their usual there: ${itemWords(p.usual.items)} from ${p.usual.place}${p.usual.slot ? `, for ${SLOT_WORDS[p.usual.slot]}` : ""}.`);
   const top = p.places.slice(0, 3).map((x) => x.place);
   if (top.length) lines.push(`Places they order from most: ${top.join(", ")}.`);
   // Their taste, when it has been worked out: what they love and why, and what they would probably love next.
   if (p.taste) {
     lines.push(...p.taste.insights.slice(0, 3));
-    if (p.taste.mightLike.length) lines.push(`They would probably love: ${p.taste.mightLike.slice(0, 3).map((h) => h.dish).join(", ")}.`);
-    if (p.picks?.length) lines.push(`New places found for them: ${p.picks.slice(0, 2).map((x) => `${x.dish} at ${x.place}`).join("; ")}.`);
+    if (p.taste.mightLike.length) lines.push(`They would probably love: ${p.taste.mightLike.slice(0, 3).map((h) => h.item).join(", ")}.`);
+    if (p.picks?.length) lines.push(`New places found for them: ${p.picks.slice(0, 2).map((x) => `${x.item} at ${x.place}`).join("; ")}.`);
     return lines;
   }
   return lines.concat(p.noticed.slice(p.usual ? 1 : 0, (p.usual ? 1 : 0) + 2));

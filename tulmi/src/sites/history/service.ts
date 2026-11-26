@@ -25,6 +25,8 @@ import { mergeOrders, readOrders, type OrdersDeps } from "./orders.js";
 import { portraitOf } from "./portrait.js";
 import type { SiteHistory } from "./plan.js";
 import { historyStore, type HistoryStore } from "./store.js";
+import { kindOf } from "./kinds.js";
+import { readyFor } from "./plan.js";
 import type { PickView, SitePortrait, TasteView } from "./types.js";
 import { discover, type DiscoverDeps, type Discovery } from "./taste/discover.js";
 import { tasteHash, tasteOf, TASTE_MIN_ORDERS, type Taste, type TasteDeps } from "./taste/profile.js";
@@ -41,18 +43,21 @@ export function tasteView(t: Taste): TasteView {
   return {
     insights: t.insights, palate: t.palate.map((p) => p.trait), motives: t.motives.map((m) => m.trait),
     moods: t.moods.map((m) => ({ moment: m.moment, wants: m.wants })),
-    mightLike: t.mightLike.map((h) => ({ dish: h.dish, cuisine: h.cuisine, why: h.why, reach: h.reach })),
+    mightLike: t.mightLike.map((h) => ({ item: h.item, category: h.category, why: h.why, reach: h.reach })),
     chooser: t.chooser,
   };
 }
 
 export const pickView = (p: Discovery): PickView =>
-  ({ place: p.place, dish: p.dish, cuisine: p.cuisine, why: p.why, said: p.said, host: p.host, reach: p.reach });
+  ({ place: p.place, item: p.item, category: p.category, why: p.why, said: p.said, host: p.host, reach: p.reach });
 
-/** The catalog entry of a site whose orders can be learned, if it is one. */
+/**
+ * The catalog entry of a site whose orders can be learned, if it is one: ANY site whose own orders page the catalog knows,
+ * food or shopping alike. What differs by kind is in history/kinds.ts, not here.
+ */
 export function historySite(site: string) {
   const e = catalogFor(site);
-  return e && e.orders && e.category === "Food" ? e : undefined;
+  return e && e.orders ? e : undefined;
 }
 
 export type HistoryOutcome = "learned" | "same" | "early" | "signed_out" | "failed";
@@ -96,7 +101,7 @@ export class SiteHistories {
 
   /**
    * The sites whose orders page this phone should read now: signed in on the phone, a site with a history, due. The
-   * screens draw an unseen reader for each (screens/sites/portrait.ts), and the read comes back to phoneRead.
+   * screens draw an unseen reader for each (screens/sites/forYou.ts), and the read comes back to phoneRead.
    */
   async readers(userId: string): Promise<Array<{ site: string; url: string }>> {
     if (!mayUseCloudBrowser(userId)) return [];
@@ -155,10 +160,14 @@ export class SiteHistories {
     const p = portraitOf(site, orders, this.now(), mark.readAt);
     // A taste that is missing or older than the orders is worked out again, behind the page; the page shows what there is.
     if (this.stale(orders, ins)) void this.refresh(userId, site);
+    const ready = readyFor({ site, orders, ...(ins.taste ? { chooser: ins.taste.chooser } : {}), ...(ins.picks ? { picks: ins.picks } : {}) }, this.now());
+    const did = await this.store.didOf(userId, site);
     return {
       ...p,
       ...(ins.taste ? { taste: tasteView(ins.taste) } : {}),
       ...(ins.picks?.length ? { picks: ins.picks.map(pickView) } : {}),
+      ...(ready.length ? { ready } : {}),
+      ...(did.length ? { did: did.map((d) => ({ kind: d.kind, title: d.title, ...(d.line ? { line: d.line } : {}), at: d.at })) } : {}),
     };
   }
 
@@ -184,7 +193,7 @@ export class SiteHistories {
         let taste = ins.taste;
         const changed = !taste || taste.hash !== tasteHash(orders);
         if (changed && this.d.taste) {
-          const made = await tasteOf(userId, orders, this.d.taste, this.now());
+          const made = await tasteOf(userId, orders, this.d.taste, this.now(), site);
           if (made) { taste = made; await this.store.saveInsight(userId, site, { taste }); }
         }
         if (!taste || !this.d.discover) return;
@@ -192,6 +201,16 @@ export class SiteHistories {
         const picks = await discover(userId, taste, this.d.discover);
         // An empty look is kept too: it says when it was looked for, so it is not looked for again within the day.
         await this.store.saveInsight(userId, site, { picks, picksAt: this.now() });
+        // Something done for them, and said so on the page: one line a day at most.
+        const fresh = picks.filter((p) => !(ins.picks ?? []).some((q) => q.place === p.place && q.item === p.item));
+        if (fresh.length) {
+          const k = kindOf(site);
+          await this.store.addDid(userId, site, {
+            ref: `found:${new Date(this.now()).toISOString().slice(0, 10)}`, kind: "found", at: this.now(),
+            title: fresh.length === 1 ? `Found you something new: ${fresh[0]!.item}` : `Found ${fresh.length} new ${k.kind === "food" ? "places" : "things"} you'd like`,
+            line: fresh.map((p) => `${p.item} ${k.kind === "food" ? "at" : "from"} ${p.place}`).join(", ").slice(0, 160),
+          });
+        }
       } catch { /* what was there stays */ } finally {
         this.busy.delete(k);
       }
@@ -232,6 +251,13 @@ export class SiteHistories {
       const [orders, ins] = await Promise.all([this.store.ordersOf(userId, site), this.store.insight(userId, site)]);
       return { site, orders, ...(ins.taste ? { chooser: ins.taste.chooser } : {}), ...(ins.picks?.length ? { picks: ins.picks } : {}) };
     }));
+  }
+
+  /** A cart filled on their phone (screens/sites/order.ts): noted once per order, shown under "Done for you". */
+  async noteCart(userId: string, rawSite: string, c: { ref: string; title: string; line?: string }): Promise<void> {
+    const site = siteOf(rawSite);
+    this.allowed(userId, site);
+    await this.store.addDid(userId, site, { ref: `cart:${c.ref}`, kind: "cart", title: c.title, ...(c.line ? { line: c.line } : {}), at: this.now() });
   }
 
   async forget(userId: string, rawSite: string): Promise<void> {
