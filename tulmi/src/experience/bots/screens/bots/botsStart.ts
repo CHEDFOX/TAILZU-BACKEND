@@ -53,22 +53,22 @@ export const NOT_TILED: readonly string[] = ["talk", "keybot"];
 export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slugs);
 
 /**
- * WHAT EACH CAN DO, IN THE FEWEST WORDS: what you say to it, then what it does for you, in plain words anyone reads at a
- * glance. Two lines of a tile at most (the phone's tile shows two). The built-ins' own words for this page (their
+ * WHAT EACH IS, AND WHAT IT DOES, IN THE FEWEST WORDS: first what the bot actually is ("A note-taker that joins your
+ * calls"), then what it does for you, in plain words anyone reads at a glance. Three lines of a tile at most. The built-ins' own words for this page (their
  * `purpose` is written for the door that routes to them, and runs longer); a bot someone made says its purpose, cut to fit.
  */
 export const START_LINES: Readonly<Record<string, string>> = {
-  plan: "Tell it the goal. It plans the steps, sets the times and keeps after you until it's done.",
-  oracle: "Ask about love, work or timing. Answers read from your own birth chart.",
-  meet: "Joins your calls, takes the notes and turns every promise made into a to-do.",
-  mail: "Your business inbox, sorted and answered in your voice. You only see what needs you.",
-  notes: "Everything said in your meetings, kept. Ask it what was agreed, any time.",
-  code: "Say what's broken. It reads your code, fixes it and sends you the change to approve.",
-  cinema: "Describe a film or a poster. It shoots it, cuts it and hands it to you finished.",
-  travel: "Say where and when. It plans the route, the stays and the timings, with sources.",
-  lingo: "Learn a language by talking. It brings each word back just before you'd forget it.",
+  plan: "A planner that won't let you quit. Give it a goal; it maps the steps, books the time and chases you to the end.",
+  oracle: "An astrologer that knows your birth chart. Ask about love, money or timing; every answer is read for you alone.",
+  meet: "A note-taker that joins your calls. It writes down everything and turns each promise made into a task.",
+  mail: "An assistant for your work inbox. It sorts every email, replies in your voice and shows you only what needs you.",
+  notes: "A memory of every meeting you've had. Ask what was decided, who said it or what's still pending, any time.",
+  code: "A developer on call. Say what's broken; it reads your code, fixes it and sends you the change to approve.",
+  cinema: "A film studio in your pocket. Describe a video or a poster; it writes, shoots, edits and hands it over done.",
+  travel: "A travel planner that does the legwork. Say where and when; it builds the route, the stays and the timings.",
+  lingo: "A language tutor you talk to. It teaches by conversation and brings each word back just before you'd forget it.",
 };
-const LINE_MAX = 90;
+const LINE_MAX = 116;
 
 export function startLine(b: LiveBot, ctx: BotsCtx): string {
   const own = b.builtin ? START_LINES[b.slug] : undefined;
@@ -90,7 +90,9 @@ export const START_TILE_HEIGHT = 184;
  */
 export const START_STAGE = 100;
 export const START_SUB_LINES = 3;
-export const START_STAGE_HEIGHT = START_STAGE + 21 + 3 + START_SUB_LINES * 16 + 24;
+/** The room between the name and what the bot is, so the two read as a title and its line. */
+export const START_NAME_GAP = 9;
+export const START_STAGE_HEIGHT = START_STAGE + 21 + START_NAME_GAP + START_SUB_LINES * 16 + 24;
 
 /** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
 function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
@@ -109,7 +111,7 @@ export function groupRow(ctx: BotsCtx, bots: LiveBot[], o: { make?: boolean } = 
     const surprises = homeSurprises(ctx);
     return botTiles([...bots.map((b) => tileSpec(b, ctx)), ...(o.make ? [{ ...makeTileSpec(open(SCREENS.make)), sub: "One sentence is enough" }] : [])],
       canStage(ctx)
-        ? { columns: 1, height: START_STAGE_HEIGHT, padding, gap, stage: START_STAGE, subLines: START_SUB_LINES, ...(surprises ? { surprises } : {}) }
+        ? { columns: 1, height: START_STAGE_HEIGHT, padding, gap, stage: START_STAGE, subLines: START_SUB_LINES, nameGap: START_NAME_GAP, ...(surprises ? { surprises } : {}) }
         : { columns: 1, height, padding, gap, ...(surprises ? { surprises } : {}) });
   }
   return grid([

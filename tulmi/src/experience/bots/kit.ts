@@ -411,14 +411,14 @@ export function makeTileSpec(onPress?: ActionRef): BotTileSpec {
  * look at it before the tile opens. Only for a build that can draw it (canMove); others get botTile / makeBotTile.
  * `strip`: one more tile as a full-width row under the grid, in the same world (only for canStrip).
  */
-export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"]; stage?: number; subLines?: number }): Node {
+export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"]; stage?: number; subLines?: number; nameGap?: number }): Node {
   return {
     type: "BotTiles",
     props: {
       tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold },
       ...(o.strip ? { strip: o.strip, stripHeight: o.stripHeight ?? 104 } : {}),
       ...(o.surprises ? { surprises: o.surprises } : {}),
-      ...(o.stage ? { stage: o.stage, subLines: o.subLines ?? 2 } : {}),
+      ...(o.stage ? { stage: o.stage, subLines: o.subLines ?? 2, ...(o.nameGap ? { nameGap: o.nameGap } : {}) } : {}),
     },
   };
 }

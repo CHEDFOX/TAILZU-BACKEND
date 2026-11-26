@@ -1017,6 +1017,8 @@ export interface BotTilesProps {
   stage?: number;
   /** BOT_TILES_STAGE: how many lines an idle tile's line may take (2). */
   subLines?: number;
+  /** BOT_TILES_STAGE: the room between a tile's name and its line (px, 3). */
+  nameGap?: number;
   /**
    * Home's rare idle surprises (BOT_MOMENTS_CAPABILITY): every `every` seconds, with `chance`, one bot at his own idle
    * play plays one of `moments` once (the bots near him answer as the recipe asks). Never while a tile is tapped.

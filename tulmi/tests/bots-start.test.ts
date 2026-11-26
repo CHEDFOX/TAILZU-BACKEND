@@ -56,8 +56,11 @@ describe("Start something", () => {
     }
   });
 
-  it("every line fits two lines of a tile", () => {
-    for (const [slug, line] of Object.entries(START_LINES)) expect(line.length, slug).toBeLessThanOrEqual(90);
+  it("every line says what the bot is, then what it does, and fits three lines of a tile", () => {
+    for (const [slug, line] of Object.entries(START_LINES)) {
+      expect(line.length, slug).toBeLessThanOrEqual(116);
+      expect(line, slug).toMatch(/^An? [^.]+\. \S/);
+    }
   });
 
   it("a build that cannot draw the living tiles gets the same rows, still, one a row", async () => {
