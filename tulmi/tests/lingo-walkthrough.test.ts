@@ -1,7 +1,7 @@
 /**
  * ONE PERSON, MANY DAYS, THROUGH THE REAL DOORS.
  *
- * Every other Lingo test checks a piece. This one is somebody using it: she picks a language, says what it is for,
+ * Every other Babbl test checks a piece. This one is somebody using it: she picks a language, says what it is for,
  * is given sets, gets things right and wrong, asks how to say a word, comes back the next day, and keeps going for
  * three weeks. Nothing is called directly — it all goes over the routes the app calls, in the order the app calls
  * them, and what she "knows" she only ever learns the way she would.
@@ -100,7 +100,7 @@ describe("three weeks of somebody actually using it", () => {
     };
 
     // ---------------------------------------------------------------- day one
-    say("\n=== DAY 1 — she opens Lingo for the first time ===");
+    say("\n=== DAY 1 — she opens Babbl for the first time ===");
     const empty = await go("GET", "/v1/lingo/courses");
     expect(empty.code).toBe(200);
     expect(empty.body.courses).toEqual([]);
@@ -160,20 +160,20 @@ describe("three weeks of somebody actually using it", () => {
     say(`  next set: ${set1.body.next.size} long, ${set1.body.next.newRoom} new, nothing above "${set1.body.next.rungCap ?? "anything"}", revisiting ${set1.body.next.revisit.length}`);
     expect(["flying", "solid", "shaky", "struggling"]).toContain(set1.body.performance);
 
-    // ---------------------------------------------------------------- she asks Lingo a word
+    // ---------------------------------------------------------------- she asks Babbl a word
     say("\n  she types: how do you say stubborn?");
     const tool = await runLingoNote(lingoWords(store), "maria", {
       words: [{ word: "terco", meaning: "stubborn", how: "asked" }],
     }, clock);
     expect(tool.ok).toBe(true);
-    say(`  Lingo writes it down: ${tool.content}`);
+    say(`  Babbl writes it down: ${tool.content}`);
     expect((await mine()).some((i) => i.item === "terco" && i.source === "asked")).toBe(true);
 
     const next = await go("POST", "/v1/lingo/session", { target: "es", shape: set1.body.next });
     const hers = await Promise.all((next.body.exercises as Array<{ ref: string }>).map((e) => byRef(e.ref)));
     const cameBack = hers.some((i) => i?.item === "terco");
     say(`  does it come back in the next set? ${cameBack ? "yes" : "NO"}`);
-    noticed(cameBack, "She asked how to say a word, Lingo said it wrote it down, and it did not come back in the next set: the bad set before it set newRoom to 0, and a word she asked for 10 seconds ago is treated as new material off a list.");
+    noticed(cameBack, "She asked how to say a word, Babbl said it wrote it down, and it did not come back in the next set: the bad set before it set newRoom to 0, and a word she asked for 10 seconds ago is treated as new material off a list.");
 
     // ---------------------------------------------------------------- three weeks
     say("\n=== DAYS 2-21 — she comes back each morning and does one set ===");

@@ -110,8 +110,8 @@ const bracedIn = (v: unknown): string[] => {
 // ------------------------------------------------------------------ the fake bot and its chat
 
 const BOTS: Record<string, Array<{ slug: string; name: string; ownerId: string | null }>> = {
-  [A_]: [{ slug: "plan", name: "Plan Ease", ownerId: null }, { slug: "nani", name: "Nani", ownerId: A_ }],
-  [B_]: [{ slug: "plan", name: "Plan Ease", ownerId: null }],
+  [A_]: [{ slug: "plan", name: "Nudj", ownerId: null }, { slug: "nani", name: "Nani", ownerId: A_ }],
+  [B_]: [{ slug: "plan", name: "Nudj", ownerId: null }],
 };
 
 function fakes() {
@@ -518,9 +518,9 @@ describe("the first push", () => {
 
   it("says a built-in's words on the lock screen, says first that an answer needs a yes, and puts the card on that turn", async () => {
     switches({ on: true });
-    const w = await routine({ slug: "plan", name: "Plan Ease", owner: null, answer: "Drafted the reply to Riya.", approvals: [{ taskId: "t1", connector: "gmail", tool: "send", preview: "To Riya" }] });
+    const w = await routine({ slug: "plan", name: "Nudj", owner: null, answer: "Drafted the reply to Riya.", approvals: [{ taskId: "t1", connector: "gmail", tool: "send", preview: "To Riya" }] });
     await w.run();
-    expect(pushes[0]!.p).toMatchObject({ slug: "plan", name: "Plan Ease", line: "It needs your OK. Drafted the reply to Riya.", thread: "plan" });
+    expect(pushes[0]!.p).toMatchObject({ slug: "plan", name: "Nudj", line: "It needs your OK. Drafted the reply to Riya.", thread: "plan" });
     expect(pushes[0]!.p.private).toBeUndefined();
     expect(askMessage(A_, "bot_ask", pushes[0]!.p as never, "k").vars.line).toBe("It needs your OK. Drafted the reply to Riya.");
     // The chat turn the push opens carries the run's own confirm card, so the yes is pressed where it works rather than typed as a
@@ -584,7 +584,7 @@ describe("the first push", () => {
 
   it("says a built-in's words on the lock screen, and pushes nothing at all for a bot that is not the person's", async () => {
     switches({ on: true });
-    const chat = await saidHook({ plan: { name: "Plan Ease", owner: null } });
+    const chat = await saidHook({ plan: { name: "Nudj", owner: null } });
     try {
       await chat.note(A_, "plan", "Your day is ready.");
       await Promise.resolve();
@@ -653,7 +653,7 @@ describe("the first push", () => {
       await engine.notify(A_, askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "Shall I book it?" }, "k1"));
       expect(sent).toEqual([]);
       // Another bot of theirs is untouched.
-      await engine.notify(A_, askMessage(A_, "bot_ask", { slug: "plan", name: "Plan Ease", line: "Your day is ready." }, "k2"));
+      await engine.notify(A_, askMessage(A_, "bot_ask", { slug: "plan", name: "Nudj", line: "Your day is ready." }, "k2"));
       expect(sent).toHaveLength(1);
       expect(sent[0]!.categoryId).toBe(BOT_REPLY_CATEGORY);
     } finally {

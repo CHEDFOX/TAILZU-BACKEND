@@ -38,8 +38,8 @@ export interface Unit {
    * following, a shrug for the one about saying no — and the four units that END A LEVEL get the big one, so
    * finishing a level is plainly a larger thing than finishing a unit.
    *
-   * Only Lingo's own moments and the ones that carry nobody's props: `juggle` is Xode's binary digits and `w.wave`
-   * is the Wanderer's poncho, and borrowing either puts another bot's things in Lingo's hands.
+   * Only Babbl's own moments and the ones that carry nobody's props: `juggle` is Xode's binary digits and `w.wave`
+   * is the Wanderer's poncho, and borrowing either puts another bot's things in Babbl's hands.
    */
   mark: string;
 }

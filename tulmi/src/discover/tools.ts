@@ -6,7 +6,7 @@
  *   place_build       a place nobody has written yet: read about it, make a card, keep it in their feed
  *   place_open        one place in full, for when the bot is about to talk about it
  *
- * The Travel bot gets both, and so does any bot that searches the web. The tags in the schema are the closed list
+ * Nomaz gets both, and so does any bot that searches the web. The tags in the schema are the closed list
  * (taxonomy.ts), so the model picks from our vocabulary instead of inventing one, and a sentence like "somewhere
  * warm and quiet in March" becomes three exact arguments rather than a web search and a hope.
  *
@@ -58,7 +58,7 @@ export function placesCardOf(query: string, found: readonly Chosen[], total: num
   return { kind: "places", query, results: found.map(pickOf), total };
 }
 
-/** Which bots get these: the Travel bot, and anything that already searches the web. */
+/** Which bots get these: Nomaz, and anything that already searches the web. */
 export const discoverFor = (bot: { id: string; skills: { web?: boolean; research?: boolean } }): boolean =>
   bot.id === "travel" || !!(bot.skills.web || bot.skills.research);
 

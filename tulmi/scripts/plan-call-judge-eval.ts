@@ -1,5 +1,5 @@
 /**
- * DOES THE CALL JUDGE'S PROMPT PICK THE RIGHT THINGS? (J5; botsBots/planCallJudgeWords.ts.) The real prompt and Plan Ease's own text
+ * DOES THE CALL JUDGE'S PROMPT PICK THE RIGHT THINGS? (J5; botsBots/planCallJudgeWords.ts.) The real prompt and Nudj's own text
  * model on 40 written items: 15 that clearly need a call (a flight, BP medicine at 9 pm, rent due tomorrow, a school pickup, a passport
  * slot, an exam, a court date...), 15 that clearly do not (a gym habit, buy milk at 6, a standup, a movie, a newsletter...) and 10
  * borderline (either answer passes).

@@ -67,7 +67,7 @@ const codeVariant = (v: keyof typeof CODE.variants): Record<string, unknown> => 
 const S = SCREENS;
 /** The cinema bot among the person's bots (it is listed only where CINEMA=true). */
 const MEET_FAKE = { slug: MEET_BOT.slug, name: MEET_BOT.name, colour: MEET_BOT.colour, purpose: MEET_BOT.purpose, builtin: true } as (typeof SAMPLE_BOTS)[number];
-const CINEMA_FAKE = { slug: "cinema", name: "Cinema", colour: "plum", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true } as (typeof SAMPLE_BOTS)[number];
+const CINEMA_FAKE = { slug: "cinema", name: "Kutt", colour: "plum", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true } as (typeof SAMPLE_BOTS)[number];
 export const SAMPLES: Sample[] = [
   // screens/shell.ts
   { id: S.home, area: "shell", board: "Main", deskBoard: "DeskHome" },
@@ -75,8 +75,8 @@ export const SAMPLES: Sample[] = [
   { id: S.home, area: "shell", variant: "cinema", fake: { bots: [CINEMA_FAKE, ...SAMPLE_BOTS.slice(0, 2)], jobs: [], tasks: [] } },
   // The AI permission, due: signed in, not agreed, and not answered since the wording last changed (firstRun/aiConsentCard.ts).
   { id: S.home, area: "shell", variant: "ai", api: { "GET /v1/you/ai-consent": { agreed: false, asked: false } } },
-  // TALK, the tab the app opens on (docs/talk-door.md): one thread, every bot answering in it — Plan Ease with the day
-  // drawn under its words, the Travel bot with what it found, Xode with a job and no words at all, a routine to save,
+  // TALK, the tab the app opens on (docs/talk-door.md): one thread, every bot answering in it — Nudj with the day
+  // drawn under its words, Nomaz with what it found, Xode with a job and no words at all, a routine to save,
   // and a message that was for Mom with a choice to tap. And the empty thread a new account lands on.
   { id: S.talk, area: "shell", api: TALK_API },
   { id: S.talk, area: "shell", variant: "empty", api: TALK_EMPTY_API },
@@ -84,7 +84,7 @@ export const SAMPLES: Sample[] = [
   { id: S.talkThreads, area: "shell", api: TALK_THREADS_API },
   // THE REPORT CARD under a bot's answer (screens/safety.ts answerCard): it reads its params, so there is nothing to answer.
   {
-    id: S.report, area: "shell", params: { kind: "answer", bot: "Plan Ease", text: "The 7:05 from Mumbai is \u20b94,180 each, and the caterer takes the advance by UPI." },
+    id: S.report, area: "shell", params: { kind: "answer", bot: "Nudj", text: "The 7:05 from Mumbai is \u20b94,180 each, and the caterer takes the advance by UPI." },
     api: {},
   },
   // ACTIVITIES, the second tab: a two-bot activity drawn joined, a job on its own, a missed call, and the schedules.
@@ -191,7 +191,7 @@ export const SAMPLES: Sample[] = [
   { id: S.edit, area: "bots", board: "BotEdit", deskBoard: "DBotEdit", params: { slug: "gym-bot" } },
   { id: S.keys, area: "bots", board: "BotKeys", deskBoard: "DBotKeys", params: { slug: "gym-bot" } },
   { id: S.store, area: "bots", board: "BotStore", deskBoard: "DBotStore" },
-  // Plan Ease's home, the threaded day (screens/bots/planHome.ts; samples/planMake.ts): today in full, tomorrow, an empty Saturday, just
+  // Nudj's home, the threaded day (screens/bots/planHome.ts; samples/planMake.ts): today in full, tomorrow, an empty Saturday, just
   // after "Plan something"'s Done; an older build (the week page, unchanged) and a build without the walking bot (the still avatar).
   { id: S.plan, area: "bots", variant: "home", board: "PlanBot", deskBoard: "DPlanBot", api: PLAN_DAY_API },
   { id: S.plan, area: "bots", variant: "tomorrow", params: { day: "2026-10-29" }, api: PLAN_DAY_API },
@@ -256,7 +256,7 @@ export const SAMPLES: Sample[] = [
   { id: S.chats, area: "bots" },
   { id: S.thread, area: "bots", params: { id: "th-home" } },
   { id: S.shareIn, area: "bots", board: "ShareIn", deskBoard: "DShareIn", params: { file: "f-9" } },
-  // Plan Ease's capture card for someone without a yes to AI (samples/planCapture.ts): the rules' card at once, nothing asks.
+  // Nudj's capture card for someone without a yes to AI (samples/planCapture.ts): the rules' card at once, nothing asks.
   { id: S.shareIn, area: "bots", variant: "plan", params: { text: CIRCULAR_WORDS }, api: CAPTURE_API },
   { id: S.planCapture, area: "bots", variant: "rules", params: { id: RULES_ID }, api: CAPTURE_API },
   { id: S.planCapture, area: "bots", variant: "photo", params: { id: PHOTO_ID }, api: CAPTURE_API },

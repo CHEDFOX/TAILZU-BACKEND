@@ -7,8 +7,8 @@
  *                     hotels with a photo, rating, price a night and a deal link, the money converted, the days' weather. A tap on a
  *                     flight or hotel opens Kiwi.com or trivago, where the person books. Nothing is booked here.
  *   in Ask            a quiet "Live" row over "Or try": Flights, Hotels, Weather, Currency. A tap writes a starter the person edits
- *                     ("Cheapest flight from Delhi to Goa next Friday") and hands it to Travel bot.
- *   on Travel bot     with a trip, three one-tap searches for it: flights there, hotels for its dates, its weather.
+ *                     ("Cheapest flight from Delhi to Goa next Friday") and hands it to Nomaz.
+ *   on Nomaz     with a trip, three one-tap searches for it: flights there, hotels for its dates, its weather.
  *
  * Each card says where its numbers come from, as the services ask.
  */
@@ -184,7 +184,7 @@ function starters(india: boolean): Array<{ glyph: "plane" | "bed" | "sun" | "swa
     ];
 }
 
-/** Ask's Live row: four quiet tiles; a tap writes the starter into Ask and hands it to Travel bot (`choose`). */
+/** Ask's Live row: four quiet tiles; a tap writes the starter into Ask and hands it to Nomaz (`choose`). */
 export function liveRow(ctx: BotsCtx, choose: ActionRef | undefined): Node {
   const desk = ctx.client === "desktop";
   const tile = (s: ReturnType<typeof starters>[number]): Node => labelled(col([
@@ -197,7 +197,7 @@ export function liveRow(ctx: BotsCtx, choose: ActionRef | undefined): Node {
   ], { gap: 8 });
 }
 
-/** Travel bot's page, with a trip: flights there, hotels for its dates, its weather, one tap each (Ask, Travel bot chosen). */
+/** Nomaz's page, with a trip: flights there, hotels for its dates, its weather, one tap each (Ask, Nomaz chosen). */
 export function tripSearches(_ctx: BotsCtx, trip: { place: string; when?: string | null }): Node {
   const when = trip.when ? ` ${trip.when}` : "";
   const chip = (glyph: "plane" | "bed" | "sun", label: string, ask: string): Node => labelled(row([icon(glyph, { size: 15, color: C.ink }), text(label, { size: 13, lineHeight: 17 })], {

@@ -2,7 +2,7 @@
  * THE WORDS THE PLACES LAYER IS MADE OF: a point, a place found for some words, a leg between two points, a forecast.
  *
  * The providers (geocoders.ts, routers.ts, metno.ts) answer in these shapes and nothing else, so one can be swapped for another (a public
- * server today, our own later) without the Plan or Travel bot noticing. Nothing here names a person.
+ * server today, our own later) without the Plan or Nomaz noticing. Nothing here names a person.
  */
 
 export interface LatLon { lat: number; lon: number }

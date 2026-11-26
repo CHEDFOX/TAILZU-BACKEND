@@ -310,7 +310,7 @@ export class BotChat {
   }
 
   /**
-   * A bot turn that no message asked for: what Plan Ease said when a call was answered (botsBots/planCall.ts), or a routine's answer
+   * A bot turn that no message asked for: what Nudj said when a call was answered (botsBots/planCall.ts), or a routine's answer
    * (routines/service.ts `told`). The chat page then shows how it began, and the history gives the person's next words ("move it")
    * their subject. `quiet` leaves the push alone.
    *
@@ -355,7 +355,7 @@ export class BotChat {
     return this.turns.remove({ user_id: userId, bot: slug.toLowerCase() });
   }
 
-  /** Every link a bot opened for the person (a booking, a route), newest first: the Travel bot's trip reads them. */
+  /** Every link a bot opened for the person (a booking, a route), newest first: Nomaz's trip reads them. */
   async opens(userId: string, slug: string, limit = 20): Promise<Array<{ label: string; url: string; at: number; said: string }>> {
     const rows = (await this.recent(userId, slug, 60)).reverse();
     const out: Array<{ label: string; url: string; at: number; said: string }> = [];

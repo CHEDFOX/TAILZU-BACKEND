@@ -184,9 +184,9 @@ export const SUB_BOTS: Record<string, { name: string; what: string }> = {
 export const SHARE_BOTS = ["plan", "notes", "travel", "code"] as const;
 export type ShareBot = (typeof SHARE_BOTS)[number];
 const SHARE_LOOK: Record<ShareBot, { name: string; noun: string; color: string }> = {
-  plan: { name: "Plan Ease", noun: "plan", color: PALETTE_HEX.ochre! },
+  plan: { name: "Nudj", noun: "plan", color: PALETTE_HEX.ochre! },
   notes: { name: "Notes", noun: "note", color: PALETTE_HEX.plum! },
-  travel: { name: "Travel bot", noun: "trip", color: PALETTE_HEX.sea! },
+  travel: { name: "Nomaz", noun: "trip", color: PALETTE_HEX.sea! },
   code: { name: "Xode", noun: "project", color: PALETTE_HEX.moss! },
 };
 export const isShareBot = (x: unknown): x is ShareBot => typeof x === "string" && (SHARE_BOTS as readonly string[]).includes(x);
@@ -196,7 +196,7 @@ export const shareLook = (bot: ShareBot) => SHARE_LOOK[bot];
 /** A file's size as people read it. */
 export const kb = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
-/** The bot's own name for this person ("Plan Ease"), else the sub-bot's. */
+/** The bot's own name for this person ("Nudj"), else the sub-bot's. */
 export const subBotName = (ctx: { live: { bots: Array<{ slug: string; name: string }> } }, bot: string): string => ctx.live.bots.find((b) => b.slug === bot)?.name ?? SUB_BOTS[bot]?.name ?? bot;
 
 

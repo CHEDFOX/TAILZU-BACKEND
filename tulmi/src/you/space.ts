@@ -76,7 +76,7 @@ export interface SpaceDeps {
   sources?: ShareSources;
   /** Their groups, each with the other people in it. */
   groups?: (userId: string) => Promise<Array<{ id: string; name: string; people: string[] }>>;
-  /** Where their day starts (Plan Ease's home), "" when not set. */
+  /** Where their day starts (Nudj's home), "" when not set. */
   home?: (userId: string) => Promise<string>;
   now?: () => number;
 }

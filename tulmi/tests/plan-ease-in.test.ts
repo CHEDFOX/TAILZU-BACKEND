@@ -313,7 +313,7 @@ describe("the work calendar on the person's days", () => {
     expect((await r.ease.read(U, IST)).needs).toBeNull();
   });
 
-  it("offers the link once, on the third day Plan Ease is opened with none; No thanks is for ever", async () => {
+  it("offers the link once, on the third day Nudj is opened with none; No thanks is for ever", async () => {
     const r = dayRig(ist(10, 9));
     expect((await r.ease.read(U, IST)).needs).toBeNull();
     r.clock.t = ist(11, 9);
@@ -558,7 +558,7 @@ describe("bills on the person's days", () => {
 // ===================================================================== captures
 
 describe("getting things in", () => {
-  it("picks Plan Ease by the rules for words with a date or money; a plain chat is not", () => {
+  it("picks Nudj by the rules for words with a date or money; a plain chat is not", () => {
     expect(looksPlanny(CIRCULAR_TEXT, ist(6, 10), IST)).toBe(true);
     expect(looksPlanny("Electricity bill Rs 2140 is due on 14-11-2026", ist(6, 10), IST)).toBe(true);
     expect(looksPlanny("haha that's so funny, see you", ist(6, 10), IST)).toBe(false);
@@ -731,7 +731,7 @@ describe("getting things in", () => {
     expect(r.removed).toEqual(["rx"]);
   });
 
-  it("charges reading to the person and to Plan Ease's day; past ₹5 a photo waits for after midnight and words take the rules road", async () => {
+  it("charges reading to the person and to Nudj's day; past ₹5 a photo waits for after midnight and words take the rules road", async () => {
     const r = capRig(ist(6, 10), { answer: CIRCULAR });
     const look = await r.capture.look(U, { text: CIRCULAR_TEXT, tz: IST });
     await r.capture.settled("capture" in look ? look.capture.id : "");
@@ -758,7 +758,7 @@ describe("getting things in", () => {
     expect(await r.capture.morningLine(U)).toEqual([]);
   });
 
-  it("never reads past what Plan Ease's day meter has left, nor with less left than a read can cost", async () => {
+  it("never reads past what Nudj's day meter has left, nor with less left than a read can cost", async () => {
     const r = capRig(ist(6, 10), { answer: CIRCULAR });
     let chatLeft = 10;
     r.capture.wire({ leftToday: () => chatLeft });
@@ -845,7 +845,7 @@ describe("getting things in", () => {
     const first = r.sent.filter((x) => x.kind === "plan_evening");
     expect(first).toHaveLength(1);
     expect(first[0]!.vars.body).toContain("4 things from the school circular. Add them?");
-    expect(first[0]!.vars.body).not.toContain("Add them in Plan Ease");
+    expect(first[0]!.vars.body).not.toContain("Add them in Nudj");
     for (const t of [ist(7, 7, 30), ist(7, 20, 30)]) { r.clock.t = t; await r.ease.notesTick(); }
     const second = r.sent.filter((x) => x.kind === "plan_evening");
     expect(second).toHaveLength(2);
@@ -887,7 +887,7 @@ describe("steps 2 and 3's pushes and box words", () => {
       expect(PLAN_KIND_IDS).toContain(k);
       expect(EVENT_PUSH_KINDS).toContain(k);
       expect(PLAN_PUSH_KINDS.find((x) => x.kind === k)?.verdict).toBe("plan");
-      // Plan Ease off on "What pings you": dropped, like every one of its own.
+      // Nudj off on "What pings you": dropped, like every one of its own.
       const planOff = { ...DEFAULT_SETTINGS, notify: { ...DEFAULT_SETTINGS.notify, botsOff: ["plan"] } };
       const quiet = { ...DEFAULT_SETTINGS, notify: { ...DEFAULT_SETTINGS.notify, quiet: true, quietFrom: 22 * 60, quietTo: 7 * 60 } };
       expect(verdict(planOff as never, k, 12 * 60)).toBe("drop");

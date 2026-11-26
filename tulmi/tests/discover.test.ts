@@ -1,5 +1,5 @@
 /**
- * src/discover: the catalogue behind the Travel bot — the vocabulary, the months, the bar a place has to clear, the
+ * src/discover: the catalogue behind Nomaz — the vocabulary, the months, the bar a place has to clear, the
  * order a feed comes out in, and what the model is allowed to hand back. No network, no model, no clock of its own.
  *
  *   - the tag list is closed: an invented tag is dropped, never kept
@@ -327,7 +327,7 @@ describe("the tools, as a bot calls them", () => {
   const travel = { id: "travel", skills: {} };
   const writer = { id: "keybot", skills: {} };
 
-  it("gives the tools to the Travel bot and to anything that searches the web, and to nothing else", () => {
+  it("gives the tools to Nomaz and to anything that searches the web, and to nothing else", () => {
     expect(discoverFor(travel)).toBe(true);
     expect(discoverFor({ id: "plan", skills: { web: true } })).toBe(true);
     expect(discoverFor(writer)).toBe(false);

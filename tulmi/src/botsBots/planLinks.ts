@@ -223,7 +223,7 @@ export interface PlanLinksDeps {
   fetch?: FetchLike;
   /** The sealing key (tests); the server's is made from CONNECTOR_TOKEN_KEY. */
   key?: Buffer;
-  /** A person's days changed (the page reloads; Plan Ease checks for a new clash). */
+  /** A person's days changed (the page reloads; Nudj checks for a new clash). */
   changed?: (userId: string, tz: number) => void;
   /** Checked before a link is kept (tests skip the DNS look). */
   check?: (url: string) => Promise<void>;
@@ -581,7 +581,7 @@ export function planLinks(): PlanLinks { return (shared ??= new PlanLinks()); }
 export function setPlanLinks(p: PlanLinks | null): void { shared = p; }
 
 /** The evening note's line when a link stopped, once for each stop. */
-export const STOPPED_LINE = "Your work calendar stopped updating. Link it again in Plan Ease";
+export const STOPPED_LINE = "Your work calendar stopped updating. Link it again in Nudj";
 
 /** The skips table's rows (plan_skips: planEase.ts keeps answers there; this keeps the offer's days and the stop's one line). */
 type Skip = { [k: string]: unknown; user_id: string; key: string; at_ms: number };
@@ -614,7 +614,7 @@ export function linkSource(links: () => PlanLinks, skips: () => Table<Skip>, tzO
       if (!planOn("links")) return;
       const s = await links().status(userId);
       if (s.links > 0) { await links().freshen(userId, tz); return; }
-      // The days Plan Ease was opened with no link, up to the third: the offer comes on that day (planInCards.ts).
+      // The days Nudj was opened with no link, up to the third: the offer comes on that day (planInCards.ts).
       const days = (await skips().select({ user_id: userId }, { limit: 500 }).catch(() => [] as Skip[])).filter((k) => k.key.startsWith(LINK_SEEN));
       const today = todayKey(now, tz);
       if (days.length < OFFER_AFTER_DAYS && !days.some((k) => k.key === `${LINK_SEEN}${today}`)) await mark(userId, `${LINK_SEEN}${today}`, now);

@@ -1,6 +1,6 @@
 /**
  * PLAN EASE'S ONE ROW A PERSON (plan_prefs, migrations 0052 and 0070): where their day starts, the travel their moves saved, their
- * offset, when their notes go and what the notes remember, the Move card last shown, when they open Plan Ease in the evening, today's
+ * offset, when their notes go and what the notes remember, the Move card last shown, when they open Nudj in the evening, today's
  * leave-by times, and how many pushes went today.
  *
  *   prefs.get(user)                    the row, or null
@@ -28,7 +28,7 @@ export interface NoteMemory {
   firstSaid?: boolean; quietSaid?: boolean;
   /** The day the Daily summary rode in the evening note (so it isn't sent on its own that day). */
   summaryFor?: string;
-  /** When they last opened Plan Ease. */
+  /** When they last opened Nudj. */
   openedAt?: number;
   /** The questions that already rode in an evening note (their card keys, the last 20): a card left alone rides once, not every evening. */
   rode?: string[];

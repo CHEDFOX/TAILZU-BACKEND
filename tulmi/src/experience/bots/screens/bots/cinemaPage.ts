@@ -3,7 +3,7 @@
  * and pictures are made.
  *
  *   the head       back, the bot's name, and a line: what is waiting for the person, else what it does
- *   his card       one card over the page, the way the postie's and the Oracle's sit over theirs: the one film worth knowing about, and the
+ *   his card       one card over the page, the way the postie's and Chamen's sit over theirs: the one film worth knowing about, and the
  *                  director doing what matches it - the board clapped for a film that needs the person, the film thrown in the air for one
  *                  that is ready, the frame found with his hands while one is being filmed. One director to a page: this card, or the
  *                  invitation at the bottom when there is nothing at all

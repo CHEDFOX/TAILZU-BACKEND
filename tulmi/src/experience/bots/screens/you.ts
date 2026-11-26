@@ -114,7 +114,7 @@ function pills(options: Array<{ label: string; value: string }>, path: string, o
   }, seq({ kind: "setState", path, value: opt.value }, onPick(opt.value)))), { gap: 8, flexWrap: "wrap" });
 }
 
-/** A row of overlapping-free little avatars for bots named in a list ("Plan Ease", "Gym bot"). */
+/** A row of overlapping-free little avatars for bots named in a list ("Nudj", "Gym bot"). */
 const avatarsOf = (ctx: BotsCtx, names: string[], size = 16): Node[] =>
   names.slice(0, 4).map((n) => { const b = botByName(ctx, n); return b ? botAvatar(b, size) : box([], { width: size, height: size, borderRadius: size / 2, backgroundColor: C.surface }); });
 

@@ -282,8 +282,8 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
 
     // Who a bot's row is from (a connected app's yes belongs to the built-in whose skills name the app, else X0 itself).
     "widgets.who.code": "Xode",
-    "widgets.who.plan": "Plan Ease",
-    "widgets.who.travel": "Travel bot",
+    "widgets.who.plan": "Nudj",
+    "widgets.who.travel": "Nomaz",
     "widgets.who.tailzu": "X0",
 
     "widgets.action.yes": "Yes",

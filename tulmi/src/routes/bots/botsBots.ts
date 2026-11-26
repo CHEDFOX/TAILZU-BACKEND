@@ -30,18 +30,18 @@
  *                                                      calendar and to-dos (src/calendar; their own routes: /v1/botsapp/calendar..., routes/bots/botsCalendar.ts)
  *   POST   /v1/botsapp/bots/plan/move { eventId, start, said }  -> { done, message } (409 when it could not)
  *   POST   /v1/botsapp/bots/plan/skip { key }          -> { ok }
- *   GET    /v1/botsapp/bots/plan/today?tz=             -> PlanPage   Plan Ease, the simpler one (botsBots/planEase.ts, planDay.ts): the one next thing,
+ *   GET    /v1/botsapp/bots/plan/today?tz=             -> PlanPage   Nudj, the simpler one (botsBots/planEase.ts, planDay.ts): the one next thing,
  *                                                      the one Needs-you card, Today and Tomorrow, the days after. 404 plan_v2_off while PLAN_V2_PAGE is off
  *   GET    /v1/botsapp/bots/plan/week?tz=              -> { today, days: [{ key, date, rows }] }   "See the week": seven days from today
  *   GET    /v1/botsapp/bots/plan/day?tz=&day=&week=&made=&n=   -> PlanDayData   the threaded home (botsBots/planThread.ts): one day as a
  *                                                      thread, the strip, one Needs-you card, "Added: …" after Done. 404 plan_v2_off too
  *   /v1/botsapp/bots/plan/make...                      "Plan something": the card, Check, Done, Undo (routes/bots/planMake.ts)
  *   POST   /v1/botsapp/bots/plan/box { words, tz, seen? } -> BoxReply   what the one box understood, done (planBox.ts); kind "chat": the screen sends
- *                                                      the words to the Plan Ease chat (its own route, its consent gate, its budget)
+ *                                                      the words to the Nudj chat (its own route, its consent gate, its budget)
  *   GET    /v1/botsapp/bots/plan/line?tz=              -> { next, widget, needs }   the one thing for Home, the widget's line, the card it asks
  *   GET    /v1/botsapp/bots/plan/details?kind=&id=&tz= -> { before, moves, leave?, note? }   what an item's details add (design A3)
  *   /v1/botsapp/bots/plan/calls/...                    "X0 is calling": the call screen's doors (routes/bots/planCalls.ts)
- *   (Plan Ease's buttons answer at POST /v1/widgets/act: pt:, pm:, pe: items, routes/bots/widgets.ts)
+ *   (Nudj's buttons answer at POST /v1/widgets/act: pt:, pm:, pe: items, routes/bots/widgets.ts)
  *   GET    /v1/botsapp/bots/trip                       -> { trip, facts, bookings };  POST { place, when, who };  PUT/DELETE .../trip/:id
  *   POST   /v1/botsapp/bots/trip/:id/packing { text };  POST .../packing/starter;  PUT .../packing/:i (toggle);  DELETE .../packing/:i
  *   POST   /v1/botsapp/bots/share/suggest { name?, text?, url? }   -> { pick, by, ask, line }   the front door's pick of a bot (Bots.target)
@@ -183,14 +183,14 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerWorkRoutes(app, deps, spacesArea);
   // The widgets, a notification's buttons and its reply (routes/bots/widgets.ts): they read and answer through Spaces' parts.
   registerWidgetRoutes(app, deps, spacesArea, { plan: parts.ease });
-  registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Plan Ease: the work calendar's link, captures, bills (routes/bots/planIn.ts)
+  registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Nudj: the work calendar's link, captures, bills (routes/bots/planIn.ts)
   // TALK: the one screen's one thread (routes/bots/botsTalk.ts, docs/talk-door.md). It answers nothing itself: every message
   // goes through POST /v1/shell/ask, and this keeps the pair of turns so the thread reads as one conversation.
   registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads, ...(o.pictures ? { pictures: o.pictures } : {}) });
   // ACTIVITIES: what the work turned into, derived on every read from the feed, Talk's threads and the routines
   // (routes/bots/botsActivities.ts over botsBots/activities.ts). Nothing stored, nothing decided here.
   registerActivitiesRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions });
-  registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
+  registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Nudj's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
   // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).
   registerYouSpaceRoutes(app, deps, { space: userSpace({ spaces: parts.spaces, trips: parts.trips }), groups: spacesArea.memory });
@@ -432,7 +432,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
 
   app.post(`${AREA}/plan/skip`, RL, run(false, async (user, req) => { await parts.plan.skip(user.id, bodyOf(req.body).key); return { ok: true }; }));
 
-  // ------------------------------------------------------------------ Plan Ease, the simpler one (botsBots/planEase.ts)
+  // ------------------------------------------------------------------ Nudj, the simpler one (botsBots/planEase.ts)
 
   // Its day notes and leave-by reminders go through the push engine, in the app's language; an opened note counts (the quiet rule).
   parts.ease.wire({
@@ -444,7 +444,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   const stopPlan = parts.ease.start(app.log);
   app.addHook("onClose", async () => { stopPlan(); setPushOpenHook(null); setSummaryRide(null); });
 
-  /** Plan Ease's page and box: 404 plan_v2_off while PLAN_V2_PAGE is off (the app keeps the week page). */
+  /** Nudj's page and box: 404 plan_v2_off while PLAN_V2_PAGE is off (the app keeps the week page). */
   const v2 = (fn: (user: AuthedUser, req: FastifyRequest, reply: FastifyReply) => Promise<unknown>) =>
     run(false, async (user, req, reply) => {
       if (!planOn("page")) { reply.code(404); return { code: "plan_v2_off", message: "That isn't switched on here." }; }
@@ -483,7 +483,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // same switch, so a row the server would not draw is a route it refuses:
   //   /v1/botsapp/plan/busy            the busy times read from the phone's calendars (times only, never an event's name)
   //   /v1/botsapp/plan/reminders/*     the one X0 Bot list in Reminders, merged with the to-dos
-  //   /v1/botsapp/plan/focus           whether a Focus or Do Not Disturb is on, so Plan Ease's calls wait
+  //   /v1/botsapp/plan/focus           whether a Focus or Do Not Disturb is on, so Nudj's calls wait
   //   /v1/botsapp/plan/calls/:id/check the phone's two words before a call rings: driving, and a Focus
   registerPlanBusyRoutes(app, deps, { prefs: parts.ease.prefs });
   registerPlanRemindersRoutes(app, deps, { calendar: parts.ease.calendar, prefs: parts.ease.prefs });
@@ -508,7 +508,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     const engine = pushEngine();
     if (h.why === "focus") {
       const row = await parts.ease.prefs.get(h.userId).catch(() => null);
-      // ANDROID'S DO NOT DISTURB IS NOT POSTED WHEN IT ENDS (only on Plan Ease page appear), so a `dnd` row says nothing
+      // ANDROID'S DO NOT DISTURB IS NOT POSTED WHEN IT ENDS (only on Nudj page appear), so a `dnd` row says nothing
       // about now: the phone is asked, exactly as the pre-ring check asks it (botsBots/planCall.ts beforeRing).
       if (focusHolding(row?.focus, now)) {
         if (row?.focus?.source !== "dnd") return { focus: true };

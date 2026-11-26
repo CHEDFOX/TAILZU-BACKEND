@@ -10,7 +10,7 @@
  *   POST   /v1/botsapp/bots/plan/calls/:id/end         -> { ok, state }   End call (idempotent)
  *   POST   /v1/botsapp/bots/plan/calls/:id/back        -> 201 { call }    Call back: the person's own call about the same thing
  *   POST   /v1/botsapp/bots/plan/calls/:id/say { words, streamId? }  -> { text, spoken, voice, ended, turn }   one turn by voice, answered
- *                                                       by the Plan Ease chat (its consent gate, its guard; a call is never held to a budget)
+ *                                                       by the Nudj chat (its consent gate, its guard; a call is never held to a budget)
  *   GET    /v1/botsapp/bots/plan/calls/:id/voice/:n    -> audio           turn n read aloud (0 the opening), in the person's voice
  *
  * THE REALTIME CALL (botsBots/planCallLive.ts), only for a build that declares it can:
@@ -22,7 +22,7 @@
  * reaches the database (the column is a uuid: it would fail the query). Bodies, SDP and transcripts are never logged.
  *
  * MONEY RIDES ON THE REALTIME SWITCH. Where the live call is switched on for this person (`realtimeFor`), no door asks about cost: a
- * call is never refused, shortened or stopped for it — not the plan quota, not the spend gate, not Plan Ease's day budget — and what
+ * call is never refused, shortened or stopped for it — not the plan quota, not the spend gate, not Nudj's day budget — and what
  * it cost is recorded on the call's row for the owner to read instead. Everywhere else, which is every build today, the turn call is
  * held to all three exactly as it always has been. The AI permission is asked on every door, whichever way that falls.
  */
@@ -130,7 +130,7 @@ export function registerPlanCallRoutes(app: FastifyInstance, deps: Pick<BotsArea
     return r;
   }));
 
-  // One turn by voice: the person's words to the Plan Ease chat, with the call's facts beside them, and its reply as it is said aloud.
+  // One turn by voice: the person's words to the Nudj chat, with the call's facts beside them, and its reply as it is said aloud.
   app.post(`${CALLS}/:id/say`, tight(30), async (req, reply) => {
     const user = await who(req, reply);
     if (!user) return reply;
@@ -147,7 +147,7 @@ export function registerPlanCallRoutes(app: FastifyInstance, deps: Pick<BotsArea
     const chat = o.chat;
     const path = (n: number) => `${CALLS}/${id}/voice/${n}`;
     // Whether this person's calls are free of money at all: the live call's own switch. Off — every build today — and the turn is
-    // held to Plan Ease's day budget and the spend gate, as it was before the live call existed.
+    // held to Nudj's day budget and the spend gate, as it was before the live call existed.
     const free = realtimeFor(user.id);
     // The phone is typing or speaking a turn, so the live part is over for it (its own timer ran out, or the media broke) even if this
     // process still holds the session. Close it first: it writes its own total over the row, which would erase what this turn adds,
@@ -166,7 +166,7 @@ export function registerPlanCallRoutes(app: FastifyInstance, deps: Pick<BotsArea
       } catch (err) { return fail(req, reply, err); }
     }
 
-    // As the Plan Ease chat's own route does (routes/bots/botsBots.ts): the words streamed to a screen that listens, under the guard.
+    // As the Nudj chat's own route does (routes/bots/botsBots.ts): the words streamed to a screen that listens, under the guard.
     // No Activity "ask" row: a call's turns are the call's.
     const stream = openAskStream(user.id, body.streamId, { guard: (t) => scrub(t).cleaned });
     const streamed = stream ? {

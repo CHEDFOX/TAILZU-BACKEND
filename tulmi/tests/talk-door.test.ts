@@ -50,8 +50,8 @@ const who = { authorization: `Bearer ${U}` };
 
 /** The person's own bots, as the "/" rule reads them. */
 const MINE = [
-  { slug: "talk", name: "Talk" }, { slug: "code", name: "Xode" }, { slug: "plan", name: "Plan Ease" },
-  { slug: "travel", name: "Travel bot" }, { slug: "gym", name: "Gym bot" },
+  { slug: "talk", name: "Talk" }, { slug: "code", name: "Xode" }, { slug: "plan", name: "Nudj" },
+  { slug: "travel", name: "Nomaz" }, { slug: "gym", name: "Gym bot" },
 ];
 
 // ===================================================================== 1. the two marks, read for nothing
@@ -130,7 +130,7 @@ describe("the Talk door", () => {
         status: 200,
         body: {
           result: { text: "Three things tomorrow.", paise: 11 },
-          bot: { slug: "plan", name: "Plan Ease", colour: "ochre", builtin: true },
+          bot: { slug: "plan", name: "Nudj", colour: "ochre", builtin: true },
           answer: { show: { blocks: [{ type: "text", style: "body", text: "Leave by 10:20" }] }, opens: [], approvals: [] },
         },
       };
@@ -167,7 +167,7 @@ describe("the Talk door", () => {
     expect(turns[0]).toMatchObject({ text: "what's on tomorrow?" });
     expect(turns[1]).toMatchObject({ text: "Three things tomorrow." });
     // WHICH BOT ANSWERED, because one thread holds every bot.
-    expect(turns[1]!.by).toMatchObject({ slug: "plan", name: "Plan Ease" });
+    expect(turns[1]!.by).toMatchObject({ slug: "plan", name: "Nudj" });
     // And what it drew under its words (src/show), checked again as it is read back.
     expect((turns[1]!.show as { blocks: unknown[] }).blocks).toHaveLength(1);
   });
@@ -250,7 +250,7 @@ describe("the Talk door", () => {
       answer: () => ({
         status: 200,
         body: {
-          result: { text: "Which?", paise: 9 }, bot: { slug: "plan", name: "Plan Ease" },
+          result: { text: "Which?", paise: 9 }, bot: { slug: "plan", name: "Nudj" },
           answer: { opens: [], approvals: [], show: { blocks: [{ type: "choice", key: "k0", multi: false, send: "Send", options: [{ label: "As a task" }, { label: "As a message" }] }] } },
         },
       }),
@@ -326,7 +326,7 @@ describe("the Talk door", () => {
     // The door is not asked: the picture is the answer.
     expect(t.asked.length).toBe(0);
     const turns = (await t.read()).json().turns;
-    expect(turns[1]).toMatchObject({ role: "bot", text: "Here it is.", by: { slug: "cinema", name: "Cinema" }, images: [{ id: "pic_1", type: "image/png" }] });
+    expect(turns[1]).toMatchObject({ role: "bot", text: "Here it is.", by: { slug: "cinema", name: "Kutt" }, images: [{ id: "pic_1", type: "image/png" }] });
   });
 
   it("a photo with \"remove the background\" is an edit: the photo goes to the engine as its reference", async () => {
@@ -410,7 +410,7 @@ describe("Talk's screen", () => {
   it("draws the thread with who answered, and the cards in the chat", async () => {
     const s = JSON.stringify(await build(TALK_API as Record<string, unknown>));
     // Every bot that answered is named on its own turn: one thread, many bots.
-    for (const name of ["Plan Ease", "Travel bot", "Xode"]) expect(s, name).toContain(name);
+    for (const name of ["Nudj", "Nomaz", "Xode"]) expect(s, name).toContain(name);
     // A job's card, a routine to save, and what the everyday tools found — drawn IN the chat, each only as big as it needs.
     expect(s).toContain("Xode is on it");
     expect(s).toContain("Save routine");
@@ -558,7 +558,7 @@ describe("Talk's welcome and its line of the day", () => {
     const s = JSON.stringify(await build({ ...(TALK_API as Record<string, unknown>), [ARRIVAL]: { due: true, kind: "back" } }));
     expect(s).not.toContain("Welcome back");
     expect(s).not.toContain('"path":"helloSeen"');
-    expect(s).toContain("Plan Ease");
+    expect(s).toContain("Nudj");
   });
 
   it("a build that cannot move draws the hello still, in the box, with nothing waiting on a timer", async () => {
@@ -690,7 +690,7 @@ describe("a picture the bot made, in the thread", () => {
       can: { has: () => true } as unknown as Set<string>, desk: { pages: false, notes: true },
     }, fakeDeps({ api: { "GET /v1/botsapp/talk?limit=40": { session: null, people: [], commands: [], turns: [
       { id: "t1", role: "me", text: "make a poster for Riya's birthday", at: Date.UTC(2026, 9, 28, 13), opens: [], approvals: [], paise: 0 },
-      { id: "t2", role: "bot", text: "Here it is.", at: Date.UTC(2026, 9, 28, 13, 1), opens: [], approvals: [], paise: 0, by: { slug: "cinema", name: "Cinema", color: "#6b3a5e" }, images: [{ id: "pic_1", type: "image/png" }] },
+      { id: "t2", role: "bot", text: "Here it is.", at: Date.UTC(2026, 9, 28, 13, 1), opens: [], approvals: [], paise: 0, by: { slug: "cinema", name: "Kutt", color: "#6b3a5e" }, images: [{ id: "pic_1", type: "image/png" }] },
     ] } } }));
     const all = walk(s.root!);
     const open = all.find((n) => n.props?.accessibilityLabel === "Open the picture");

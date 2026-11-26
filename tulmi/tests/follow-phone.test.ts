@@ -386,7 +386,7 @@ describe("the call", () => {
     await r.app.close();
   });
 
-  it("call: never in their quiet hours (or 10 pm to 7 am without them), never without a proved number, never when stopped or switched off, never with Plan Ease's pings off", async () => {
+  it("call: never in their quiet hours (or 10 pm to 7 am without them), never without a proved number, never when stopped or switched off, never with Nudj's pings off", async () => {
     switchOn();
     const r = await rig(ist(12, 21, 15));
     expect(await r.phone.canCall(U, r.clock.t, IST)).toBe("off");

@@ -41,7 +41,7 @@ const speakLine = (ctx: BotsCtx, listening = false): string =>
 const routeFor = (ctx: BotsCtx, slug: string): Route => {
   const name = nameOf(ctx, slug);
   const first: Record<string, string> = {
-    travel: "Travel bot shows the plan before it books", plan: "Plan Ease asks before it changes your calendar",
+    travel: "Nomaz shows the plan before it books", plan: "Nudj asks before it changes your calendar",
     code: "Xode shows the plan before it changes code", keybot: "Keylessbord writes it, you send it", tailzu: "X0 answers, or hands it to the right bot",
   };
   return { slug, name, color: colorOf(ctx, slug), say: `${name} will take this`, hint: `Tap to send · ${first[slug] ?? `${name} asks before it does anything`}`, by: "chosen" };

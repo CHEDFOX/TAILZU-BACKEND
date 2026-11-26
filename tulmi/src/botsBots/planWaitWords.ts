@@ -1,6 +1,6 @@
 /**
  * WAITING ON SOMEONE: WHAT THE WORDS SAY (docs/plan-ease-people.md; design A6, B7). Rules only, so it costs nothing: what the one box, or
- * a meeting's to-do, says someone owes the person, and when Plan Ease should check back. Rules and templates only, no contacts: a number or an email is only
+ * a meeting's to-do, says someone owes the person, and when Nudj should check back. Rules and templates only, no contacts: a number or an email is only
  * ever one that was in the words themselves.
  *
  *   readWait(words, now, tz)   "Rahul will send the numbers by Thursday": waiting on Rahul for the numbers, check Thu 6 pm.
@@ -243,7 +243,7 @@ export function afterSend(now: number, tz: number): number {
   return startOfDay(shiftDay(dayOf(now, tz), 2), tz) + CHECK_MIN * MIN;
 }
 
-/** "Thursday evening", "tomorrow at 4 pm", "this evening": when Plan Ease will ask, for the box's reply. */
+/** "Thursday evening", "tomorrow at 4 pm", "this evening": when Nudj will ask, for the box's reply. */
 export function askWords(at: number, now: number, tz: number): string {
   const day = dayOf(at, tz), today = dayOf(now, tz);
   const m = minuteOf(at, tz);

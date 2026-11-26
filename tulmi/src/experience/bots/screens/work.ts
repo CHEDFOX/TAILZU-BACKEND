@@ -1,7 +1,7 @@
 /**
  * WORK IN SPACE: SOMEONE'S THINGS, AND ONE OF THEM (bots.work, params: bot, space, owner, item?; docs/bots-app.md "Spaces").
  *
- * Opened from a bot page's "Work in space" tab (screens/work/workTab.ts) or a card shared in a space's feed ("Open in Plan Ease").
+ * Opened from a bot page's "Work in space" tab (screens/work/workTab.ts) or a card shared in a space's feed ("Open in Nudj").
  * Without `item`: one person's things in that bot that this person may work on (GET .../work/:bot/person). With it: the thing, its
  * time and place (a plan's event), the notes people added, and the two things anyone allowed may do: Change time (a plan's event,
  * when it isn't an old read-only share or a share to everyone) and Add a note. The owner sees every change, and who they shared the

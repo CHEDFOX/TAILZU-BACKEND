@@ -34,7 +34,7 @@ const MIN = 60_000, HOUR = 60 * MIN;
 const T0 = Date.parse("2026-11-01T10:00:00+05:30");
 
 type Def = { slug: string; name: string };
-const BUILTIN: Def[] = [{ slug: "code", name: "Xode" }, { slug: "keybot", name: "Keylessbord" }, { slug: "plan", name: "Plan Ease" }, { slug: "travel", name: "Travel bot" }];
+const BUILTIN: Def[] = [{ slug: "code", name: "Xode" }, { slug: "keybot", name: "Keylessbord" }, { slug: "plan", name: "Nudj" }, { slug: "travel", name: "Nomaz" }];
 
 function world(o: { answer?: (slug: string, message: string) => { text: string; approvals?: unknown[] } | Error; pick?: string | null } = {}) {
   let now = T0;
@@ -75,7 +75,7 @@ describe("a draft", () => {
   it("reads the schedule and the task, picks the bot, keeps nothing", async () => {
     const w = world();
     const d = await w.r.draft("u1", "Every Friday at 5, sum up my week", IST);
-    expect(d).toMatchObject({ task: "Sum up my week", when: "Every Friday at 5 pm", next: "Fri 6 Nov at 5 pm", bot: { slug: "plan", name: "Plan Ease" }, timeSaid: true });
+    expect(d).toMatchObject({ task: "Sum up my week", when: "Every Friday at 5 pm", next: "Fri 6 Nov at 5 pm", bot: { slug: "plan", name: "Nudj" }, timeSaid: true });
     expect(d!.choices.map((c) => c.slug)).toEqual(["keybot", "plan", "travel"]);
     expect(openDraft(d!.token)).toMatchObject({ task: "Sum up my week", bot: "plan", tz: IST });
     expect(await w.r.list("u1")).toEqual([]);
@@ -89,7 +89,7 @@ describe("a draft", () => {
   });
   it("uses the bot the person chose", async () => {
     const d = await world().r.draft("u1", "every morning find me a cheap flight to Goa", IST, "travel");
-    expect(d!.bot).toEqual({ slug: "travel", name: "Travel bot" });
+    expect(d!.bot).toEqual({ slug: "travel", name: "Nomaz" });
   });
 });
 
@@ -98,7 +98,7 @@ describe("saving", () => {
     const w = world();
     const d = await w.r.draft("u1", "every day at 8 am send me the top tech news", IST);
     const v = await w.r.create("u1", { token: d!.token, bot: "travel" });
-    expect(v).toMatchObject({ task: "Send me the top tech news", when: "Every day at 8 am", bot: { slug: "travel", name: "Travel bot" }, status: "on", next: { words: "Tomorrow at 8 am" }, last: null });
+    expect(v).toMatchObject({ task: "Send me the top tech news", when: "Every day at 8 am", bot: { slug: "travel", name: "Nomaz" }, status: "on", next: { words: "Tomorrow at 8 am" }, last: null });
     expect(w.published.at(-1)).toContain("routines");
   });
   it("checks everything again", async () => {
@@ -130,7 +130,7 @@ describe("the tick", () => {
     const after = await w.r.get("u1", v.id);
     expect(after).toMatchObject({ runs: 1, next: { words: "Tomorrow at 8 am" }, last: { status: "done", text: "3 emails matter: the bank, Riya's invite and the landlord.", paise: 12, words: "Today at 8 am" } });
     expect((await w.events.list("u1", 0))[0]).toMatchObject({ kind: "ask", bot: "plan", title: "Check my email and tell me what matters", paise: 12 });
-    expect(w.pushes).toEqual([{ userId: "u1", kind: "routine_done", vars: { bot: "Plan Ease", task: "Check my email and tell me what matters", line: "3 emails matter: the bank, Riya's invite and the landlord." } }]);
+    expect(w.pushes).toEqual([{ userId: "u1", kind: "routine_done", vars: { bot: "Nudj", task: "Check my email and tell me what matters", line: "3 emails matter: the bank, Riya's invite and the landlord." } }]);
   });
   it("says when it needs the person's OK", async () => {
     const w = world({ answer: () => ({ text: "Drafted the reply to Riya.", approvals: [{ id: "a1" }] }) });
@@ -149,11 +149,11 @@ describe("the tick", () => {
     expect((await w.r.get("u1", v.id)).next!.words).toBe("Tomorrow at 8 am");
   });
   it("pauses after three failed runs in a row, with why, and tells the person", async () => {
-    const w = world({ answer: () => new BotError("bot_daily_limit", "Plan Ease has used its budget for today.", 429) });
+    const w = world({ answer: () => new BotError("bot_daily_limit", "Nudj has used its budget for today.", 429) });
     const v = await w.r.create("u1", { task: "Plan my day", schedule: { every: "day", minute: 8 * 60 }, tz: IST, bot: "plan" });
     for (const day of ["02", "03", "04"]) { w.at(Date.parse(`2026-11-${day}T08:00:10+05:30`)); await w.r.tick(); }
     const after = await w.r.get("u1", v.id);
-    expect(after).toMatchObject({ status: "paused", next: null, last: { status: "failed", text: "Plan Ease has used its budget for today." } });
+    expect(after).toMatchObject({ status: "paused", next: null, last: { status: "failed", text: "Nudj has used its budget for today." } });
     expect(after.pausedWhy).toContain("Paused after 3 runs");
     expect(w.pushes.map((p) => p.kind)).toEqual(["routine_failed"]);
     // Resumed: on again, its failures forgotten, its next run from now.
@@ -230,7 +230,7 @@ describe("the routes", () => {
     registerBotsShellRoutes(app, { rateLimit: { rateLimit: { max: 1000, timeWindow: 60_000 } }, bots: null, code: null, jobs: null, connectors: null, media: null, artifacts: null, routines: w.r }, { events: new MemoryEventStore() });
     await app.ready();
     const r = await app.inject({ method: "POST", url: "/v1/shell/ask", headers: who("u1"), payload: { message: "Every Friday at 5, sum up my week", tz: IST } });
-    expect(r.json().shell).toMatchObject({ bot: { slug: "plan", name: "Plan Ease" }, text: "Every Friday at 5 pm: Sum up my week. Save it as a routine?", routine: { when: "Every Friday at 5 pm", task: "Sum up my week" } });
+    expect(r.json().shell).toMatchObject({ bot: { slug: "plan", name: "Nudj" }, text: "Every Friday at 5 pm: Sum up my week. Save it as a routine?", routine: { when: "Every Friday at 5 pm", task: "Sum up my week" } });
     expect(asked).toBe(0);
     const plain = await app.inject({ method: "POST", url: "/v1/shell/ask", headers: who("u1"), payload: { message: "Weather in Lisbon tomorrow?" } });
     expect(plain.json().shell.text).toBe("Sunny");
@@ -261,7 +261,7 @@ describe("the screens", async () => {
   });
   const token = sealDraft({ task: "Sum up my week", schedule: { every: "week", minute: 17 * 60, days: [5] }, tz: IST, bot: "plan" });
   const view = (o: Partial<import("../src/routines/index.js").RoutineView> = {}) => ({
-    id: "11111111-1111-1111-1111-111111111111", bot: { slug: "plan", name: "Plan Ease" }, task: "Sum up my week", when: "Every Friday at 5 pm",
+    id: "11111111-1111-1111-1111-111111111111", bot: { slug: "plan", name: "Nudj" }, task: "Sum up my week", when: "Every Friday at 5 pm",
     schedule: { every: "week", minute: 1020, days: [5] }, tz: IST, status: "on", pausedWhy: "", next: { at: FIXED_NOW + 3_600_000, words: "Today at 8:40 pm" },
     last: { at: FIXED_NOW - 86_400_000, words: "Yesterday at 5 pm", status: "done", text: "4 things done, 2 meetings, 1 left for Monday.", paise: 12 }, runs: 3, ...o,
   });
@@ -270,7 +270,7 @@ describe("the screens", async () => {
   for (const client of ["phone", "desktop"] as const) {
     it(`Ask shows the routine to save, with its bot chosen (${client})`, async () => {
       const s = await buildBotsScreen(req("bots.ask", client, { message: "Every Friday at 5, sum up my week", answer: "x", bot: "plan", routine: token }), fakeDeps());
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Every Friday at 5 pm", "Sum up my week", "Who does it", "Plan Ease", "Save routine", "Change"]));
+      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Every Friday at 5 pm", "Sum up my week", "Who does it", "Nudj", "Save routine", "Change"]));
       // Xode takes no routines (the window's sidebar names it anyway).
       if (client === "phone") expect(texts(s.root!)).not.toContain("Xode");
       expect(s.state).toMatchObject({ rbot: "plan" });
@@ -283,7 +283,7 @@ describe("the screens", async () => {
     it(`the list and Home's row (${client})`, async () => {
       const deps = fakeDeps({ api: { "GET /v1/routines": LIST } });
       const s = await buildBotsScreen(req("bots.routines", client), deps);
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Routines", "Sum up my week", "Every Friday at 5 pm · Plan Ease", "Next: Today at 8:40 pm", "Last run Yesterday at 5 pm", "Run now", "Pause", "Turn on", "Paused after 3 runs in a row didn't work."]));
+      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Routines", "Sum up my week", "Every Friday at 5 pm · Nudj", "Next: Today at 8:40 pm", "Last run Yesterday at 5 pm", "Run now", "Pause", "Turn on", "Paused after 3 runs in a row didn't work."]));
       expect(lintTree(s.root!)).toEqual([]);
       const empty = await buildBotsScreen(req("bots.routines", client), fakeDeps({ api: { "GET /v1/routines": { routines: [], max: 20, choices: [] } } }));
       expect(texts(empty.root!)).toContain("Nothing on a schedule yet");

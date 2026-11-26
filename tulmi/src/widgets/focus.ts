@@ -4,10 +4,10 @@
  *   POST /v1/widgets/focus   the iPhone's X0 Bot Focus Filter, with the WIDGETS' own token (scope "focus.set"): iOS runs the
  *                            filter's `perform()` when that Focus starts and when it ends, outside any screen and with no
  *                            session at hand, exactly as a widget's button runs (widgets/token.ts).
- *   POST /v1/botsapp/plan/focus   the app's `focus.sync` on Plan Ease page appear, with the session: it catches up a post the
+ *   POST /v1/botsapp/plan/focus   the app's `focus.sync` on Nudj page appear, with the session: it catches up a post the
  *                            filter could not make, and it is how Android (Do Not Disturb, no permission) says anything at all.
  *
- * WHAT IS KEPT: `{ on, hold, source, until }` on the person's one Plan Ease row, overwritten at each change (migration 0094).
+ * WHAT IS KEPT: `{ on, hold, source, until }` on the person's one Nudj row, overwritten at each change (migration 0094).
  * Never WHICH Focus, never its mode, never an app or a person it allows: iOS does not offer that and we would not keep it. The
  * state is held 12 hours at most (`until`), because a Focus that ended while the phone was away must not hold calls for ever.
  *
@@ -32,7 +32,7 @@ export interface FocusPost {
   source: "filter" | "dnd";
   /**
    * WHEN THE FILTER ITSELF SAW THIS, in milliseconds. The 12 hours below run from that moment and not from the post, because
-   * the app reposts the same state on every Plan Ease page appear: without it each repost pushed the limit forward, so a
+   * the app reposts the same state on every Nudj page appear: without it each repost pushed the limit forward, so a
    * Focus whose end was never seen could hold calls for the filter's last word plus up to 24 hours, not the 12 both sides
    * promise. Absent (an older app, or Do Not Disturb, which is read at the moment it is posted) means "now".
    */
@@ -72,7 +72,7 @@ export const focusStateOf = (p: FocusPost, now: number, was?: FocusState | null)
   on: p.on,
   hold: (p.on ? p.hold : undefined) ?? was?.hold ?? "calls",
   source: p.source,
-  // THE 12 HOURS RUN FROM WHEN THE FILTER SAW IT, not from this post. The app reposts the same state on every Plan Ease page
+  // THE 12 HOURS RUN FROM WHEN THE FILTER SAW IT, not from this post. The app reposts the same state on every Nudj page
   // appear, so counting from the post pushed the limit forward each time and a missed "ended" could hold calls for about 24
   // hours. With no `at` (an older app, or Do Not Disturb, which is read as it is posted) this is `now`, exactly as before.
   until: Math.min(p.at ?? now, now) + FOCUS_HOLD_MS,

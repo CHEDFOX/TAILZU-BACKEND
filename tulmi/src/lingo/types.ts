@@ -99,7 +99,7 @@ export interface LingoItem {
 
 /** One person, one language they are learning. Somebody may be learning several at once. */
 /**
- * WHY SOMEBODY IS LEARNING A LANGUAGE, as the one question Lingo asks before it teaches anything (bots.lingo.why).
+ * WHY SOMEBODY IS LEARNING A LANGUAGE, as the one question Babbl asks before it teaches anything (bots.lingo.why).
  * Seven codes that between them hold most of the reasons anybody learns one, and not one of them is a country, a
  * region or a kind of person: the same seven whichever language was picked, and "" for somebody who skipped.
  * "family" is here because people learning the language of their own grandparents are a large share of all learners
@@ -136,7 +136,7 @@ export interface Learner {
    * THE SET THEY ARE IN THE MIDDLE OF: every answer since the last one was closed off, in order.
    *
    * Kept by the server because the alternative is the app handing its own list back at the end, and that would be
-   * the one message in Lingo that says "I was right". Written as each answer is marked, read and emptied when the
+   * the one message in Babbl that says "I was right". Written as each answer is marked, read and emptied when the
    * set ends (migration 0109).
    */
   setAnswers?: Array<{ item: string; kind: ExerciseKind; verdict: Verdict; learnedNow?: boolean }>;
@@ -184,7 +184,7 @@ export const SPOKEN_KINDS: readonly ExerciseKind[] = ["say", "speak", "talk"];
 export type Verdict = "right" | "close" | "wrong";
 
 /**
- * WHY IT WAS NOT SIMPLY RIGHT, as a reason the screens word themselves. A code, not a sentence: Lingo is taught in
+ * WHY IT WAS NOT SIMPLY RIGHT, as a reason the screens word themselves. A code, not a sentence: Babbl is taught in
  * whatever language the person reads, so no English may leak out of the grader.
  *
  *   accent    the letters were right, the marks over them were not

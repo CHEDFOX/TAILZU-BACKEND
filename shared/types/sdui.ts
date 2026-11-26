@@ -1483,7 +1483,7 @@ export const MENTION_COMMANDS_CAPABILITY = "MentionCommands";
 export const LIVE_WORDS_COMPONENT = "LiveWords";
 /** NOT A COMPONENT: actions voiceLive and voiceStop (live words over /v1/transcribe-stream, a turn ends on a pause). */
 export const VOICE_LIVE_CAPABILITY = "VoiceLive";
-/** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Plan Ease's call held as one live voice
+/** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Nudj's call held as one live voice
  *  conversation instead of turn by turn (docs/plan-ease.md "Calls"). A build that does not declare it gets today's call unchanged. */
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
@@ -1735,7 +1735,7 @@ export const FONT_BRICOLAGE_CAPABILITY = "FontBricolage";
  */
 export const PUSH_BUTTON_CAPABILITY = "PushButton";
 /** NOT A COMPONENT (the phone): the call screen's pieces — speak.loud, speak.onDone and "$state" in speak.text; voiceLive.duplex;
- *  Text format "elapsed". Also a push-token cap: this JS takes Plan Ease's calls (docs/plan-ease.md "Calls"). */
+ *  Text format "elapsed". Also a push-token cap: this JS takes Nudj's calls (docs/plan-ease.md "Calls"). */
 export const BOT_CALL_CAPABILITY = "BotCall";
 // Text props, format "elapsed" (BOT_CALL_CAPABILITY; the phone's components/Text.tsx, elapsedCore.ts): content is a start time (epoch
 // ms, or ISO); shows "m:ss" (or "h:mm:ss" past an hour) since then, ticking every second; never negative.
@@ -2053,7 +2053,7 @@ export type ActionSpec =
         | "microphone" | "camera" | "notifications" | "photoLibrary"
         | "contacts" | "calendar" | "location" | "tracking"
         /** MOTION_CAPABILITY only: Motion & Fitness (iPhone) / Physical activity (Android), for the driving check before a
-         *  Plan Ease call. */
+         *  Nudj call. */
         | "motion"
         /** ARRIVAL_CAPABILITY on Android only: "Allow all the time", as a REQUEST and not a bare openSettings. The iPhone
          *  has no such kind and answers unsupported. */

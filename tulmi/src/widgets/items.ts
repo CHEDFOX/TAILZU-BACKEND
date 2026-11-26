@@ -9,13 +9,13 @@
  *   thread:<threadId>             a chat (a reply goes there)
  *   item:<itemId>                 a thing shared in a space (opened, never acted on)
  *   msg:<threadId>:<messageId>    one message (opened at its chat)
- *   pt:<taskId>                   one of the person's own to-dos (Plan Ease: Done, Later; a due's Paid and a wait's Sorted later on)
+ *   pt:<taskId>                   one of the person's own to-dos (Nudj: Done, Later; a due's Paid and a wait's Sorted later on)
  *   pe:<eventRef>:<day>           one of the person's own events, on one day (a leave-by's push)
- *   pm:<eventRef>:<start>         Plan Ease's Move card for that event as it starts now (Move it, Keep): a card for a start that has
+ *   pm:<eventRef>:<start>         Nudj's Move card for that event as it starts now (Move it, Keep): a card for a start that has
  *                                 since changed answers nothing
  *   pc:<captureId>                a capture card (step 3: Add all)
  *   pl:<linkId>                   the work calendar's link (step 2: "No thanks" to the offer is pl:offer)
- *   pf:<followId>:<n>             one climb of a followed item (Plan Ease follow-through: Done, Later, Can't, I'll do it)
+ *   pf:<followId>:<n>             one climb of a followed item (Nudj follow-through: Done, Later, Can't, I'll do it)
  *   psa:<askId>                   one ask to be put on your plan (Share, Not now; PLAN_SHARE, billing/planShareActs.ts)
  *
  * An <eventRef> is the event's id, or for one start of a series "<id>.<day>" (an item part may not hold "@"; eventRefOf / eventIdOf).
@@ -116,7 +116,7 @@ export function pushItemOf(kind: string, data: Record<string, string> | undefine
     const raw = typeof d.item === "string" ? d.item : ok(d.ask) ? itemId({ kind: "psa", askId: d.ask }) : "";
     return parseItem(raw)?.kind === "psa" ? raw : null;
   }
-  // Plan Ease's kinds say their item themselves (botsBots/planEase.ts), one of its own: pt:, pe:, pm:, pc:, pf:.
+  // Nudj's kinds say their item themselves (botsBots/planEase.ts), one of its own: pt:, pe:, pm:, pc:, pf:.
   if (kind.startsWith("plan_") && typeof d.item === "string") {
     const it = parseItem(d.item);
     return it && (it.kind === "pt" || it.kind === "pe" || it.kind === "pm" || it.kind === "pc" || it.kind === "pf") ? d.item : null;

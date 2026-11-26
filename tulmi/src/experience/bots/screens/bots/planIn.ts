@@ -6,7 +6,7 @@
  *                           goes in the same field. The linked ones are listed with "Take it out". (params: again)
  *   bots.plan.capture       one capture card: "4 things from the school circular", ticks, "Date?" on an unsure one, one button
  *                           ("Add all", "Add 3"), then "Added 3 things · Undo" for 10 seconds (params: id). The share-in screen draws the
- *                           same card when what was shared is Plan Ease's.
+ *                           same card when what was shared is Nudj's.
  *   bots.plan.capture.item  a row's small sheet: title, day, time, who (the family's tiny bots) (params: id, item)
  *
  * And for the item details (screens/planItem.ts): a work meeting ("From your work calendar", no buttons, "Change it in your work
@@ -50,7 +50,7 @@ const clockOf = (ctx: BotsCtx, ms: number) => {
 };
 const keyOf = (ctx: BotsCtx, ms: number) => new Date(ms + ctx.tzOffsetMinutes * MIN).toISOString().slice(0, 10);
 
-/** One of Plan Ease's buttons through the act door, with its own key (pressing it again later is a new answer). */
+/** One of Nudj's buttons through the act door, with its own key (pressing it again later is a new answer). */
 const act = (ctx: BotsCtx, item: string, action: string, then?: { ok?: ActionRef; fail?: ActionRef }): ActionSpec =>
   call("POST", ACT, { item, action, key: `${item}:${action}:${ctx.live.now}`.slice(0, 120) }, {
     ok: then?.ok ?? seq(), fail: then?.fail ?? toast("Couldn't do that. Try again.", true), ...keep(ctx),
@@ -139,11 +139,11 @@ function captureCard(ctx: BotsCtx, v: CaptureView, o: { share: boolean }): Node[
   return [when({ falsy: "capDid" }, card), when({ truthy: "capDid" }, did)];
 }
 
-/** The capture card as a page: its own screen, or the share-in screen when what was shared is Plan Ease's (no bot picker). */
+/** The capture card as a page: its own screen, or the share-in screen when what was shared is Nudj's (no bot picker). */
 export function capturePage(ctx: BotsCtx, v: CaptureView | undefined, o: { share?: boolean } = {}) {
   const share = !!o.share;
   return page(ctx, {
-    back: share ? back() : true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), title: "Plan Ease", nav: "plan", maxWidth: 680,
+    back: share ? back() : true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), title: "Nudj", nav: "plan", maxWidth: 680,
     live: ["bot:plan"], state: { capAll: false },
     body: !v ? [emptyState({ pose: "think", title: "It isn't there any more", body: "It may have been added or taken out already.", action: { label: "Open Plan", onPress: toPlan } })]
       : captureCard(ctx, v, { share }),
@@ -161,7 +161,7 @@ export function captureItemPage(ctx: BotsCtx, d: { capture?: CaptureView; people
   });
   const people = d.people ?? [];
   return page(ctx, {
-    back: true, title: "Plan Ease", nav: "plan", maxWidth: 560,
+    back: true, title: "Nudj", nav: "plan", maxWidth: 560,
     state: { capTitle: r.title.replace(/ · ₹[\d,.]+$/, ""), capDay: "", capTime: "", capWho: r.person ? { id: r.person.id, name: r.person.name } : null },
     body: [
       col([sectionLabel("What"), inputBox([field("capTitle", "capTitle", "What it is")])], { gap: 8 }),
@@ -224,7 +224,7 @@ export function linkPage(ctx: BotsCtx, d: { links: LinkView[] } | undefined) {
     when({ eq: ["calOpen", key] }, steps(key)),
   ], { gap: 4, paddingHorizontal: 16, paddingVertical: 6, ...(i ? { borderTopWidth: 1, borderTopColor: C.divider } : {}) });
   return page(ctx, {
-    back: true, ...(desk ? { backTitle: "Plan Ease" } : {}), title: "Link your calendar", nav: "plan", maxWidth: 640, state: { calLink: "", calOpen: "" },
+    back: true, ...(desk ? { backTitle: "Nudj" } : {}), title: "Link your calendar", nav: "plan", maxWidth: 640, state: { calLink: "", calOpen: "" },
     body: [
       col([text("Link your calendar", { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("Where are your meetings?", { size: 15 })], { gap: 4 }),
       col(["google", "outlook", "icloud"].map(choice), { borderWidth: 1, borderColor: C.line, borderRadius: 20, overflow: "hidden" }),
@@ -318,7 +318,7 @@ export async function planGoLoad(ctx: BotsCtx, deps: { api<T>(m: "GET", p: strin
 // ===================================================================== the share-in screen
 
 /**
- * The share-in screen asks the server first: is this Plan Ease's? (rules for words and PDFs, one tiny look at a photo; with
+ * The share-in screen asks the server first: is this Nudj's? (rules for words and PDFs, one tiny look at a photo; with
  * PLAN_V2_CAPTURE off, never). Yes: the card is what the screen shows, and it reloads as the card is read.
  */
 export async function shareCapture(ctx: BotsCtx, deps: { api<T>(m: "POST", p: string, b?: unknown): Promise<T> }, files: string[], words: string): Promise<CaptureView | undefined> {

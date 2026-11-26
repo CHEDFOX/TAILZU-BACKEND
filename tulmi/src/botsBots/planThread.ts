@@ -65,7 +65,7 @@ export interface PlanDayData {
   label: string;
   /** "Thu 12 Nov". */
   date: string;
-  /** The ochre line under "Plan Ease" (nextThing's big line from today and tomorrow, + " · 40 min saved"). In the app only. */
+  /** The ochre line under "Nudj" (nextThing's big line from today and tomorrow, + " · 40 min saved"). In the app only. */
   head: string;
   strip: PlanStrip;
   /** At most one Needs-you card, above the day. */

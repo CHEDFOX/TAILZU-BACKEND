@@ -1,5 +1,5 @@
 /**
- * PLACES WORTH KEEPING: the catalogue behind the Travel bot (docs/discover.md).
+ * PLACES WORTH KEEPING: the catalogue behind Nomaz (docs/discover.md).
  *
  *   const d = new Discover()
  *   await d.ask({ tags: ["warm", "solitude"], month: 3, userId })   -> Chosen[]   what to show, in order

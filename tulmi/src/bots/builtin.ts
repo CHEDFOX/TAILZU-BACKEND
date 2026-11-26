@@ -7,7 +7,7 @@
  * down the front door's roads (docs/front-door.md) and this definition is only what the person sees, picks by and sets standing choices
  * against. The other three run like any bot: their rules, their skills, the person's connected apps, their memory.
  *
- * The Oracle (src/oracle, docs/oracle.md) reads a person's sky with Plutto's oracle, a service of its own: its words come from there, and its rules
+ * Chamen (src/oracle, docs/oracle.md) reads a person's sky with Plutto's oracle, a service of its own: its words come from there, and its rules
  * here are what the person reads and the front door picks by. It is listed only where ORACLE_WORKER_URL and ORACLE_WORKER_SECRET are set.
  *
  * The mail bot (src/mail, docs/mail.md) keeps a business's email with its own service (mail-worker/): the mailboxes, the sorting and the replies
@@ -49,7 +49,7 @@ const PURPOSE = {
   plan: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.",
   travel: "Plans trips: routes, stays and timings, with sources.",
   oracle: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
-  mail: "Keeps your business's email: sorts what arrives, drafts the replies in your voice, and tells you what needs you.",
+  mail: "Keeps your working life written down: sorts your business's email and drafts the replies in your voice, joins your video calls, and keeps every meeting's notes, decisions and to-dos.",
   meet: "Joins your video calls: takes the notes, answers what people ask in the chat and out loud, and turns what was agreed into your to-dos.",
   lingo: "Teaches you a language by talking with you, and brings each word back exactly when you are about to forget it.",
   cinema: "Makes films and videos shot by shot from your idea, and pictures: posters, product shots, portraits and logos.",
@@ -81,7 +81,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "the owner's own voice", visibility: "private", budgets: { perRequestPaise: 100, dailyPaise: 500 },
   },
   {
-    id: "plan", ownerId: null, slug: "plan", name: "Plan Ease", colour: "ochre",
+    id: "plan", ownerId: null, slug: "plan", name: "Nudj", colour: "ochre",
     purpose: PURPOSE.plan,
     principles: [
       "Three to ten steps, each one action.",
@@ -95,7 +95,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "calm and practical", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 800 },
   },
   {
-    id: "travel", ownerId: null, slug: "travel", name: "Travel bot", colour: "sea",
+    id: "travel", ownerId: null, slug: "travel", name: "Nomaz", colour: "sea",
     purpose: PURPOSE.travel,
     principles: [
       "Give dates with their source and the day they were read.",
@@ -114,7 +114,7 @@ const DEFS: readonly BotDef[] = [
     // (botsBots/chat.ts) and the role bot_run, which is all a conversation needs.
     //
     // Slate, a neutral of its own: the bot that is not about one thing should not borrow a specialist's colour, and
-    // the other two neutrals were taken (stone may not ship, ash is Lingo's).
+    // the other two neutrals were taken (stone may not ship, ash is Babbl's).
     //
     // NOT `tailzu`: that slug is X0 ITSELF, the product speaking in its own name — palette.ts gives it the app's ink
     // and its own mark, and live.ts reads it back as "X0" on an approval that came from no bot. Taking it for a bot
@@ -141,7 +141,7 @@ const DEFS: readonly BotDef[] = [
 ];
 
 const ORACLE: BotDef = {
-  id: "oracle", ownerId: null, slug: "oracle", name: "Oracle", colour: "plum",
+  id: "oracle", ownerId: null, slug: "oracle", name: "Chamen", colour: "plum",
   purpose: PURPOSE.oracle,
   principles: [
     "Read from the person's own birth details; ask for them when a question needs a chart.",
@@ -157,13 +157,14 @@ const ORACLE: BotDef = {
 export const MAIL_SLUG = "mail";
 
 const MAIL: BotDef = {
-  id: MAIL_SLUG, ownerId: null, slug: MAIL_SLUG, name: "Mail", colour: "sand",
+  // SRIBBU: the mail bot, the meeting bot and Notes as one bot (screens/bots/sribbu.ts). The slug stays "mail".
+  id: MAIL_SLUG, ownerId: null, slug: MAIL_SLUG, name: "Sribbu", colour: "sand",
   purpose: PURPOSE.mail,
   principles: [
-    "Answer from the business's own mail and numbers; never invent a message, a sender or a figure.",
-    "Say first what needs a person.",
-    "Never say a reply was sent, changed or thrown away: that is done on the mail page, by them.",
-    "Keep a customer's words to what the answer needs.",
+    "Answer from the business's own mail and numbers, and from what was said in their meetings; never invent a message, a sender, a figure, who said what or a decision.",
+    "Say first what needs a person, and what was decided and who will do what.",
+    "Never say a reply was sent, changed or thrown away, or that it joined, left or spoke in a call: that is done on its page, by them.",
+    "Keep a customer's words, and other people's, to what the answer needs.",
   ],
   // Its mail is its own service's (src/mail): no tools here; the chat reads the business's mail in numbers and one line a message.
   skills: skills({}),
@@ -173,7 +174,7 @@ const MAIL: BotDef = {
 export const LINGO_SLUG = "lingo";
 
 const LINGO: BotDef = {
-  id: LINGO_SLUG, ownerId: null, slug: LINGO_SLUG, name: "Lingo", colour: "ash",
+  id: LINGO_SLUG, ownerId: null, slug: LINGO_SLUG, name: "Babbl", colour: "ash",
   purpose: PURPOSE.lingo,
   principles: [
     "Speak the language they are learning, at the level they are at, and translate only what they are stuck on.",
@@ -192,7 +193,9 @@ const LINGO: BotDef = {
 export { MEET_SLUG };
 
 const MEET: BotDef = {
-  id: MEET_SLUG, ownerId: null, slug: MEET_SLUG, name: "Meetings", colour: "pine",
+  // Part of Sribbu now (the mail bot's page has its meetings): never listed on its own, still found by its slug, so an
+  // old link, a notice or a chat about a meeting still opens. It wears Sribbu's name.
+  id: MEET_SLUG, ownerId: null, slug: MEET_SLUG, name: "Sribbu", colour: "sand",
   purpose: PURPOSE.meet,
   principles: [
     "Answer from what was said in their meetings; never invent who said what, a number or a decision.",
@@ -205,7 +208,7 @@ const MEET: BotDef = {
   knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
 };
 
-/** Lingo is listed only where it is switched on. It needs no service of its own. */
+/** Babbl is listed only where it is switched on. It needs no service of its own. */
 export function lingoOn(): boolean {
   try {
     return Boolean(getConfig().LINGO);
@@ -219,7 +222,7 @@ export { CINEMA_SLUG };
 const CINEMA: BotDef = {
   // Plum: the one natural tone no other built-in wears, and the right one for a cinema - the velvet of the hall, not the grey every
   // bot wears when nobody has chosen for it (palette.ts PALETTE_HEX; stone is the fallback).
-  id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Cinema", colour: "plum",
+  id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Kutt", colour: "plum",
   purpose: PURPOSE.cinema,
   principles: [
     "Answer from their own films and pictures; never invent a shot or a detail.",
@@ -261,7 +264,7 @@ export function mailOn(): boolean {
   }
 }
 
-/** The Oracle is listed only where its service is set up. */
+/** Chamen is listed only where its service is set up. */
 export function oracleOn(): boolean {
   try {
     const c = getConfig();
@@ -274,7 +277,7 @@ export function oracleOn(): boolean {
 /**
  * A SWITCH PER BOT (config BOTS_OFF): the slugs not to list. The LAST word, after each bot's own availability —
  * a bot has to be set up before this can hide it, and hiding one does not free its name (isBuiltinSlug below is
- * deliberately not filtered, so nobody can take "travel" while the Travel bot is off).
+ * deliberately not filtered, so nobody can take "travel" while Nomaz is off).
  *
  * Read here, in the ONE place every listing goes through, so a built-in added later is covered by it without
  * anybody having to remember. Config can throw where there is none; an unreadable switch hides nothing.
@@ -287,11 +290,15 @@ function hidden(): ReadonlySet<string> {
   }
 }
 
-const defs = (): readonly BotDef[] => {
+/** Every built-in that is set up and not switched off: Sribbu (the mail bot) where its mail OR its meetings are set up. */
+const available = (): readonly BotDef[] => {
   const off = hidden();
-  return [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [CINEMA] : [])]
+  return [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() || meetOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [CINEMA] : [])]
     .filter((d) => !off.has(d.slug));
 };
+
+/** What is LISTED: every available built-in but the meeting bot, which is part of Sribbu. */
+const defs = (): readonly BotDef[] => available().filter((d) => d.slug !== MEET_SLUG);
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
@@ -304,8 +311,10 @@ export function builtinBots(): BotDef[] {
  */
 export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || slug === LINGO.slug || slug === CINEMA.slug || DEFS.some((d) => d.slug === slug);
 
+/** A built-in by its slug: any that is available, the meeting bot too (it is part of Sribbu, and still opens by its slug). */
 export function builtinBot(slug: string): BotDef | null {
-  return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;
+  const d = available().find((x) => x.slug === slug || x.id === slug);
+  return d ? { ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } } : null;
 }
 
 /** The colour a new bot is given when its owner picks none: one their other bots do not have, else by the slug. */

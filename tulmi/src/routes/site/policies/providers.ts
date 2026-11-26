@@ -20,7 +20,7 @@ const BODY = `
 
 <h3>Speech-to-text</h3>
 <ul>
-  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — processes voice for transcription and turns text into speech when X0 Bot reads something aloud to you; it also holds the live voice conversation when Plan Ease calls you. OpenAI keeps no audio as application data; its abuse-monitoring logs are kept up to 30 days and not used for training.</li>
+  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — processes voice for transcription and turns text into speech when X0 Bot reads something aloud to you; it also holds the live voice conversation when Nudj calls you. OpenAI keeps no audio as application data; its abuse-monitoring logs are kept up to 30 days and not used for training.</li>
   <li><strong>Groq</strong> (groq.com/privacy-policy) — alternative transcription provider.</li>
   <li><strong>Deepgram</strong> (deepgram.com) — live transcription while you dictate, and the speech in recordings and videos you attach (see 1.9).</li>
   <li><strong>Sarvam AI</strong> (sarvam.ai) — transcription made for Indian languages, used depending on the language you speak.</li>
@@ -33,9 +33,9 @@ const BODY = `
   <li><strong>Anthropic</strong> (anthropic.com/legal/privacy) — used through OpenRouter for premium refinement.</li>
 </ul>
 
-<h3>Calls from Plan Ease (see 1.2)</h3>
+<h3>Calls from Nudj (see 1.2)</h3>
 <ul>
-  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — holds the live voice conversation when Plan Ease calls you: it hears what you say and answers in a voice. No audio is kept as application data; its abuse-monitoring logs are kept up to 30 days and not used for training.</li>
+  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — holds the live voice conversation when Nudj calls you: it hears what you say and answers in a voice. No audio is kept as application data; its abuse-monitoring logs are kept up to 30 days and not used for training.</li>
   <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — routes the text model that decides which things on your Plan are worth a call, and the one that answers you in a call that runs turn by turn.</li>
 </ul>
 
@@ -64,7 +64,7 @@ const BODY = `
 <ul>
   <li><strong>Each app you connect</strong> (for example Notion, Linear or Todoist) receives what X0 Bot reads or writes there for you, and handles it under its own privacy policy.</li>
   <li><strong>OpenRouter</strong> — passes a bot's work to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, only to providers that neither keep nor train on what they are sent. The models in "Google apps you connect" above work out what to do in the apps you connect when you ask X0 Bot itself.</li>
-  <li><strong>Search and map services</strong> — when a bot searches the web, the words it searches for go to search services such as DuckDuckGo and Brave Search, and it reads public web pages; when the Plan or Travel bot works out a place or a travel time, the places go to map services built on OpenStreetMap. None of them is sent your account.</li>
+  <li><strong>Search and map services</strong> — when a bot searches the web, the words it searches for go to search services such as DuckDuckGo and Brave Search, and it reads public web pages; when the Plan or Nomaz works out a place or a travel time, the places go to map services built on OpenStreetMap. None of them is sent your account.</li>
 </ul>
 
 <h3>Files you attach (see 1.9)</h3>

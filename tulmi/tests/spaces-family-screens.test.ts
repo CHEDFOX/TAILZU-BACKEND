@@ -265,7 +265,7 @@ describe("inside a space (bots.spaces?id=)", () => {
       expect(s.liveTopics).toEqual(expect.arrayContaining(["space:s1", "thread:th-home"]));
       expect(s.state).toMatchObject({ thOpen: false, voice: "", heard: "", said: null, draft: { text: "", toId: "", thingId: "" } });
       const t = texts(nodes);
-      for (const w of ["Home", "Dinner at 8? Bring the dahi", "Can someone drop me at practice tomorrow?", "Your check-up is Friday 7:40, I'll drive you", "To Mom", "To Rohan", "Doctor, knee check-up", "Open in Plan Ease", "Older messages", "This week's groceries · Fresh Basket"]) expect(t, w).toContain(w);
+      for (const w of ["Home", "Dinner at 8? Bring the dahi", "Can someone drop me at practice tomorrow?", "Your check-up is Friday 7:40, I'll drive you", "To Mom", "To Rohan", "Doctor, knee check-up", "Open in Nudj", "Older messages", "This week's groceries · Fresh Basket"]) expect(t, w).toContain(w);
       // The header: back, the name and one neutral door; no faces.
       const door = nodes.find((n) => n.props?.accessibilityLabel === "About Home")!;
       expect(door.on?.onPress).toEqual({ kind: "navigate", screenId: "bots.space.people", params: { id: "s1" } });
@@ -280,7 +280,7 @@ describe("inside a space (bots.spaces?id=)", () => {
       const field = ofType(nodes, "MentionField")[0]!;
       // The admin's "/" offers every member's things too, after their own (in their day, for a plan's time).
       expect(field.props).toMatchObject({ draftPath: "draft", thingsPath: `${A}/work/:bot/mine?space=s1&tz=330`, people: [{ id: "m", name: "Mom" }, { id: "r", name: "Rohan" }] });
-      expect((field.props!.bots as Array<{ name: string }>).map((b) => b.name)).toEqual(["Plan Ease", "Notes", "Travel bot", "Xode"]);
+      expect((field.props!.bots as Array<{ name: string }>).map((b) => b.name)).toEqual(["Nudj", "Notes", "Nomaz", "Xode"]);
       expect((field.props!.tools as Array<{ label: string }>).map((x) => x.label)).toEqual(["Ask for money", "Give a task or plan", "Group memory"]);
       // Send keeps the screen as it is (the window would wipe "said" with a fetch) and asks first on a name with no one picked.
       const send = callTo(field.on!.onSubmit, "POST", `${A}/spaces/s1/feed`)!;
@@ -307,7 +307,7 @@ describe("inside a space (bots.spaces?id=)", () => {
     const card = D.FEED.messages.find((m) => m.thing)!;
     const theirs = { ...D.FEED, space: { ...D.FEED.space, admin: false }, messages: [{ ...card, from: { userId: "m", name: "Mom", you: false }, to: null }] };
     const { nodes } = await build("bots.spaces", "phone", { params: { id: "s1" }, api: { [`GET ${A}/spaces/s1/feed`]: theirs } });
-    expect(texts(nodes)).toContain("Open in Plan Ease");
+    expect(texts(nodes)).toContain("Open in Nudj");
     expect(texts(nodes)).not.toContain("Stop sharing");
     const admin = await build("bots.spaces", "phone", { params: { id: "s1" }, api: { [`GET ${A}/spaces/s1/feed`]: { ...theirs, space: D.FEED.space } } });
     expect(texts(admin.nodes)).toContain("Stop sharing");
@@ -416,7 +416,7 @@ describe("Work in space", () => {
       const item = await build("bots.work", client, { params: { bot: "plan", space: "s1", owner: "m", item: "e:doctor@2026-11-14" } });
       expect(lintTree(item.s.root!)).toEqual([]);
       const t = texts(item.nodes);
-      for (const w of ["Doctor, knee check-up", "Mom's plan · Plan Ease · Home", "Time", "Fri 14 Nov · 7:40 pm", "Change time", "Place", "Dr. Rao's clinic, Indiranagar", "I'll drive you there."]) expect(t, w).toContain(w);
+      for (const w of ["Doctor, knee check-up", "Mom's plan · Nudj · Home", "Time", "Fri 14 Nov · 7:40 pm", "Change time", "Place", "Dr. Rao's clinic, Indiranagar", "I'll drive you there."]) expect(t, w).toContain(w);
       expect(item.s.state).toMatchObject({ changing: false, day: "2026-11-14", time: "19:40", note: "" });
       const move = callsIn(item.s.root).find((c) => (c.body as { op?: string }).op === "time")!;
       expect(move).toMatchObject({ method: "POST", path: `${A}/work/plan/item`, body: { space: "s1", owner: "m", item: "e:doctor@2026-11-14", day: "$state.day", time: "$state.time", tz: IST } });
@@ -441,7 +441,7 @@ describe("Work in space", () => {
       const p = await build("bots.work", client, { params: { bot: "plan", space: "s1", owner: "m" }, api });
       expect(texts(p.nodes)).toEqual(expect.arrayContaining(["Mom", "Home · Shared with you", "Doctor, knee check-up", "Shared by Aanya · Fri 14 Nov · 7:40 pm", "Aanya shared this with you. Mom sees what you change."]));
       const it1 = await build("bots.work", client, { params: { bot: "plan", space: "s1", owner: "m", item: "e:doctor@2026-11-14" }, api });
-      expect(texts(it1.nodes)).toEqual(expect.arrayContaining(["Mom's plan · Plan Ease · Home · Shared by Aanya", "Change time", "Aanya shared this with you. Mom sees what you change."]));
+      expect(texts(it1.nodes)).toEqual(expect.arrayContaining(["Mom's plan · Nudj · Home · Shared by Aanya", "Change time", "Aanya shared this with you. Mom sees what you change."]));
       expect(texts(it1.nodes)).not.toContain("Stop sharing");
     }
   });

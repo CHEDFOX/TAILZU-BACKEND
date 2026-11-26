@@ -6,9 +6,9 @@
  *   a0, a1…   answer a bot's question with its first, second… answer           job:<id>:<q>          needs.answer
  *   yes / no  say yes or no to a connected app's call waiting for one            task:<id>[:<approval>] needs.answer
  *   done      tick a task or plan someone in a space gave you                    stask:<space>:<task>   task.done
- *   a family ask's own (take, in, cant, ask and their Undos) on the same stask: item are Plan Ease's (botsBots/planAsks.ts)
+ *   a family ask's own (take, in, cant, ask and their Undos) on the same stask: item are Nudj's (botsBots/planAsks.ts)
  *   reply     send a message to a chat (the words come with it)                  thread:<id>            session only
- *   Plan Ease's own: done / later on a to-do, move / keep on a Move card, and what later steps add (pt:, pe:, pm:, pc:), each answered by
+ *   Nudj's own: done / later on a to-do, move / keep on a Move card, and what later steps add (pt:, pe:, pm:, pc:), each answered by
  *   botsBots/planEase.ts through the calendar the Plan page uses; a widget needs task.done for a to-do, needs.answer for a card
  *   a followed item's Done, Later, Can't and I'll do it (follow-through)                                    pf:<followId>:<n>      task.done
  *   share / decline  share your plan with whoever asked, or quietly leave it      psa:<askId>            session only
@@ -128,7 +128,7 @@ export interface ActParts {
     deny(userId: string, taskId: string): Promise<{ status: string }>;
   } | null;
   /**
-   * Plan Ease (botsBots/planEase.ts): which buttons its items have and what a widget needs to press one (`scope`; null: no such button),
+   * Nudj (botsBots/planEase.ts): which buttons its items have and what a widget needs to press one (`scope`; null: no such button),
    * and the answer. One door for the page, the widget and a notification, so an answer in one place is gone from all of them.
    */
   plan?: {
@@ -183,7 +183,7 @@ function scopeFor(item: QuickItem, action: string, parts: ActParts): WidgetScope
   if (item.kind === "job" && /^a\d{1,2}$/.test(action)) return "needs.answer";
   if (item.kind === "task" && (action === "yes" || action === "no")) return "needs.answer";
   if (item.kind === "stask" && action === "done") return "task.done";
-  // A family ask's buttons on a space task (I'll do it, I'm in, Can't do it, Ask): Plan Ease's, through the same door.
+  // A family ask's buttons on a space task (I'll do it, I'm in, Can't do it, Ask): Nudj's, through the same door.
   if (item.kind === "stask") return parts.plan ? parts.plan.scope(item, action) : null;
   if (item.kind === "thread" && action === "reply") return "session";
   // An ask to be put on your plan: its notification's Share and Not now (billing/planShareActs.ts).

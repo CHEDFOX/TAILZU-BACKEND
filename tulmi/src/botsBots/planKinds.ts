@@ -4,7 +4,7 @@
  *
  *   push/defaults.ts       each kind's screen, category, channel, priority, expiry and words (planPushFlags, planPushLabels), and the
  *                          kind itself in EVENT_PUSH_KINDS
- *   you/push.ts verdict()  how "What pings you" treats it (planVerdictGroup): with Plan Ease's own switch, a person's word, or never a
+ *   you/push.ts verdict()  how "What pings you" treats it (planVerdictGroup): with Nudj's own switch, a person's word, or never a
  *                          sound. A kind left out of verdict() would fall to the Keylessbord branch and be dropped: here it cannot be
  *   push/engine.ts         push.<kind>.priority, push.<kind>.ttlMin and push.<kind>.interruptionLevel
  *   experience/appKnobs.ts the buttons (PLAN_CATEGORIES) and the Android channels (PLAN_CHANNELS) the phone registers from the bootstrap
@@ -17,8 +17,8 @@
  */
 
 /**
- * How "What pings you" treats a kind: Plan Ease's own (off with its switch, silent in quiet hours), a person's word, never a sound, or
- * "quiet": a person's word that never makes a sound (who took a family ask, the one nudge), which Plan Ease's switch doesn't stop.
+ * How "What pings you" treats a kind: Nudj's own (off with its switch, silent in quiet hours), a person's word, never a sound, or
+ * "quiet": a person's word that never makes a sound (who took a family ask, the one nudge), which Nudj's switch doesn't stop.
  */
 export type PlanVerdictGroup = "plan" | "people" | "silent" | "quiet";
 
@@ -78,7 +78,7 @@ const STAGE_4: readonly PlanPushKind[] = [
   { kind: "plan_came", step: 4, screenId: "bots.plan.send", category: "x0_came", channel: "plan_reminders", priority: "normal", ttlMin: 8 * 60, verdict: "plan", title: "{title}", body: "{body}" },
 ];
 /**
- * Step 5 (family, planAsks.ts): a person's word, so Plan Ease's switch doesn't stop them; Spaces' does (every space_* kind). The ask
+ * Step 5 (family, planAsks.ts): a person's word, so Nudj's switch doesn't stop them; Spaces' does (every space_* kind). The ask
  * and its "nobody took it" with [I'll do it] ("Who's in?" sends x0_in instead), the one nudge and who took it without a sound, and a
  * turn the evening before with [Can't do it].
  */
@@ -129,7 +129,7 @@ export type PlanKindId = (typeof PLAN_KIND_IDS)[number];
 
 export const planKind = (kind: string): PlanPushKind | undefined => PLAN_PUSH_KINDS.find((k) => k.kind === kind);
 
-/** How verdict() treats a kind of Plan Ease's, or null for a kind that isn't one. */
+/** How verdict() treats a kind of Nudj's, or null for a kind that isn't one. */
 export const planVerdictGroup = (kind: string): PlanVerdictGroup | null => planKind(kind)?.verdict ?? null;
 
 // ------------------------------------------------------------------ the buttons

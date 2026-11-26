@@ -110,7 +110,7 @@ describe("who gets the tool", () => {
     });
   };
 
-  it("is Lingo's and nobody else's", async () => {
+  it("is Babbl's and nobody else's", async () => {
     const { port } = await onCourse();
     const mine = await kitFor("lingo", port);
     expect(mine.defs.map((d) => d.name)).toContain("lingo_note_words");

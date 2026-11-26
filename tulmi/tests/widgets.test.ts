@@ -176,7 +176,7 @@ describe("GET /v1/widgets/now", () => {
     // A bot's row says whose bot it is, for its ring in that bot's colour; a person's row does not.
     expect(q).toMatchObject({ who: "Xode", bot: "code", text: "Round per item or at the end?", id: `job:${JOB}:${questionMark("Round per item or at the end?")}`, url: `tulmi://screen/bots.code.job?id=${JOB}` });
     expect(q.actions).toEqual([{ id: "a0", label: "Per item", style: "primary", mode: "inPlace" }, { id: "a1", label: "At the end", style: "secondary", mode: "inPlace" }]);
-    expect(ap).toMatchObject({ who: "Plan Ease", bot: "plan", androidIcon: "tailzu_widget_mark", text: "Move dinner to 7:30?", detail: "Dinner, 7:30 pm", id: `task:${CT}:ap-1` });
+    expect(ap).toMatchObject({ who: "Nudj", bot: "plan", androidIcon: "tailzu_widget_mark", text: "Move dinner to 7:30?", detail: "Dinner, 7:30 pm", id: `task:${CT}:ap-1` });
     expect(ap.actions.map((a: { id: string; label: string }) => `${a.id}:${a.label}`)).toEqual(["yes:Yes", "no:No"]);
     // Who gave it is the row's name; under it, where it is from (the space), not the name again.
     expect(t).toMatchObject({ who: "Meera S.", text: "Call Grandma", detail: "Home", actions: [{ id: "done", label: "Done", style: "primary", mode: "inPlace", icon: "checkmark", androidIcon: "tailzu_wi_check" }] });

@@ -1,6 +1,6 @@
 /**
  * PLAN EASE, STEP 4: WAITING ON SOMEONE (PLAN_V2_WAITS; docs/plan-ease-people.md; design A6, B7). The person says "Rahul will send the
- * numbers by Thursday" (or taps "Add to my tasks" on a meeting's to-do that is Rahul's), and Plan Ease does the chasing: at 6 pm on
+ * numbers by Thursday" (or taps "Add to my tasks" on a meeting's to-do that is Rahul's), and Nudj does the chasing: at 6 pm on
  * Thursday it asks "Still waiting on Rahul. Send this?" with the follow-up already written, and Send opens WhatsApp with it.
  *
  * A wait is one of the person's to-dos, of kind "wait" (calendar_tasks, migrations 0070 and 0073), so Today, Tasks, ticks and the Plan
@@ -90,7 +90,7 @@ export interface WaitsDeps {
   now?: () => number;
   publish?: (userId: string) => void;
   send?: WaitSend | null;
-  /** Plan Ease's six a day (planEase.ts policy.spend): a check-back counts. */
+  /** Nudj's six a day (planEase.ts policy.spend): a check-back counts. */
   spend?: ((userId: string, day: string) => Promise<boolean>) | null;
   /** The app's language for this person: the draft is written in Hinglish when it is. */
   hinglish?: ((userId: string) => Promise<boolean>) | null;
@@ -116,7 +116,7 @@ export class PlanWaits {
     this.hinglish = d.hinglish ?? null;
   }
 
-  /** The push engine, Plan Ease's day cap and the app's language (wired at boot: routes/bots/botsPlanPeople.ts). */
+  /** The push engine, Nudj's day cap and the app's language (wired at boot: routes/bots/botsPlanPeople.ts). */
   wire(o: { send?: WaitSend | null; spend?: ((userId: string, day: string) => Promise<boolean>) | null; hinglish?: ((userId: string) => Promise<boolean>) | null }): void {
     if (o.send !== undefined) this.send = o.send;
     if (o.spend !== undefined) this.spend = o.spend;
@@ -262,7 +262,7 @@ export class PlanWaits {
       if (!claimed) continue;
       this.publish(raw.user_id);
       if (now - was > LATE_MS || !this.send) continue;
-      // Plan Ease's own push: it counts toward the day's six (the card is in the app either way).
+      // Nudj's own push: it counts toward the day's six (the card is in the app either way).
       if (this.spend && !(await this.spend(raw.user_id, dayOf(now, r.tz)).catch(() => true))) continue;
       const words = checkBackWords(r, now);
       await this.send(raw.user_id, {

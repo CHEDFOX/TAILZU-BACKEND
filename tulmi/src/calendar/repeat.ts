@@ -107,7 +107,7 @@ export function nextReminder(e: Repeating, afterMs: number): { at: number; start
 export interface TaskTiming { due_day: string | null; due_ms: number | null; tz_min: number; remind_min: number | null; done: boolean }
 
 /**
- * A to-do's one reminder, when it is still to come: at its time, or at `dayMinute` on its day (9 am; Plan Ease's reminders say 10 am),
+ * A to-do's one reminder, when it is still to come: at its time, or at `dayMinute` on its day (9 am; Nudj's reminders say 10 am),
  * less the minutes before.
  */
 export function taskReminder(t: TaskTiming, afterMs: number, dayMinute = ALL_DAY_REMIND_MINUTE): number | null {

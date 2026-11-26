@@ -363,7 +363,7 @@ export function makePage(ctx: BotsCtx, setup: MakeSetup) {
     gap: 18, padding: 18, borderRadius: 20, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper,
   });
   return page(ctx, {
-    back: true, ...(desk ? { backTitle: "Plan Ease", maxWidth: 640 } : {}), title: "Plan something", nav: "plan", gap: 16, state,
+    back: true, ...(desk ? { backTitle: "Nudj", maxWidth: 640 } : {}), title: "Plan something", nav: "plan", gap: 16, state,
     // The box's answers (a bill's preview, a day's answer, the chat's) sit under the header, above the card: below the edit face's long
     // card they were off the phone's screen, and the person had to scroll to find what their words did.
     body: [head, previewPart(ctx), ...boxReply(ctx, { pill: true }), cardNode],

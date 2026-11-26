@@ -185,7 +185,7 @@ export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType
   const card = data?.card;
   if (!card) {
     return page(ctx, {
-      title: "Place", nav: "travel", back: true, backTitle: "Travel bot",
+      title: "Place", nav: "travel", back: true, backTitle: "Nomaz",
       body: [meta("That one has gone. Search for it again.", { size: 13.5 })],
     });
   }
@@ -222,7 +222,7 @@ export function placePage(ctx: BotsCtx, data: PlaceView | undefined): ReturnType
     title: card.title,
     nav: "travel",
     back: true,
-    backTitle: "Travel bot",
+    backTitle: "Nomaz",
     body: [
       photo
         ? picture(photo.url, w, 240, { radius: 0, background: C.surface, fit: "cover", label: photo.alt })

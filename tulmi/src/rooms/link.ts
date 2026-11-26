@@ -40,7 +40,7 @@ export function linkOf(code: string, origin: string = getConfig().ROOM_LINK_ORIG
 
 export interface Sealer { seal(code: string): string; open(sealed: string): string }
 
-/** Seals codes under a key made for this use only from CONNECTOR_TOKEN_KEY (the way Plan Ease's calendar links are sealed). */
+/** Seals codes under a key made for this use only from CONNECTOR_TOKEN_KEY (the way Nudj's calendar links are sealed). */
 export function sealer(key?: Buffer): Sealer {
   let made: Buffer | null = key ?? null;
   const k = (): Buffer => (made ??= createHmac("sha256", tokenKey()).update("x0:rooms:link:v1").digest());

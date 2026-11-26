@@ -46,7 +46,7 @@ const X = "aaaaaaaa-0000-4000-8000-00000000000e"; // someone in no space
 
 type Push = { userId: string; kind: string; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string };
 
-/** Ghar: Priya (its admin), Mom, Arjun and Rohan; the calendar, the space's tasks, the asks and Plan Ease, on one clock. */
+/** Ghar: Priya (its admin), Mom, Arjun and Rohan; the calendar, the space's tasks, the asks and Nudj, on one clock. */
 async function ghar(t0: number, o: { blocked?: Array<[string, string]> } = {}) {
   resetAreaTablesForTests();
   resetSpaceTablesForTests();

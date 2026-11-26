@@ -16,7 +16,7 @@
  * everyone: their Plan, Today, reminders and bots see it like the rest of their day. Their tick there is their Done here (the calendar
  * answers through answer()); "Can't do it" (here or there) takes it off their days; taken out, or the person gone, it goes too.
  *
- * FAMILY ASKS (kind "ask", Plan Ease step 5: planAsks.ts, migration 0074) live in the same table. While one is open nobody has it, so it
+ * FAMILY ASKS (kind "ask", Nudj step 5: planAsks.ts, migration 0074) live in the same table. While one is open nobody has it, so it
  * is in no one's list here and on no one's day; once taken it is that person's task like any other, and planAsks.ts lands it (with its
  * own title, and no "gave you a task" push). Its Done and "Can't do it" are heard there too (onAnswer).
  */
@@ -232,7 +232,7 @@ export class SpaceTasks {
   async answer(userId: string, spaceId: string, id: string, b: Record<string, unknown>): Promise<TaskView> {
     const a = await this.spaces.access(userId, spaceId);
     const r = await this.one(spaceId, id);
-    if (openAsk(r)) throw new BotError("not_waiting", "Nobody has this yet. Tap I'll do it in Plan Ease.", 409);
+    if (openAsk(r)) throw new BotError("not_waiting", "Nobody has this yet. Tap I'll do it in Nudj.", 409);
     if (!r.assignees.includes(userId)) throw new BotError("not_allowed", "Only who it's for can say how it went.", 403);
     const status: TaskState | null = b.status === "done" || b.status === "cant" || b.status === "todo" ? b.status : null;
     if (!status) throw new BotError("bad_request", "done, todo or cant.");

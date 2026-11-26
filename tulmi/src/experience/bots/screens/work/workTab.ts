@@ -1,5 +1,5 @@
 /**
- * WORK IN SPACE, ON A BOT'S PAGE (Plan Ease, Notes, Travel bot, Xode; docs/bots-app.md "Spaces"): shared work lives in the bots, not in
+ * WORK IN SPACE, ON A BOT'S PAGE (Nudj, Notes, Nomaz, Xode; docs/bots-app.md "Spaces"): shared work lives in the bots, not in
  * the space. A person in a space gets two tabs under the bot's head: "Your work" (the page as it always was, with the notes people
  * added to their things and who else can see them) and "Work in space" (per space, the people whose things in this bot they may work
  * on: everyone with their OK for the space's admin, else who shared something with them). A tap opens that person's things (bots.work).

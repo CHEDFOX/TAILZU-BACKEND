@@ -171,7 +171,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started — which
       // means ONE COLUMN here too, or the grid would change shape under them as they gained a bot.
       tiles(ctx, 1, 104, 16, more.notes, more.groups, more.planLine),
-      // And every other bot a chip, so none is out of reach on the phone (the Oracle, the mail bot, their own).
+      // And every other bot a chip, so none is out of reach on the phone (Chamen, the mail bot, their own).
       ...moreBots(ctx),
       ...routinesRow(ctx, more.routines),
       col([
@@ -350,7 +350,7 @@ export const shellScreens: BotsScreen[] = [
         hasSpaces(ctx) ? deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces${canSpaces2(ctx) ? "?last=1" : ""}`).catch(() => undefined) : Promise.resolve(undefined),
         // The AI permission (firstRun/aiConsentCard.ts): asked before anything else, once per wording (agreed, or answered).
         deps.api<AiConsent>("GET", AI_CONSENT_PATH).catch(() => undefined),
-        // Plan Ease's one thing for its tile, when its simpler page is on (botsBots/planEase.ts line).
+        // Nudj's one thing for its tile, when its simpler page is on (botsBots/planEase.ts line).
         // Only for a build that draws the new Plan page (PersonBot): an older one keeps today's page, and Home says nothing of the new.
         planOn("page") && canPersonBot(ctx) ? deps.api<{ next?: string }>("GET", `/v1/botsapp/bots/plan/line?tz=${ctx.tzOffsetMinutes}`).catch(() => undefined) : Promise.resolve(undefined),
         // What just finished, for the bot at the foot of Home when he is the updates (shell/homeUpdates.ts). Read only then: with
@@ -396,7 +396,7 @@ export const shellScreens: BotsScreen[] = [
   screen<TodayData>({
     id: SCREENS.today,
     load: async (ctx, deps) => {
-      // Plan Ease's one card, the page's own (botsBots/planEase.ts line's `card`: its draft, its buttons that open a page), when its
+      // Nudj's one card, the page's own (botsBots/planEase.ts line's `card`: its draft, its buttons that open a page), when its
       // simpler page is on and this build draws it; never failing Today.
       const [d, plan] = await Promise.all([
         deps.api<TodayData>("GET", `/v1/shell/today?tz=${ctx.tzOffsetMinutes}`),

@@ -10,7 +10,7 @@
  *                                          No screen shows it any more
  *   GET    /v1/you/settings             -> { settings }
  *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line, name, calls, follow, followFrom, phone }  "What
- *                                         pings you", with today's summary as it would read, the name Plan Ease calls as, whether calls are on
+ *                                         pings you", with today's summary as it would read, the name Nudj calls as, whether calls are on
  *                                         here (BOT_CALLS), and follow-through's part (PLAN_V2_FOLLOW): who may ring them louder, a real call
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
  *                                         quietTo?, bot?, on? }, privacy?: { personalise? } }  -> { settings }  only what was sent changes
@@ -61,7 +61,7 @@ import { youStore } from "../../you/store.js";
 
 import type { BotsAreaDeps } from "./botsArea.js";
 
-/** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: Plan Ease runs on
+/** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: Nudj runs on
  *  Tailzu's own calendar and to-dos (src/calendar), which are not connected apps. */
 const BUILTIN_APPS: Record<string, string[]> = {};
 
@@ -105,7 +105,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   setPushGate(pushGate(spending));
   setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number; usage?: LiveUsage }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));
   const stopSummaries = startSummaries({ spending, jobs: deps.jobs, connectors: deps.connectors, log: app.log });
-  // The Daily summary rides in Plan Ease's evening note (botsBots/planEase.ts): its line, for a person who has it on, and how it goes
+  // The Daily summary rides in Nudj's evening note (botsBots/planEase.ts): its line, for a person who has it on, and how it goes
   // alone on an evening with no note.
   setPlanSummary({
     line: async (userId, tz, now) => {

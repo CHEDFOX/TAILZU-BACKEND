@@ -135,7 +135,7 @@ describe("reading a range", () => {
 });
 
 describe("the files, as they really arrive", () => {
-  it("reads every hosting shape: AWS, GCP, Oracle and Cloudflare's plain list", () => {
+  it("reads every hosting shape: AWS, GCP, Chamen and Cloudflare's plain list", () => {
     expect(parseHostingJson(AWS_JSON)).toEqual(["13.32.0.0/16", "2600:1f00::/24"]);
     expect(parseHostingJson(GCP_JSON)).toEqual(["34.64.0.0/11", "2600:1900::/28"]);
     expect(parseHostingJson(ORACLE_JSON)).toEqual(["140.238.0.0/16"]);
@@ -154,7 +154,7 @@ describe("the files, as they really arrive", () => {
     expect(l.counts.asn).toBe(4);   // five rows, less the "not routed" AS 0 one
     expect(l.counts.tor).toBe(2);
     expect(l.counts.relay).toBe(2);
-    expect(l.counts.hosting).toBe(7);   // 2 AWS + 2 GCP + 1 Oracle + 2 Cloudflare
+    expect(l.counts.hosting).toBe(7);   // 2 AWS + 2 GCP + 1 Chamen + 2 Cloudflare
     expect(l.disposable.has("someone@throwaway.test")).toBe(true);
     const bare = loadLists(fs.mkdtempSync(path.join(os.tmpdir(), "trust-empty-")));
     expect(bare.counts.asn).toBe(0);

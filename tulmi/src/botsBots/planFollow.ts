@@ -115,7 +115,7 @@ export interface PlanFollowsDeps {
   muted?: (userId: string, otherId: string) => Promise<boolean>;
   /** spaceTasks.answer(..., { status: "done" }) for a family ask its holder said done. */
   spaceDone?: (userId: string, spaceId: string, taskId: string) => Promise<void>;
-  /** Plan Ease's six a day (PlanEase.policy.spend). */
+  /** Nudj's six a day (PlanEase.policy.spend). */
   spend?: (userId: string, day: string) => Promise<boolean>;
   /** The person's own offset (plan_prefs.tz_min), for "never 10 pm to 7 am in their time". */
   tzOfUser?: (userId: string) => Promise<number | null>;

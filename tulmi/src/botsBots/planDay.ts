@@ -5,7 +5,7 @@
  *   planPage(input)   { next, needs, days: [Today, Tomorrow] (Tomorrow first after 5 pm), week, ... } for GET /v1/botsapp/bots/plan/today
  *   nextThing(input)  the one thing that matters next (the ladder below)
  *   weekLines(input)  the days after tomorrow, one line each ("Standup 10 am · 2 more"; an empty day is just its date)
- *   widgetLine(input) Plan Ease's line on the widget (32 characters), and on the lock screen (24), lock-safe
+ *   widgetLine(input) Nudj's line on the widget (32 characters), and on the lock screen (24), lock-safe
  *   widgetSteps(input) the same line as it will read later on, from each moment it changes (the glance's steps, for widgets that switch)
  *
  * THE LADDER. The first that matches is the one thing:
@@ -57,7 +57,7 @@ export interface PlanInput {
 /** The big line: words, with the part to show in ochre (the leave-by time) said apart. */
 export interface NextThing {
   big: string;
-  /** The part of `big` in Plan Ease's ochre ("5:30 pm"), when there is one. */
+  /** The part of `big` in Nudj's ochre ("5:30 pm"), when there is one. */
   accent?: string;
   grey: string;
   /** "Open map" (rung 1, within 15 minutes) or step 3's "Pay": a link the phone hands off to. */
@@ -220,7 +220,7 @@ export function planPage(i: PlanInput): PlanPage {
 // ------------------------------------------------------------------ outside the app: the widget's line and the lock screen
 
 export interface WidgetLine {
-  /** The Home Screen widget's Plan Ease line, 32 characters at most. */
+  /** The Home Screen widget's Nudj line, 32 characters at most. */
   line: string;
   /** The lock screen's date line (24) and its rectangle's two lines. */
   lock: { inline: string; title: string; line: string };
@@ -231,7 +231,7 @@ export interface WidgetLine {
 }
 
 /**
- * Plan Ease's line outside the app. A day and a clock time, never "next" for a thing already over or "in 10 min" (the widgets don't ask
+ * Nudj's line outside the app. A day and a clock time, never "next" for a thing already over or "in 10 min" (the widgets don't ask
  * the server: the line must stay true until its time passes). No amount, a health visit is "Appointment" (planSafe.ts).
  */
 export function widgetLine(i: Pick<PlanInput, "items" | "leaves" | "now" | "tz" | "today" | "tomorrow">): WidgetLine | null {

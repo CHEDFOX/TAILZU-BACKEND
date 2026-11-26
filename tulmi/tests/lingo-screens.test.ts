@@ -89,7 +89,7 @@ describe("every tree the kit would draw", () => {
     }
   });
 
-  it("is seven screens, and Lingo's tile in the bots list opens the first of them", () => {
+  it("is seven screens, and Babbl's tile in the bots list opens the first of them", () => {
     expect(LINGO_SCREENS.map((s) => s.id)).toEqual([SCREENS.lingo, SCREENS.lingoAdd, SCREENS.lingoSet, SCREENS.lingoWhy, SCREENS.lingoDone, SCREENS.lingoSaid, SCREENS.lingoLeave]);
     expect(botRoute("lingo")).toMatchObject({ kind: "navigate", screenId: SCREENS.lingo });
     // A bot with no page of its own still goes to the shared one.
@@ -97,15 +97,15 @@ describe("every tree the kit would draw", () => {
   });
 });
 
-describe("Lingo in the bots list", () => {
+describe("Babbl in the bots list", () => {
   it("appears on Home once the platform lists it, beside the five that always show", async () => {
     const { liveFrom } = await import("../src/experience/bots/live.js");
     const { SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
-    const withLingo = [...SAMPLE_BOTS, { slug: "lingo", name: "Lingo", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true }];
+    const withLingo = [...SAMPLE_BOTS, { slug: "lingo", name: "Babbl", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true }];
     const model = liveFrom({ bots: withLingo, jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 0, now: Date.UTC(2026, 9, 28), tzOffsetMinutes: 330 });
     const lingo = model.bots.find((b) => b.slug === "lingo");
-    expect(lingo, "Lingo is in the Home list").toBeTruthy();
-    expect(lingo!.name).toBe("Lingo");
+    expect(lingo, "Babbl is in the Home list").toBeTruthy();
+    expect(lingo!.name).toBe("Babbl");
     // Its own colour, not the fallback grey every unknown bot wears.
     const { PALETTE_HEX } = await import("../src/experience/bots/palette.js");
     expect(lingo!.color).toBe(PALETTE_HEX.ash);
@@ -145,12 +145,12 @@ describe("the territory", () => {
     expect(json(territory(ctx(), { courses: [course()] }))).toContain(SCREENS.lingoLeave);
   });
 
-  it("puts Lingo itself at the top, alive, instead of a heading", () => {
+  it("puts Babbl itself at the top, alive, instead of a heading", () => {
     const n = territory(livelyCtx(), { courses: [course()] });
     const [bot, ...rest] = buddies(n);
     expect(rest).toEqual([]);
     expect(bot?.life).toBe("page.lingo");
-    // The first thing on the page is the bot, not a title: the back bar already says Lingo.
+    // The first thing on the page is the bot, not a title: the back bar already says Babbl.
     expect((n[0] as { type?: string }).type).toBe("BotBuddy");
     expect(json(n)).not.toContain("Your languages");
   });
@@ -317,11 +317,11 @@ describe("a course with nothing in it", () => {
     expect(s).not.toContain("Check again");
     expect(s).not.toContain('"refresh"');
     expect(s, "no talk of pairs of languages, or of how long a model takes").not.toContain("pair of languages");
-    expect(s).not.toContain("Talk to Lingo");
+    expect(s).not.toContain("Talk to Babbl");
   });
 
-  /** Lingo mutters over it — its own idling, and exactly what is happening — until the unit lands. */
-  it("has Lingo working over it on a loop, not a still pose", () => {
+  /** Babbl mutters over it — its own idling, and exactly what is happening — until the unit lands. */
+  it("has Babbl working over it on a loop, not a still pose", () => {
     const bot = buddies(setScreen(livelyCtx(), "es", waiting))[0];
     expect(bot, "the waiting screen is the bot, not an empty state").toBeTruthy();
     expect(bot).toMatchObject({ state: "working" });
@@ -485,7 +485,7 @@ describe("finishing a unit", () => {
 
   it("borrows no other bot's props", () => {
     // juggle is Xode's binary digits and w.wave is the Wanderer's poncho: either would put another bot's things
-    // in Lingo's hands, which is the one rule the look of these bots has.
+    // in Babbl's hands, which is the one rule the look of these bots has.
     for (const u of UNITS) expect(["juggle", "w.wave"], u.key).not.toContain(u.mark);
   });
 

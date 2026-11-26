@@ -63,7 +63,7 @@ const ANSWERS: Record<string, unknown> = {
   "GET /v1/you?tz=330": {
     plan: { name: "Pro", active: true },
     usage: USAGE,
-    apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Plan Ease", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
+    apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Nudj", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
     settings: S, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x", language: "hinglish",
   },
   "GET /v1/you/spend?tz=330": {
@@ -87,12 +87,12 @@ const ANSWERS: Record<string, unknown> = {
   },
   "GET /v1/you/apps": {
     enabled: true, github: { repos: 2 },
-    connected: [{ id: "google-calendar", name: "Google Calendar", category: "Calendar", level: "draft", lastUsedAt: FIXED_NOW - DAY, usedBy: ["Plan Ease"] }],
+    connected: [{ id: "google-calendar", name: "Google Calendar", category: "Calendar", level: "draft", lastUsedAt: FIXED_NOW - DAY, usedBy: ["Nudj"] }],
     more: [{ id: "google-docs", name: "Google Docs", category: "Docs", oneLine: "Write a new Google Doc.", usedBy: [] }],
   },
   "GET /v1/you/apps/google-calendar": {
     app: { id: "google-calendar", name: "Google Calendar", category: "Calendar", oneLine: "See your schedule.", auth: "oauth", provider: "google", connected: false, level: "look", lastUsedAt: null },
-    bots: [{ slug: "plan", name: "Plan Ease", colour: "", purpose: "Plans your day", builtin: true, linked: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Workouts", builtin: false, linked: false }],
+    bots: [{ slug: "plan", name: "Nudj", colour: "", purpose: "Plans your day", builtin: true, linked: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Workouts", builtin: false, linked: false }],
     can: ["Read your events"], cant: ["Share your calendar"],
   },
   // A "url" app: the link is made on the vendor's own site, so the page has to say where (catalog.ts linkHelp).

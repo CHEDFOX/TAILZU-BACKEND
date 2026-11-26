@@ -70,7 +70,7 @@ async function served(o: { now?: { t: number } } = {}) {
   const clock = o.now ?? { t: Date.UTC(2026, 9, 28, 6, 0) };
   const now = () => clock.t;
   const outbox = new MailOutbox(new MemoryPaged(), now);
-  const bots = { resolve: async (_u: string, slug: string) => (["plan", "shop-bot"].includes(slug) ? { def: { slug, name: slug === "plan" ? "Plan Ease" : "Shop bot", colour: "ochre" } } : null) };
+  const bots = { resolve: async (_u: string, slug: string) => (["plan", "shop-bot"].includes(slug) ? { def: { slug, name: slug === "plan" ? "Nudj" : "Shop bot", colour: "ochre" } } : null) };
   const spaces = new Spaces(bots as never, now, { outbox, mailer: NOT_CONFIGURED, origin: () => "https://app.example.in" });
   const media = fakeMedia();
   const app = Fastify();
@@ -245,7 +245,7 @@ describe("sharing", () => {
     await s.call("PUT", `${AREA}/items/${item.id}`, R_, { op: "toggle", line: add.body.item.list[0].id });
     expect((await s.call("GET", `${AREA}/items/${item.id}`, R_)).body.item.summary).toBe("1 of 3 done");
     expect((await s.call("GET", `${AREA}/items/${item.id}`, X_)).status).toBe(404);
-    // Plan Ease, Notes, Travel bot and Xode are every group's bots: no adding needed. Any other bot reads it once added.
+    // Nudj, Notes, Nomaz and Xode are every group's bots: no adding needed. Any other bot reads it once added.
     const ctx = await s.parts.items.forBot(M_, "plan");
     expect(ctx).toHaveLength(1);
     expect(ctx[0]!.text).toContain("Groceries (list, shared by Meera S.): [x] Atta 5 kg; [ ] Toor dal; [ ] Paneer");
@@ -544,7 +544,7 @@ describe("what a group's bots know (botsBots/spaceMemory.ts)", () => {
     expect((await s.call("GET", M(id), A_)).body.lines).toEqual([]);
   });
 
-  it("Plan Ease, Notes, Travel bot and Xode read the group's lines; another bot only once it is added", async () => {
+  it("Nudj, Notes, Nomaz and Xode read the group's lines; another bot only once it is added", async () => {
     const s = await served();
     const id = await s.home();
     await s.call("POST", M(id), M_, { text: "Dadi is vegetarian" });

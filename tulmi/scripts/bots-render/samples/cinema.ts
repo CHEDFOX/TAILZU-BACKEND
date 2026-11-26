@@ -124,7 +124,7 @@ export const CINEMA_OVERVIEW = {
 };
 
 export const CINEMA_BOT = {
-  slug: "cinema", name: "Cinema", colour: "plum", builtin: true, publicCard: false, tone: "warm and concrete", principles: [],
+  slug: "cinema", name: "Kutt", colour: "plum", builtin: true, publicCard: false, tone: "warm and concrete", principles: [],
   purpose: "Makes films and videos shot by shot from your idea, and pictures: posters, product shots, portraits and logos.",
   skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] },
 };

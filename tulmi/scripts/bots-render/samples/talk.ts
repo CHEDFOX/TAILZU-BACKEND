@@ -5,11 +5,11 @@
  * It is written to show the ONE thing the screen exists to show — that every kind of answer lands in one conversation,
  * from a different bot each time, in whatever shape that answer needs:
  *
- *   Plan Ease   words, and the day drawn as steps under them (src/show: the bot chose the blocks itself)
+ *   Nudj   words, and the day drawn as steps under them (src/show: the bot chose the blocks itself)
  *   Travel      words, and what the everyday tools found as cards (`did.finds`)
  *   Xode        no words at all — a job started IS the answer, and its card is the turn
  *   X0          a routine to save, which is a card and not an answer
- *   Plan Ease   a message that was for Mom ("@"), and a choice to tap
+ *   Nudj   a message that was for Mom ("@"), and a choice to tap
  *
  * Every turn carries `by`, because a thread that every bot answers in has to say which one did.
  */
@@ -19,8 +19,8 @@ const DAY = 86_400_000;
 const N = Date.UTC(2026, 9, 28, 9, 12) + 0;
 
 const TALK_BOT = { slug: "talk", name: "Talk", color: "#6b7280" };
-const PLAN = { slug: "plan", name: "Plan Ease", color: "#b08a3e" };
-const TRAVEL = { slug: "travel", name: "Travel bot", color: "#3f7d8c" };
+const PLAN = { slug: "plan", name: "Nudj", color: "#b08a3e" };
+const TRAVEL = { slug: "travel", name: "Nomaz", color: "#3f7d8c" };
 const CODE = { slug: "code", name: "Xode", color: "#5f7d4f" };
 
 /** The id a turn's drawing keeps its picks under (show/check.ts gives each one k0, k1…). */

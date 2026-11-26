@@ -161,7 +161,7 @@ export const parseLines = (text: string): string[] =>
 export const parseRelayCsv = (text: string): string[] =>
   text.split(/\r?\n/).map((l) => l.split(",")[0]?.trim() ?? "").filter((c) => c.includes("/") || c.includes("."));
 
-/** AWS's ip-ranges.json, GCP's cloud.json, Oracle's public_ip_ranges.json: whichever shape it is, every prefix in it. */
+/** AWS's ip-ranges.json, GCP's cloud.json, Chamen's public_ip_ranges.json: whichever shape it is, every prefix in it. */
 export function parseHostingJson(text: string): string[] {
   const out: string[] = [];
   let doc: unknown;

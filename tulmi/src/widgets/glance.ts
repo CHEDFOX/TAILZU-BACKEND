@@ -60,7 +60,7 @@ export interface GlanceInput {
   /** The AI digest's line, when there is one (digest.ts). */
   digest?: string | null;
   /**
-   * Plan Ease (botsBots/planEase.ts line): its line, lock-safe ("Sat · PTM 9:30, leave 9:00"), its lock words, whether a leave-by within
+   * Nudj (botsBots/planEase.ts line): its line, lock-safe ("Sat · PTM 9:30, leave 9:00"), its lock words, whether a leave-by within
    * 2 hours leads the lock screen, and its one question with up to 2 buttons (answered at the same act door). Absent: nothing of it.
    */
   plan?: {
@@ -90,7 +90,7 @@ export interface GlanceBot {
 
 export interface GlanceNeedsItem {
   id: string;
-  /** A bot's question, a connected app's yes, or Plan Ease's one question (its card, planNeeds.ts). */
+  /** A bot's question, a connected app's yes, or Nudj's one question (its card, planNeeds.ts). */
   kind: "question" | "approval" | "plan";
   bot: string; botName: string; face: string | null;
   question: string;
@@ -160,7 +160,7 @@ export interface GlanceV2 {
 export interface GlanceStep { at: number; bot: string; line: string; lock: { inline: string; title: string; line: string } | null }
 
 /**
- * Plan Ease's line as it will read later (botsBots/planDay.ts widgetSteps), as steps: each moment's row line, and its lock words by the
+ * Nudj's line as it will read later (botsBots/planDay.ts widgetSteps), as steps: each moment's row line, and its lock words by the
  * rule glanceV2Of uses now (the plan's own words while a leave-by is within 2 hours, or on a quiet lock screen; else the glance's
  * own, `base`, which is what it shows with no plan line). The glance's case is today's: a question still leads over any of these.
  */
@@ -336,7 +336,7 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
       return taskNeedsItem(t, w, nameOf(bot), bot, linkFor(bot));
     }),
   ].filter((x): x is GlanceNeedsItem => !!x).sort((a, b) => a.at - b.at);
-  // Plan Ease's one question, in the same spot with its buttons ("Move the grocery run to Sat 11 am?" [Move it] [Keep]): its words are
+  // Nudj's one question, in the same spot with its buttons ("Move the grocery run to Sat 11 am?" [Move it] [Keep]): its words are
   // the card's, already lock-safe; it is answered at the act door like the rest.
   const pn = on ? i.plan?.needs : null;
   // An open-only one (its answer needs the app: planEase.ts widgetCard) has no choices: a tap opens X0 Bot.
@@ -383,7 +383,7 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
     const line = b.working ? (b.doing || eventLine("working", undefined, { bot: b.name }, w.fill))
       : state === "needs" ? (first && !first.private ? first.question : eventLine("needs", undefined, { bot: b.name }, w.fill))
         : fin ? doneLine(fin, w, b.name)
-          // Plan Ease's own line: what is next on their day, said so it stays true until its time.
+          // Nudj's own line: what is next on their day, said so it stays true until its time.
           : b.slug === "plan" && planLine?.line ? planLine.line
             : eventLine("idle", undefined, { bot: b.name }, w.fill);
     const face = faceOf(b.slug);

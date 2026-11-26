@@ -38,8 +38,8 @@ export function askAnswer(ctx: BotsCtx, cards?: Card[]) {
     row([slug ? avatarOf(ctx, slug, 24) : icon("spark", { size: 16, color: C.meta }), meta(by ? `${by} answered` : "Answered by your bots", { size: 12 })], { gap: 6 }),
     ...(answer ? [body(answer, { lineHeight: 22 })] : []),
   ], { gap: 8 }));
-  // The Oracle answered: its own page is a tap away (its cards ask for the birth details it reads nothing without).
-  if (slug === "oracle") blocks.push(row([button("Open the Oracle", open(SCREENS.chat, { slug: "oracle" }), { kind: "secondary", size: "md" })]));
+  // Chamen answered: its own page is a tap away (its cards ask for the birth details it reads nothing without).
+  if (slug === "oracle") blocks.push(row([button("Open Chamen", open(SCREENS.chat, { slug: "oracle" }), { kind: "secondary", size: "md" })]));
   // What the everyday tools found: flights, hotels, money, weather, as cards that link out (screens/finds.ts).
   blocks.push(...findsCards(ctx, cards));
   if (job) blocks.push(jobCard(ctx, job));

@@ -5,7 +5,7 @@
  *   - every push kind is in one list, and each one is in "What pings you" (verdict) and the engine's kinds
  *   - reminders: what it is, at most 2 buttons (Done, Later), 10 am on a to-do's day, close ones as one push, the day's six
  *   - Later: an hour, or 9 am after 8 pm; three times, then it stays quietly in the app
- *   - the act door answers Plan Ease's buttons from the page, the widget and a notification alike
+ *   - the act door answers Nudj's buttons from the page, the widget and a notification alike
  *   - the Needs-you queue: one Move card, never for something booked; a booked clash is a grey line
  *   - the page: the one next thing (the ladder), not repeated below; Today and Tomorrow with "2 more"
  *   - the one box: notes words, a day question, an item with Undo, the chat for the rest
@@ -135,13 +135,13 @@ describe("the push kinds", () => {
     expect(planPushFlags()["push.plan_morning.interruptionLevel"]).toBe("passive");
   });
 
-  it("each goes through What pings you as Plan Ease's own, never the Keylessbord branch", () => {
+  it("each goes through What pings you as Nudj's own, never the Keylessbord branch", () => {
     const s = structuredClone(DEFAULT_SETTINGS);
     const keybotOff = { ...s, notify: { ...s.notify, botsOff: ["keybot"] } };
     const planOff = { ...s, notify: { ...s.notify, botsOff: ["plan"] } };
     const quiet = { ...s, notify: { ...s.notify, quiet: true, quietFrom: 22 * 60, quietTo: 7 * 60 } };
     for (const k of PLAN_PUSH_KINDS) {
-      // The family's (step 5) are a person's word: Plan Ease's switch doesn't stop them, and the quiet ones never make a sound.
+      // The family's (step 5) are a person's word: Nudj's switch doesn't stop them, and the quiet ones never make a sound.
       const person = k.verdict === "people" || k.verdict === "quiet";
       const hush = k.verdict === "silent" || k.verdict === "quiet";
       expect(verdict(keybotOff, k.kind, 10 * 60), k.kind).toBe(hush ? "silent" : "send");
@@ -213,7 +213,7 @@ describe("reminders", () => {
     expect(await r.remind()).toBe(0);
   });
 
-  it("don't remind an event whose leave-by reminder went, and stop Plan Ease's own at six a day", async () => {
+  it("don't remind an event whose leave-by reminder went, and stop Nudj's own at six a day", async () => {
     const r = rig(ist(12, 8));
     const ev = await r.c.addEvent(U, { title: "PTM", day: "2026-11-12", time: "9:30", tz: IST, place: "School" });
     await r.prefs.patch(U, { leaves: [{ eventId: ev.id, start: ev.start, leaveBy: ist(12, 9), minutes: 30, mode: "drive", to: "School", title: "PTM", sent: true }] });
@@ -279,7 +279,7 @@ describe("reminders", () => {
 
 // ===================================================================== the act door
 
-describe("Plan Ease's buttons at the act door", () => {
+describe("Nudj's buttons at the act door", () => {
   const policy = { inPlaceRisks: ["read"], modes: {}, tokenEnabled: true };
   const acts = (ease: InstanceType<typeof PlanEase>, now: () => number) => new QuickActs(
     { spaceTasks: null, threads: null, approvals: null, jobs: null, plan: { scope: (i, a) => ease.scope(i, a), act: (u, i, a) => ease.act(u, i, a) } },
@@ -459,7 +459,7 @@ describe("the day notes", () => {
     expect(await r.ease.notesTick()).toBe(1);
     const n = r.sent[0]!;
     expect(n).toMatchObject({ kind: "plan_evening", key: "evening:2026-11-13", vars: { title: "Tomorrow: leave by 8:10 am" } });
-    expect(n.vars.body).toBe("Tonight: pack the fruit costume, pay for the trip. First: school drop 8:30 am. 2 more. I'll send this each evening. Say 'no evening notes' in Plan Ease to stop.");
+    expect(n.vars.body).toBe("Tonight: pack the fruit costume, pay for the trip. First: school drop 8:30 am. 2 more. I'll send this each evening. Say 'no evening notes' in Nudj to stop.");
     expect(n.vars.body).not.toMatch(/₹|300|Dentist/);
     // The next is tomorrow's morning slot.
     expect((await r.prefs.get(U))?.note?.next).toBe("morning");

@@ -1,8 +1,8 @@
 /**
  * THE ONE BOX: WHAT IT UNDERSTOOD (docs/plan-ease.md "The one box"; design A1 "The one box", B7, B8). The person never picks a type:
  * whatever they type or say goes to POST /v1/botsapp/bots/plan/box, and the first slot that understands it answers. Rules only, free:
- * what no slot understands goes to the Plan Ease chat, as before (the screen sends it there: the chat's own route, with the consent
- * gate and Plan Ease's budget it always had).
+ * what no slot understands goes to the Nudj chat, as before (the screen sends it there: the chat's own route, with the consent
+ * gate and Nudj's budget it always had).
  *
  *   BOX_SLOTS, in order:
  *     seen      a desktop's "add this", only when the words came with what was on its screen (planInBox.ts): its one clear line is
@@ -14,7 +14,7 @@
  *     wait      step 4: "Rahul will send the numbers by Thursday", "Plumber said Tuesday"
  *     due       step 3: "Electricity 2140 due 14th", "Pay rent by the 5th every month"
  *     item      "Dentist Fri 5 pm", "Buy milk": an event or a to-do (calendar/words.ts), with Undo
- *     chat      anything else: the Plan Ease chat
+ *     chat      anything else: the Nudj chat
  *
  * ADDING A SLOT (a later step): write its read (rules: what it understood, or null) and its run (through the services in BoxCtx), and
  * put it in its place in BOX_SLOTS. The screen draws any reply the same way (a grey line, an Undo, a day's rows, a card).
@@ -32,7 +32,7 @@ import { ASK_SLOT } from "./planAsks.js";
 export interface BoxReply {
   /** Which slot answered. */
   slot: string;
-  /** "added", "day", "said" (a reply line only), "chat" (the screen sends it to the Plan Ease chat). */
+  /** "added", "day", "said" (a reply line only), "chat" (the screen sends it to the Nudj chat). */
   kind: "added" | "day" | "said" | "chat" | "capture";
   /** The one grey line ("Added: Dentist, Fri 13 Nov, 5 pm"). */
   line: string;
@@ -208,7 +208,7 @@ const CHAT: BoxSlot<true> = {
 /**
  * First, and only when the words came with what was seen. One clear line ("Team offsite 14 Nov 10 am", with "on Friday" from the words)
  * is read by the slots that add a line (a wait, a due, an item), as if typed: "Added: … · Undo". A notice with several things in it
- * becomes the capture card, with its consent gate and Plan Ease's budget. Neither: the chat, and the desktop sends the words as before.
+ * becomes the capture card, with its consent gate and Nudj's budget. Neither: the chat, and the desktop sends the words as before.
  */
 const SEEN: BoxSlot<{ seen: Seen }> = {
   slot: "seen", step: 3,

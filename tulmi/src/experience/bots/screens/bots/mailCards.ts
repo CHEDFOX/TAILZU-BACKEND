@@ -1,5 +1,5 @@
 /**
- * THE MAIL BOT'S SET-UP (docs/mail.md section 9): asked as the Oracle's cards ask (oracleCards.ts), one card over the mail bot's page with its
+ * THE MAIL BOT'S SET-UP (docs/mail.md section 9): asked as Chamen's cards ask (oracleCards.ts), one card over the mail bot's page with its
  * stage on top, one step after the other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
  *   back            the card is a modal over the page, so the page's own back is behind it and the phone's edge swipe never reaches

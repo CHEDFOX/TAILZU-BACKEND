@@ -231,7 +231,7 @@ describe("What pings you, Activity, the bootstrap, settings", () => {
       expect(s.texts).toContain("Mom said done");
     }
   });
-  it("bootstrap: follow buttons only with PLAN_V2_FOLLOW; every button id is unique across the app's own, Plan Ease's, the call's and the follow's categories; none has more than 3", () => {
+  it("bootstrap: follow buttons only with PLAN_V2_FOLLOW; every button id is unique across the app's own, Nudj's, the call's and the follow's categories; none has more than 3", () => {
     const cats = () => withAppKnobs({ labels: {}, flags: {} }).flags["push.categories"] as Array<{ id: string; actions: Array<{ id: string }> }>;
     expect(cats().map((c) => c.id)).toEqual(expect.arrayContaining(FOLLOW_CATEGORIES.map((c) => c.id)));
     const ids = cats().flatMap((c) => c.actions.map((a) => a.id));

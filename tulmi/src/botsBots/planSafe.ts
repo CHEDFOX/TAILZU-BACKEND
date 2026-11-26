@@ -2,7 +2,7 @@
  * PLAN EASE'S WORDS OUTSIDE THE APP: THE ONE FUNCTION EVERY PUSH, NOTE AND WIDGET LINE GOES THROUGH (docs/plan-ease.md "Lock-screen safe").
  *
  * Android shows a notification's words on the lock screen by default, and an iPhone does whenever it is unlocked nearby; a widget sits
- * on the Home and Lock Screen for anyone to read. So whatever Plan Ease says there:
+ * on the Home and Lock Screen for anyone to read. So whatever Nudj says there:
  *
  *   - never carries a ₹ amount ("Electricity ₹2,140" is "Electricity", and so are "Rent 25k" and "Electricity bill 2,140"): the
  *     amount is one tap away, in the app
@@ -98,7 +98,7 @@ export function safeTitle(title: string): string {
   return noAmounts(t) || (t ? "Payment" : "");
 }
 
-/** Any line of Plan Ease's words for outside the app: no amount, cut at a word. Titles inside it went through safeTitle already. */
+/** Any line of Nudj's words for outside the app: no amount, cut at a word. Titles inside it went through safeTitle already. */
 export function lockSafe(line: string, max = 178): string {
   return cutAt(noAmounts(line), max);
 }

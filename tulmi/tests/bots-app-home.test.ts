@@ -52,11 +52,11 @@ describe("live state from real records", () => {
       bots: [], jobs: [], minutesSaved: 0, budgetPaise: 0, now: FIXED_NOW, tzOffsetMinutes: IST,
       tasks: [{ id: "t1", state: "waiting", title: "Move the dentist to Friday 10 am?", approval: { id: "a1", connector: "google-calendar", preview: "Update event: Dentist" }, createdAt: FIXED_NOW, updatedAt: FIXED_NOW }],
     });
-    expect(l.needs[0]).toMatchObject({ bot: "plan", botName: "Plan Ease", question: "Move the dentist to Friday 10 am?" });
+    expect(l.needs[0]).toMatchObject({ bot: "plan", botName: "Nudj", question: "Move the dentist to Friday 10 am?" });
     expect(l.needs[0]!.choices[0]!.action).toMatchObject({ path: "/v1/tasks/t1/approve", body: { approvalId: "a1" } });
     expect(l.needs[0]!.choices[1]!.action).toMatchObject({ path: "/v1/tasks/t1/deny" });
     // The five built-ins are there even with the bots platform off.
-    expect(l.bots.map((b) => b.name)).toEqual(["Plan Ease", "Xode", "Keylessbord", "Travel bot", "Talk"]);
+    expect(l.bots.map((b) => b.name)).toEqual(["Nudj", "Xode", "Keylessbord", "Nomaz", "Talk"]);
     expect(l.spend.budgetPaise).toBe(50_000);
     expect(weekLine(l.week)).toBe("Nothing done yet this week");
   });
@@ -84,7 +84,7 @@ describe("bots.home", () => {
     expect(words.some((w) => /this week|saved/.test(w))).toBe(false);
     for (const w of ["Good evening, Aanya", HOME_LINE, "Needs you · Xode",
       "Round the cart total per item, or once at the end?", "Per item", "At the end", "You decide",
-      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot"]) {
+      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Nudj", "Make a bot"]) {
       expect(words, w).toContain(w);
     }
     // NO TAB BAR: Home is a pushed page now, not a tab root (docs/talk-door.md). The bar is what put a switchTab on
@@ -93,7 +93,7 @@ describe("bots.home", () => {
     // The phone draws one bot a row now, up to HOME_TILES, so the fixtures' bots ALL fit and there is nothing left
     // for a chip. moreBots draws nothing when the grid shows everything, so the section is simply absent.
     expect(words).not.toContain("More bots");
-    expect(words.filter((w) => w === "Travel bot")).toHaveLength(1);
+    expect(words.filter((w) => w === "Nomaz")).toHaveLength(1);
     expect(words.filter((w) => w === "Gym bot")).toHaveLength(1);
     const acts = presses(s.root!);
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.code" });
@@ -121,7 +121,7 @@ describe("bots.home", () => {
   it("window: DeskHome.dc.html in the sidebar frame, four tiles across, the ask bar says desktop", async () => {
     const s = await buildBotsScreen(req("bots.home", "desktop"), fakeDeps());
     const words = texts(s.root!);
-    for (const w of ["Good evening, Aanya", HOME_LINE, "Hold a key, speak, done", "Your bots", "Travel bot", "Gym bot"]) expect(words, w).toContain(w);
+    for (const w of ["Good evening, Aanya", HOME_LINE, "Hold a key, speak, done", "Your bots", "Nomaz", "Gym bot"]) expect(words, w).toContain(w);
     expect(walk(s.root!).some((n) => n.type === "Grid" && n.props?.columns === 4)).toBe(true);
     const field = walk(s.root!).find((n) => n.type === "TextField")!;
     expect(JSON.stringify(field.on!.onSubmit)).toContain('"device":"desktop"');
@@ -162,8 +162,8 @@ describe("bots.home", () => {
       const r = { ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion", "BotTilesStrip"]) };
       const s = await buildBotsScreen(r, deps());
       const grid = walk(s.root!).find((n) => n.type === "BotTiles")!;
-      // Every bot a row of its own, then Make a bot. The strip (Notes) is still its own full-width row under them.
-      expect((grid.props!.tiles as Array<{ slug: string }>).map((t) => t.slug)).toEqual(["code", "keybot", "plan", "travel", "talk", "gym-bot", "make"]);
+      // Every bot a row of its own (Talk is the screen they answer in, not one of them), then Make a bot. The strip (Notes) is still its own full-width row under them.
+      expect((grid.props!.tiles as Array<{ slug: string }>).map((t) => t.slug)).toEqual(["code", "keybot", "plan", "travel", "gym-bot", "make"]);
       expect(grid.props).toMatchObject({
         columns: cols, stripHeight: h,
         strip: { slug: "notes", name: "Notes", kind: "notes", sub: "2 to-dos open", state: "idle", color: "#6E4A6B", action: { kind: "navigate", screenId: "bots.notes" } },
@@ -179,7 +179,7 @@ describe("bots.home", () => {
         const living = walk(old.root!).find((n) => n.type === "BotTiles");
         expect(living?.props?.strip).toBeUndefined();
         const words = [...texts(old.root!), ...((living?.props?.tiles as Array<{ name: string }> | undefined) ?? []).map((t) => t.name)];
-        expect(words).toEqual(expect.arrayContaining(["Plan Ease", "Make a bot", "Notes", "2 to-dos open"]));
+        expect(words).toEqual(expect.arrayContaining(["Nudj", "Make a bot", "Notes", "2 to-dos open"]));
         expect(presses(old.root!)).toContainEqual({ kind: "navigate", screenId: "bots.notes" });
         expect(checkTree(old.root!)).toEqual([]);
       }

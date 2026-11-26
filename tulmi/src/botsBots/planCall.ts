@@ -2,7 +2,7 @@
  * "X0 IS CALLING": THE SERVICE (BOT_CALLS; docs/plan-ease.md "Calls"). A leave-by or a bill due today, for a person with Calls on, rings
  * their phone instead of the push: an ordinary notification titled "<Name> is calling" with Answer and Not now, our own ringtone on an
  * iPhone that has it, then "Missed call from <Name>" if nobody answered. Answer opens the call screen (screens/bots/planCall.ts), where
- * Plan Ease speaks first and the person can talk back.
+ * Nudj speaks first and the person can talk back.
  *
  *   hook                  asked by the push engine before a leave-by or a bill due today goes (push/engine.ts setCallHook): rings the
  *                         phones that take calls, or says why not (and the push goes the existing way)
@@ -339,7 +339,7 @@ export class PlanCalls {
 
   /**
    * THE ENGINE ASKS HERE (push/engine.ts notify): a leave-by or a bill due today carrying its seed. The tokens it rang get no push; null
-   * (or a ring no phone took) and the push goes the existing way. Never a call in quiet hours, with Calls or Plan Ease off, to a phone
+   * (or a ring no phone took) and the push goes the existing way. Never a call in quiet hours, with Calls or Nudj off, to a phone
    * whose JS doesn't take calls, while one is on, past 3 today, or within 15 minutes of the last. A reminder that called already never
    * calls again, and never pushes the phones it rang either.
    */
@@ -357,7 +357,7 @@ export class PlanCalls {
       const had = await this.byKey(c.userId, msg.key);
       if (had) return this.again(had, tokens);
       // The reminder's own verdict first: a push that would go silent (quiet hours) or not at all never becomes a ring. Then the call's
-      // own: the Calls switch, Plan Ease's, quiet hours (you/push.ts verdict).
+      // own: the Calls switch, Nudj's, quiet hours (you/push.ts verdict).
       if ((await gate(msg.kind)) !== "send" || (await gate("plan_call")) !== "send") return this.none("what pings you");
       // The call judge's say about this very item (planCallSeam.ts). It can only ADD: a floor ring the judge wants is placed judged,
       // so the 3 a day neither stops it nor counts it. No verdict ever refuses a leave-by or a bill due today.
@@ -521,7 +521,7 @@ export class PlanCalls {
       try {
         const row = await planPrefs().get(c.userId);
         // AN ANDROID ROW IS A SNAPSHOT, NOT A FEED. The iPhone's Focus Filter posts the END of a Focus itself, so a row it
-        // wrote can be trusted for its 12 hours. Android only posts Do Not Disturb on Plan Ease page appear, so a row that
+        // wrote can be trusted for its 12 hours. Android only posts Do Not Disturb on Nudj page appear, so a row that
         // says `on` is stale the moment DND is switched off — and trusting it held calls for up to 12 hours after. A `dnd`
         // row is therefore never trusted on its own: the phone is asked at ring time, as it is when the row is empty.
         if (focusHolding(row?.focus, o.now) && row?.focus?.source !== "dnd") {
@@ -581,7 +581,7 @@ export class PlanCalls {
   }
 
   /**
-   * The call's facts, as the Plan Ease chat and the live session both read them (data, never instructions), with "Why it matters"
+   * The call's facts, as the Nudj chat and the live session both read them (data, never instructions), with "Why it matters"
    * when the judge gave a reason. One indexed read at most.
    */
   async facts(userId: string, row: Pick<CallRow, "seed" | "item" | "opening" | "tz_min">): Promise<string> {
@@ -997,7 +997,7 @@ export class PlanCalls {
 
 /**
  * Whether realtime calls are switched on for this person at all: the switch, a key, the Calls switch and the allow-list. NO MONEY IS
- * ASKED — not Plan Ease's day budget, not the spend gate, not the plan quota. The route asks this first, so it can tell a person
+ * ASKED — not Nudj's day budget, not the spend gate, not the plan quota. The route asks this first, so it can tell a person
  * whose live time is used up (`rt_max_len`) from one the switch is simply off for (`rt_off`).
  */
 export function realtimeFor(userId: string): boolean {

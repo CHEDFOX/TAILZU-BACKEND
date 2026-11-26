@@ -15,7 +15,7 @@
  * setting on, and their yes to AI. Without a yes nothing is sent anywhere and nothing is kept; the rules (a leave-by, a bill due today)
  * ring as they always did. The rules are a floor: the judge adds calls and picks their time, and never turns a rule's call off.
  *
- * NO MONEY LIMIT. A judged call is not counted against Plan Ease's day budget or anyone's spend gate; what judging an item cost is kept
+ * NO MONEY LIMIT. A judged call is not counted against Nudj's day budget or anyone's spend gate; what judging an item cost is kept
  * on its row for the owner to read. Failure never costs a call the rules would make. Logs never hold a title, place, name, amount, note,
  * reason or the AI's reasoning.
  */
@@ -54,7 +54,7 @@ export interface JudgeDeps {
   now?: () => number;
   /** PLAN_CALL_JUDGE and PLAN_CALL_JUDGE_ALLOW. */
   flags: () => { on: boolean; allow: string };
-  /** BOT_CALLS with Plan Ease's app and reminders steps (planSwitch.ts callsOn). */
+  /** BOT_CALLS with Nudj's app and reminders steps (planSwitch.ts callsOn). */
   callsOn: () => boolean;
   /** The person's yes to AI (privacy/aiGate.ts aiAllowedFor). */
   consent: (userId: string) => Promise<boolean>;

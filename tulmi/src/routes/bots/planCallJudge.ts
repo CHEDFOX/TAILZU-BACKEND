@@ -24,7 +24,7 @@ import { callsOn } from "../../botsBots/planSwitch.js";
 import { aiAllowedFor } from "../../privacy/aiGate.js";
 import { youStore } from "../../you/store.js";
 
-/** The server's own deps: the calendar's rows, the judgement table, Plan Ease's text reader, the person's settings and yes. */
+/** The server's own deps: the calendar's rows, the judgement table, Nudj's text reader, the person's settings and yes. */
 export function serverJudgeDeps(ease: Pick<PlanEase, "calendar">): JudgeDeps {
   const follows = planFollows();
   return {

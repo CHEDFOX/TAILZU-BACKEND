@@ -58,8 +58,8 @@ const askAny = (): LiveBot => ({ ...lookOf("tailzu"), slug: ASK_ANY, name: "Ask 
 export const shareLineFor = (slug: string, name: string) => {
   switch (slug) {
     case ASK_ANY: return "X0 Bot gives it to the bot that fits best. It asks before it changes anything or spends money.";
-    case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan Ease puts it on your calendar in X0 Bot. You can change it or take it out any time.";
+    case "travel": return "Nomaz adds the times and booking details to your trip. It won't book or pay for anything.";
+    case "plan": return "Nudj puts it on your calendar in X0 Bot. You can change it or take it out any time.";
     case "code": return "Xode reads it and answers. It changes code only through a pull request you approve.";
     case "keybot": return "Keylessbord writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;

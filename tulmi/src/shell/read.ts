@@ -93,6 +93,9 @@ export function wordsByDay(rows: ReadonlyArray<{ at: number; words: number; app?
 // ------------------------------------------------------------------ search
 
 /** Everything search looks through, read at once. */
+/** The built-ins whose page has its own screen id, bots.<slug> (experience/bots/ids.ts botRoute). */
+const OWN_PAGE: ReadonlySet<string> = new Set(["code", "keybot", "plan", "travel", "lingo"]);
+
 export async function readSearchSources(d: BotsAreaDeps, user: AuthedUser, tzOffsetMinutes: number): Promise<SearchSources> {
   const [projects, bots, notes, files] = await Promise.all([
     readProjects(d, user.id),
@@ -142,7 +145,8 @@ export async function readSearchSources(d: BotsAreaDeps, user: AuthedUser, tzOff
     })),
     bots: bots.map((b) => ({
       id: `botpage:${b.slug}`, title: b.name, sub: b.purpose, text: b.purpose, bot: b.slug,
-      open: b.builtin ? { screenId: `bots.${b.slug === "keybot" ? "keybot" : b.slug}` } : { screenId: "bots.bot", params: { slug: b.slug } },
+      // The built-ins with a page of their own open it; every other bot (Sribbu, Chamen, Kutt, their own) opens the bot page.
+      open: b.builtin && OWN_PAGE.has(b.slug) ? { screenId: `bots.${b.slug}` } : { screenId: "bots.bot", params: { slug: b.slug } },
       preview: { body: b.purpose },
     })),
   };
@@ -166,9 +170,9 @@ export interface RoutePreview {
   name: string;
   /** Its colour (hex). */
   color: string;
-  /** "Travel bot will take this". */
+  /** "Nomaz will take this". */
   say: string;
-  /** "Tap to send · Travel bot shows the plan before it books". */
+  /** "Tap to send · Nomaz shows the plan before it books". */
   hint: string;
   by: "name" | "rules" | "model" | "chosen" | "none";
   confidence: number;
@@ -177,8 +181,8 @@ export interface RoutePreview {
 /** What each built-in says it will do first, before it acts (STYLE.md: say what a bot will and won't do). */
 function firstWords(slug: string, name: string): string {
   switch (slug) {
-    case "travel": return "Travel bot shows the plan before it books";
-    case "plan": return "Plan Ease asks before it changes your calendar";
+    case "travel": return "Nomaz shows the plan before it books";
+    case "plan": return "Nudj asks before it changes your calendar";
     case "code": return "Xode shows the plan before it changes code";
     case "keybot": return "Keylessbord writes it, you send it";
     case "tailzu": return "X0 answers, or hands it to the right bot";

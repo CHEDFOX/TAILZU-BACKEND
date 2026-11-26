@@ -1,7 +1,7 @@
 /**
  * PLAN EASE'S HOME, THE THREADED DAY AGAIN, AS DRAWN (screens/bots/planHome.ts; docs/plan-ease.md §2):
  *
- *   - the header: Back, one tappable top area (Plan Ease, its ochre line, the walking bot) and the + beside it; both open "Plan
+ *   - the header: Back, one tappable top area (Nudj, its ochre line, the walking bot) and the + beside it; both open "Plan
  *     something" with the day shown, the top area with the box ready
  *   - the week strip, one Needs-you card above the day, the day as a thread (leave-by, weather, free time, follow lines, must not miss,
  *     For Dad with Dad's tiny bot), to-dos with no day, Share, where the day starts; no box and no chips
@@ -64,7 +64,7 @@ describe("the threaded home", () => {
     const { s, nodes, calls } = await draw("bots.plan", "phone");
     expect(lintTree(s.root!)).toEqual([]);
     expect(calls).toContain(DAY);
-    const top = labelled(nodes, "Plan Ease. Tap to plan something.")!;
+    const top = labelled(nodes, "Nudj. Tap to plan something.")!;
     expect(top.on?.onPress).toBeTruthy();
     const inside = walk(top);
     expect(inside.some((n) => n.type === "BotBuddy")).toBe(true);
@@ -72,7 +72,7 @@ describe("the threaded home", () => {
     // Nothing inside the top area is pressable: Back and + are its siblings.
     expect(inside.slice(1).filter((n) => n.on?.onPress)).toEqual([]);
     const head = parentOf(nodes, top)!;
-    expect((head.children ?? []).map((n) => n.props?.accessibilityLabel)).toEqual(["Back", "Plan Ease. Tap to plan something.", "Plan something"]);
+    expect((head.children ?? []).map((n) => n.props?.accessibilityLabel)).toEqual(["Back", "Nudj. Tap to plan something.", "Plan something"]);
     expect(labelled(nodes, "Back")!.on?.onPress).toMatchObject({ kind: "navigateBack" });
     expect(s.liveTopics ?? []).toEqual(expect.arrayContaining(["bot:plan", "calendar", "tasks"]));
     // With the new Spaces, Work in space's tabs sit under the header, as on the week page (workTab.ts), still lint clean.
@@ -81,13 +81,13 @@ describe("the threaded home", () => {
       expect(lintTree(spaces.s.root!)).toEqual([]);
       expect(spaces.calls).toContain(`GET ${A}/work/plan`);
       expect(spaces.texts).toEqual(expect.arrayContaining(["Your work", "Work in space"]));
-      expect(spaces.texts.indexOf("Plan Ease")).toBeLessThan(spaces.texts.indexOf("Your work"));
+      expect(spaces.texts.indexOf("Nudj")).toBeLessThan(spaces.texts.indexOf("Your work"));
     }
   });
 
   it("+ and the top area open bots.plan.make with from plan and the day shown; the top area asks for the box", async () => {
     const today = await draw("bots.plan", "phone");
-    expect(labelled(today.nodes, "Plan Ease. Tap to plan something.")!.on?.onPress).toEqual({ kind: "navigate", screenId: "bots.plan.make", params: { from: "plan", day: "2026-10-28", focus: "box" } });
+    expect(labelled(today.nodes, "Nudj. Tap to plan something.")!.on?.onPress).toEqual({ kind: "navigate", screenId: "bots.plan.make", params: { from: "plan", day: "2026-10-28", focus: "box" } });
     expect(labelled(today.nodes, "Plan something")!.on?.onPress).toEqual({ kind: "navigate", screenId: "bots.plan.make", params: { from: "plan", day: "2026-10-28" } });
     const tomorrow = await draw("bots.plan", "phone", { params: { day: "2026-10-29" } });
     expect(tomorrow.calls).toContain(`${DAY}&day=2026-10-29`);
@@ -163,7 +163,7 @@ describe("the threaded home", () => {
     ]));
     // The walking bot celebrates once, for a build that plays moments.
     expect(nodes.find((n) => n.type === "BotBuddy")?.props).toMatchObject({ moment: "celebrate", momentMode: "once" });
-    // A fresh row has its own mark, never the must row's: Plan Ease's ochre edge on a light ochre ground, and "Just added".
+    // A fresh row has its own mark, never the must row's: Nudj's ochre edge on a light ochre ground, and "Just added".
     const fresh: PlanDayData = { ...TODAY, thread: TODAY.thread.map((t) => (t.k === "row" && t.row.title === "Call with Dev" ? { ...t, fresh: true } : t)) };
     const f = await draw("bots.plan", "phone", { api: { [DAY]: fresh } });
     const cardOf = (title: string) => f.nodes.find((n) => n.style?.borderRadius === 14 && walk(n).some((x) => x.type === "Text" && x.props?.content === title))!;
@@ -184,12 +184,12 @@ describe("the threaded home", () => {
     const { s, texts, nodes } = await draw("bots.plan", "desktop");
     expect(lintTree(s.root!)).toEqual([]);
     // The rail: the days after the one shown, tomorrow first (it is not in the main column), only days with something on.
-    expect(texts).toEqual(expect.arrayContaining(["Plan Ease", TODAY.head, "Coming up", "Thu 29", "Fri 30", "Parent-teacher meeting 6:15 pm", "To do, no day · 3", "Needs you", "Today · Wed 28 Oct", "Mom · not done yet"]));
+    expect(texts).toEqual(expect.arrayContaining(["Nudj", TODAY.head, "Coming up", "Thu 29", "Fri 30", "Parent-teacher meeting 6:15 pm", "To do, no day · 3", "Needs you", "Today · Wed 28 Oct", "Mom · not done yet"]));
     expect(TODAY.week.map((w) => w.key)).toEqual(["2026-10-29", "2026-10-30", "2026-11-01"]);
     expect(texts).not.toContain("Later this week");
     const plan = nodes.find((n) => n.on?.onPress && walk(n).some((x) => x.type === "Text" && x.props?.content === "Plan something"))!;
     expect(plan.on?.onPress).toEqual({ kind: "navigate", screenId: "bots.plan.make", params: { from: "plan", day: "2026-10-28" } });
-    expect(labelled(nodes, "Plan Ease. Tap to plan something.")!.on?.onPress).toMatchObject({ params: { focus: "box" } });
+    expect(labelled(nodes, "Nudj. Tap to plan something.")!.on?.onPress).toMatchObject({ params: { focus: "box" } });
     // A week line threads its day here.
     expect(actions(nodes).find((a) => a.kind === "navigate" && a.screenId === "bots.plan" && (a.params as { day?: string }).day === "2026-10-30")).toBeTruthy();
     expect(nodes.some((n) => n.type === "TextField" && n.bind?.value === "say")).toBe(false);
@@ -199,7 +199,7 @@ describe("the threaded home", () => {
     const { nodes, s } = await draw("bots.plan", "phone", { can: NEW.filter((c) => c !== "BotBuddy" && c !== "BotsMotion") });
     expect(lintTree(s.root!)).toEqual([]);
     expect(nodes.some((n) => n.type === "BotBuddy")).toBe(false);
-    const top = labelled(nodes, "Plan Ease. Tap to plan something.")!;
+    const top = labelled(nodes, "Nudj. Tap to plan something.")!;
     expect(top.on?.onPress).toMatchObject({ screenId: "bots.plan.make" });
     expect(walk(top).some((n) => n.type === "Image" || (n.style?.borderRadius === 20 && n.style?.width === 40))).toBe(true);
   });

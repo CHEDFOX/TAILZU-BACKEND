@@ -214,13 +214,13 @@ describe("the shell's routes", () => {
   it("route: who will answer, decided without answering; a bot the person chose is echoed", async () => {
     const calls: string[] = [];
     const bots = {
-      target: async (_u: string, bot: string) => { calls.push(`target:${bot}`); return { kind: "bot", bot: { slug: "travel", name: "Travel bot" }, by: "rules", confidence: 0.9, paise: 0, message: "", reasons: [] }; },
-      get: async (_u: string, slug: string) => { calls.push(`get:${slug}`); return { slug, name: "Plan Ease" }; },
+      target: async (_u: string, bot: string) => { calls.push(`target:${bot}`); return { kind: "bot", bot: { slug: "travel", name: "Nomaz" }, by: "rules", confidence: 0.9, paise: 0, message: "", reasons: [] }; },
+      get: async (_u: string, slug: string) => { calls.push(`get:${slug}`); return { slug, name: "Nudj" }; },
       ask: async () => { calls.push("ask"); throw new Error("must not answer"); },
     };
     const { app, asked } = served({ bots });
     const r = await app.inject({ method: "POST", url: "/v1/shell/route", headers: who("u1"), payload: { message: "14 Nov ko Pune ki train dekh lo" } });
-    expect(r.json()).toMatchObject({ slug: "travel", say: "Travel bot will take this", hint: "Tap to send · Travel bot shows the plan before it books", color: "#3E6E8E" });
+    expect(r.json()).toMatchObject({ slug: "travel", say: "Nomaz will take this", hint: "Tap to send · Nomaz shows the plan before it books", color: "#3E6E8E" });
     const chosen = await app.inject({ method: "POST", url: "/v1/shell/route", headers: who("u1"), payload: { message: "x", bot: "plan" } });
     expect(chosen.json()).toMatchObject({ slug: "plan", by: "chosen" });
     expect(calls).toEqual(["target:any", "get:plan"]);
@@ -235,12 +235,12 @@ describe("the shell's routes", () => {
   it("ask: POST /v1/ask as the person, the answer written down for Activity, a payment link handed back", async () => {
     const { app, asked, events } = served({
       bots: { target: async () => null },
-      askReply: { result: { text: "Here is the plan.", paise: 240 }, bot: { slug: "travel", name: "Travel bot" }, answer: { opens: [{ label: "Pay", url: UPI }], approvals: [{}] } },
+      askReply: { result: { text: "Here is the plan.", paise: 240 }, bot: { slug: "travel", name: "Nomaz" }, answer: { opens: [{ label: "Pay", url: UPI }], approvals: [{}] } },
     });
     const r = await app.inject({ method: "POST", url: "/v1/shell/ask", headers: who("u1"), payload: { message: "Book the Pune train", bot: "travel", device: "phone" } });
     expect(r.statusCode).toBe(200);
     expect(asked).toEqual([{ message: "Book the Pune train", device: "phone", mode: "text", bot: "travel" }]);
-    expect(r.json().shell).toMatchObject({ bot: { slug: "travel", name: "Travel bot" }, text: "Here is the plan.", paise: 240, needs: 1, upi: upiOf(UPI)!.link });
+    expect(r.json().shell).toMatchObject({ bot: { slug: "travel", name: "Nomaz" }, text: "Here is the plan.", paise: 240, needs: 1, upi: upiOf(UPI)!.link });
     expect(await events.list("u1", 0)).toMatchObject([{ kind: "ask", bot: "travel", title: "Book the Pune train", paise: 240 }]);
   });
   it("ask: a refusal is passed through and nothing is written down", async () => {
@@ -265,7 +265,7 @@ describe("the shell's routes", () => {
   it("glance: bots and their state, what needs the person, Keylessbord's words today, the job working now", async () => {
     const { app } = served();
     const g = (await app.inject({ method: "GET", url: `/v1/shell/glance?tz=${IST}`, headers: who("u1") })).json();
-    expect(g).toMatchObject({ v: 1, needs: 1, ask: { bot: "Plan Ease", question: "Move the dentist to Friday 10 am?" }, keybot: { wordsToday: 300 }, job: { id: SAMPLE_JOBS[1]!.id, stage: 4, of: 5, stageName: "Check" } });
+    expect(g).toMatchObject({ v: 1, needs: 1, ask: { bot: "Nudj", question: "Move the dentist to Friday 10 am?" }, keybot: { wordsToday: 300 }, job: { id: SAMPLE_JOBS[1]!.id, stage: 4, of: 5, stageName: "Check" } });
     expect(g.bots.find((b: { slug: string }) => b.slug === "code")).toMatchObject({ state: "working", color: "#4F7A3A" });
     expect(g.bots[0]).toMatchObject({ slug: "plan", state: "needs" });
     expect(glanceOf({ now: FIXED_NOW, tz: IST, jobs: [], tasks: [], bots: [], words: 0 })).toMatchObject({ needs: 0, job: null, keybot: { wordsToday: 0 } });
@@ -360,7 +360,7 @@ describe("the shell's screens", () => {
     expect(texts((await buildBotsScreen(req("bots.activity", "phone"), fakeDeps())).root!)).toContain("Couldn't load your activity.");
   });
   it("ask: who will answer is shown before anything is sent, and sending goes through the shell", async () => {
-    const route = { slug: "travel", name: "Travel bot", color: "#3E6E8E", say: "Travel bot will take this", hint: "Tap to send · Travel bot shows the plan before it books", by: "rules" };
+    const route = { slug: "travel", name: "Nomaz", color: "#3E6E8E", say: "Nomaz will take this", hint: "Tap to send · Nomaz shows the plan before it books", by: "rules" };
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const s = await buildBotsScreen(req("bots.ask", "phone", { message: "14 Nov ko Pune ki shaam wali train" }), fakeDeps({ api: { "POST /v1/shell/route": route }, calls }));
     expect(calls).toEqual([{ method: "POST", path: "/v1/shell/route", body: { message: "14 Nov ko Pune ki shaam wali train" } }]);
@@ -369,14 +369,14 @@ describe("the shell's screens", () => {
     expect(j).toContain('"path":"/v1/shell/ask"');
     expect(j).toContain('"path":"/v1/shell/route"');
     expect(j).toContain('"screenId":"bots.attach"');
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Ask any bot", "Travel bot", "will take this", "Or try"]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Ask any bot", "Nomaz", "will take this", "Or try"]));
     const desk = await buildBotsScreen(req("bots.ask", "desktop"), fakeDeps());
     expect(json(desk.root)).toContain('"kind":"dictate"');
     expect(desk.state).toMatchObject({ ask: "", route: null });
   });
   it("ask: the answer, and a payment it filled in goes to Approve", async () => {
     const s = await buildBotsScreen(req("bots.ask", "phone", { message: "Pay the grocer", answer: "Filled in ₹1,240.", bot: "plan", upi: UPI, needs: 1 }), fakeDeps());
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay the grocer", "Filled in ₹1,240.", "Plan Ease answered", "Pay Fresh Basket?", "You type the amount and press pay in your UPI app", "1 change waits for your yes"]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay the grocer", "Filled in ₹1,240.", "Nudj answered", "Pay Fresh Basket?", "You type the amount and press pay in your UPI app", "1 change waits for your yes"]));
     expect(json(s.root)).toContain('"screenId":"bots.approve","params":{"upi":"upi://pay?pa=freshbasket@okhdfcbank');
   });
   it("search: projects, chats, notes, files and bots, each opening its own place", async () => {
@@ -397,7 +397,7 @@ describe("the shell's screens", () => {
   it("approve: you press pay; X0 Bot opens UPI and writes a receipt only when told", async () => {
     for (const client of both) {
       const s = await buildBotsScreen(req("bots.approve", client, { upi: UPI, bot: "plan" }), fakeDeps());
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay Fresh Basket for this week's groceries?", "You type the amount and press pay in your UPI app. Plan Ease never pays on its own."]));
+      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay Fresh Basket for this week's groceries?", "You type the amount and press pay in your UPI app. Nudj never pays on its own."]));
       const j = json(s.root);
       expect(j).not.toMatch(/₹|1,240|am=/);
       expect(j).toContain('"path":"/v1/shell/receipts"');
@@ -455,7 +455,7 @@ describe("one ask from Activity", () => {
       const t = texts(s.root!);
       expect(t, client).toEqual(expect.arrayContaining(["“Mumbai to Goa under ₹5,000”", "Ask again", "Clear from Activity", "First", "time you asked this"]));
       expect(t.some((x) => /^Open /.test(x)), client).toBe(true);
-      expect(t, client).toEqual(expect.arrayContaining(["1", "ask to Travel bot in 7 days", "You asked · Today, 5:40 pm"]));
+      expect(t, client).toEqual(expect.arrayContaining(["1", "ask to Nomaz in 7 days", "You asked · Today, 5:40 pm"]));
       for (const gone of ["Photo", "File", "Screen", "Paste", "Or hand it to", "Or try", "Live"]) expect(t, `${client} ${gone}`).not.toContain(gone);
       expect(json(s.root)).not.toContain('"type":"TextField"');
       expect(lintTree(s.root!), client).toEqual([]);

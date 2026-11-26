@@ -7,7 +7,7 @@
  *   - Find a bot: a listed bot shows to others, a copy is theirs, unlisting takes it away; ready-made ones are added the same way
  *   - a bot's rules added and removed; what its API keys used this month, counted after the answer went out
  *   - spaces: made, invited to by code, joined, who approves payments (the admin always), bots shared, left
- *   - Plan Ease's suggestion: a clash tomorrow, moved only on a yes, kept as it is when asked; trips and packing
+ *   - Nudj's suggestion: a clash tomorrow, moved only on a yes, kept as it is when asked; trips and packing
  *   - share-in: the front door's pick, and the message composed
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,11 +77,11 @@ describe("the screens, from the boards' day", () => {
     ["bots.edit", { slug: "gym-bot" }, ["Never plan on days I'm travelling", "In Find a bot", "Delete this bot"]],
     ["bots.keys", { slug: "gym-bot" }, ["Use it from your app", "1,284", "What it uses", "Website"]],
     ["bots.store", {}, ["Find a bot", "Study bot", "Shop bot", "In Home", "Yours"]],
-    ["bots.plan", {}, ["Plan Ease", "Move Dentist to Friday 10 am?", "Keep Thursday"]],
-    ["bots.travel", { }, ["Travel bot", "Pune · 14–16 Nov", "5 of 8 packed", "Ready to book · you press pay"]],
+    ["bots.plan", {}, ["Nudj", "Move Dentist to Friday 10 am?", "Keep Thursday"]],
+    ["bots.travel", { }, ["Nomaz", "Pune · 14–16 Nov", "5 of 8 packed", "Ready to book · you press pay"]],
     ["bots.spaces", {}, ["Spaces", "Home", "Studio", "needs your yes"]],
-    ["bots.share-in", { file: "f-9" }, ["Ticket_BLR-GOI_14Nov.pdf", "Travel bot"]],
-    ["bots.avatars", {}, ["Blip, as every bot", "Plan Ease · Needs you"]],
+    ["bots.share-in", { file: "f-9" }, ["Ticket_BLR-GOI_14Nov.pdf", "Nomaz"]],
+    ["bots.avatars", {}, ["Blip, as every bot", "Nudj · Needs you"]],
   ];
   for (const [id, params, want] of CASES) {
     for (const client of ["phone", "desktop"] as const) {
@@ -306,7 +306,7 @@ describe("the routes", () => {
     expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, ALICE, { canApprove: true })).statusCode).toBe(410);
     await s.call("POST", `${AREA}/spaces/${id}/bots`, BOB, { slug: "plan" });
     home = (await s.call("GET", `${AREA}/spaces`, BOB)).json().spaces[0];
-    expect(home.bots).toEqual([{ slug: "plan", name: "Plan Ease", colour: "ochre", addedBy: "Rohan", byYou: true }]);
+    expect(home.bots).toEqual([{ slug: "plan", name: "Nudj", colour: "ochre", addedBy: "Rohan", byYou: true }]);
     expect(home.members.find((m: { you: boolean }) => m.you).canApprove).toBe(true);
     expect((await s.call("GET", `${AREA}/spaces`, "33333333-3333-4333-8333-333333333333")).json().spaces).toEqual([]);
     expect((await s.call("DELETE", `${AREA}/spaces/${id}`, BOB)).json()).toEqual({ deleted: false });
@@ -351,7 +351,7 @@ describe("the routes", () => {
     expect(r.suggestion).toBeNull();
   });
 
-  it("keeps a trip and its packing list, with what the Travel bot opened to book", async () => {
+  it("keeps a trip and its packing list, with what Nomaz opened to book", async () => {
     const s = await served({ answer: () => "Deccan Queen at 5:10 pm." });
     expect((await s.call("GET", `${AREA}/trip`)).json()).toMatchObject({ trip: null, bookings: [] });
     expect((await s.call("POST", `${AREA}/trip`, ALICE, { place: "" })).statusCode).toBe(400);

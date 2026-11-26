@@ -1,7 +1,7 @@
 /**
  * "PLAN SOMETHING": THE SERVICE (PLAN_V2_MAKE, PLAN_V2_MAKE_AI; src/botsBots/planMakeService.ts; docs/plan-ease.md "Plan something").
  *
- * A memory calendar, the real Plan Ease (its box), the real follow-through (its setItem, its follows), capture's real paid road with a
+ * A memory calendar, the real Nudj (its box), the real follow-through (its setItem, its follows), capture's real paid road with a
  * fake reader. Today is Thu 12 Nov 2026 in India. Rahul's X0 people: Mom (saved as "Sunita Sharma"), Dad and Riya.
  *
  *   - the AI read: only with a yes, only for unsure words of 300 characters or fewer, one at a time, ₹1 kept; the rules otherwise

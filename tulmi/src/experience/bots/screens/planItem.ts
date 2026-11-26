@@ -26,7 +26,7 @@ import { followSection, followState, importanceField } from "./bots/planFollow.j
 import { setState } from "./bots/parts.js";
 
 /**
- * With Plan Ease's reminders on (PLAN_V2_REMINDERS) the form has no Remind and no How long: the defaults decide (15 minutes before an
+ * With Nudj's reminders on (PLAN_V2_REMINDERS) the form has no Remind and no How long: the defaults decide (15 minutes before an
  * event, 10 am on a to-do's day, an hour long), and "remind me an hour before" said in the box still works.
  */
 const defaultsDecide = (): boolean => planOn("reminders");
@@ -165,7 +165,7 @@ const failed = (message = "Couldn't save that. Try again."): ActionRef => toast(
 
 function shell(ctx: BotsCtx, heading: string, sub: string, body: Node[], footer: Node[], state: Record<string, unknown>) {
   return page(ctx, {
-    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title: heading, maxWidth: 640, gap: 18, state,
+    back: true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), nav: "plan", title: heading, maxWidth: 640, gap: 18, state,
     body: [col([text(heading, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), ...(sub ? [meta(sub, { size: 13 })] : [])], { gap: 4 }), ...body],
     footer,
   });
@@ -181,7 +181,7 @@ function addPage(ctx: BotsCtx) {
     then: call("POST", `${CAL}/tasks`, taskBody(ctx, { add: true }), { ok: done("Added to your to-dos"), fail: failed("Couldn't add it. Check the day and the time.") }),
     else: call("POST", `${CAL}/events`, eventBody(ctx, { add: true }), { ok: done("On your calendar"), fail: failed("Couldn't add it. Check the day and the time.") }),
   }, "Say what it is first");
-  return shell(ctx, "Add to your Plan", defaultsDecide() ? "Only you see it. Plan Ease reminds you when it's time." : "Only you see it. Plan Ease reminds you when you ask.", [
+  return shell(ctx, "Add to your Plan", defaultsDecide() ? "Only you see it. Nudj reminds you when it's time." : "Only you see it. Nudj reminds you when you ask.", [
     segmented([{ label: "Event", value: "event" }, { label: "To-do", value: "task" }], "kind"),
     when({ eq: ["kind", "event"] }, col(eventFields(ctx, { extraDay: day, add: true }), { gap: 18 })),
     when({ eq: ["kind", "task"] }, col(taskFields(ctx, { extraDay: day, add: true }), { gap: 18 })),
@@ -268,7 +268,7 @@ function taskPage(ctx: BotsCtx, t: TaskView, x?: Details) {
 const detailsOn = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx) && ctx.params.edit !== "1";
 const NO_DETAILS: Details = { before: [], moves: [] };
 const ACT_PATH = "/v1/widgets/act";
-/** One of Plan Ease's buttons through the act door, then a word and back. */
+/** One of Nudj's buttons through the act door, then a word and back. */
 const actThen = (ctx: BotsCtx, item: string, action: string, message: string): ActionSpec =>
   call("POST", ACT_PATH, { item, action, key: `${item}:${action}:${ctx.live.now}`.slice(0, 120) }, { ok: done(message), fail: failed("Couldn't do that. Try again.") }) as ActionSpec;
 /** The form, to change one thing: what tapping a line of the details opens. */
@@ -431,7 +431,7 @@ function arrivalRows(ctx: BotsCtx, e: EventView, x: Details): Node[] {
 
 function detailsShell(ctx: BotsCtx, title: string, lines: Node[], extra: Node[], buttons: Node[], state: Record<string, unknown> = {}) {
   return page(ctx, {
-    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title, maxWidth: 560, gap: 18, state,
+    back: true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), nav: "plan", title, maxWidth: 560, gap: 18, state,
     body: [
       text(title, { size: 20, weight: 600, lineHeight: 26 }),
       col(lines, { gap: 6, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),

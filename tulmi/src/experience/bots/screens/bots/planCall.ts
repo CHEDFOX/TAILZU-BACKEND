@@ -4,7 +4,7 @@
  * (GET .../plan/calls/:id) and draws one of four modes:
  *
  *   talk     a phone whose JS takes calls (kit canCall), the call ringing, answered, or missed but still inside the grace: it answers,
- *            Plan Ease speaks first (the server voice with the person's AI permission, else the phone's own voice: nothing leaves the
+ *            Nudj speaks first (the server voice with the person's AI permission, else the phone's own voice: nothing leaves the
  *            phone), then turn by turn the person talks back (only with that permission and a build that listens: kit canVoice).
  *            Without it the call simply plays, and says nothing about AI: Home's card is the one place that asks.
  *            A STORE BUILD THAT CAN HOLD A LIVE CALL (kit canRealtimeCall) and a call the server says may have one (v.rt) gets the same
@@ -14,7 +14,7 @@
  *   ended    the call is over, or was declined
  *   record   the window, or a phone without the call's JS: what the call was, with the item's own buttons, and no voice
  *
- * Look: Plan Ease's own. Paper and ink, the ochre only on its bot and the status dot, Geist, the bot standing on his stage. No green or
+ * Look: Nudj's own. Paper and ink, the ochre only on its bot and the status dot, Geist, the bot standing on his stage. No green or
  * red, no round phone buttons: it is an ordinary screen of the app, not the phone's call screen. Every item button that leaves the
  * screen ends the call first.
  *
@@ -59,7 +59,7 @@ function elapsed(bind: string): Node {
   return { ...t, props: { ...(t.props ?? {}), format: "elapsed" } };
 }
 
-/** The status line: a dot in Plan Ease's ochre (breathing while it rings or talks), then the words. */
+/** The status line: a dot in Nudj's ochre (breathing while it rings or talks), then the words. */
 function status(words: Node, live = false): Node {
   const dot = live ? statusMark("working", { color: OCHRE, size: 8 }) : box([], { width: 8, height: 8, borderRadius: 4, backgroundColor: OCHRE, flexShrink: 0 });
   return row([dot, words], { gap: 8, alignItems: "center", justifyContent: "center" });
@@ -145,7 +145,7 @@ const STAGE_W = 180;
 const STAGE_NUDGE = 86;
 
 /**
- * Plan Ease standing on his stage (listening and thinking with the call), or his face where the build has no stage. He doesn't roam on
+ * Nudj standing on his stage (listening and thinking with the call), or his face where the build has no stage. He doesn't roam on
  * a call, so he stays where a bot first stands, a quarter of the way into his stage (0.2 to 0.32 of its width, botTiles' setup): the
  * stage is kept narrow and set that much right of the middle, so he stands under the name, with or without Reduce Motion.
  */

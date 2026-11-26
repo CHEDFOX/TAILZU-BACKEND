@@ -90,7 +90,7 @@ beforeEach(() => { brain.inputs = []; brain.answer = null; planner.seen = []; })
 
 describe("the builder", () => {
   const routine = (o: Partial<Routine>): Routine => ({
-    id: "r1", userId: ME, bot: "plan", botName: "Plan Ease", task: "Sum up my week", schedule: { every: "week", minute: 17 * 60, days: [5] } as Routine["schedule"],
+    id: "r1", userId: ME, bot: "plan", botName: "Nudj", task: "Sum up my week", schedule: { every: "week", minute: 17 * 60, days: [5] } as Routine["schedule"],
     tz: 330, status: "on", pausedWhy: "", nextAt: T0 + 3 * HOUR, lastAt: null, lastStatus: null, lastText: "", lastPaise: 0, runs: 0, fails: 0,
     createdAt: T0, updatedAt: T0, ...o,
   });
@@ -116,7 +116,7 @@ describe("the builder", () => {
     expect(c.text).toContain("- I train at six in the morning (they said so)");
     expect(c.text).toContain("- Riya, on WhatsApp: 1 time, last 5 min ago");
     expect(c.text).toContain("send to Riya on WhatsApp: tell Riya the mockups are ready");
-    expect(c.text).toContain("Routine with Plan Ease: Sum up my week");
+    expect(c.text).toContain("Routine with Nudj: Sum up my week");
     expect(c.text).toContain("\"tell Riya the mockups are ready\": Sent it to Riya.");
     expect(c.parts.you.map((f) => f.status)).toEqual(["confirmed", "found", "found", "confirmed"]);
     expect(c.trimmed).toEqual([]);

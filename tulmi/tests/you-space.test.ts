@@ -104,7 +104,7 @@ function rig() {
 
 async function seeded() {
   const r = rig();
-  const plan = await r.bot("Plan Ease"), travel = await r.bot("Travel");
+  const plan = await r.bot("Nudj"), travel = await r.bot("Travel");
   await r.store.addFacts(ME, plan, ["Lives in Indiranagar, Bangalore", "Prefers short replies", "Pays rent on the 5th through UPI"], 40, NOW - 3000);
   await r.store.addFacts(ME, travel, ["Prefers short replies", "My sister Meera lives in Pune"], 40, NOW - 2000);
   await r.store.addFacts(ME, SHARED_ID, ["Lives in Indiranagar, Bangalore", "Prefers short replies", "My sister Meera lives in Pune"], 60, NOW - 1000);
@@ -116,9 +116,9 @@ describe("UserSpace", () => {
     const { space } = await seeded();
     const v = await space.section(ME, "likes");
     expect(v.lines).toHaveLength(1);
-    expect(v.lines[0]).toMatchObject({ text: "Prefers short replies", from: ["Plan Ease", "Travel"], forAll: true, section: "likes" });
+    expect(v.lines[0]).toMatchObject({ text: "Prefers short replies", from: ["Nudj", "Travel"], forAll: true, section: "likes" });
     const money = await space.section(ME, "money");
-    expect(money.lines[0]).toMatchObject({ from: ["Plan Ease"], forAll: false });
+    expect(money.lines[0]).toMatchObject({ from: ["Nudj"], forAll: false });
     expect(money.canAdd).toBe(false);
   });
 
@@ -132,7 +132,7 @@ describe("UserSpace", () => {
     expect(of("day").count).toBe(1); // the review today; the old event is past
     expect(of("work").count).toBe(1);
     expect(of("files").count).toBe(1);
-    expect(of("bots")).toMatchObject({ count: 2, peek: "Plan Ease, Travel" });
+    expect(of("bots")).toMatchObject({ count: 2, peek: "Nudj, Travel" });
     expect(of("timeline").count).toBe(4);
   });
 

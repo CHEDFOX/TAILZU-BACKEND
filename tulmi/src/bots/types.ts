@@ -18,7 +18,7 @@ export const PALETTE = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", 
  * A NEUTRAL KEPT FOR A BOT TAILZU SHIPS, and not offered to anybody.
  *
  * `stone` is what `botLook` falls back to for a bot with no colour of its own, so a bot that ships must not wear it
- * or it looks like any bot somebody made. `ash` is the neutral for one that needs one (Lingo). It is deliberately
+ * or it looks like any bot somebody made. `ash` is the neutral for one that needs one (Babbl). It is deliberately
  * outside PALETTE: in it, it would be offered in the picker, it would change which colour `colourFor` hands every
  * future bot a person makes, and somebody's own bot could come out the same colour as one of ours.
  */
@@ -78,7 +78,7 @@ export interface BotBudgets {
   dailyPaise: number;
 }
 
-/** A bot, as one format for Xode, Keylessbord, Plan Ease, the Travel bot and every bot a person makes. */
+/** A bot, as one format for Xode, Keylessbord, Nudj, Nomaz and every bot a person makes. */
 export interface BotDef {
   /** A uuid for a person's bot; the slug for a built-in. */
   id: string;

@@ -38,16 +38,16 @@ import { idleLine } from "../shell/parts.js";
  */
 export const BOT_GROUPS: ReadonlyArray<{ id: string; title: string; line: string; slugs: readonly string[] }> = [
   { id: "day", title: "Your day", line: "What's on, and what's ahead", slugs: ["plan", "oracle"] },
-  { id: "said", title: "Said and written", line: "Your meetings, your mail, and what was agreed", slugs: ["meet", "mail", "notes"] },
+  { id: "said", title: "Said and written", line: "Your mail, your meetings, and what was agreed", slugs: ["mail"] },
   { id: "making", title: "Making", line: "Describe it, and they build it", slugs: ["code", "cinema"] },
   { id: "world", title: "Out in the world", line: "Where you are going, and how you'll speak there", slugs: ["travel", "lingo"] },
 ];
 
 /**
  * Built-ins that are deliberately not tiles here. `talk` is the tab you came from; `keybot` is a keyboard, and gets
- * its own line at the foot (see this file's head).
+ * its own line at the foot (see this file's head); `meet` is part of Sribbu (the mail bot's tile: screens/bots/sribbu.ts).
  */
-export const NOT_TILED: readonly string[] = ["talk", "keybot"];
+export const NOT_TILED: readonly string[] = ["talk", "keybot", "meet"];
 
 /** Every slug a group claims, for the check that nothing is lost. */
 export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slugs);
@@ -59,10 +59,8 @@ export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slug
  */
 export const START_LINES: Readonly<Record<string, string>> = {
   plan: "A planner that won't let you quit. Give it a goal; it maps the steps, books the time and chases you to the end.",
-  oracle: "An astrologer that knows your birth chart. Ask about love, money or timing; every answer is read for you alone.",
-  meet: "A note-taker that joins your calls. It writes down everything and turns each promise made into a task.",
-  mail: "An assistant for your work inbox. It sorts every email, replies in your voice and shows you only what needs you.",
-  notes: "A memory of every meeting you've had. Ask what was decided, who said it or what's still pending, any time.",
+  oracle: "A divine being that sees the other side of cause and effect. Ask about love, work or timing; it shows you why.",
+  mail: "A scribe for your working life. It answers your inbox, sits in your calls and remembers every word agreed.",
   code: "A developer on call. Say what's broken; it reads your code, fixes it and sends you the change to approve.",
   cinema: "A film studio in your pocket. Describe a video or a poster; it writes, shoots, edits and hands it over done.",
   travel: "A travel planner that does the legwork. Say where and when; it builds the route, the stays and the timings.",
@@ -99,7 +97,7 @@ function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
   return {
     ...botTileSpec({ ...b, working: false, needs: 0 }, { idle: startLine(b, ctx), onPress: botRoute(b.slug) }),
     state: "idle",
-    // The Oracle wears its character, the mail bot the postie, the cinema bot the director, as on Home.
+    // Chamen wears its character, the mail bot the postie, the cinema bot the director, as on Home.
     ...(b.builtin && b.slug === "oracle" ? oracleTileLook(ctx) : b.builtin && b.slug === "mail" ? mailTileLook(ctx) : b.builtin && b.slug === "cinema" ? cinemaTileLook(ctx) : {}),
   };
 }

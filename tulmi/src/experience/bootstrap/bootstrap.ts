@@ -55,7 +55,7 @@ const APP_STORE_ID = /^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")
 const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE !== "false";
 
 /**
- * "Add this" carries what is on a desktop's screen to Plan Ease's one box: a build that can (DeskAddThis), with the app release, the
+ * "Add this" carries what is on a desktop's screen to Nudj's one box: a build that can (DeskAddThis), with the app release, the
  * simpler page and capture all on (a box without capture would read "add this" as a to-do called "this").
  */
 function deskAddThisOn(opts: { deskAddThis?: boolean; formFactor?: string }): boolean {
@@ -181,9 +181,9 @@ export function buildBootstrap(
     deskTasks?: boolean;
     /** The desktop shows the server's notices from a live socket of its own
      *  (it said "DeskNotices": its main process, src/main/notices.js), so
-     *  Plan Ease's reach it there while it is in use (live/notices.ts). */
+     *  Nudj's reach it there while it is in use (live/notices.ts). */
     deskNotices?: boolean;
-    /** The desktop carries what is on its screen to Plan Ease's one box with
+    /** The desktop carries what is on its screen to Nudj's one box with
      *  "add this" (it said "DeskAddThis": src/dictation/addThis.js). */
     deskAddThis?: boolean;
     /** Signed in at all — setup's first step. */
@@ -311,7 +311,7 @@ export function buildBootstrap(
           // rest the desktop kept built in (appLists.ts). "Add this" words are
           // only in the lists of a build that carries the screen with them.
           ...desktopLists({ addThis: deskAddThisOn(opts) }),
-          // Plan Ease's notices on this computer while it is in use (the app
+          // Nudj's notices on this computer while it is in use (the app
           // release, PLAN_V2_APP): only a build that shows them is told to.
           ...(opts.deskNotices === true && planOn("app") ? { "desktop.notices.enabled": true } : {}),
           // "Add this": the box reads what is on the screen (planEase.ts box

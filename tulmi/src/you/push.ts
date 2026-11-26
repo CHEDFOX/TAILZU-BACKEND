@@ -7,9 +7,9 @@
  *                not sent for a bot they turned off
  *   the rest     the engine's own reminders (Keylessbord's streak, the week): not sent in quiet hours, nor with Keylessbord turned off
  *   summary      one note a day at their hour, only when they turned it on and something happened that day
- *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off.
- *                Plan Ease's own kinds (botsBots/planKinds.ts: plan_event, plan_todo, the day notes...) are told apart there, each
- *                with its group: Plan Ease's (as the reminders), a person's word (as people), or never a sound (the morning note)
+ *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Nudj off.
+ *                Nudj's own kinds (botsBots/planKinds.ts: plan_event, plan_todo, the day notes...) are told apart there, each
+ *                with its group: Nudj's (as the reminders), a person's word (as people), or never a sound (the morning note)
  *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound.
  *                With NOTIFY_REPLY on, a run's answer comes as the bot's own `bot_ask` carrying `data.routineId` instead, and keeps
  *                this rule rather than the bot-chat one below: the reply box never changes which pushes go
@@ -80,15 +80,15 @@ export function verdict(s: YouSettings, kind: string, minute: number, bot?: stri
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
-  // A call (botsBots/planCall.ts): only with Calls on, Plan Ease on, and never in quiet hours (then the push goes, without a sound).
+  // A call (botsBots/planCall.ts): only with Calls on, Nudj on, and never in quiet hours (then the push goes, without a sound).
   if (kind === "plan_call") return n.calls && !n.botsOff.includes("plan") && !quiet ? "send" : "drop";
   if (kind === "plan_call_missed") return "send";
-  // Every kind of Plan Ease's, from its one list (planKinds.ts), so a new one is never left to the Keylessbord branch below.
+  // Every kind of Nudj's, from its one list (planKinds.ts), so a new one is never left to the Keylessbord branch below.
   const plan = planVerdictGroup(kind);
   if (plan === "plan") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
   if (plan === "silent") return n.botsOff.includes("plan") ? "drop" : "silent";
   if (plan === "people") return quiet ? "silent" : "send";
-  // A person's word that never makes a sound (who took a family ask, the one nudge): sent, whatever Plan Ease's switch says.
+  // A person's word that never makes a sound (who took a family ask, the one nudge): sent, whatever Nudj's switch says.
   if (plan === "quiet") return "silent";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
   if (MAIL.has(kind)) return n.botsOff.includes("mail") ? "drop" : quiet ? "silent" : "send";
@@ -140,7 +140,7 @@ export async function dayOf(userId: string, o: { spending: Spending; jobs: JobRo
 }
 
 /**
- * Whether today's summary rides in Plan Ease's evening note instead (botsBots/planEase.ts rides): then it isn't sent on its own. Set by
+ * Whether today's summary rides in Nudj's evening note instead (botsBots/planEase.ts rides): then it isn't sent on its own. Set by
  * routes/bots/botsBots.ts; unset, every summary goes as before.
  */
 let summaryRide: ((userId: string, day: string) => Promise<boolean>) | null = null;
@@ -165,7 +165,7 @@ export function startSummaries(o: { spending: Spending; jobs: JobRouter | null; 
         const since = (minute - p.settings.notify.summaryAt + 1440) % 1440;
         if (since >= WINDOW_MIN) continue;
         const local = new Date(now + tz * 60_000).toISOString().slice(0, 10);
-        // One evening push, not two: Plan Ease's evening note carries the line tonight.
+        // One evening push, not two: Nudj's evening note carries the line tonight.
         if (summaryRide && await summaryRide(p.userId, local).catch(() => false)) continue;
         const line = summaryLine(await dayOf(p.userId, { ...o, now, tz }));
         if (!line) continue;

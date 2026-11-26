@@ -187,7 +187,7 @@ export interface ScreenData {
   looks?: { v: number; f: number; spec: unknown };
   /**
    * Which phone this is (`--platform android`). The default is the iPhone, as it was. Several screens read it — the
-   * calendar place on Plan Ease, the Motion row's words, the arrival card — so an Android shot is the only way to see what
+   * calendar place on Nudj, the Motion row's words, the arrival card — so an Android shot is the only way to see what
    * an Android phone is really sent. It is ignored for the window, which is neither.
    */
   platform?: "ios" | "android";
