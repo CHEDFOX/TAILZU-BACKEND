@@ -1,5 +1,13 @@
 # Being built right now (read before you start)
 
+## 26 Nov: CINEMA IS PICTURES AND 3D FOR NOW: AN IDEA, SEEN, THEN BUILT IN BLENDER
+
+Films are switched off (CINEMA_FILMS, off by default): no film can be started or moved forward, nothing offers one, films
+made stay. The cinema page is now An idea → Show me (a picture) → Make it 3D. The 3D loop reads the picture into a brief
+(new role cinema_brief, vision), builds from it, and its eye judges every render against the picture; the finished thing
+is rendered from two more sides; each round's preview shows on the page as it builds. Also fixed: the Blender script
+asked for a denoiser some builds do not have and then rendered nothing. Needs migration 0118. docs/cinema-3d.md §2a.
+
 ## 26 Nov: REAL PICTURES ON EVERY CARD
 
 Talk's order card, the site page and the per-site cards show the real dish or product: the picture the site itself

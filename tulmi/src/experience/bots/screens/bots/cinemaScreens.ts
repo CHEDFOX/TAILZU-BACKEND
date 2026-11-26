@@ -35,6 +35,7 @@ import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
 import { isDesk, setState } from "./parts.js";
+import { loadScenes, type ScenesData } from "./cinema3dData.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
@@ -47,12 +48,15 @@ const idParam = (v: unknown): string => (/^[A-Za-z0-9_-]{1,64}$/.test(String(v ?
 export const abs = (path: string): string => (/^(https?:\/\/|data:)/.test(path) ? path : `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}${path}`);
 const plain = (s: string | null | undefined): string => String(s ?? "").trim().replace(/^[@\s]+/, "");
 
-/** What the bot's page reads: the overview, or that it could not be read. */
-export type CinemaData = { overview?: CinemaOverview; down?: boolean };
+/** What the bot's page reads: the overview and their 3D creations, or that it could not be read. */
+export type CinemaData = { overview?: CinemaOverview; scenes?: ScenesData; down?: boolean };
 
 export async function loadCinema(_ctx: BotsCtx, deps: Deps): Promise<CinemaData> {
-  const overview = await deps.api<CinemaOverview>("GET", `${CINEMA}/overview`).catch(() => undefined);
-  return overview ? { overview } : { down: true };
+  const [overview, scenes] = await Promise.all([
+    deps.api<CinemaOverview>("GET", `${CINEMA}/overview`).catch(() => undefined),
+    loadScenes(deps),
+  ]);
+  return overview ? { overview, ...(scenes ? { scenes } : {}) } : { down: true };
 }
 
 export const openFilm = (id: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.cinemaFilm, params: { f: id } });

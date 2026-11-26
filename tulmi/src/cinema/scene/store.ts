@@ -18,6 +18,8 @@ export interface KeptKeys {
   preview?: string;
   final?: string;
   blend?: string;
+  /** The other angles of a still, round the thing (make.ts VIEW_ANGLES). */
+  views?: string[];
 }
 
 export interface SceneRecord {
@@ -38,6 +40,8 @@ export interface SceneRecord {
   error: string | null;
   createdAt: number;
   updatedAt: number;
+  /** The picture of the idea it was built from (one of their cinema pictures), by media key. Absent: built from words. */
+  refKey?: string | null;
 }
 
 export interface SceneStore {
@@ -68,12 +72,14 @@ interface Row {
   error: string | null;
   created_at: string;
   updated_at: string;
+  ref_key?: string | null;
 }
 
 const toRow = (r: SceneRecord): Row => ({
   id: r.id, user_id: r.ownerId, creation: r.creation, version: r.version, ask: r.ask, status: r.status,
   why: r.why, rounds: r.rounds, objects: r.objects, kept: r.kept, mime: r.mime, paise: r.paise, error: r.error,
   created_at: new Date(r.createdAt).toISOString(), updated_at: new Date(r.updatedAt).toISOString(),
+  ...(r.refKey ? { ref_key: r.refKey } : {}),
 });
 
 const fromRow = (d: Row): SceneRecord => ({
@@ -83,6 +89,7 @@ const fromRow = (d: Row): SceneRecord => ({
   rounds: Number(d.rounds) || 0, objects: Number(d.objects) || 0,
   kept: d.kept ?? {}, mime: d.mime ?? null, paise: Number(d.paise) || 0, error: d.error ?? null,
   createdAt: Date.parse(d.created_at) || 0, updatedAt: Date.parse(d.updated_at) || 0,
+  ...(d.ref_key ? { refKey: d.ref_key } : {}),
 });
 
 export class MemorySceneStore implements SceneStore {

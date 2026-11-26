@@ -75,10 +75,13 @@ describe("the eye ends it", () => {
     expect(made.why).toBe("done");
     expect(made.ok).toBe(true);
     expect(made.rounds.length).toBe(1);
-    // the cheap one first, then the real one
-    expect(r.jobs.length).toBe(2);
+    // the cheap one first, then the real one, then two more sides of it at preview size (what makes a still read as 3D)
+    expect(r.jobs.length).toBe(4);
     expect(r.jobs[0]!.script).toContain("resolution_x = 480");
     expect(r.jobs[1]!.script).toContain("resolution_x = 1280");
+    expect(r.jobs[2]!.script).toContain("resolution_x = 720");
+    expect(r.jobs[2]!.script).not.toBe(r.jobs[3]!.script);
+    expect(made.kept.views?.map((v) => v.key.split("/").pop())).toEqual(["view-1.png", "view-2.png"]);
     // the eye was shown the picture, not told about it
     expect(b.prompts.find((p) => p.purpose === "cinema.eye")!.pictures).toBe(1);
     expect(made.paise).toBe(25);

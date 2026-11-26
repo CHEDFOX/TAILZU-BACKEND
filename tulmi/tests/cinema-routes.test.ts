@@ -16,6 +16,8 @@ vi.hoisted(() => {
   process.env.OPENROUTER_API_KEY = "k";
   process.env.GROQ_API_KEY = "k";
   process.env.DEV_SKIP_AUTH = "true";
+  // The film doors: films are off by default for now (cinema/films.ts), and on here.
+  process.env.CINEMA_FILMS = "true";
 });
 
 import { builtinBots, cinemaOn, isBuiltinSlug } from "../src/bots/builtin.js";

@@ -531,6 +531,17 @@ export class CinemaService {
     return publicPicture(p, signMedia(key));
   }
 
+  /**
+   * One of their pictures, whole, for building it in 3D (scene/service.ts start's `picture`): its words, its key and its bytes.
+   * Only their own: another person's picture id is not there.
+   */
+  async pictureFile(userId: string, id: string): Promise<{ key: string; bytes: Buffer; mime: string; words: string } | null> {
+    const p = await this.d.store.getPicture(userId, id);
+    if (!p) return null;
+    const bytes = await this.d.blobs.get(p.key);
+    return bytes ? { key: p.key, bytes, mime: p.type, words: p.words } : null;
+  }
+
   async deletePicture(userId: string, id: string): Promise<void> {
     const p = await this.d.store.getPicture(userId, id);
     if (!p) throw new CinemaError(404, "There is no such picture.", "not_found");

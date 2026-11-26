@@ -66,6 +66,7 @@ const { checkShown } = await import("../src/show/check.js");
 const { Seen } = await import("../src/show/links.js");
 const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
+const { BriefReply } = await import("../src/cinema/scene/brief.js");
 const { checkScene } = await import("../src/cinema/scene/check.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
@@ -86,7 +87,7 @@ type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
 
 /** The roles that read a picture: their fixtures name one, and they are told it is evidence rather than that it is data. */
-const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye",
+const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye", "cinema_brief",
   // The film half's three eyes: on a finished picture, on a storyboard still, and on a video take.
   "cinema_picture_check", "cinema_still", "cinema_take"];
 
@@ -365,6 +366,10 @@ describe("a known-good answer for each role", () => {
       reads: (t) => checkScene(SceneReply.parse(JSON.parse(t))).scene,
     },
     cinema_eye: { text: '{"ok":true,"issues":[],"fix":""}', reads: (t) => EyeReply.parse(JSON.parse(t)) },
+    cinema_brief: {
+      text: '{"subject":"a matte black speaker on a pale floor","objects":[{"name":"speaker","shape":"a tall box with rounded edges and a round grille","size":"knee high","colour":"#1a1a1a","material":"plastic","where":"in the middle, on the floor"}],"camera":"slightly above, three quarters","light":"soft from the left","ground":"pale concrete floor, plain grey wall"}',
+      reads: (t) => BriefReply.parse(JSON.parse(t)),
+    },
     cinema_propose: {
       text: '{"ready":true,"concept":"A coffee cart at dawn: the owner pulls a shot, steam rising off the cup, and hands it to the first customer of the day.","seconds":24,"aspect":"9:16","because":"you said under half a minute, and a reel"}',
       reads: (t) => readProposal(JSON.parse(t)),

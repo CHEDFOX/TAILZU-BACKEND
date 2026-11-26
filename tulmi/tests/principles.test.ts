@@ -57,6 +57,7 @@ const { ShowReply } = await import("../src/show/design.js");
 const { DrawReply } = await import("../src/drawn/draw.js");
 const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
+const { BriefReply } = await import("../src/cinema/scene/brief.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
 const { OrdersReply } = await import("../src/sites/history/orders.js");
@@ -321,6 +322,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   screen_draw: 2290, // 2082 measured
   cinema_scene: 2743, // 2494 measured
   cinema_eye: 1354, // 1231 measured
+  cinema_brief: 1415, // 1286 measured
   cinema_propose: 1700, // 1593 measured
   cinema_direct: 6700, // 6426 measured
   cinema_revise: 7000, // 6792 measured
@@ -435,6 +437,7 @@ describe("the contracts say what the parsers read", () => {
     ["screen_draw", DrawReply],
     ["cinema_scene", SceneReply],
     ["cinema_eye", EyeReply],
+    ["cinema_brief", BriefReply],
     ["widget_digest", DigestReply],
     ["site_read", CardReply],
     ["site_orders", OrdersReply],

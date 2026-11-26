@@ -96,6 +96,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   screen_draw: 2082,
   cinema_scene: 2494,
   cinema_eye: 1231,
+  cinema_brief: 1286,
   // The film half's seven replaced real constants in src/cinema, so each has a true "before": the length of the system
   // message that call site sent, plus the 60 the gateway adds for a JSON answer. cinema_still and cinema_take had no
   // constant at all - qc.ts built their prompt per shot, the shot's own facts inside it - so theirs is one representative
@@ -132,7 +133,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "site_orders", "site_taste", "site_discover", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "lingo_unit", "lingo_say", "screen_draw"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "site_orders", "site_taste", "site_discover", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "cinema_brief", "lingo_unit", "lingo_say", "screen_draw"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

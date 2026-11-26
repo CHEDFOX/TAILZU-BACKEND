@@ -138,7 +138,7 @@ describe("the sweep", () => {
     expect(sites.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/edit.ts", "artifacts/kit.ts", "artifacts/service.ts",
       "askDecide/index.ts", "bots/builder.ts", "bots/door.ts", "bots/memory.ts", "bots/run.ts",
-      "cinema/pictures.ts", "cinema/plan.ts", "cinema/propose.ts", "cinema/scene/eye.ts", "cinema/scene/make.ts", "cinema/service.ts",
+      "cinema/pictures.ts", "cinema/plan.ts", "cinema/propose.ts", "cinema/scene/brief.ts", "cinema/scene/eye.ts", "cinema/scene/make.ts", "cinema/service.ts",
       "code/agent/context.ts", "code/agent/merge.ts", "code/agent/phases.ts", "code/agent/referent.ts", "code/agent/review.ts", "code/brain/classify.ts", "code/chat/answer.ts", "code/chat/look.ts", "code/chat/naming.ts", "code/flow/plan.ts", "code/flow/triage.ts", "code/newproject/spec.ts",
       "code/prcare/review.ts", "code/project/summarize.ts", "code/resources/brief.ts", "code/team/review.ts", "code/team/split.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
       "drawn/draw.ts",
