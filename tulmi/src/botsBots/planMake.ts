@@ -7,7 +7,7 @@
  * (planMakeService.ts). Nothing goes on the Plan and nobody is told until Done.
  *
  * AI only reads messy words typed in the box (or the card's What when the person taps "Read it with AI"), only with their yes to AI
- * (privacy/aiGate.ts) and inside Plan Ease's day budget (planCapture.ts readWords). The rules decide times, people, must not miss,
+ * (privacy/aiGate.ts) and inside Nudj's day budget (planCapture.ts readWords). The rules decide times, people, must not miss,
  * clashes and caps; every AI answer is checked again (checkAi), and importance never comes from a model.
  *
  *   CardDraft          the card as the screen keeps it (strings only: the phone and the desktop compare state differently)
@@ -245,7 +245,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const MON_FRI = [1, 2, 3, 4, 5];
 /** How far ahead a day may be: more than this is `too_far`. */
 const FAR_DAYS = 400;
-/** A to-do with only a day is reminded at 10 am that day (Plan Ease's reminders, calendar/service.ts TASK_DAY_MINUTE). */
+/** A to-do with only a day is reminded at 10 am that day (Nudj's reminders, calendar/service.ts TASK_DAY_MINUTE). */
 const TASK_MINUTE = 10 * 60;
 /** A time this close is already "passed" (it would be gone before the person finishes). */
 const SOON_MIN = 2;

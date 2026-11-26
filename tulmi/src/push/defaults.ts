@@ -8,7 +8,7 @@
  * user (platform, language, named users, a percentage, a date window, an
  * experiment) before the planner reads it, and removing the rule restores it.
  *
- * Kept free of imports so the control plane can preview it without a cycle, but one: Plan Ease's kinds (botsBots/planKinds.ts), itself
+ * Kept free of imports so the control plane can preview it without a cycle, but one: Nudj's kinds (botsBots/planKinds.ts), itself
  * free of imports, so each of its kinds is said once.
  */
 import { CALL_KIND_IDS, PLAN_KIND_IDS, callPushFlags, callPushLabels, followPushFlags, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
@@ -192,7 +192,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     // A reminder the person set on their own calendar or a to-do (src/calendar): the Plan, on that day (data.day).
     "push.plan_reminder.enabled": true,
     "push.plan_reminder.screenId": "bots.plan",
-    // Plan Ease's own kinds (botsBots/planKinds.ts): a reminder that says what it is, with at most 2 buttons, and the day notes. Each has
+    // Nudj's own kinds (botsBots/planKinds.ts): a reminder that says what it is, with at most 2 buttons, and the day notes. Each has
     // its screen, buttons, channel, priority and expiry (push.<kind>.priority / .ttlMin / .interruptionLevel, read by push/engine.ts).
     ...planPushFlags(),
     // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings instead, on a phone that takes calls.

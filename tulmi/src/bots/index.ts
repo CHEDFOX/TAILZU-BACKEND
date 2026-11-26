@@ -3,7 +3,7 @@
  *
  *   types.ts      a bot's definition, its skills, the palette, the limits, BotError
  *   validate.ts   a definition checked (the palette only, the rules capped, the skills a schema); the owner's rules that try to change ours are inert
- *   builtin.ts    Xode, Keylessbord, Plan Ease and the Travel bot, in the same format
+ *   builtin.ts    Xode, Keylessbord, Nudj and Nomaz, in the same format
  *   store.ts      bots, keys (hashed), commands, facts and threads: the memory twin and Supabase (migration 0038)
  *   keys.ts       an API key: made at random, shown once, kept as sha256 of a pepper and the key
  *   commands.ts   saved commands: a short template with {{input}}, run as /name

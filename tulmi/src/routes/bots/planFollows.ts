@@ -11,7 +11,7 @@
  * Every answer (Done, Later, Can't, I'll do it, Undone, Allow, Not now) goes through the act door (POST /v1/widgets/act, pf:<id>:<n>).
  *
  * WIRING, at boot: the follow service hears who is in a person's X0 people from messaging itself (threads.ts contacts: the same rules,
- * never a list of its own), a muted chat, a family ask's Done, Plan Ease's six a day; the calendar asks it before each reminder and tells
+ * never a list of its own), a muted chat, a family ask's Done, Nudj's six a day; the calendar asks it before each reminder and tells
  * it when a to-do is ticked; an opened push marks its step; its sweep runs every minute.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";

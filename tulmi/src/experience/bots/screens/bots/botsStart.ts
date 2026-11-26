@@ -24,7 +24,7 @@
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type LiveBot, page, col, row, text, meta, grow, C, open, SCREENS, sectionLabel, botAvatar, icon,
-  grid, labelled, title as pageTitle, botRoute, canMove, botTiles, botTileSpec, makeTileSpec, botTile, makeBotTile, homeSurprises,
+  grid, labelled, title as pageTitle, botRoute, canMove, canStage, botTiles, botTileSpec, makeTileSpec, botTile, makeBotTile, homeSurprises,
 } from "../../kit.js";
 import { oracleTileLook } from "./oraclePage.js";
 import { mailTileLook } from "./mailPage.js";
@@ -38,36 +38,35 @@ import { idleLine } from "../shell/parts.js";
  */
 export const BOT_GROUPS: ReadonlyArray<{ id: string; title: string; line: string; slugs: readonly string[] }> = [
   { id: "day", title: "Your day", line: "What's on, and what's ahead", slugs: ["plan", "oracle"] },
-  { id: "said", title: "Said and written", line: "Your meetings, your mail, and what was agreed", slugs: ["meet", "mail", "notes"] },
+  { id: "said", title: "Said and written", line: "Your mail, your meetings, and what was agreed", slugs: ["mail"] },
   { id: "making", title: "Making", line: "Describe it, and they build it", slugs: ["code", "cinema"] },
   { id: "world", title: "Out in the world", line: "Where you are going, and how you'll speak there", slugs: ["travel", "lingo"] },
 ];
 
 /**
  * Built-ins that are deliberately not tiles here. `talk` is the tab you came from; `keybot` is a keyboard, and gets
- * its own line at the foot (see this file's head).
+ * its own line at the foot (see this file's head); `meet` is part of Sribbu (the mail bot's tile: screens/bots/sribbu.ts).
  */
-export const NOT_TILED: readonly string[] = ["talk", "keybot"];
+export const NOT_TILED: readonly string[] = ["talk", "keybot", "meet"];
 
 /** Every slug a group claims, for the check that nothing is lost. */
 export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slugs);
 
 /**
- * WHAT EACH CAN DO, IN A LINE THAT FITS TWO LINES OF A TILE. The built-ins' own words for this page (their `purpose` is
- * written for the door that routes to them, and runs longer); a bot someone made says its purpose, cut to fit.
+ * WHAT EACH IS, AND WHAT IT DOES, IN THE FEWEST WORDS: first what the bot actually is ("A note-taker that joins your
+ * calls"), then what it does for you, in plain words anyone reads at a glance. Three lines of a tile at most. The built-ins' own words for this page (their
+ * `purpose` is written for the door that routes to them, and runs longer); a bot someone made says its purpose, cut to fit.
  */
 export const START_LINES: Readonly<Record<string, string>> = {
-  plan: "Turns a goal into timed steps and puts them on your calendar.",
-  oracle: "Reads your birth chart to answer about love, work and timing.",
-  meet: "Joins your calls, takes the notes and turns what's agreed into to-dos.",
-  mail: "Sorts your business email and drafts replies in your voice.",
-  notes: "Keeps what was said in your meetings, and what was agreed.",
-  code: "Reads your projects, answers about the code, ships changes as PRs.",
-  cinema: "Makes films shot by shot, and pictures: posters, portraits, logos.",
-  travel: "Plans trips: routes, stays and timings, with sources.",
-  lingo: "Teaches a language by talking, and brings words back before you forget.",
+  plan: "A planner that won't let you quit. Give it a goal; it maps the steps, books the time and chases you to the end.",
+  oracle: "A divine being that sees the other side of cause and effect. Ask about love, work or timing; it shows you why.",
+  mail: "A scribe for your working life. It answers your inbox, sits in your calls and remembers every word agreed.",
+  code: "A developer on call. Say what's broken; it reads your code, fixes it and sends you the change to approve.",
+  cinema: "A film studio in your pocket. Describe a video or a poster; it writes, shoots, edits and hands it over done.",
+  travel: "A travel planner that does the legwork. Say where and when; it builds the route, the stays and the timings.",
+  lingo: "A language tutor you talk to. It teaches by conversation and brings each word back just before you'd forget it.",
 };
-const LINE_MAX = 90;
+const LINE_MAX = 116;
 
 export function startLine(b: LiveBot, ctx: BotsCtx): string {
   const own = b.builtin ? START_LINES[b.slug] : undefined;
@@ -79,26 +78,39 @@ export function startLine(b: LiveBot, ctx: BotsCtx): string {
   return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 40)).replace(/[,;:\s]+$/, "")}…`;
 }
 
-/** How tall a row is: Home's rows are 104; these carry two lines of what the bot can do. */
-export const START_TILE_HEIGHT = 128;
+/** How tall a row is: Home's rows are 104; these carry the name and what the bot can do, with room round them. */
+export const START_TILE_HEIGHT = 184;
+
+/**
+ * A build that can (BotTilesStage): the bot keeps the top of the card as on Home, and the card grows DOWN for his name
+ * and what he can do, which start under him and may take three lines. The stage is the bot's full size (core.ts: his
+ * size tops out with a floor of about 80 px); the rest is the words and the padding under them.
+ */
+export const START_STAGE = 100;
+export const START_SUB_LINES = 3;
+/** The room between the name and what the bot is, so the two read as a title and its line. */
+export const START_NAME_GAP = 9;
+export const START_STAGE_HEIGHT = START_STAGE + 21 + START_NAME_GAP + START_SUB_LINES * 16 + 24;
 
 /** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
 function tileSpec(b: LiveBot, ctx: BotsCtx): BotTileSpec {
   return {
     ...botTileSpec({ ...b, working: false, needs: 0 }, { idle: startLine(b, ctx), onPress: botRoute(b.slug) }),
     state: "idle",
-    // The Oracle wears its character, the mail bot the postie, the cinema bot the director, as on Home.
+    // Chamen wears its character, the mail bot the postie, the cinema bot the director, as on Home.
     ...(b.builtin && b.slug === "oracle" ? oracleTileLook(ctx) : b.builtin && b.slug === "mail" ? mailTileLook(ctx) : b.builtin && b.slug === "cinema" ? cinemaTileLook(ctx) : {}),
   };
 }
 
 /** A group's bots, one a row: alive where the build draws it, else the same rows still. `make` adds Make a bot at the end. */
 export function groupRow(ctx: BotsCtx, bots: LiveBot[], o: { make?: boolean } = {}): Node {
-  const height = START_TILE_HEIGHT, padding = 16, gap = 12;
+  const height = START_TILE_HEIGHT, padding = 22, gap = 14;
   if (canMove(ctx)) {
     const surprises = homeSurprises(ctx);
     return botTiles([...bots.map((b) => tileSpec(b, ctx)), ...(o.make ? [{ ...makeTileSpec(open(SCREENS.make)), sub: "One sentence is enough" }] : [])],
-      { columns: 1, height, padding, gap, ...(surprises ? { surprises } : {}) });
+      canStage(ctx)
+        ? { columns: 1, height: START_STAGE_HEIGHT, padding, gap, stage: START_STAGE, subLines: START_SUB_LINES, nameGap: START_NAME_GAP, ...(surprises ? { surprises } : {}) }
+        : { columns: 1, height, padding, gap, ...(surprises ? { surprises } : {}) });
   }
   return grid([
     ...bots.map((b) => botTile({ ...b, working: false, needs: 0 }, { idle: startLine(b, ctx), onPress: botRoute(b.slug), height, padding })),

@@ -1,5 +1,5 @@
 /**
- * Bots app · the person's own calendar and to-dos (src/calendar; Plan Ease's pages in experience/bots/screens/bots.ts and planItem.ts).
+ * Bots app · the person's own calendar and to-dos (src/calendar; Nudj's pages in experience/bots/screens/bots.ts and planItem.ts).
  * Registered by routes/bots/botsBots.ts. Every route is the signed-in person's own (401 without a session); another person's is "not found".
  *
  *   GET    /v1/botsapp/calendar?from=&to=&tz=          -> { events, tasks, open }   the days' events (a series' starts as their own) and
@@ -110,7 +110,7 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: Pick<BotsArea
     const note = UUID.test(noteId) && TODO_ID.test(todoId) ? await getNote(user, noteId) : null;
     const todo = note?.todos?.find((t) => t.id === todoId);
     if (!note || !todo) { reply.code(404); return { code: "not_found", message: "That to-do isn't in the meeting any more." }; }
-    // Someone else's ("Rahul sends the numbers by Thursday", its "who" a real name): a wait, checked back on by itself (Plan Ease step
+    // Someone else's ("Rahul sends the numbers by Thursday", its "who" a real name): a wait, checked back on by itself (Nudj step
     // 4, botsBots/planWaits.ts). "You", "Speaker 2" and "Others" are never someone to chase: those stay the person's own to-do.
     if (planOn("waits") && !todo.done && noteWho(todo.who, note.people) && !(await cal.fromNote(user.id, noteId))[todoId]) {
       const t = Number(bodyOf(req.body).tz);

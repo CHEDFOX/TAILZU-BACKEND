@@ -1,6 +1,6 @@
 /**
  * THE PRE-RING CHECK, AND WHAT WAITS (docs: perms2 §4.1, §5.3). Two questions, asked of the phone itself about 30 seconds
- * before a Plan Ease call would ring, and only of a phone whose person turned one of them on:
+ * before a Nudj call would ring, and only of a phone whose person turned one of them on:
  *
  *   driving   Motion & Fitness, read on the phone: an `automotive` activity in the last 3 minutes. "Wait while I'm driving"
  *   focus     whether a Focus (iPhone's own X0 Bot Focus Filter) or Do Not Disturb (Android) is on. "Hold calls during a Focus"
@@ -238,7 +238,7 @@ export async function focusEnded(userId: string, now = Date.now(), o: { summary?
   return mine.length;
 }
 
-/** How the one end-of-Focus notice is sent. `routes/bots/planCalls.ts` wires Plan Ease's own sender in at boot. */
+/** How the one end-of-Focus notice is sent. `routes/bots/planCalls.ts` wires Nudj's own sender in at boot. */
 let waitedSummary: (userId: string, lines: string[]) => Promise<unknown> = async () => undefined;
 export function setWaitedSummary(fn: ((userId: string, lines: string[]) => Promise<unknown>) | null): void {
   waitedSummary = fn ?? (async () => undefined);

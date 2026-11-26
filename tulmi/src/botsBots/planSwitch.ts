@@ -3,7 +3,7 @@
  * a step turned off is off everywhere at once: its pushes, its screens, its jobs.
  *
  *   planOn("reminders")   reminders with buttons, Later, the 10 am to-do reminder, merged pushes, a kind's own channel and expiry
- *   planOn("page")        the simple Plan Ease page, its Home and widget line, Today's "Plan Ease suggests" from the Needs-you queue
+ *   planOn("page")        the simple Nudj page, its Home and widget line, Today's "Nudj suggests" from the Needs-you queue
  *   planOn("notes")       the evening and morning notes, and the Daily summary folded into the evening one
  *   planOn("links")       the work calendar by its link: the link page, the fetch, its meetings on the days (planLinks.ts)
  *   planOn("capture")     what's shared becomes one card, and bills due with Paid (planCapture.ts, planDue.ts)

@@ -64,7 +64,7 @@ export interface TalkPictures {
 }
 
 /** Who answers with a picture: the cinema bot, as itself. */
-const PICTURE_BY: TurnBy = { slug: "cinema", name: "Cinema", color: botLook("cinema").color };
+const PICTURE_BY: TurnBy = { slug: "cinema", name: "Kutt", color: botLook("cinema").color };
 
 /** A person as the "@" list draws it: their own tiny bot, never initials (docs/spaces.md personLook.ts). */
 interface TalkPersonOut { id: string; name: string; bot?: unknown }

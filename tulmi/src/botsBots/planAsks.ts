@@ -1,7 +1,7 @@
 /**
  * PLAN EASE, STEP 5: FAMILY ASKS, REPEATS AND TURNS (PLAN_V2_ASKS, and only while Spaces is on; docs/plan-ease-people.md; design A7, B8).
  *
- * Priya types "Who picks Kabir up Wednesday?" in Plan Ease's box. A preview comes first ("Ask Ghar: who picks Kabir up Wednesday?"
+ * Priya types "Who picks Kabir up Wednesday?" in Nudj's box. A preview comes first ("Ask Ghar: who picks Kabir up Wednesday?"
  * [Ask]); nothing goes to anyone until she taps. Then everyone else in the space gets one push and a Needs-you card with her tiny bot,
  * [I'll do it]. The first tap wins: it lands on that person's day as "Kabir pickup" with Priya's tiny bot, Priya hears quietly who
  * took it, and the other cards go. Halfway to the take-by the family gets one quiet nudge by itself; if nobody took it by then, Priya

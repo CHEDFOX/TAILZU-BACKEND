@@ -3,7 +3,7 @@
  *
  *   portraitOf(items, learner, now) -> Portrait
  *
- * Everywhere else in Lingo decides one thing at a time: this word is due, that set went badly. This is the whole
+ * Everywhere else in Babbl decides one thing at a time: this word is due, that set went badly. This is the whole
  * picture of one person on one language — where they are, what comes easily, where it is hard, and how hard they
  * are having to think. It is what the path is moved along by and what the chat is told, so it has to be honest
  * about how much it knows, not only about what it has seen.

@@ -413,7 +413,7 @@ export class Threads {
   }
 
   /**
-   * Whether this person muted their one-to-one chat with `otherId` (Plan Ease's follow-through respects it: no ping from that person's
+   * Whether this person muted their one-to-one chat with `otherId` (Nudj's follow-through respects it: no ping from that person's
    * items, planFollow.ts). False when there is no such chat.
    */
   async directMuted(userId: string, otherId: string): Promise<boolean> {

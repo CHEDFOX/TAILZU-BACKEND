@@ -32,7 +32,7 @@ type Body = Record<string, unknown>;
 const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArray(b) ? (b as Body) : {});
 const param = (req: FastifyRequest, k: string): string => String((req.params as Record<string, unknown>)[k] ?? "");
 
-/** The space with the server's own stores: plans, notes, trips and projects, groups, and Plan Ease's home. */
+/** The space with the server's own stores: plans, notes, trips and projects, groups, and Nudj's home. */
 export function userSpace(o: { spaces?: Spaces; trips?: Trips | null; sources?: ShareSources }): UserSpace {
   const prefs = table<PlanPrefsRow>("plan_prefs");
   return new UserSpace({

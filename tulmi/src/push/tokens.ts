@@ -37,7 +37,7 @@ import { z } from "zod";
  * renderer, so a silent nudge may tell it a new looks catalog is out (experience/native/catalog.ts nudgeLooks) instead of making
  * it wait for the next bootstrap; without the name it simply finds out on its own, which is the behaviour with no nudge at all.
  * "CallCheck1" (build 8.9.1, docs: perms2 §5.3): this JavaScript answers the silent "plan_call_check" push, which asks the phone
- * — about 30 seconds before a Plan Ease call would ring, and only for a person who turned one of those rows on — whether it is
+ * — about 30 seconds before a Nudj call would ring, and only for a person who turned one of those rows on — whether it is
  * in a car and whether a Focus is on. Two words come back and nothing else. Without the name no such push is ever sent, and
  * every call rings exactly as it does today.
  */

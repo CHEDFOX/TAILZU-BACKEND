@@ -3,18 +3,18 @@
  *
  *   lingo_note_words   the words this person reached for, into the course they are on
  *
- * Lingo's own rules already say "their own words, the ones they reached for, come before anything off a list", and
+ * Babbl's own rules already say "their own words, the ones they reached for, come before anything off a list", and
  * the scheduler already puts those words first (`unseen` orders said, asked, heard, then seed). Until this existed
  * nothing could put one there: the chat could READ the course and never add to it, so somebody could ask how to say
  * a word, be told, and have it gone by the end of the conversation. A bot that says it will remember something and
  * cannot is worse than one that never offered.
  *
- * WHICH COURSE: the one they last opened, which is the one the app is showing. Lingo is asked about a language in
+ * WHICH COURSE: the one they last opened, which is the one the app is showing. Babbl is asked about a language in
  * the middle of learning it; it is not asked to file words against a course nobody is looking at.
  *
  * HOW THEY MET IT matters more than it looks, and is the whole reason `source` exists. A word somebody went looking
  * for is worth more drilling than one that merely went past them, and the scheduler already believes that — so
- * `asked` and `said` are offered before `heard`, and a word Lingo itself used is the weakest of the three.
+ * `asked` and `said` are offered before `heard`, and a word Babbl itself used is the weakest of the three.
  *
  * It only ever ADDS. A word already in the course is left exactly as it is, with its whole history: being mentioned
  * again in a conversation must never reset what the scheduler knows about it.

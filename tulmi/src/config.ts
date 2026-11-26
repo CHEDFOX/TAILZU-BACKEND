@@ -847,12 +847,12 @@ const EnvSchema = z.object({
   /**
    * THE ORACLE (src/oracle, oracle-worker/, docs/oracle.md): a built-in bot that reads a person's sky with Plutto's oracle, which runs as its own Python
    * service. ORACLE_WORKER_URL (http://oracle-worker:8000 in docker-compose) and ORACLE_WORKER_SECRET (SECRET: .env only, 32+ characters, the same on
-   * both sides; every call is HMAC-signed the media worker's way). Without both the Oracle is not among the bots at all.
+   * both sides; every call is HMAC-signed the media worker's way). Without both Chamen is not among the bots at all.
    */
   ORACLE_WORKER_URL: z.string().trim().optional(),
   ORACLE_WORKER_SECRET: z.string().optional(),
   /**
-   * The Oracle's birthplace search (src/oracle/places.ts): Google's Places suggestions as the person types, and the place's
+   * Chamen's birthplace search (src/oracle/places.ts): Google's Places suggestions as the person types, and the place's
    * coordinates once they pick one. A SECRET (.env only); the key needs the Places API enabled (the one Plutto uses). Without it the
    * search falls back to the server's own: the cities table and PLACES_GEOCODER.
    */
@@ -914,7 +914,7 @@ const EnvSchema = z.object({
   R2_BUCKET: z.string().trim().optional(),
   MEDIA_KEEP_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   /**
-   * THE BOTS PLATFORM (src/bots, docs/bots.md): everything is a bot (Xode, Keylessbord, Plan Ease, the Travel bot), and a person can make their own, each
+   * THE BOTS PLATFORM (src/bots, docs/bots.md): everything is a bot (Xode, Keylessbord, Nudj, Nomaz), and a person can make their own, each
    * with its own tools, knowledge, memory and an API endpoint for their own apps. Off by default: it needs migration 0038, and with it off every /v1/bots route
    * answers 404 { code: "bots_off" } and the front door never picks a bot.
    *
@@ -931,17 +931,17 @@ const EnvSchema = z.object({
    * that is otherwise available, which is what the server does today.
    *
    * WHY A DENY LIST AND NOT AN ALLOW LIST. The connectors' own list (CONNECTORS_ENABLED_IDS) is the other way round
-   * because every app there ships disabled. Bots do not: Xode, Keylessbord, Plan Ease, Travel and Talk are listed the
+   * because every app there ships disabled. Bots do not: Xode, Keylessbord, Nudj, Travel and Talk are listed the
    * moment BOTS is on. An allow list would mean that naming one bot to switch it on silently switched off the four
    * that were already there — the footgun being avoided here is a person turning the cinema on and losing Xode.
    *
    * It is the LAST word, not the only one. A bot still has to be available before this can hide it: the meeting bot
-   * needs RECALL_API_KEY, the mail bot its worker, the Oracle its own, and Lingo and the cinema their own switches.
+   * needs RECALL_API_KEY, the mail bot its worker, Chamen its own, and Babbl and the cinema their own switches.
    * Those say "this is set up"; this says "and I want it listed". Naming a bot that is not available does nothing,
    * and an unknown slug does nothing.
    *
    * HIDING A BOT DOES NOT FREE ITS NAME. A hidden slug is still reserved (RESERVED_SLUGS, isBuiltinSlug), so nobody
-   * can take "travel" while the Travel bot is off and collide with it the day it comes back.
+   * can take "travel" while Nomaz is off and collide with it the day it comes back.
    */
   BOTS_OFF: orDefault(""),
   /**
@@ -1052,8 +1052,8 @@ const EnvSchema = z.object({
    *   PLAN_V2_REMINDERS  step 0: a reminder says what it is with at most 2 buttons (Done and Later on a to-do, Open map on a leave-by),
    *                      a to-do with a day gets one at 10 am, close ones go as one push, and each kind has its own channel and expiry.
    *                      False: the old "plan_reminder" push with no buttons, and the item form keeps its Remind and How long fields.
-   *   PLAN_V2_PAGE       step 1: the simple Plan Ease page (the one next thing, one Needs-you card, Today and Tomorrow, one box), its line
-   *                      on Home and the widget, and Today's "Plan Ease suggests" from the same card. Only a build that draws a person
+   *   PLAN_V2_PAGE       step 1: the simple Nudj page (the one next thing, one Needs-you card, Today and Tomorrow, one box), its line
+   *                      on Home and the widget, and Today's "Nudj suggests" from the same card. Only a build that draws a person
    *                      as their tiny bot (PersonBot) gets the page; an older one keeps the week page it has. False: the week page.
    *   PLAN_V2_NOTES      step 1: the evening "tomorrow" note and the morning note when the day changed (no sound), with the Daily
    *                      summary folded in. False: no notes, and the Daily summary goes on its own as before.
@@ -1075,7 +1075,7 @@ const EnvSchema = z.object({
    *                  the card. Done creates through the calendar and follow-through's own setItem. No migration. False: + and the
    *                  top area still open bots.plan.make, which then draws the old add form, and /plan/make* answer 404 make_off.
    * PLAN_V2_MAKE_AI  "Plan something" may ask an AI model to read messy words into the card, only with the person's yes to AI
-   *                  (privacy/aiGate.ts) and inside Plan Ease's day budget (the reading share, planCapture.ts), only when the rules
+   *                  (privacy/aiGate.ts) and inside Nudj's day budget (the reading share, planCapture.ts), only when the rules
    *                  are unsure; the code checks every answer again and decides people and must-not-miss itself. False: rules only,
    *                  never a model call.
    */
@@ -1110,7 +1110,7 @@ const EnvSchema = z.object({
    * PLAN_V2_APP        the app release (design B11), only for a binary that says it can: a leave-by or a bill due today breaks through
    *                    Focus on an iPhone with the Time Sensitive entitlement (its token's caps, migration 0075); the X0 widget is sent
    *                    lines that switch at their own minute (a build that asks with steps=1); and a desktop that declares DeskNotices
-   *                    shows Plan Ease's notices while it is in use (the phone's copy then comes without a sound), and one that
+   *                    shows Nudj's notices while it is in use (the phone's copy then comes without a sound), and one that
    *                    declares DeskAddThis carries what is on its screen to the one box ("add this"). False: every build gets what
    *                    an older one does.
    */
@@ -1520,7 +1520,7 @@ const EnvSchema = z.object({
   WEB_SEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(200)),
   WEB_RESEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(30)),
   /**
-   * PLACES AND WEATHER (src/places/index.ts): Plan Ease's travel times and the Travel bot's weather and stay distances.
+   * PLACES AND WEATHER (src/places/index.ts): Nudj's travel times and Nomaz's weather and stay distances.
    * PLACES_GEOCODER photon|nominatim|off and PLACES_ROUTER osrm|ors|off are off unless set; each has its address
    * (PLACES_GEOCODE_URL, PLACES_ROUTE_URL; Nominatim's must be set) so a public server can become our own. PLACES_ROUTE_KEY is
    * openrouteservice's key, a SECRET (.env only). PLACES_RATE_MS spaces requests (1100 for the public servers, 0 for our own).
@@ -1707,7 +1707,7 @@ const EnvSchema = z.object({
    * THE PHONE'S OWN THINGS (docs: perms). Each is off, so a server deployed before the store build draws none of the three
    * buttons, and an older binary that declares no capability would not get them anyway.
    *
-   *   PERM_LOCATION            "Use my location" on Plan Ease's "Where does your day start?" card. Off: the card is today's,
+   *   PERM_LOCATION            "Use my location" on Nudj's "Where does your day start?" card. Off: the card is today's,
    *                            with the field alone
    *   PERM_CONTACT_PICK        "Add from contacts" on a space's Invite page and on Spaces' start screen (the system's own
    *                            picker, no permission). Off: the email field alone, as today
@@ -1736,7 +1736,7 @@ const EnvSchema = z.object({
    *
    *   PERM_CALENDAR_ADD        "Add to my calendar" on a plan item: the phone's OWN event editor, already filled in. No
    *                            permission on either phone, and nothing of the phone's calendar is ever read
-   *   PERM_CALENDAR_READ       "Plan around my calendar" on Plan Ease (iPhone 17+, and Android from 8.9.1 behind
+   *   PERM_CALENDAR_READ       "Plan around my calendar" on Nudj (iPhone 17+, and Android from 8.9.1 behind
    *                            PERM_CALENDAR_READ_ANDROID): BUSY TIMES ONLY for 14 days, never an event's name, place, notes
    *                            or people. An Android phone without that half shows Connect Google Calendar instead
    *   PERM_REMINDERS           "Sync with Reminders" (iPhone 17+): the one list X0 Bot makes, called X0 Bot, and no other
@@ -1744,7 +1744,7 @@ const EnvSchema = z.object({
    *                            On or off and the choice only; never which Focus
    *   PERM_MOTION              "Count my steps with Motion & Fitness" on a fitness bot, when Apple Health is not used (iPhone)
    *   PERM_MOTION_DRIVE        "Wait while I'm driving": the same Motion grant answers "driving" or "not driving" just before a
-   *                            Plan Ease call. Its own switch, because N0 may cut the check and its words with it
+   *                            Nudj call. Its own switch, because N0 may cut the check and its words with it
    *   PERM_HEALTH_SLEEP_IOS    "Also count my sleep" on a fitness bot whose health is already on, on iPhone
    *   PERM_HEALTH_SLEEP_IOS_USERS      a comma-separated list of account ids; empty means the switch alone decides
    *   PERM_HEALTH_SLEEP_ANDROID        the same row on Android, where it reads Health Connect's sleep. Stays off until Play has
@@ -2431,7 +2431,7 @@ export function getConfig(): AppConfig {
     const r2 = [env.R2_ACCOUNT_ID, env.R2_ACCESS_KEY_ID, env.R2_SECRET_ACCESS_KEY, env.R2_BUCKET];
     if (r2.some(Boolean) && !r2.every(Boolean)) console.warn("[config] R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET are not all set: files are read but their bytes are not kept.");
     if (Boolean(env.MEDIA_WORKER_URL) !== Boolean(env.MEDIA_WORKER_SECRET)) console.warn("[config] MEDIA_WORKER_URL and MEDIA_WORKER_SECRET go together: without both there is no worker, so office files and scanned PDFs are not read.");
-    if (Boolean(env.ORACLE_WORKER_URL) !== Boolean(env.ORACLE_WORKER_SECRET)) console.warn("[config] ORACLE_WORKER_URL and ORACLE_WORKER_SECRET go together: without both the Oracle is not among the bots.");
+    if (Boolean(env.ORACLE_WORKER_URL) !== Boolean(env.ORACLE_WORKER_SECRET)) console.warn("[config] ORACLE_WORKER_URL and ORACLE_WORKER_SECRET go together: without both Chamen is not among the bots.");
     if (env.ORACLE_WORKER_SECRET && env.ORACLE_WORKER_SECRET.length < 32) console.warn("[config] ORACLE_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
     if (env.MEDIA_WORKER_SECRET && env.MEDIA_WORKER_SECRET.length < 32) console.warn("[config] MEDIA_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   }

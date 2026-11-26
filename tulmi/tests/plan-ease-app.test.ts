@@ -4,12 +4,12 @@
  *
  *   - a phone's token keeps what its binary can do (caps); a leave-by and a bill due today are Time Sensitive only on a phone with
  *     the entitlement, and Apple's own level on the rest
- *   - a desktop in use shows Plan Ease's notices (live/notices.ts): who is at a computer is kept per socket, in memory; the phone's
+ *   - a desktop in use shows Nudj's notices (live/notices.ts): who is at a computer is kept per socket, in memory; the phone's
  *     copy is then silent; with no phone at all the computer still hears it; "What pings you" decides once for both; an answer
  *     anywhere takes the notice off; only a socket that shows notices hears their words
  *   - the bootstrap tells a desktop that can show notices, and one that can carry "add this", and gives it the "add this" words
  *   - the one box reads what "add this" saw: one clear line is added as typed, a notice with several things becomes the capture card
- *   - the widget's steps: Plan Ease's line from each moment it changes, with the lock words for that moment
+ *   - the widget's steps: Nudj's line from each moment it changes, with the lock words for that moment
  */
 process.env.OPENROUTER_API_KEY = "k";
 process.env.GROQ_API_KEY = "k";
@@ -182,7 +182,7 @@ describe("who is at a computer", () => {
   });
 });
 
-describe("Plan Ease's notices", () => {
+describe("Nudj's notices", () => {
   it("go to the computer in use with the push's lock-safe words and buttons, and the phone's copy makes no sound", async () => {
     const r = engineRig([{ platform: "android", token: "ExponentPushToken[a]" }]);
     openSeat(U, {}, { buttons: true }).here(0, NOW);
@@ -225,7 +225,7 @@ describe("Plan Ease's notices", () => {
     expect(r.sent).toHaveLength(1);
   });
 
-  it("are only Plan Ease's, and none with the app release off", async () => {
+  it("are only Nudj's, and none with the app release off", async () => {
     const r = engineRig([{ platform: "ios", token: "ExponentPushToken[a]" }]);
     openSeat(U, {}, { buttons: true }).here(0, NOW);
     const heard = notices();
@@ -262,7 +262,7 @@ describe("the bootstrap", () => {
     expect(f["desktop.plan.addThis"]).toBe(true);
     const tasks = f["desktop.router.tasks"] as Array<{ slug: string; re: string }>;
     for (const t of DESKTOP_ADD_THIS.tasks) expect(tasks).toContainEqual(t);
-    // After Plan Ease's own, before the next bot's, as the desktop's own list has them.
+    // After Nudj's own, before the next bot's, as the desktop's own list has them.
     const at = tasks.findIndex((t) => t.re === DESKTOP_ADD_THIS.tasks[0].re);
     expect(tasks[at - 1]!.slug).toBe("plan");
     expect(tasks[at + DESKTOP_ADD_THIS.tasks.length]!.slug).not.toBe("plan");

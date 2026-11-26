@@ -15,7 +15,7 @@
  *     gone    the items whose to-do was deleted HERE and not yet taken out of the list (calendar/remindersGone.ts)
  *
  * WHO WINS. The newer change, by `changedAt` (the item's `lastModifiedDate`) against the to-do's `updatedAt`. Equal: the to-do,
- * because this server is where the rest of Plan Ease has already acted on it.
+ * because this server is where the rest of Nudj has already acted on it.
  *
  * WHAT A DELETION MEANS, each way round:
  *   deleted in Reminders   the to-do goes too, but ONLY if it came from Reminders AND is still open. One the person made in X0

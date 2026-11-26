@@ -11,7 +11,7 @@ const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { builtinBots } = await import("../src/bots/builtin.js");
-const { GROUPED_SLUGS, NOT_TILED, START_LINES, START_TILE_HEIGHT } = await import("../src/experience/bots/screens/bots/botsStart.js");
+const { GROUPED_SLUGS, NOT_TILED, START_LINES, START_TILE_HEIGHT, START_STAGE, START_STAGE_HEIGHT, START_SUB_LINES } = await import("../src/experience/bots/screens/bots/botsStart.js");
 
 const build = (client: "phone" | "desktop", can: (c: string) => boolean = () => true) => buildBotsScreen({
   screenId: SCREENS.start, client, params: {}, tzOffsetMinutes: IST, user: { id: "u-aanya", name: "Aanya" },
@@ -24,12 +24,13 @@ describe("Start something", () => {
   });
 
   it("draws each group as living tiles, ONE A ROW, taller than Home's, each saying what its bot can do", async () => {
-    const s = await build("phone");
+    const s = await build("phone", (c) => c !== "BotTilesStage");
     const tiles = walk(s.root!).filter((n) => n.type === "BotTiles");
     expect(tiles.length).toBeGreaterThan(0);
     for (const t of tiles) {
       expect(t.props!.columns).toBe(1);
       expect(t.props!.height).toBe(START_TILE_HEIGHT);
+      expect(t.props!.stage).toBeUndefined();
       expect(START_TILE_HEIGHT).toBeGreaterThan(104);
     }
     const specs = tiles.flatMap((t) => t.props!.tiles as Array<{ slug: string; sub: string; state: string }>);
@@ -41,8 +42,25 @@ describe("Start something", () => {
     expect(specs.at(-1)!.slug).toBe("make");
   });
 
-  it("every line fits two lines of a tile", () => {
-    for (const [slug, line] of Object.entries(START_LINES)) expect(line.length, slug).toBeLessThanOrEqual(90);
+  it("a build that can: the bot keeps the top of the card and the card grows down for his name and three lines", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const tiles = walk((await build(client)).root!).filter((n) => n.type === "BotTiles");
+      expect(tiles.length).toBeGreaterThan(0);
+      for (const t of tiles) {
+        expect(t.props!.stage).toBe(START_STAGE);
+        expect(t.props!.subLines).toBe(START_SUB_LINES);
+        expect(t.props!.height).toBe(START_STAGE_HEIGHT);
+        // Room under the bot for the name and every line, and padding below.
+        expect(START_STAGE_HEIGHT - START_STAGE).toBeGreaterThanOrEqual(21 + 3 + START_SUB_LINES * 16 + 22);
+      }
+    }
+  });
+
+  it("every line says what the bot is, then what it does, and fits three lines of a tile", () => {
+    for (const [slug, line] of Object.entries(START_LINES)) {
+      expect(line.length, slug).toBeLessThanOrEqual(116);
+      expect(line, slug).toMatch(/^An? [^.]+\. \S/);
+    }
   });
 
   it("a build that cannot draw the living tiles gets the same rows, still, one a row", async () => {

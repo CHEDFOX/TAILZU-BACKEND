@@ -1,5 +1,5 @@
 /**
- * WHEN TO ASK SOMETHING AGAIN. The scheduler, and the only place in Lingo that knows about forgetting.
+ * WHEN TO ASK SOMETHING AGAIN. The scheduler, and the only place in Babbl that knows about forgetting.
  *
  * It is FSRS (ts-fsrs, MIT): a memory is a pair of numbers, how long it would hold (stability) and how hard this
  * person finds it (difficulty), and from those and the mark it works out the day the person would be about as likely

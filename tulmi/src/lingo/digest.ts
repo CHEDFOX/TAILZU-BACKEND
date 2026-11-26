@@ -1,7 +1,7 @@
 /**
  * WHAT LINGO'S CHAT KNOWS: THE COURSE THIS PERSON IS ON, AND WHICH WORDS ARE DUE.
  *
- *   lingoDigest(userId, o) -> string | null    bots/run.ts hands it to Lingo's turn as <knowledge>
+ *   lingoDigest(userId, o) -> string | null    bots/run.ts hands it to Babbl's turn as <knowledge>
  *
  * So "what should I practise?" is answered from the real table, in one model call and with no tool, and so the
  * conversation can be steered onto the words that are actually due — which is the whole reason the chat exists.

@@ -5,7 +5,7 @@
  *   stopAtLimit       the person sees only the usage meter (usage.ts, limits.ts). Both stay readable for older clients.
  *   notify            what pings them (push.ts reads it): needs you always does; done "quiet" (sent without a sound) or "ping"; a daily summary at an
  *                     hour; quiet hours, when nothing makes a sound and done waits; bots turned off (their done pings stop; needs you still comes);
- *                     Calls, Plan Ease calling the phone for a leave-by or a bill due today instead of the push (on by default).
+ *                     Calls, Nudj calling the phone for a leave-by or a bill due today instead of the push (on by default).
  *                     Must not miss (follow-through, botsBots/planFollow.ts): Keep at it (louder pings, then a call, until they say done),
  *                     Tell my family (the next person on it hears when they don't answer), how many louder pings a day (3, 6 or 10), and
  *                     the people whose must-not-miss items may ring them louder and call them (their own yes, asked once), and
@@ -27,7 +27,7 @@ export interface NotifySettings {
   quietTo: number;
   /** Bots whose done pings are off, by slug. */
   botsOff: string[];
-  /** Plan Ease calls the phone when it's time to leave or a bill is due today (botsBots/planCall.ts). On unless they turn it off. */
+  /** Nudj calls the phone when it's time to leave or a bill is due today (botsBots/planCall.ts). On unless they turn it off. */
   calls: boolean;
   /** Keep at it: their own must-not-miss items get louder until they say done (botsBots/planFollow.ts). On unless they turn it off. */
   follow: boolean;

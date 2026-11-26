@@ -390,7 +390,7 @@ describe("a known-good answer for each role", () => {
       text: '{"scores":{"identity":10,"action":8,"camera":7,"quality":8,"continuity":9},"issues":[{"kind":"camera","major":false,"note":"the dolly stops a beat early"}],"fix":"hold the move to the end of the shot"}',
       reads: (t) => parseVerdict(JSON.parse(t), false),
     },
-    widget_digest: { text: '{"line":"Xode finished the cart fix; Plan Ease needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
+    widget_digest: { text: '{"line":"Xode finished the cart fix; Nudj needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
     site_read: {
       text: '{"title":"Behrouz Biryani","line":"Out for delivery, arriving by 9:42 pm",'
         + '"stages":[{"name":"Order placed","when":"8:51 pm","done":true},{"name":"Food ready","when":"9:14 pm","done":true},{"name":"Out for delivery","done":false}],'

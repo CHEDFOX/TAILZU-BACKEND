@@ -25,7 +25,7 @@ export function shellApi(): Record<string, unknown> {
     { id: "e2", kind: "paid" as const, bot: "plan", title: "Electricity bill", paise: 0, amountPaise: 184000, payee: "BESCOM", at: N - 19 * HOUR },
   ];
   const words = [{ day: "2026-10-28", at: N - 4 * HOUR, words: 412, apps: ["WhatsApp", "Gmail"] }];
-  // A call from Plan Ease nobody answered this afternoon, at 4:55 pm (botsBots/planCall.ts): "Missed call from Zara".
+  // A call from Nudj nobody answered this afternoon, at 4:55 pm (botsBots/planCall.ts): "Missed call from Zara".
   const calls = [{ id: "c3", name: "Zara", line: "Leave by 5:05 pm for parent-teacher meeting", at: N - 165 * MIN }];
   const rows = feedOf({ now: N, tzOffsetMinutes: IST, jobs, tasks, events, words, calls, projects: { p1: "Storefront" } });
   const week = weekOf(rows, N - 3 * DAY, 200);
@@ -33,7 +33,7 @@ export function shellApi(): Record<string, unknown> {
   const search = searchAll("salon", {
     projects: [{ id: "project:p2", title: "Salon booking app", sub: "aanya/salon-booking-app", text: "", at: N - 3 * HOUR, bot: "code", open: { screenId: "bots.code", params: { project: "p2" } }, preview: { body: "A Xode project on GitHub: aanya/salon-booking-app." } }],
     chats: [
-      { id: "bot:plan", title: "Book the salon for Sat 11 am, before Riya's mehendi", sub: "Plan Ease · Tue", at: N - DAY, bot: "plan", open: { screenId: "bots.chat", params: { slug: "plan" } }, preview: { lines: [{ who: "you", text: "Book the salon for Sat 11 am, before Riya's mehendi" }, { who: "bot", text: "Found 11 am free at the Indiranagar salon. Haircut ₹650. Hold it?" }, { who: "you", text: "Haan, hold karo" }, { who: "bot", text: "Booked for Sat 31 Oct, 11 am. It's on your calendar." }], at: "Tue" } },
+      { id: "bot:plan", title: "Book the salon for Sat 11 am, before Riya's mehendi", sub: "Nudj · Tue", at: N - DAY, bot: "plan", open: { screenId: "bots.chat", params: { slug: "plan" } }, preview: { lines: [{ who: "you", text: "Book the salon for Sat 11 am, before Riya's mehendi" }, { who: "bot", text: "Found 11 am free at the Indiranagar salon. Haircut ₹650. Hold it?" }, { who: "you", text: "Haan, hold karo" }, { who: "bot", text: "Booked for Sat 31 Oct, 11 am. It's on your calendar." }], at: "Tue" } },
       { id: "code:x", title: "Add salon time slots to the booking page", sub: "Xode · Salon booking app · Mon", at: N - 2 * DAY, bot: "code", open: { screenId: "bots.chat", params: { slug: "code" } } },
     ],
     notes: [{ id: "note:n1", title: "Salon list, Indiranagar", sub: "Your note · haircut ₹650 · keratin ₹3,200", text: "", at: N - 5 * DAY, open: { screenId: "bots.note", params: { id: "n1" } } }],
@@ -96,7 +96,7 @@ export function shellApi(): Record<string, unknown> {
   return {
     [`GET /v1/shell/activity?tz=${IST}`]: { now: N, week, rows },
     [`GET /v1/shell/search?q=salon&tz=${IST}`]: search,
-    "POST /v1/shell/route": { slug: "travel", name: "Travel bot", color: "#3E6E8E", say: "Travel bot will take this", hint: "Tap to send · Travel bot shows the plan before it books", by: "rules", confidence: 0.9 },
+    "POST /v1/shell/route": { slug: "travel", name: "Nomaz", color: "#3E6E8E", say: "Nomaz will take this", hint: "Tap to send · Nomaz shows the plan before it books", by: "rules", confidence: 0.9 },
     [`GET /v1/shell/tasks?tz=${IST}`]: tasksData,
     [`GET /v1/shell/today?tz=${IST}`]: today,
     "GET /v1/notes?limit=100": { notes },

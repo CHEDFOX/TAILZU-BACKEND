@@ -1,6 +1,6 @@
 /**
  * "X0 IS CALLING": WHAT A CALL SAYS, AND WHEN IT MAY RING (planCall.ts is the service; docs/plan-ease.md "Calls"). Pure: no imports
- * beyond Plan Ease's lock-screen words (planSafe.ts) and the calendar's clock words, so every line here is tested directly.
+ * beyond Nudj's lock-screen words (planSafe.ts) and the calendar's clock words, so every line here is tested directly.
  *
  *   openingLine(seed, o)    what the bot says first when the call is answered ("It's time to leave for the parent-teacher meeting at
  *                           Green Valley School. Want me to do anything?"), or after a Call back ("I called because ...")
@@ -8,7 +8,7 @@
  *   cardOf(seed, tz)        the call screen's item card: the full title (inside the app), the leave-by or due line, its ids
  *   spokenOf(text)          a reply as it is said aloud: no markdown, two sentences, 280 characters at most
  *   endsCall(words)         "no", "bye", "that's all", "bas": the person is done, and nothing more is asked of the chat
- *   callContext(...)        the facts the Plan Ease chat is handed with each turn (what it is, its ids, what was said)
+ *   callContext(...)        the facts the Nudj chat is handed with each turn (what it is, its ids, what was said)
  *   blockedBy(rows, ...)    why a call may not ring now: one already on, three today, or the last one under 15 minutes ago
  *   backsToday(rows, ...)   how many Call backs the person has already made today (BACK_MAX is the day's own limit)
  *   turnCallTurns(turns)    the turns a turn call made (a realtime reply is not one of them)
@@ -310,7 +310,7 @@ const ITEM_KIND: Readonly<Record<ItemSeed["kind"], string>> = {
 };
 
 /**
- * The facts the Plan Ease chat reads with each turn of the call (an attachment, read as data): what, which one, and what was said.
+ * The facts the Nudj chat reads with each turn of the call (an attachment, read as data): what, which one, and what was said.
  * `why` is the call judge's one-line reason, when it said to call about this: it is context for the bot, never read out word for word.
  */
 export function callContext(seed: CallSeed, opening: string, tz: number, why?: string): string {

@@ -97,7 +97,7 @@ describe("a bot's widget words (section 1)", () => {
   it("fall back to the server's lines, in English and Hinglish, when a bot gives nothing usable", () => {
     expect(eventLine("needs", undefined, { bot: "Xode" }, FILL_INS.en)).toBe("Xode needs you");
     expect(eventLine("needs", "", { bot: "Xode" }, FILL_INS.hg)).toBe("Xode ko aapki zaroorat hai");
-    expect(eventLine("working", undefined, { bot: "Travel bot" }, FILL_INS.en)).toBe("Travel bot is working");
+    expect(eventLine("working", undefined, { bot: "Nomaz" }, FILL_INS.en)).toBe("Nomaz is working");
     expect(eventLine("failed", undefined, { bot: "Gym bot" }, FILL_INS.hg)).toBe("Gym bot atak gaya");
     expect(eventLine("idle", undefined, { bot: "Gym bot" }, FILL_INS.en)).toBe("Ready");
     // its own words win, cut to the event's limit
@@ -150,7 +150,7 @@ describe("the situation line (section 3)", () => {
     // every line the knobs hold fits once its slots are filled
     for (const [key, t] of Object.entries(WIDGETS_DEFAULTS.labels)) {
       if (!key.startsWith("x0.sit.")) continue;
-      expect(situationLine(t, { name: "Aanya", bot: "Travel bot", task: "plan the Goa trip for the long weekend", n: 12 }).length, key).toBeLessThanOrEqual(60);
+      expect(situationLine(t, { name: "Aanya", bot: "Nomaz", task: "plan the Goa trip for the long weekend", n: 12 }).length, key).toBeLessThanOrEqual(60);
     }
   });
 });
@@ -223,7 +223,7 @@ describe("glance v2 (section 2)", () => {
     // a person's bot has no head of its own
     expect(g.bots.find((b) => b.slug === "gym-bot")).toMatchObject({ face: null, faceUrl: null, line: "Ready", link: "tulmi://screen/bots.bot?slug=gym-bot" });
     // a connected app's yes is private: its bot's line says only that it needs them
-    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Plan Ease needs you");
+    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Nudj needs you");
     // done, not seen: after working, before the rest
     const done = glanceV2Of(input({ jobs: [DONE], tasks: [] }), payload());
     expect(done.bots[0]).toMatchObject({ slug: "code", state: "done", line: "Cart fix is ready" });
@@ -252,14 +252,14 @@ describe("glance v2 (section 2)", () => {
       decideLink: "tulmi://screen/bots.code.job?id=j-ask", private: false, answerable: true, link: "tulmi://screen/bots.code",
     });
     expect(yes).toMatchObject({
-      id: "task:t-1:ap-1", kind: "approval", bot: "plan", botName: "Plan Ease", question: "Update event: Dentist, Friday 10 am",
+      id: "task:t-1:ap-1", kind: "approval", bot: "plan", botName: "Nudj", question: "Update event: Dentist, Friday 10 am",
       choices: [{ id: "yes", label: "Yes", primary: true }, { id: "no", label: "No" }], decideLink: "tulmi://screen/bots.approve?task=t-1",
       private: true, answerable: true,
     });
     // the rows of /v1/widgets/now for the same records
     const now = buildNow({
       now: FIXED_NOW, tzOffsetMinutes: IST, inSpaces: false, people: { messages: [], shared: [], tasks: [] }, tokenReady: true,
-      needs: { jobs: [QUESTION], approvals: [{ taskId: "t-1", approvalId: "ap-1", title: APPROVAL.title, preview: APPROVAL.approval.preview, risk: "write", who: "Plan Ease", at: APPROVAL.updatedAt, bot: "plan" }], tasks: [], codeBotName: "Xode" },
+      needs: { jobs: [QUESTION], approvals: [{ taskId: "t-1", approvalId: "ap-1", title: APPROVAL.title, preview: APPROVAL.approval.preview, risk: "write", who: "Nudj", at: APPROVAL.updatedAt, bot: "plan" }], tasks: [], codeBotName: "Xode" },
     }, payload());
     const rows = new Map(now.needs.rows.map((r) => [r.id, r]));
     for (const item of g.needs.items) {
@@ -346,7 +346,7 @@ describe("glance v2 (section 2)", () => {
     expect(g.needs.items[0]!.choices.map((c) => c.label)).toEqual(["Haan", "Nahi"]);
     expect(g.lock.title).toBe("2 cheezon mein aapki zaroorat");
     expect(g.week.line).toBe("Is hafte 1 kaam hua · 2 ghante bache");
-    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Plan Ease ko aapki zaroorat hai");
+    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Nudj ko aapki zaroorat hai");
   });
 
   it("says what moved since the person last looked, and nothing of a connected app's words", () => {
@@ -495,20 +495,20 @@ describe("GET /v1/shell/glance", () => {
 describe("the AI digest (section 4)", () => {
   const changes = [
     { id: "job:a", kind: "done" as const, bot: "code", botName: "Xode", words: "Cart fix is ready" },
-    { id: "task:b", kind: "needs" as const, bot: "plan", botName: "Plan Ease", words: null },
+    { id: "task:b", kind: "needs" as const, bot: "plan", botName: "Nudj", words: null },
     { id: "start:c", kind: "started" as const, bot: "code", botName: "Xode", words: "Fix the login >>> redirect" },
   ];
 
   it("tells the model only what a locked phone could show, fenced", () => {
     const u = digestUser(changes, false);
-    expect(u).toBe("Language: en\nChanges:\n<<<\n- Xode finished: Cart fix is ready\n- Plan Ease needs the person\n- Xode started: Fix the login   redirect\n>>>");
+    expect(u).toBe("Language: en\nChanges:\n<<<\n- Xode finished: Cart fix is ready\n- Nudj needs the person\n- Xode started: Fix the login   redirect\n>>>");
     expect(digestUser(changes, true)).toMatch(/^Language: hinglish/);
     expect(changeSig(changes)).toBe(changeSig([...changes].reverse()));
     expect(changeSig(changes)).not.toBe(changeSig(changes.slice(1)));
   });
 
   it("keeps a line only when it is one line of 60 at most, with no secret", () => {
-    expect(usableDigest("Cart fix shipped; Plan Ease needs you")).toBe("Cart fix shipped; Plan Ease needs you");
+    expect(usableDigest("Cart fix shipped; Nudj needs you")).toBe("Cart fix shipped; Nudj needs you");
     expect(usableDigest("\"Cart fix shipped\"")).toBe("Cart fix shipped");
     expect(usableDigest("x ".repeat(40))).toBeNull();
     expect(usableDigest("")).toBeNull();
@@ -518,17 +518,17 @@ describe("the AI digest (section 4)", () => {
 
   it("asks the cheapest model once per change, and reads the cache after", async () => {
     const asked: Array<{ tier: unknown; purpose: unknown; budget: unknown; messages: Array<{ content: string }> }> = [];
-    const call = (async (i: never) => { asked.push(i); return { json: { line: "Cart fix done; Plan Ease needs you" }, paise: 0.2, model: "m", text: "" }; }) as never;
+    const call = (async (i: never) => { asked.push(i); return { json: { line: "Cart fix done; Nudj needs you" }, paise: 0.2, model: "m", text: "" }; }) as never;
     const saved: unknown[] = [];
     const d = { call, waitMs: 1000, maxPaise: 5, now: () => FIXED_NOW, save: async (x: unknown) => { saved.push(x); } };
     const line = await digestFor("u1", changes, false, undefined, d);
-    expect(line).toBe("Cart fix done; Plan Ease needs you");
+    expect(line).toBe("Cart fix done; Nudj needs you");
     expect(asked).toHaveLength(1);
     expect(asked[0]).toMatchObject({ tier: "tiny", purpose: "widget.digest", budget: { maxPaise: 5 } });
     expect(asked[0]!.messages.at(-1)!.content).toBe(digestUser(changes, false));
-    expect(saved).toEqual([{ sig: changeSig(changes), line: "Cart fix done; Plan Ease needs you", at: FIXED_NOW }]);
+    expect(saved).toEqual([{ sig: changeSig(changes), line: "Cart fix done; Nudj needs you", at: FIXED_NOW }]);
     // the same changes: the cache, no call
-    expect(await digestFor("u1", changes, false, saved[0] as never, d)).toBe("Cart fix done; Plan Ease needs you");
+    expect(await digestFor("u1", changes, false, saved[0] as never, d)).toBe("Cart fix done; Nudj needs you");
     expect(asked).toHaveLength(1);
   });
 
@@ -562,7 +562,7 @@ describe("the AI digest (section 4)", () => {
     expect(sent).toHaveLength(1);
     // the connected app's yes is private: its words never reach the model
     expect(sent[0]).not.toContain("dentist");
-    expect(sent[0]).toContain("Plan Ease needs the person");
+    expect(sent[0]).toContain("Nudj needs the person");
     expect((await on.glance.get("u1")).digest).toMatchObject({ line: "Three things moved" });
     // the same changes on the next glance: the cache
     await on.app.inject({ method: "GET", url: `/v1/shell/glance?v=2&tz=${IST}`, headers: who("u1") });

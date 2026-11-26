@@ -6,7 +6,7 @@
  *   - add, list, change, move, take out, tick; someone else's is theirs to change; a meeting's to-do, once
  *   - reminders: sent once through the push engine's door, moved on to the next start, none when it is long past
  *   - the routes: the person's own, 401 without a session, another person's is "not found"; quick add
- *   - a bot given "calendar": its tools write the person's own days ("Added by Plan Ease"); the old Google ids mean these; Google is not offered
+ *   - a bot given "calendar": its tools write the person's own days ("Added by Nudj"); the old Google ids mean these; Google is not offered
  *   - the Plan page and the add / change page draw it (both clients, lint clean); Today and Tasks read it
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -37,7 +37,7 @@ const { verdict } = await import("../src/you/push.js");
 const { DEFAULT_SETTINGS } = await import("../src/you/settings.js");
 const { rig, ALICE, toolCall } = await import("./bots-rig.js");
 const { resetConfigForTests } = await import("../src/config.js");
-/** Plan Ease's reminders switched off (PLAN_V2_REMINDERS=false): the reminders and the form as they were (tests/plan-ease.test.ts has them on). */
+/** Nudj's reminders switched off (PLAN_V2_REMINDERS=false): the reminders and the form as they were (tests/plan-ease.test.ts has them on). */
 const remindersOff = () => { vi.stubEnv("PLAN_V2_REMINDERS", "false"); resetConfigForTests(); };
 const switchesBack = () => { vi.unstubAllEnvs(); resetConfigForTests(); };
 
@@ -222,7 +222,7 @@ describe("reminders", () => {
     switchesBack();
   });
 
-  it("follow the person's say: sent, quietly in quiet hours, not with Plan Ease off", () => {
+  it("follow the person's say: sent, quietly in quiet hours, not with Nudj off", () => {
     const s = structuredClone(DEFAULT_SETTINGS);
     expect(verdict(s, "plan_reminder", 10 * 60)).toBe("send");
     expect(verdict({ ...s, notify: { ...s.notify, botsOff: ["plan"] } }, "plan_reminder", 10 * 60)).toBe("drop");
@@ -280,14 +280,14 @@ describe("a bot given the calendar", () => {
     expect(await port.status(U, ["google-calendar", "calendar", "google-docs"])).toEqual([{ id: "google-calendar", name: "Calendar", status: "connected" }, { id: "google-docs", name: "google-docs", status: "connected" }]);
     expect((await port.tools(U, "calendar")).map((t) => t.name)).toEqual(["list_events", "add_event", "change_event", "remove_event"]);
 
-    // "add dentist Friday 5 pm" in Plan Ease's chat: the model calls add_event, the event is on the person's days, from Plan Ease.
+    // "add dentist Friday 5 pm" in Nudj's chat: the model calls add_event, the event is on the person's days, from Nudj.
     const r = await rig((s, n) => (s.purpose === "bot.run" ? (n === 0 ? { toolCalls: [toolCall("calendar__add_event", { title: "Dentist", date: "2026-10-30", time: "17:00" })] } : "Added Dentist on Friday at 5 pm.") : "ok"), { ports: { connectors: withOwnDays(null, c) } });
     const a = await r.bots.ask(ALICE, "plan", { message: "add dentist Friday 5 pm" });
     expect(a.text).toBe("Added Dentist on Friday at 5 pm.");
     expect(a.tools).toEqual(["calendar__add_event"]);
     expect(a.notes.join(" ")).not.toMatch(/not connected/i);
     const [e] = (await c.list(ALICE, { from: "2026-10-30", to: "2026-10-30", tz: IST })).events;
-    expect(e).toMatchObject({ title: "Dentist", start: ist(30, 17), from: "Plan Ease", source: "bot", remindMin: 15 });
+    expect(e).toMatchObject({ title: "Dentist", start: ist(30, 17), from: "Nudj", source: "bot", remindMin: 15 });
   });
 });
 

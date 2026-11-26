@@ -138,7 +138,7 @@ function checkCards(parts: Node[]): number {
   return askers.length;
 }
 
-// ===================================================================== Plan Ease's two rows
+// ===================================================================== Nudj's two rows
 
 const DAY_DATA = {
   v: 3 as const, today: "2026-11-14", tomorrow: "2026-11-15", day: "2026-11-14", label: "Today", date: "Fri 14 Nov",
@@ -1440,7 +1440,7 @@ describe("Do Not Disturb is asked at ring time, and the Focus hold does not cree
     const post = readFocusPost({ on: true, hold: "calls", source: "filter", at: saw }, now);
     expect(post).toEqual({ on: true, hold: "calls", source: "filter", at: saw });
     expect(focusStateOf(post as never, now).until).toBe(saw + FOCUS_HOLD_MS);
-    // So a Plan Ease page appear an hour later does not push the limit out: it is the same moment again.
+    // So a Nudj page appear an hour later does not push the limit out: it is the same moment again.
     expect(focusStateOf(readFocusPost({ on: true, hold: "calls", source: "filter", at: saw }, now + 3_600_000) as never, now + 3_600_000).until)
       .toBe(saw + FOCUS_HOLD_MS);
     // A moment in the future is read as now, and no `at` at all is today's behaviour exactly.
@@ -1456,7 +1456,7 @@ describe("Do Not Disturb is asked at ring time, and the Focus hold does not cree
     const row = await prefs.get("u1");
     // It still holds, by the clock...
     expect(focusHolding(row?.focus, now + 3_600_000)).toBe(true);
-    // ...but it says `dnd`, and Android posts only on Plan Ease page appear, so nothing here says DND is still on now.
+    // ...but it says `dnd`, and Android posts only on Nudj page appear, so nothing here says DND is still on now.
     expect(row?.focus?.source).toBe("dnd");
     // The filter's own row is the one that can be trusted: iOS posts the end of a Focus itself.
     await setFocus(prefs, "u2", { on: true, hold: "calls", source: "filter" }, now);

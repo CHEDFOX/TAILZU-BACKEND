@@ -27,7 +27,7 @@ const OFF = { code: "make_off", message: "That isn't switched on here." };
 export function registerPlanMakeRoutes(app: FastifyInstance, deps: Pick<BotsAreaDeps, "rateLimit">, o: { ease: PlanEase; make?: PlanMake }): PlanMake {
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
-  // Over this Plan Ease, follow-through's people (wired just before, routes/bots/planFollows.ts) and capture's reader and budget.
+  // Over this Nudj, follow-through's people (wired just before, routes/bots/planFollows.ts) and capture's reader and budget.
   const make = o.make ?? new PlanMake({
     ease: () => o.ease, calendar: () => o.ease.calendar, people: () => (followOn() ? planFollows().people : null), capture: planCapture,
   });

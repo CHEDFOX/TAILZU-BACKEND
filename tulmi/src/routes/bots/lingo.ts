@@ -13,7 +13,7 @@
  * THE ANSWER IS MARKED HERE AND NOWHERE ELSE. The app sends what the person did, never whether it was right, so there
  * is no message it can send that says so. That is the whole difference from an app that marks itself.
  *
- * The signed-in person's own. With BOTS off, or Lingo off (LINGO), every route is 404 { code: "lingo_off" }.
+ * The signed-in person's own. With BOTS off, or Babbl off (LINGO), every route is 404 { code: "lingo_off" }.
  * Nothing a person typed is logged.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -63,7 +63,7 @@ const SET_KEEP = 80;
 /** Sentences fetched per word that needs one. A handful is plenty: the shortest usable one is taken. */
 const SENTENCES_PER_WORD = 4;
 
-/** A language tag, as loosely as BCP-47 allows and no looser. No list of languages exists anywhere in Lingo. */
+/** A language tag, as loosely as BCP-47 allows and no looser. No list of languages exists anywhere in Babbl. */
 const isTag = (s: string): boolean => /^[A-Za-z]{2,8}(-[A-Za-z0-9]{2,8})*$/.test(s) && s.length <= TAG_MAX;
 
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
@@ -79,7 +79,7 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
   const now = deps.now ?? Date.now;
 
   const begin = async (req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> => {
-    if (!deps.bots || !lingoOn()) { reply.code(404).send({ code: "lingo_off", message: "Lingo is not switched on." }); return null; }
+    if (!deps.bots || !lingoOn()) { reply.code(404).send({ code: "lingo_off", message: "Babbl is not switched on." }); return null; }
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) { reply.code(401).send({ code: "unauthorized", message: "Sign in again." }); return null; }
     return user;

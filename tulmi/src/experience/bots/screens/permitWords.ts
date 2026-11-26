@@ -150,7 +150,7 @@ export const CAL_BUSY = {
     "X0 Bot reads when you're busy in your iPhone's calendars for the next two weeks: just when each event starts and ends. Not its name, place, notes or who's invited.",
     // What is really built (docs: perms2 §2.3): the overlap line on the day, the times Move offers, and whether a call
     // rings. Plan Make picks its own slots and does not read them yet, so the line does not claim it does.
-    "Plan Ease marks anything on your plan that overlaps one, keeps the times it offers you clear of them, and lets a call wait instead of ringing inside one. Turning this off deletes them. They're never sent to AI services or used for ads.",
+    "Nudj marks anything on your plan that overlaps one, keeps the times it offers you clear of them, and lets a call wait instead of ringing inside one. Turning this off deletes them. They're never sent to AI services or used for ads.",
     "Next, your iPhone asks you.",
   ],
   /**
@@ -159,16 +159,16 @@ export const CAL_BUSY = {
    */
   linesAndroid: [
     "X0 Bot reads when you're busy in your phone's calendars for the next two weeks: just when each event starts and ends. Not its name, place, notes or who's invited.",
-    "Plan Ease marks anything on your plan that overlaps one, keeps the times it offers you clear of them, and lets a call wait instead of ringing inside one. Turning this off deletes them. They're never sent to AI services or used for ads.",
+    "Nudj marks anything on your plan that overlaps one, keeps the times it offers you clear of them, and lets a call wait instead of ringing inside one. Turning this off deletes them. They're never sent to AI services or used for ads.",
     "Next, your phone asks you.",
   ],
   cta: "Continue",
   /** The row, once it is on: "Busy times from your calendar · as of 9:40". */
   on: "Busy times from your calendar",
-  denied: "X0 Bot can't see your calendar. Plan Ease will plan without it.",
+  denied: "X0 Bot can't see your calendar. Nudj will plan without it.",
   blocked: "Calendar is off for X0 Bot",
   openSettings: "Open Settings",
-  off: "Deleted. Plan Ease will plan without them.",
+  off: "Deleted. Nudj will plan without them.",
   shareRow: "When you're busy",
   shareSub: "Start and end times only, for two weeks, from your phone's calendars. Never an event's name, place or people. Deleted when you switch it off.",
 } as const;
@@ -181,7 +181,7 @@ export const REMINDERS = {
   androidSub: "X0 Bot keeps your Google Tasks in step through your account, not from this phone.",
   title: "Sync with Reminders",
   lines: [
-    "X0 Bot makes one list in Reminders called X0 Bot and keeps it in step with your Plan Ease to-dos. A to-do you add in either place shows up in both, with its due date and whether it's done.",
+    "X0 Bot makes one list in Reminders called X0 Bot and keeps it in step with your Nudj to-dos. A to-do you add in either place shows up in both, with its due date and whether it's done.",
     "It never opens your other lists.",
     "Turning this off stops the syncing; nothing is deleted from either side.",
     "Next, your iPhone asks you.",
@@ -190,8 +190,8 @@ export const REMINDERS = {
    * The AI clause, which App Review 5.1.2(i) asks for: say plainly when personal data reaches a third-party AI. It names the
    * permission the person has already given or not (privacy/aiConsent.ts), so the card tells the truth either way.
    */
-  aiYes: "Items in the X0 Bot list become Plan Ease to-dos, kept and used like the ones you type: you've let X0 Bot use AI, so Plan Ease's AI reads them to plan your day, as it reads your other to-dos.",
-  aiNo: "Items in the X0 Bot list become Plan Ease to-dos, kept and used like the ones you type. X0 Bot doesn't send your to-dos to AI unless you allow it.",
+  aiYes: "Items in the X0 Bot list become Nudj to-dos, kept and used like the ones you type: you've let X0 Bot use AI, so Nudj's AI reads them to plan your day, as it reads your other to-dos.",
+  aiNo: "Items in the X0 Bot list become Nudj to-dos, kept and used like the ones you type. X0 Bot doesn't send your to-dos to AI unless you allow it.",
   cta: "Continue",
   on: "Synced with Reminders",
   denied: "X0 Bot can't see your Reminders. Your to-dos stay in the app.",
@@ -217,7 +217,7 @@ export const FOCUS = {
   live: "A Focus with X0 Bot's filter is on",
   idle: "No Focus with X0 Bot's filter is on",
   /** What waits: the one choice the filter carries. */
-  holdCalls: "Hold Plan Ease calls",
+  holdCalls: "Hold Nudj calls",
   holdAll: "Hold calls and other pings",
   shareRow: "Whether a Focus is on",
   shareSub: "On or off, and whether calls alone or calls and pings wait. Never which Focus. Kept 12 hours at most.",
@@ -279,10 +279,10 @@ export const MOTION = {
 /** *Wait while I'm driving*: the same Motion grant, answering one word just before a call. */
 export const DRIVE = {
   row: "Wait while I'm driving",
-  rowSub: "Plan Ease's calls wait while you're in a car. A leave-by call is skipped.",
+  rowSub: "Nudj's calls wait while you're in a car. A leave-by call is skipped.",
   title: "Wait while you're driving",
   lines: [
-    "Just before Plan Ease calls you, your iPhone checks whether it's in a car. If it is, the call waits, and a leave-by call is skipped because you're already on your way.",
+    "Just before Nudj calls you, your iPhone checks whether it's in a car. If it is, the call waits, and a leave-by call is skipped because you're already on your way.",
     "X0 Bot is told only “driving” or “not driving”, never where.",
     "Next, your iPhone asks you.",
   ],
@@ -292,19 +292,19 @@ export const DRIVE = {
    * "don't know" — and the server's rule for that is to ring as it does today.
    */
   linesAndroid: [
-    "Just before Plan Ease calls you, your phone checks whether you're in a car. If you are, the call waits, and a leave-by call is skipped because you're already on your way.",
+    "Just before Nudj calls you, your phone checks whether you're in a car. If you are, the call waits, and a leave-by call is skipped because you're already on your way.",
     "X0 Bot is told only “driving” or “not driving”, never where. On Android the answer is sometimes neither, and then the call comes as it does now.",
     "Next, your phone asks you.",
   ],
-  rowSubAndroid: "Plan Ease's calls wait while you're in a car, when your phone can tell. A leave-by call is skipped.",
+  rowSubAndroid: "Nudj's calls wait while you're in a car, when your phone can tell. A leave-by call is skipped.",
   blockedAndroid: "Physical activity is off for X0 Bot",
   cta: "Continue",
   denied: "X0 Bot can't tell when you're driving. Calls will come as they do now.",
   blocked: "Motion & Fitness is off for X0 Bot",
   openSettings: "Open Settings",
   shareRow: "Whether you're driving",
-  shareSub: "One word, “driving” or “not driving”, just before a Plan Ease call. Never where you are, and not kept past that call.",
-  shareSubAndroid: "One word, “driving” or “not driving” — sometimes neither — just before a Plan Ease call. Never where you are, and not kept past that call.",
+  shareSub: "One word, “driving” or “not driving”, just before a Nudj call. Never where you are, and not kept past that call.",
+  shareSubAndroid: "One word, “driving” or “not driving” — sometimes neither — just before a Nudj call. Never where you are, and not kept past that call.",
 } as const;
 
 /** *Also count my sleep*, on a fitness bot whose health is already on. */

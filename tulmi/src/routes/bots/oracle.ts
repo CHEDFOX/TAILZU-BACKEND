@@ -1,5 +1,5 @@
 /**
- * THE ORACLE'S CARDS (src/oracle, docs/oracle.md): when and where the person was born, kept for the Oracle to read their sky from.
+ * THE ORACLE'S CARDS (src/oracle, docs/oracle.md): when and where the person was born, kept for Chamen to read their sky from.
  *
  *   GET    /v1/oracle/sky              { sky, line, when }: sky (and its line) only once it is whole; when { date, time, line } once the first
  *                                      card is kept. Nulls before anything is given
@@ -10,7 +10,7 @@
  *   GET    /v1/oracle/places?q=&s=     { q, places: [{ id, label, sub }] }: up to five towns and cities for what was typed (oracle/places.ts:
  *                                      Google's with GOOGLE_PLACES_API_KEY, else the server's own); `s` is the card's session token
  *
- * The signed-in person's own. With BOTS off, or the Oracle not set up (ORACLE_WORKER_URL, ORACLE_WORKER_SECRET), every route is 404 { code: "oracle_off" }.
+ * The signed-in person's own. With BOTS off, or Chamen not set up (ORACLE_WORKER_URL, ORACLE_WORKER_SECRET), every route is 404 { code: "oracle_off" }.
  * Nothing a person typed is logged.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -66,7 +66,7 @@ export function registerOracleRoutes(app: FastifyInstance, deps: OracleRouteDeps
   const now = deps.now ?? Date.now;
 
   const begin = async (req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> => {
-    if (!deps.bots || !oracleOn()) { reply.code(404).send({ code: "oracle_off", message: "The Oracle is not switched on." }); return null; }
+    if (!deps.bots || !oracleOn()) { reply.code(404).send({ code: "oracle_off", message: "Chamen is not switched on." }); return null; }
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) { reply.code(401).send({ code: "unauthorized", message: "Sign in again." }); return null; }
     return user;

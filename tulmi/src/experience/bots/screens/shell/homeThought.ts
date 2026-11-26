@@ -96,7 +96,7 @@ export function askExchange(): Node[] {
       backgroundColor: C.ink, borderRadius: 20, borderBottomRightRadius: 6, paddingVertical: 10, paddingHorizontal: 15, maxWidth: "86%",
     })], { justifyContent: "flex-end" })),
     when({ all: [asking, { falsy: "reply.text" }] }, row([statusMark("working", { color: C.ink }), meta("Thinking", { size: 13 })], { gap: 8 })),
-    // "Plan Ease answered" only once the answer has come back with who answered (while the words stream in, there is no name yet).
+    // "Nudj answered" only once the answer has come back with who answered (while the words stream in, there is no name yet).
     when(replied, who("reply.text")),
     // A build that does not stream: the whole answer, when it is back.
     when({ all: [{ falsy: "reply.text" }, { truthy: "asked.shell.text" }] }, who("asked.shell.text")),

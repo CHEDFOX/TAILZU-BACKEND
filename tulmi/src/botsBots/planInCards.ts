@@ -2,7 +2,7 @@
  * THE NEEDS-YOU CARDS OF WHAT COMES IN (docs/plan-ease.md "Needs-you cards"; design A1, A5, A9): the work calendar's two, and a capture
  * left on the share screen. Each is one question with at most two buttons, and leaving it alone is an answer:
  *
- *   link         "Show your work calendar here too?"   [Link it] [No thanks]   once, after the 3rd day they open Plan Ease with no
+ *   link         "Show your work calendar here too?"   [Link it] [No thanks]   once, after the 3rd day they open Nudj with no
  *                                                                              link; left alone it is never asked again
  *   linkStopped  "Your work calendar stopped updating"  [Link again]          after 6 hours stopped; left alone 7 days, it is taken off
  *   capture      "4 things from the school circular. Add them?"  [Add all] [Look]   once in the evening note, gone after 7 days
@@ -17,10 +17,10 @@ const MIN = 60_000, DAY = 24 * 60 * MIN;
 export const LINK_SCREEN = "bots.plan.link";
 export const CAPTURE_SCREEN = "bots.plan.capture";
 
-/** "No thanks" to the offer, kept for ever; the days Plan Ease was opened with no link (the offer comes on the third). */
+/** "No thanks" to the offer, kept for ever; the days Nudj was opened with no link (the offer comes on the third). */
 export const LINK_NO = "link:offer:no";
 export const LINK_SEEN = "link:seen:";
-/** How many days of opening Plan Ease before the offer. */
+/** How many days of opening Nudj before the offer. */
 export const OFFER_AFTER_DAYS = 3;
 
 /** What the work calendar's source says (planLinks.ts LinkStatus). */
@@ -31,7 +31,7 @@ export interface CaptureBrief { id: string; label: string; n: number; sure: numb
 const startOfDay = (key: string, tz: number) => Date.parse(`${key}T00:00:00Z`) - tz * MIN;
 const dayOf = (ms: number, tz: number) => new Date(ms + tz * MIN).toISOString().slice(0, 10);
 
-/** The day the offer is for: the third day they opened Plan Ease with no link. */
+/** The day the offer is for: the third day they opened Nudj with no link. */
 function offerDay(ctx: NeedsCtx): string | null {
   const days = [...ctx.skipped.keys()].filter((k) => k.startsWith(LINK_SEEN)).map((k) => k.slice(LINK_SEEN.length)).sort();
   return days.length >= OFFER_AFTER_DAYS ? days[OFFER_AFTER_DAYS - 1]! : null;
@@ -89,5 +89,5 @@ const CAPTURE: NeedsType = {
 /** Steps 2 and 3's cards (planNeeds.ts LATER_TYPES). */
 export const PLAN_IN_NEEDS: readonly NeedsType[] = [CAPTURE, LINK, LINK_STOPPED];
 
-/** Today's day key at `now` (the link source marks the days Plan Ease was opened). */
+/** Today's day key at `now` (the link source marks the days Nudj was opened). */
 export const todayKey = (now: number, tz: number): string => dayOf(now, tz);

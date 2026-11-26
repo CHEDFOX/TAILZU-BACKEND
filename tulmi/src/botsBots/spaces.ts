@@ -896,7 +896,7 @@ export class Spaces {
   }
 
   /**
-   * The spaces whose bots `slug` is. Plan Ease, Notes, Travel bot and Xode are every group's bots (there is no add-a-bot step any
+   * The spaces whose bots `slug` is. Nudj, Notes, Nomaz and Xode are every group's bots (there is no add-a-bot step any
    * more), so for them it is every space the person is in; any other bot, the spaces it was added to.
    */
   async spacesWithBot(userId: string, slug: string): Promise<Array<{ id: string; name: string }>> {

@@ -113,7 +113,7 @@ describe("bots and controls", () => {
   it("a meter and a timeline", () => {
     const m = meter(420, 3000, { label: "This stretch", valueText: "14% used" });
     expect(m.children![1]!.children![0]!.style!.width).toBe("14.0%");
-    const t = timeline([{ mark: "needs", title: "Plan Ease needs you" }, { mark: "working", color: "#4F7A3A", title: "Checkout redesign" }]);
+    const t = timeline([{ mark: "needs", title: "Nudj needs you" }, { mark: "working", color: "#4F7A3A", title: "Checkout redesign" }]);
     expect(t.children).toHaveLength(2);
     expect(checkTree(t)).toEqual([]);
   });

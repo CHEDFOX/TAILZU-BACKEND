@@ -6,7 +6,7 @@
  *   - its routes: the page, the week, the box, the line; 404 plan_v2_off while the switch is off
  *   - the bootstrap: the buttons and the Android channels, only while the reminders are on
  *   - the engine: a kind's own priority, expiry, iOS loudness, and one push's own buttons
- *   - the widget: Plan Ease's line, its question in the needs spot, and a leave-by leading the lock screen
+ *   - the widget: Nudj's line, its question in the needs spot, and a leave-by leading the lock screen
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -52,7 +52,7 @@ afterEach(() => { vi.unstubAllEnvs(); resetConfigForTests(); });
 /** The simpler page is the fallback now (PLAN_V2_HOME off); the threaded home is tests/plan-home-screens.test.ts. */
 const simplePage = () => beforeEach(() => { vi.stubEnv("PLAN_V2_HOME", "false"); resetConfigForTests(); });
 
-/** Plan Ease's page as GET .../plan/today answers it on the boards' day: tomorrow has a clash, the dentist has a leave-by. */
+/** Nudj's page as GET .../plan/today answers it on the boards' day: tomorrow has a clash, the dentist has a leave-by. */
 async function todayApi() {
   const c = new Calendar({ rows: memoryCalendarRows(), now: () => NOW, publish: () => undefined });
   const prefs = memoryPlanPrefs(() => NOW);
@@ -98,7 +98,7 @@ describe("the page", () => {
     expect(page.needs).toMatchObject({ type: "move", question: "Move grocery run to Fri 9 am?", reason: "It overlaps parent-teacher meeting at 6:15 pm." });
     const { s, texts, nodes } = await draw("bots.plan", "phone", { api });
     expect(lintTree(s.root!)).toEqual([]);
-    expect(texts).toEqual(expect.arrayContaining(["Plan Ease", "Today:", "Needs you", page.needs!.question, "Move it", "Keep", "Tomorrow", "See the week"]));
+    expect(texts).toEqual(expect.arrayContaining(["Nudj", "Today:", "Needs you", page.needs!.question, "Move it", "Keep", "Tomorrow", "See the week"]));
     expect(texts).not.toContain("Work in space");
     // The fee is the one next thing: not repeated in the list.
     expect(texts.filter((t) => t === "School trip fee ₹300")).toEqual([]);
@@ -246,7 +246,7 @@ describe("the routes", () => {
 });
 
 describe("the bootstrap", () => {
-  it("lists Plan Ease's buttons and Android channels, only while its reminders are on", () => {
+  it("lists Nudj's buttons and Android channels, only while its reminders are on", () => {
     const on = withAppKnobs({ labels: {}, flags: {} });
     const cats = on.flags["push.categories"] as Array<{ id: string; actions: Array<{ id: string; act?: string; open?: boolean }> }>;
     expect(cats.map((c) => c.id)).toEqual(expect.arrayContaining(["x0_reply", "x0_task", "x0_todo", "x0_leave", "x0_move"]));
@@ -283,7 +283,7 @@ describe("the widget", () => {
     state: { seen: {}, all: 0, sinceAt: NOW - 5 * HOUR }, plan,
   });
 
-  it("says Plan Ease's line, asks its one question with its buttons, and lets a leave-by lead the lock screen", () => {
+  it("says Nudj's line, asks its one question with its buttons, and lets a leave-by lead the lock screen", () => {
     const line = { line: "Next: Appointment 6 pm", lock: { inline: "Next: Appointment 6:00", title: "Appointment at 6 pm", line: "Today" }, leads: false };
     const quiet = glanceV2Of(input({ line, needs: null }), structuredClone(WIDGETS_DEFAULTS));
     expect(quiet.bots.find((b) => b.slug === "plan")?.line).toBe("Next: Appointment 6 pm");

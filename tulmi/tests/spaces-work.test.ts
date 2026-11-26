@@ -69,7 +69,7 @@ describe("sharing one thing with \"/\"", () => {
     expect((await share(s, M_, { thing: { bot: "shop", id: "x" } })).status).toBe(404);
     const r = await share(s, M_, { text: "So you know", to: R_, thing: { bot: "plan", id: s.doctor } });
     expect(r.status).toBe(201);
-    expect(r.body.message.thing).toEqual({ grantId: expect.any(String), bot: "plan", botName: "Plan Ease", ownerId: M_, ownerName: "", id: s.doctor, title: "Doctor visit", line: "Event" });
+    expect(r.body.message.thing).toEqual({ grantId: expect.any(String), bot: "plan", botName: "Nudj", ownerId: M_, ownerName: "", id: s.doctor, title: "Doctor visit", line: "Event" });
     const cards = async (who: string) => ((await s.call("GET", `${AREA}/spaces/${s.home}/feed`, who)).body.messages as Array<{ thing: unknown }>).filter((m) => m.thing).length;
     // Aanya made Home; a card for a thing shared with Rohan by name is not hers to see (docs/social.md §4).
     expect([await cards(M_), await cards(R_), await cards(A_), await cards(D_)]).toEqual([1, 1, 0, 0]);
@@ -85,7 +85,7 @@ describe("Work in space", () => {
     const page = (await s.call("GET", W("plan"), R_)).body;
     expect(page).toEqual({
       // seenBy was the admins who could see the viewer's own things. Nobody can, so it is empty (docs/social.md §4).
-      bot: "plan", botName: "Plan Ease", seenBy: [], notesOnMine: [],
+      bot: "plan", botName: "Nudj", seenBy: [], notesOnMine: [],
       spaces: [{ spaceId: s.home, spaceName: "Home", admin: false, people: [{ userId: M_, name: "Mom", how: "shared", line: "1 plan shared with you", bot: bot(M_) }] }],
     });
     expect(s.reads).toEqual([]);

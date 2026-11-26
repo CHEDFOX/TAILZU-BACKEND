@@ -12,7 +12,7 @@
  *   "Gym Buddy"      a bot the account made whose name is a fitness word, so the edit page draws *Count my workouts*. A
  *                    built-in never draws it, and nor does a bot called anything else. Build 8.9.1's *Count my steps with
  *                    Motion & Fitness* and *Also count my sleep* are on that same row.
- *   a plan item with a place (8.9.1)   so *Plan Ease › "Pick up dry cleaning" › Remind me when I get there* exists, which is
+ *   a plan item with a place (8.9.1)   so *Nudj › "Pick up dry cleaning" › Remind me when I get there* exists, which is
  *                    where the arrival reminder is. Without a place the switch is not drawn at all, because the server has
  *                    nothing to point the phone at. It REPEATS DAILY and sits in the evening, because the armed set holds
  *                    only events that are still to come (`armedArrivals`): a one-off at 6 pm was gone from the review route
@@ -138,7 +138,7 @@ console.log(`  App Store Connect › App Review Information: the account's sign-
 console.log(`  Play Console › App access: the same, plus Bots › ${BOT} › Edit › Count my workouts from Health Connect.`);
 console.log(`  Put ${userId} in PERM_HEALTH_ANDROID_USERS, so the row is there while Google's own list propagates.`);
 console.log(`  Build 8.9.1: put ${userId} in PERM_HEALTH_SLEEP_ANDROID_USERS too, for the same reason, once Play has approved sleep.`);
-console.log(`  Build 8.9.1 routes: Plan Ease › From this phone › Plan around my calendar, and Sync with Reminders under it;`);
+console.log(`  Build 8.9.1 routes: Nudj › From this phone › Plan around my calendar, and Sync with Reminders under it;`);
 console.log(`  You › What pings you › Hold calls during a Focus and Wait while I'm driving; Bots › ${BOT} › Edit ›`);
-console.log(`  Count my steps with Motion & Fitness and Also count my sleep; Plan Ease › "${ITEM}"`);
+console.log(`  Count my steps with Motion & Fitness and Also count my sleep; Nudj › "${ITEM}"`);
 console.log(`  (every day, 9:30 pm) › Add to my calendar and Remind me when I get there.`);

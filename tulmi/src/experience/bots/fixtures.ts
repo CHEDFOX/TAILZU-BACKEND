@@ -18,8 +18,8 @@ const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const SAMPLE_BOTS: BotLite[] = [
   { slug: "code", name: "Xode", colour: "pine", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests.", builtin: true },
   { slug: "keybot", name: "Keylessbord", colour: "ochre", purpose: "Writes, rewrites and replies in your own voice, in any language you mix.", builtin: true },
-  { slug: "plan", name: "Plan Ease", colour: "sea", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.", builtin: true },
-  { slug: "travel", name: "Travel bot", colour: "clay", purpose: "Plans trips: routes, stays and timings, with sources.", builtin: true },
+  { slug: "plan", name: "Nudj", colour: "sea", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.", builtin: true },
+  { slug: "travel", name: "Nomaz", colour: "clay", purpose: "Plans trips: routes, stays and timings, with sources.", builtin: true },
   { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Plans your workouts around your week.", builtin: false },
 ];
 

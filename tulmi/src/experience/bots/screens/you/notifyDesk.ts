@@ -12,7 +12,7 @@ import { line as cardLine, permitStep } from "../firstRun/parts.js";
 import { DRIVE, FOCUS } from "../permitWords.js";
 import { type Settings, toast, refresh, oops, clock, botOf, heading, couldNot, columns, glyph, G } from "./parts.js";
 
-/** `name`: the name Plan Ease calls as ("Zara", else "X0"); `calls`: calls can come here (BOT_CALLS), so the Calls row is drawn. */
+/** `name`: the name Nudj calls as ("Zara", else "X0"); `calls`: calls can come here (BOT_CALLS), so the Calls row is drawn. */
 export interface NotifyData {
   settings: Settings; today: { done: number; needs: number; spentPaise: number } | null; line: string | null; name?: string; calls?: boolean;
   /** Follow-through is on here (PLAN_V2_FOLLOW): the Must not miss part shows. */

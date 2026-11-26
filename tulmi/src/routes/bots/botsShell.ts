@@ -130,7 +130,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     const [jobs, tasks, evs, projects, voiceRows, calls, follows] = await Promise.all([
       readJobs(deps, user.id), readTasks(deps, user.id), events().list(user.id, since).catch(() => []), readProjects(deps, user.id),
       voice(user, since).catch(() => []),
-      // Plan Ease's calls nobody answered (botsBots/planCall.ts): "Missed call from X0". A missing table (before 0078) is none.
+      // Nudj's calls nobody answered (botsBots/planCall.ts): "Missed call from X0". A missing table (before 0078) is none.
       planCalls().missedSince(user.id, since).catch(() => []),
       // Followed items (botsBots/planFollow.ts): someone else said done, someone can't, a must-not-miss one nobody did. None before 0081.
       followOn() ? planFollows().activitySince(user.id, since).catch(() => []) : Promise.resolve([]),
@@ -363,7 +363,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       deps.bots ? deps.bots.list(user.id).catch(() => []) : Promise.resolve([]),
       saved(user, tz).catch(() => 0),
       (o.profile ?? getProfile)(user).catch(() => null),
-      // Plan Ease's line and its one question (botsBots/planEase.ts), when its simpler page is on; the widget never fails for it. A build
+      // Nudj's line and its one question (botsBots/planEase.ts), when its simpler page is on; the widget never fails for it. A build
       // whose widgets switch their lines on their own (steps=1, the app release) is given the line as it will read later on too.
       planOn("page") ? planEase().line(user.id, tz, { steps: wantSteps }).catch(() => null) : Promise.resolve(null),
     ]);
@@ -403,7 +403,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       }
     }
     const g = glanceV2Of({ ...input, digest }, payload);
-    // The steps: Plan Ease's line from each moment it changes, and the lock words then (widgets/glance.ts glanceSteps). `base` is the
+    // The steps: Nudj's line from each moment it changes, and the lock words then (widgets/glance.ts glanceSteps). `base` is the
     // glance with no plan line, for the moments the plan doesn't lead the lock screen.
     if (wantSteps && plan?.steps?.length && input.plan) {
       const base = glanceV2Of({ ...input, digest, plan: { ...input.plan, line: null } }, payload);

@@ -44,7 +44,7 @@ export function aboutState(about: About | undefined): Record<string, unknown> {
   return { [UNAME]: about?.username ?? "", [GENDER]: gender, [SAVED]: false, [CLOSED]: false, [BOT]: about?.botName ?? "", [NAMED]: false };
 }
 
-/** The three choices as chips: picked is ink with a tick. `path`: where the pick is kept (the Oracle's card keeps its own). */
+/** The three choices as chips: picked is ink with a tick. `path`: where the pick is kept (Chamen's card keeps its own). */
 export function genderChips(desk: boolean, path: string = GENDER): Node {
   return row(GENDERS.map((g) => {
     const on: Condition = { eq: [path, g.value] };

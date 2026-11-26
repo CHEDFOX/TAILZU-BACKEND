@@ -1013,12 +1013,21 @@ export interface BotTilesProps {
   strip?: BotTileSpec;
   /** The strip's height. */
   stripHeight?: number;
+  /** BOT_TILES_STAGE: the bot's room at the top of each tile (px); the name and line start under it, top down. */
+  stage?: number;
+  /** BOT_TILES_STAGE: how many lines an idle tile's line may take (2). */
+  subLines?: number;
+  /** BOT_TILES_STAGE: the room between a tile's name and its line (px, 3). */
+  nameGap?: number;
   /**
    * Home's rare idle surprises (BOT_MOMENTS_CAPABILITY): every `every` seconds, with `chance`, one bot at his own idle
    * play plays one of `moments` once (the bots near him answer as the recipe asks). Never while a tile is tapped.
    */
   surprises?: { every: number; chance: number; moments: string[] };
 }
+
+/** A build that draws BotTilesProps.stage and subLines: the bot at the top of each tile, its words under him. */
+export const BOT_TILES_STAGE = "BotTilesStage";
 
 /** A build that draws BotTilesProps.strip (the phone's BotTiles.tsx, the window's sdui.js). */
 export const BOT_TILES_STRIP = "BotTilesStrip";
@@ -1474,7 +1483,7 @@ export const MENTION_COMMANDS_CAPABILITY = "MentionCommands";
 export const LIVE_WORDS_COMPONENT = "LiveWords";
 /** NOT A COMPONENT: actions voiceLive and voiceStop (live words over /v1/transcribe-stream, a turn ends on a pause). */
 export const VOICE_LIVE_CAPABILITY = "VoiceLive";
-/** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Plan Ease's call held as one live voice
+/** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Nudj's call held as one live voice
  *  conversation instead of turn by turn (docs/plan-ease.md "Calls"). A build that does not declare it gets today's call unchanged. */
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
@@ -1726,7 +1735,7 @@ export const FONT_BRICOLAGE_CAPABILITY = "FontBricolage";
  */
 export const PUSH_BUTTON_CAPABILITY = "PushButton";
 /** NOT A COMPONENT (the phone): the call screen's pieces — speak.loud, speak.onDone and "$state" in speak.text; voiceLive.duplex;
- *  Text format "elapsed". Also a push-token cap: this JS takes Plan Ease's calls (docs/plan-ease.md "Calls"). */
+ *  Text format "elapsed". Also a push-token cap: this JS takes Nudj's calls (docs/plan-ease.md "Calls"). */
 export const BOT_CALL_CAPABILITY = "BotCall";
 // Text props, format "elapsed" (BOT_CALL_CAPABILITY; the phone's components/Text.tsx, elapsedCore.ts): content is a start time (epoch
 // ms, or ISO); shows "m:ss" (or "h:mm:ss" past an hour) since then, ticking every second; never negative.
@@ -2044,7 +2053,7 @@ export type ActionSpec =
         | "microphone" | "camera" | "notifications" | "photoLibrary"
         | "contacts" | "calendar" | "location" | "tracking"
         /** MOTION_CAPABILITY only: Motion & Fitness (iPhone) / Physical activity (Android), for the driving check before a
-         *  Plan Ease call. */
+         *  Nudj call. */
         | "motion"
         /** ARRIVAL_CAPABILITY on Android only: "Allow all the time", as a REQUEST and not a bare openSettings. The iPhone
          *  has no such kind and answers unsupported. */

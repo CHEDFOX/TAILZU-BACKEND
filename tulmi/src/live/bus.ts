@@ -15,7 +15,7 @@
  * see is decided where it always is: the screen's own load). Two
  * exceptions carry content: `ask:<id>` (askStream.ts), an answer's words as
  * they are written, to the person who asked, under an id only their screen
- * knows; and `notice` (notices.ts), a Plan Ease push's lock-safe words, to
+ * knows; and `notice` (notices.ts), a Nudj push's lock-safe words, to
  * that person's sockets that show notices (a desktop in use) and no others.
  *
  * In-process: one server process holds every live connection. If the

@@ -7,7 +7,7 @@
  *   nextRun(schedule, tz, after)   the first run after `after` (ms), in the person's own time (`tz`, minutes east of UTC, as the apps send it)
  *
  * What is NOT a routine here, on purpose:
- *   "remind me every day at 8 to ..."     a reminder: Plan Ease's calendar keeps it (calendar/words.ts readLine, repeating events)
+ *   "remind me every day at 8 to ..."     a reminder: Nudj's calendar keeps it (calendar/words.ts readLine, repeating events)
  *   "how do I back up every day?"         a question about doing something regularly, not a request to do it
  *   "every time I open Slack ..."         an event, not a time. Routines that start on an event are the next step (docs/routines.md)
  */
@@ -54,7 +54,7 @@ const CLOCK = new RegExp(String.raw`\b(?:at|@|by|around|from)\s+(${TIME})(?=$|[\
 
 /** A question, not a request: "how do I ...", "what should I do every day?" */
 const QUESTION = /^(?:how|what|why|when|where|who|which|is|are|was|were|do|does|did|should|would|could|can i|can we|will i|am i)\b|\?\s*$/i;
-/** A reminder: the calendar's (Plan Ease) to keep, not a bot's job to run. */
+/** A reminder: the calendar's (Nudj) to keep, not a bot's job to run. */
 const REMINDER = /\bremind\s+(?:me|us|him|her|them)\b|\breminder\b|\balarm\b/i;
 /** Not a schedule at all: "every time", "everyone", "every single one of these". */
 const NOT_TIME = /\bevery\s*(?:time|one|body|thing|where|single\s+(?:one|thing|time)|other\s+(?!day|week|month))\b/i;

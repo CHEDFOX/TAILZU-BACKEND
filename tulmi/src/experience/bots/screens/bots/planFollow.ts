@@ -115,7 +115,7 @@ export function followPage(ctx: BotsCtx, v: FollowView | undefined) {
   // The tell push's Call: dial at once from the asker's own phone, the page underneath (a tap just to look only opens the page).
   const calling = dial && handoffOf(ctx, ["f_call"]) === "go" && ctx.params.button === "f_call";
   return page(ctx, {
-    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title: v.title, maxWidth: 560, gap: 16, state: { later: false },
+    back: true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), nav: "plan", title: v.title, maxWidth: 560, gap: 16, state: { later: false },
     body: calling ? [{ ...col(body, { gap: 16 }), on: { onAppear: dial! } }] : body,
     footer: footer.length ? [row(footer, { gap: 10, flexWrap: "wrap" })] : [],
   });
@@ -177,7 +177,7 @@ export function followPeoplePage(ctx: BotsCtx, d: PeoplePicker | undefined) {
     row([secondaryButton("Add", { kind: "condition", if: { falsy: "addName" }, then: toast("Say their name first"), else: save([...onIt, { name: "$state.addName" }], "Added") } as ActionSpec, md)], { gap: 8 }),
   ], { gap: 8 })] : [];
   return page(ctx, {
-    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title: "Who does it", maxWidth: 560, gap: 18, state: { numFor: "", num: "", addName: "" },
+    back: true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), nav: "plan", title: "Who does it", maxWidth: 560, gap: 18, state: { numFor: "", num: "", addName: "" },
     body: [
       col([text("Who does it", { size: 22, weight: 700, lineHeight: 28 }), meta("X0 reminds them first. If they can't, the next one.", { size: 13 })], { gap: 4 }),
       col([sectionLabel("On it"), col(rows.flatMap((r, i) => (i ? [divider(), r] : [r])), { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })], { gap: 8 }),

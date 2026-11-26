@@ -7,10 +7,10 @@
  *   usage.ts    what each API key of a bot used this month
  *   spaces.ts   spaces: members, the admin (its maker; no roles), invites by email, the space's code, drafts, consent
  *               (the rest of a space, its feed, joining, grants and Work in space: docs/spaces.md has the file list)
- *   plan.ts     Plan Ease's tomorrow and week from the person's own calendar and to-dos (src/calendar), and the change it suggests
- *   planEase.ts Plan Ease, the simpler one (docs/plan-ease.md): its page, its one box, its buttons, its day notes and leave-by
+ *   plan.ts     Nudj's tomorrow and week from the person's own calendar and to-dos (src/calendar), and the change it suggests
+ *   planEase.ts Nudj, the simpler one (docs/plan-ease.md): its page, its one box, its buttons, its day notes and leave-by
  *               reminders, over planDay.ts, planNeeds.ts, planRows.ts, planBox.ts, planNotes.ts, planKinds.ts, planSafe.ts, planPrefs.ts
- *   trips.ts    the Travel bot's trip: where, when, who, packing, its main places and stays
+ *   trips.ts    Nomaz's trip: where, when, who, packing, its main places and stays
  *   planTravel.ts, tripExtras.ts   travel times, weather and stays compared, over src/places (look.ts, later.ts: from memory now,
  *               the rest looked up after and the screen told); stays.ts, tripDates.ts
  *   rows.ts     the tables (migration 0042), in memory or Supabase
@@ -56,7 +56,7 @@ export interface BotsAreaParts {
   usage: KeyUsage;
   spaces: Spaces;
   plan: PlanDays;
-  /** Plan Ease, the simpler one: its page, box, buttons and notes (planEase.ts), over the same travel times. */
+  /** Nudj, the simpler one: its page, box, buttons and notes (planEase.ts), over the same travel times. */
   ease: PlanEase;
   trips: Trips;
   /** A trip's weather, places and stays compared (routes/bots/botsTrips.ts). */
@@ -123,8 +123,8 @@ export function shareAsk(slug: string, kind: "file" | "link" | "text"): string {
 /** What a bot will do with it, and what it won't, in a line (said before it acts). */
 export function shareLine(slug: string, name: string): string {
   switch (slug) {
-    case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan Ease puts it on your calendar in X0 Bot. You can change it or take it out any time.";
+    case "travel": return "Nomaz adds the times and booking details to your trip. It won't book or pay for anything.";
+    case "plan": return "Nudj puts it on your calendar in X0 Bot. You can change it or take it out any time.";
     case "code": return "Xode reads it and answers. It changes code only through a pull request you approve.";
     case "keybot": return "Keylessbord writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;

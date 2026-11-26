@@ -3,7 +3,7 @@
  *
  *   POST /v1/botsapp/plan/calls/:id/check { driving?, focus? }  -> { ok: true, heard }
  *
- * The phone's background task was woken about 30 seconds before a Plan Ease call would ring, by a silent push carrying the
+ * The phone's background task was woken about 30 seconds before a Nudj call would ring, by a silent push carrying the
  * check's id; it reads Motion & Fitness (driving: an `automotive` activity in the last 3 minutes) and the Focus state, and
  * posts the two words back here. The session's own token: a bot API key is 403, and nothing else may answer for a person.
  *

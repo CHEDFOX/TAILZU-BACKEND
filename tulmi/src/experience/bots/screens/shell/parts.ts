@@ -20,7 +20,7 @@ export function idleLine(bot: LiveBot, client: "phone" | "desktop"): string {
     case "keybot": return client === "desktop" ? "Hold a key, speak, done" : "Your keyboard, everywhere";
     case "plan": return "Plans your day";
     case "travel": return "Plans your trips";
-    // The Oracle, the mail bot and the cinema bot, where they are set up (bot.builtin: a person's own bot of that name keeps its own line).
+    // Chamen, the mail bot and the cinema bot, where they are set up (bot.builtin: a person's own bot of that name keeps its own line).
     case "oracle": if (bot.builtin) return "Reads your sky"; break;
     case "mail": if (bot.builtin) return "Answers your business mail"; break;
     case "cinema": if (bot.builtin) return "Makes your films and pictures"; break;
@@ -33,7 +33,7 @@ export function idleLine(bot: LiveBot, client: "phone" | "desktop"): string {
 export function nameOf(ctx: BotsCtx, slug: string): string {
   const b = ctx.live.bots.find((x) => x.slug === slug);
   if (b) return b.name;
-  return ({ tailzu: "X0", code: "Xode", keybot: "Keylessbord", plan: "Plan Ease", travel: "Travel bot", you: "You" } as Record<string, string>)[slug] ?? slug;
+  return ({ tailzu: "X0", code: "Xode", keybot: "Keylessbord", plan: "Nudj", travel: "Nomaz", you: "You" } as Record<string, string>)[slug] ?? slug;
 }
 
 /** A bot's head (or its colour and icon), at a size. */

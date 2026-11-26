@@ -55,9 +55,9 @@ ${o.wrong ? `<p class="err">${esc(o.wrong)}</p>` : ""}<p><button class="btn" typ
 <p>Keep this link private. X0 Bot keeps it locked and only reads from it.</p>
 </form>`;
   const main = `<article class="prose cal">
-<p class="eye">Plan Ease</p>
+<p class="eye">Nudj</p>
 <h1>Link your calendar</h1>
-<p class="lede">Your meetings show in Plan Ease on your phone. Copy your calendar's private link here, then type the code on your phone.</p>
+<p class="lede">Your meetings show in Nudj on your phone. Copy your calendar's private link here, then type the code on your phone.</p>
 ${box}
 <h2>Where the link is</h2>
 <ol class="steps">
@@ -66,5 +66,5 @@ ${box}
 </ol>
 <p class="meta">Can't find it? Your work may have turned this off. No X0 Bot yet? <a href="/download">Get it here</a>.</p>
 </article>`;
-  return siteShell({ title: "Link your calendar", description: "Show your work calendar in Plan Ease.", main, css: CSS, noindex: true, pixel: false });
+  return siteShell({ title: "Link your calendar", description: "Show your work calendar in Nudj.", main, css: CSS, noindex: true, pixel: false });
 }

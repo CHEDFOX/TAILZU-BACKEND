@@ -61,7 +61,7 @@ function botThread(bots: ActivityBot[]): Node {
   ], { width: w, height: size, flexShrink: 0 });
 }
 
-/** The names under the heads: "Travel bot · Plan Ease", in grey, one line. */
+/** The names under the heads: "Nomaz · Nudj", in grey, one line. */
 const botNames = (bots: ActivityBot[]): string => bots.map((b) => b.name).join(" · ");
 
 // ===================================================================== a card

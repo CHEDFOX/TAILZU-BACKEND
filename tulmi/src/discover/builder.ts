@@ -20,7 +20,7 @@
  * where, and bar.ts settles whether. It fills words into slots, which is the one thing it is good at.
  *
  * Every step can fail softly. No geocoder, no research, no model, no photographs — each gives back a plain reason
- * the Travel bot can say out loud, never a half-built card.
+ * Nomaz can say out loud, never a half-built card.
  */
 import { z } from "zod";
 import type { CallFn } from "./deps.js";

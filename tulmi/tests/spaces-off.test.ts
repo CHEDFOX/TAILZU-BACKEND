@@ -174,8 +174,8 @@ describe("the screens", () => {
       expect((await draw("bots.settings", client)).texts).not.toContain("Spaces and chats");
     });
 
-    it(`on the ${client}: Plan Ease's week page has Work in space only while on, and reads nothing of it while off`, async () => {
-      // The week page is what Plan Ease's simpler page (PLAN_V2_PAGE) replaced: that one has no Work in space at all (below).
+    it(`on the ${client}: Nudj's week page has Work in space only while on, and reads nothing of it while off`, async () => {
+      // The week page is what Nudj's simpler page (PLAN_V2_PAGE) replaced: that one has no Work in space at all (below).
       vi.stubEnv("PLAN_V2_PAGE", "false"); resetConfigForTests();
       const on = await draw("bots.plan", client);
       expect(on.texts).toContain("Work in space");
@@ -186,7 +186,7 @@ describe("the screens", () => {
       expect(spacesReads(off.paths)).toEqual([]);
     });
 
-    it(`on the ${client}: Plan Ease's simpler page has no Work in space, and reads nothing of Spaces either way`, async () => {
+    it(`on the ${client}: Nudj's simpler page has no Work in space, and reads nothing of Spaces either way`, async () => {
       // The simpler page is the fallback (PLAN_V2_HOME off); the threaded home has Work in space as the week page did, and only while on.
       vi.stubEnv("PLAN_V2_HOME", "false"); resetConfigForTests();
       const on = await draw("bots.plan", client);

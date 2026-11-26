@@ -68,7 +68,7 @@ function ago(ctx: BotsCtx, at: number): string {
   return dayMonth(ctx, at);
 }
 
-/** Who keeps a line, and since when: "Pinned · Plan Ease, Travel · 3 days ago", "All your bots · today". */
+/** Who keeps a line, and since when: "Pinned · Nudj, Travel · 3 days ago", "All your bots · today". */
 const fromLine = (ctx: BotsCtx, l: SpaceLine, withSection = false) =>
   [...(l.pinned ? ["Pinned"] : []), ...(withSection ? [FACT_NAMES[l.section]] : []), l.from.length ? l.from.join(", ") : "All your bots", ago(ctx, l.at)].join(" · ");
 

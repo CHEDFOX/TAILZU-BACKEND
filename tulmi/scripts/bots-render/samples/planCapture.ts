@@ -1,5 +1,5 @@
 /**
- * Plan Ease's capture card (screens/bots/planIn.ts) for someone who has not said yes to AI, as the server answers it on the sample day
+ * Nudj's capture card (screens/bots/planIn.ts) for someone who has not said yes to AI, as the server answers it on the sample day
  * (Wednesday 28 October): made by the server's own code (botsBots/planCapture.ts rulesItems and viewOf), so the card drawn is the one
  * the server sends. Nothing asks for AI: a circular's dated lines are the card's things by the rules at once ("rules"), and a photo from
  * the Plan page's + is one to-do with its file ("photo").

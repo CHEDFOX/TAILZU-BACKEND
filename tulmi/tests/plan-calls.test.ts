@@ -226,7 +226,7 @@ describe("when a call may not ring", () => {
 // ===================================================================== the switches
 
 describe("the switches and caps", () => {
-  it("What pings you: a call only with Calls on, Plan Ease on and outside quiet hours; a missed call always goes (silently)", () => {
+  it("What pings you: a call only with Calls on, Nudj on and outside quiet hours; a missed call always goes (silently)", () => {
     const at = 17 * 60;
     expect(verdict(DEFAULT_SETTINGS, "plan_call", at)).toBe("send");
     expect(verdict({ ...DEFAULT_SETTINGS, notify: { ...DEFAULT_SETTINGS.notify, calls: false } }, "plan_call", at)).toBe("drop");
@@ -252,7 +252,7 @@ describe("the switches and caps", () => {
     vi.stubEnv("BOT_CALLS", "true"); vi.stubEnv("PLAN_V2_APP", "false"); resetConfigForTests();
     expect(callsOn()).toBe(false);
   });
-  it("a call's kinds are not Plan Ease's push kinds (no desk notice, no plan channel)", () => {
+  it("a call's kinds are not Nudj's push kinds (no desk notice, no plan channel)", () => {
     expect(PLAN_PUSH_KINDS.some((k) => (CALL_KIND_IDS as readonly string[]).includes(k.kind))).toBe(false);
   });
   it("needTimeSensitive keeps an iPhone without the entitlement out", () => {
@@ -326,7 +326,7 @@ describe("a leave-by or a bill due today rings instead", () => {
     expect(r.all()[0]).toMatchObject({ sound: null, interruptionLevel: "active" });
   });
 
-  it("Calls off, or Plan Ease off: the push as today (or none, as Plan Ease's switch says)", async () => {
+  it("Calls off, or Nudj off: the push as today (or none, as Nudj's switch says)", async () => {
     gateWith({ calls: false });
     const a = rig({ tokens: [IOS_FULL] });
     await a.engine.notify(U, leaveMsg(), NOW);
@@ -814,7 +814,7 @@ describe("the call's doors", () => {
     expect(again.statusCode).toBe(201);
   });
 
-  it("say: one turn by voice to the Plan Ease chat, with the call's facts, said aloud and kept for the voice", async () => {
+  it("say: one turn by voice to the Nudj chat, with the call's facts, said aloud and kept for the voice", async () => {
     const c = await put({ state: "answered", answered_ms: NOW, next_ms: NOW + TALK_IDLE_MS, opening: "It's time to leave." });
     clock = NOW + 20_000;
     const r = await post(U, `${CALLS}/${c.id}/say`, { words: "Move it to 6" });

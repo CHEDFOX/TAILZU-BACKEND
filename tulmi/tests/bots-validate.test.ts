@@ -196,7 +196,7 @@ describe("the five X0 Bot ships", () => {
       expect(b.ownerId, b.slug).toBeNull();
       expect(b.visibility).toBe("private");
       // Either list: PALETTE is what a person may pick for their own bot, and SHIPPED_ONLY is kept back for ours
-      // (ash is Lingo's, slate is Talk's). A built-in wearing a shipped-only colour is the point of that list,
+      // (ash is Babbl's, slate is Talk's). A built-in wearing a shipped-only colour is the point of that list,
       // not a break from it — and until Talk, no built-in that is always listed wore one, so this never fired.
       expect([...PALETTE, ...SHIPPED_ONLY]).toContain(b.colour);
       expect(b.purpose.length, b.slug).toBeLessThanOrEqual(LIMITS.purpose);
@@ -211,8 +211,8 @@ describe("the five X0 Bot ships", () => {
       // through it as written. The colour is held to its own rule above (PALETTE or SHIPPED_ONLY), and a palette
       // colour stands in here so the rest of the definition is still checked.
       //
-      // This was latent, not new: Lingo has worn ash since it landed and only escapes because builtinBots() leaves
-      // it out while LINGO is off. Switching Lingo on would have failed this line.
+      // This was latent, not new: Babbl has worn ash since it landed and only escapes because builtinBots() leaves
+      // it out while LINGO is off. Switching Babbl on would have failed this line.
       const check = parseBotInput({ name: b.name, slug: undefined, colour: PALETTE[0], purpose: b.purpose, principles: b.principles, skills: b.skills, tone: b.tone, budgets: b.budgets }, { requestMax: 5000, dailyMax: 5000, requestDefault: 150, dailyDefault: 800 });
       expect(check.ok, b.slug).toBe(true);
     }

@@ -1,7 +1,7 @@
 /**
  * LINGO'S SCREENS (src/lingo, docs/lingo.md): the territory, a set, the picker, what the language is for, and leaving one.
  *
- *   bots.lingo         THE TERRITORY. Coming back does not drop somebody into a lesson: Lingo alive along the top, muttering
+ *   bots.lingo         THE TERRITORY. Coming back does not drop somebody into a lesson: Babbl alive along the top, muttering
  *                      conjugations while something is due and humming once nothing is, then a card per language, each with how it
  *                      is going and a Continue of its own, and Add a language beside them. Several at once, by choice. A bin on
  *                      each card opens bots.lingo.leave. With no language yet, the empty state asks which one.
@@ -59,7 +59,7 @@ export interface SetData {
 
 const toast = (message: string, tone?: "error"): ActionRef => ({ kind: "toast", message, ...(tone ? { tone } : {}) });
 
-/** Lingo's own colour and icon, for a card's mark. */
+/** Babbl's own colour and icon, for a card's mark. */
 const look = (ctx: BotsCtx) => ctx.live.bots.find((b) => b.slug === LINGO_SLUG) ?? botLook(LINGO_SLUG);
 
 /** A language by its own name. The server sends it; the tag is only ever a last resort. */
@@ -111,11 +111,11 @@ function courseCard(ctx: BotsCtx, c: CourseView): Node {
 }
 
 /**
- * THE TOP OF THE TERRITORY, where a heading would be: Lingo itself, alive, across the width of the page. It greets
+ * THE TOP OF THE TERRITORY, where a heading would be: Babbl itself, alive, across the width of the page. It greets
  * somebody coming back with what the territory holds: it mutters conjugations under its breath, letter tiles drifting
  * up, while a word is due anywhere (l.mutter), and hums to itself when nothing is (l.hum). Both are idlings of its own
  * on a loop, and no other bot is given them (shared/bots/looks.json). Its kind is the plain custom tile, so the shared
- * engine is untouched and only the colour and the moment are Lingo's.
+ * engine is untouched and only the colour and the moment are Babbl's.
  *
  * A build that cannot draw him is given the words instead, so the page is never headless.
  */
@@ -128,7 +128,7 @@ function territoryHead(ctx: BotsCtx, courses: CourseView[]): Node[] {
   const due = courses.some((c) => c.progress.due > 0);
   return [botBuddy({
     kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`, height: desk ? 120 : 108, size: desk ? 70 : 64,
-    state: live?.working ? "working" : live?.needs ? "needs" : "idle", lookTo: "down", label: "Lingo",
+    state: live?.working ? "working" : live?.needs ? "needs" : "idle", lookTo: "down", label: "Babbl",
     ...botMoment(ctx, due ? "l.mutter" : "l.hum", "loop"),
   })];
 }
@@ -140,7 +140,7 @@ export function territory(ctx: BotsCtx, data: TerritoryData | undefined): Node[]
       emptyState({
         pose: "think",
         title: "Which language?",
-        body: "Pick one and Lingo will talk with you in it. You can learn more than one at a time.",
+        body: "Pick one and Babbl will talk with you in it. You can learn more than one at a time.",
         action: { label: "Add a language", onPress: open(SCREENS.lingoAdd) },
       }),
     ];
@@ -210,7 +210,7 @@ export function doneScreen(ctx: BotsCtx, d: DoneData, target: string, next?: Nex
   const bot = canBuddy(ctx) ? [botBuddy({
     kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
     height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
-    state: live?.working ? "working" : "idle", label: "Lingo",
+    state: live?.working ? "working" : "idle", label: "Babbl",
     ...botMoment(ctx, d.mark, waiting ? "loop" : "once"),
   })] : [];
   const earlier = d.canDo.slice(0, -1);
@@ -236,7 +236,7 @@ export function doneScreen(ctx: BotsCtx, d: DoneData, target: string, next?: Nex
 // ===================================================================== asking, from anywhere
 
 /**
- * THE ASK BOX, at the foot of every Lingo screen including the middle of a set.
+ * THE ASK BOX, at the foot of every Babbl screen including the middle of a set.
  *
  * The moment somebody wants a word is the moment they are using the language, and sending them off to have a
  * conversation about it loses both the word and their place in the lesson. So this is one question and one card,
@@ -300,10 +300,10 @@ const WHY_REASONS: Array<{ label: string; value: string }> = [
 ];
 
 /**
- * WHAT THE LANGUAGE IS FOR, asked once, as it is added — the only question Lingo ever asks before teaching anything.
+ * WHAT THE LANGUAGE IS FOR, asked once, as it is added — the only question Babbl ever asks before teaching anything.
  *
  * The box underneath is worth more than the chips and is the reason the chips are not the whole screen: "my partner's
- * mother is in Seville and I meet her in March" tells Lingo what a hundred taps could not. Both are optional, Skip is
+ * mother is in Seville and I meet her in March" tells Babbl what a hundred taps could not. Both are optional, Skip is
  * one tap, and backing out adds no language at all.
  */
 export function whyScreen(ctx: BotsCtx, target: string, name: string): Node[] {
@@ -322,7 +322,7 @@ export function whyScreen(ctx: BotsCtx, target: string, name: string): Node[] {
   });
   return [
     title(`What's ${name} for?`),
-    meta("It decides what Lingo teaches you first and what it talks to you about. Nothing here is a test, and you can tell it more any time.", { size: 13 }),
+    meta("It decides what Babbl teaches you first and what it talks to you about. Nothing here is a test, and you can tell it more any time.", { size: 13 }),
     chips(WHY_REASONS, "why"),
     col([
       sectionLabel("Taught in"),
@@ -523,7 +523,7 @@ function markRow(): Node {
  * again" is the app putting its own not-knowing in front of the person — it makes somebody who is already waiting do
  * the waiting's work. An explanation of our model call is ours to carry too, not theirs to read.
  *
- * What there is instead is Lingo, muttering over it: `l.mutter` is its own idling, conjugations under its breath
+ * What there is instead is Babbl, muttering over it: `l.mutter` is its own idling, conjugations under its breath
  * with letter tiles drifting up, and it is exactly what is happening. The screen listens on the course's topic
  * (src/live/topics.ts) and the server says when the unit has settled, so this swaps itself for the first exercise
  * where it stands — the reload is quiet, and the exercise simply appears under him.
@@ -537,7 +537,7 @@ function building(ctx: BotsCtx): Node[] {
       botBuddy({
         kind: botKind(LINGO_SLUG), color: look(ctx).color, life: `page.${LINGO_SLUG}`,
         height: isDesk(ctx) ? 150 : 132, size: isDesk(ctx) ? 86 : 76,
-        state: "working", lookTo: "down", label: "Lingo",
+        state: "working", lookTo: "down", label: "Babbl",
         ...botMoment(ctx, "l.mutter", "loop"),
       }),
       text("Getting your first lesson ready", { size: 16, weight: 600, align: "center" }),
@@ -553,15 +553,15 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
     // means they have met things and are holding them. A course with NOTHING IN IT has not earned that sentence:
     // they picked a language a minute ago and are being told they are up to date on a language they cannot speak.
     // It happens whenever the shared bank has no sentences for the pair yet, which is every pair nobody has poured
-    // a corpus into — so the way out is the one thing that always works, which is saying something to Lingo.
+    // a corpus into — so the way out is the one thing that always works, which is saying something to Babbl.
     const nothingYet = (data?.progress?.items ?? 0) === 0;
     if (nothingYet) {
       return [
         emptyState({
           pose: "listen",
           title: "Nothing to learn yet",
-          body: "Lingo hasn't got any words for you in this one. Tell it something you want to say, or ask how to say a word, and it will start from there.",
-          action: { label: "Talk to Lingo", onPress: open(SCREENS.chat, { slug: LINGO_SLUG }) },
+          body: "Babbl hasn't got any words for you in this one. Tell it something you want to say, or ask how to say a word, and it will start from there.",
+          action: { label: "Talk to Babbl", onPress: open(SCREENS.chat, { slug: LINGO_SLUG }) },
         }),
       ];
     }
@@ -569,7 +569,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
       emptyState({
         pose: "done",
         title: "Nothing due",
-        body: "Everything you've met is still holding. Come back later, or add some words by talking to Lingo.",
+        body: "Everything you've met is still holding. Come back later, or add some words by talking to Babbl.",
         action: { label: "Back to your languages", onPress: open(SCREENS.lingo) },
       }),
     ];
@@ -590,7 +590,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
 
   // THE APP REPORTS NOTHING. Every answer was marked and written into the set by the server as it was given
   // (/v1/lingo/answer, migration 0109), so closing a set off sends which course and nothing else. An app that
-  // handed its own list back would be the one message in Lingo that could say "I was right".
+  // handed its own list back would be the one message in Babbl that could say "I was right".
   const clear: ActionSpec[] = [{ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }];
 
   /**
@@ -642,15 +642,15 @@ export const LINGO_SCREENS: BotsScreen[] = [
     load: (_ctx, deps) => deps.api<TerritoryData>("GET", `${PATH}/courses`),
     build: (ctx, data) => page(ctx, {
       nav: LINGO_SLUG,
-      title: "Lingo",
+      title: "Babbl",
       back: true,
-      backTitle: "Lingo",
+      backTitle: "Babbl",
       body: territory(ctx, data),
-      // TALKING TO IT. Every other bot with a page of its own has this in its footer, and Lingo — the one bot whose
+      // TALKING TO IT. Every other bot with a page of its own has this in its footer, and Babbl — the one bot whose
       // whole point is conversation — had no way to be spoken to at all: its tile opens the territory rather than
       // the shared bot page, and nothing on any of its four screens asked for a word. It is not on a lesson, only
       // here: the middle of a set is not the moment to be offered a chat.
-      // The ask box, here and on every other Lingo screen. On the territory there is no one course to ask about,
+      // The ask box, here and on every other Babbl screen. On the territory there is no one course to ask about,
       // so it asks about the one they opened last, which is the one the cards are showing.
       footer: [askBar(ctx, String(data?.courses?.[0]?.target ?? ""), SCREENS.lingo)],
     }),
@@ -677,7 +677,7 @@ export const LINGO_SCREENS: BotsScreen[] = [
     }),
     build: (ctx, data) => page(ctx, {
       nav: LINGO_SLUG,
-      title: "Lingo",
+      title: "Babbl",
       back: open(SCREENS.lingo),
       backTitle: "Languages",
       body: setScreen(ctx, String(ctx.params?.target ?? ""), data),
@@ -742,7 +742,7 @@ export const LINGO_SCREENS: BotsScreen[] = [
       nav: LINGO_SLUG,
       title: "How to say it",
       back: true,
-      backTitle: "Lingo",
+      backTitle: "Babbl",
       body: saidScreen(ctx, {
         say: String(ctx.params?.say ?? ""),
         means: String(ctx.params?.means ?? ""),

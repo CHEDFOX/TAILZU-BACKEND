@@ -6,7 +6,7 @@
  *
  * Builders only: screens/bots.ts calls these from bots.plan and bots.travel. Data is what GET /v1/botsapp/bots/plan (its `travel`) and
  * GET /v1/botsapp/bots/trip/:id/extras answer (routes/bots/botsTrips.ts, src/botsBots/planTravel.ts, tripExtras.ts); a missing part draws
- * nothing, never a made-up number. Colour stays with the bots: Plan Ease's ochre on its leave-by lines, the Travel bot's sea on its pick.
+ * nothing, never a made-up number. Colour stays with the bots: Nudj's ochre on its leave-by lines, Nomaz's sea on its pick.
  * Nothing here books or pays: a stay opens its own site, "you book and pay there".
  */
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../shared/types/sdui.js";
@@ -35,7 +35,7 @@ export interface PlanTravelView {
 export interface StayView {
   id: string; name: string; area: string; url: string; host: string; nightPaise: number | null; rating: number | null; ratingOf: 5 | 10 | null;
   reviews: number | null; by: "you" | "chat" | "web"; picked: boolean;
-  label: "Your pick" | "Travel bot's pick" | "Closer" | "Better rated" | ""; minutes: number | null; mode: "walk" | "drive" | null;
+  label: "Your pick" | "Nomaz's pick" | "Closer" | "Better rated" | ""; minutes: number | null; mode: "walk" | "drive" | null;
   totalPaise: number | null; stars: number | null;
 }
 export type Sky = "clear" | "cloudy" | "rain" | "storm" | "snow";
@@ -131,7 +131,7 @@ function creditLine(credits: CreditView[]): Node | null {
   return row([text(credits.map((c) => c.text).join(" · "), { size: 11, color: C.idle, lineHeight: 15, style: { flexShrink: 1 } })], { minHeight: 24 }, openUrl(credits[0]!.url));
 }
 
-// ===================================================================== Plan Ease
+// ===================================================================== Nudj
 
 const PLAN = () => botLook("plan").color;
 
@@ -176,7 +176,7 @@ export function leaveBlocks(ctx: BotsCtx, t: PlanTravelView | undefined, events:
     return [{ id: `leave:${l.toId}`, title: l.tight ? `Tight · ${l.minutes} min` : `Leave ${c}`, start: l.leaveBy, end: to.start, allDay: false as const, people: 0 as const }];
   });
 }
-/** The style a leave block takes in the week column (Plan Ease's ochre, dashed). */
+/** The style a leave block takes in the week column (Nudj's ochre, dashed). */
 export const leaveStyle = (): Record<string, unknown> => ({ backgroundColor: C.paper, borderWidth: 1.5, borderColor: PLAN(), borderStyle: "dashed" });
 export const isLeave = (id: string): boolean => id.startsWith("leave:");
 
@@ -258,7 +258,7 @@ export function homePart(ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
   if (!t.home) {
     return [card([
       text("Where does your day start?", { size: 15, weight: 600, lineHeight: 20 }),
-      meta("Plan Ease then times the trip to your first stop, and counts the travel a change saves you. Only your area, not your address.", { size: 13 }),
+      meta("Nudj then times the trip to your first stop, and counts the travel a change saves you. Only your area, not your address.", { size: 13 }),
       form,
       ...locatePart(ctx),
     ], { dashed: true, gap: 10 })];
@@ -287,10 +287,10 @@ export function planFoot(_ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
   ];
 }
 
-// ===================================================================== the Travel bot
+// ===================================================================== Nomaz
 
 const SEA = () => botLook("travel").color;
-const LABEL_ORDER = ["Your pick", "Travel bot's pick", "Closer", "Better rated", ""];
+const LABEL_ORDER = ["Your pick", "Nomaz's pick", "Closer", "Better rated", ""];
 const STAYING = /hotel|stay|room|booking\.com|airbnb|hostel|resort|homestay|agoda|goibibo|makemytrip|oyo|treebo/i;
 
 /** A stay as the screens draw it: a "Cheaper" label from before the app showed no money is no label. */
@@ -345,7 +345,7 @@ function stayLines(s: StayView, x: TripExtrasView): string[] {
 const pricesOn = (s: StayView) => (s.host ? `Prices on ${s.host}` : "Prices on their site");
 
 function stayCard(trip: TripLite, s: StayView, x: TripExtrasView): Node {
-  const top = s.label === "Your pick" || s.label === "Travel bot's pick";
+  const top = s.label === "Your pick" || s.label === "Nomaz's pick";
   const from = s.host ? s.host : s.by === "you" ? "Added by you" : "";
   return col([
     row([
@@ -377,7 +377,7 @@ function addStayForm(trip: TripLite): Node {
   ], { gap: 10 }));
 }
 
-/** Stays the Travel bot opened in its chat that aren't compared yet: one tap adds one. */
+/** Stays Nomaz opened in its chat that aren't compared yet: one tap adds one. */
 function fromChat(trip: TripLite, x: TripExtrasView, opened: Opened[]): Node[] {
   const have = new Set(x.stays.map((s) => s.url.replace(/[?#].*$/, "")));
   const fresh = opened.filter((o) => STAYING.test(`${o.label} ${o.url}`) && !have.has(o.url.replace(/[?#].*$/, ""))).slice(0, 3);
@@ -386,7 +386,7 @@ function fromChat(trip: TripLite, x: TripExtrasView, opened: Opened[]): Node[] {
 }
 
 function searchLine(x: TripExtrasView, place: string): Node[] {
-  if (x.finding) return [row([statusMark("working", { color: SEA(), size: 8 }), meta(`Travel bot is looking for stays in ${place}…`, { size: 12 })], { gap: 8, alignItems: "center" })];
+  if (x.finding) return [row([statusMark("working", { color: SEA(), size: 8 }), meta(`Nomaz is looking for stays in ${place}…`, { size: 12 })], { gap: 8, alignItems: "center" })];
   const words = x.searched === "none" ? "Found nothing to compare on the web. Add one you like." : x.searched === "limit" ? "That's today's searches. Add one by hand." : x.searched === "failed" ? "Couldn't search just now. Try again later." : null;
   return words ? [meta(words, { size: 12 })] : [];
 }
@@ -404,7 +404,7 @@ export function staysPart(ctx: BotsCtx, trip: TripLite, x: TripExtrasView | unde
   if (!stays.length) {
     return col([head, card([
       text("Nothing to compare yet", { size: 15, weight: 600, lineHeight: 20 }),
-      meta(`Travel bot puts stays side by side: the area, the rating${x.canMeasure ? " and the time to where you'll be" : ""}, with a link to see prices. It never books or pays.`, { size: 13 }),
+      meta(`Nomaz puts stays side by side: the area, the rating${x.canMeasure ? " and the time to where you'll be" : ""}, with a link to see prices. It never books or pays.`, { size: 13 }),
       actions,
     ], { gap: 10 }), ...fromChat(trip, x, opened), ...searchLine(x, trip.place), addStayForm(trip)], { gap: 8 });
   }
@@ -429,7 +429,7 @@ function stayTable(_ctx: BotsCtx, trip: TripLite, stays: StayView[], x: TripExtr
   });
   const names = col([box([], { height: 13 }), box([], { height: 31 }), ...rowsOf.map((r) => cell(r.name, { color: C.meta }))], { width: 92, flexShrink: 0, paddingTop: 13 });
   const columns = stays.map((s) => {
-    const top = s.label === "Your pick" || s.label === "Travel bot's pick";
+    const top = s.label === "Your pick" || s.label === "Nomaz's pick";
     return col([
       row([text(s.label || "Option", { size: 11, weight: 600, color: top ? SEA() : C.meta, lineHeight: 13, style: { flexShrink: 1 } }), grow(),
         box([icon("close", { size: 12, color: C.idle })], { width: 24, height: 24, marginTop: -6, marginRight: -6, alignItems: "center", justifyContent: "center" }, write("DELETE", `${A}/trip/${enc(trip.id)}/stays/${enc(s.id)}`, undefined, "Removed"))], { alignItems: "flex-start", height: 13 }),
@@ -448,7 +448,7 @@ function stayTable(_ctx: BotsCtx, trip: TripLite, stays: StayView[], x: TripExtr
 export function tripPlanPart(ctx: BotsCtx, trip: TripLite, x: TripExtrasView | undefined): Node | null {
   if (!x) return null;
   const days = x.dates ? (() => { const out: string[] = []; for (let t = Date.parse(`${x.dates.from}T00:00:00Z`); t <= Date.parse(`${x.dates.to}T00:00:00Z`) && out.length < 10; t += 86_400_000) out.push(new Date(t).toISOString().slice(0, 10)); return out; })() : [];
-  const stay = x.stays.find((s) => s.label === "Your pick") ?? x.stays.find((s) => s.label === "Travel bot's pick");
+  const stay = x.stays.find((s) => s.label === "Your pick") ?? x.stays.find((s) => s.label === "Nomaz's pick");
   const others = x.stays.filter((s) => s !== stay && s.minutes !== null);
   const kids: Node[] = [sectionLabel("Trip plan")];
   days.forEach((k, i) => {
@@ -461,7 +461,7 @@ export function tripPlanPart(ctx: BotsCtx, trip: TripLite, x: TripExtrasView | u
       ...(w ? [skyGlyph(w.hiC >= 35 && w.sky === "clear" ? "heat" : w.sky, 16, C.meta), meta(`${w.hiC}° / ${w.loC}°`, { size: 12 })] : []),
     ], { gap: 8, alignItems: "center" }));
     if (i === 0 && stay) {
-      kids.push(row([meta("Stay", { size: 12, style: { width: 62, textAlign: "right" } }), col([text(stay.name, { size: 14, lineHeight: 19 }), meta(stay.picked ? (stay.area || "Your pick") : `${stay.area ? `${stay.area} · ` : ""}Travel bot's pick, if you choose it`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" }));
+      kids.push(row([meta("Stay", { size: 12, style: { width: 62, textAlign: "right" } }), col([text(stay.name, { size: 14, lineHeight: 19 }), meta(stay.picked ? (stay.area || "Your pick") : `${stay.area ? `${stay.area} · ` : ""}Nomaz's pick, if you choose it`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" }));
     }
   });
   if (!days.length) kids.push(meta("Add the dates to plan the days and see the weather.", { size: 13 }));

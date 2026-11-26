@@ -3,7 +3,7 @@
  * chatbots). It opens the report screen (screens/safety.ts bots.report) with the answer as the person saw it; the report goes into the
  * same queue as a reported message, acted on within 24 hours (src/botsBots/safety.ts, kind "answer").
  *
- *   link("Report", reportAnswer({ bot: "Plan Ease", text: answer, id: turn.id }))
+ *   link("Report", reportAnswer({ bot: "Nudj", text: answer, id: turn.id }))
  */
 import type { ActionSpec } from "../../../../shared/types/sdui.js";
 import { SCREENS } from "./kit.js";

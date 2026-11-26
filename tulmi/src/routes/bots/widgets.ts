@@ -12,7 +12,7 @@
  *                                             (a notification's buttons and its reply)
  *   POST   /v1/widgets/focus { on, hold?, source? }   -> { ok, on }   the iPhone's X0 Bot Focus Filter, with the widgets'
  *                                             token and its "focus.set" scope (src/widgets/focus.ts; docs: perms2 §4): a Focus
- *                                             started or ended, so Plan Ease's calls wait. Never which Focus
+ *                                             started or ended, so Nudj's calls wait. Never which Focus
  *   POST   /v1/widgets/activity-token { jobId, token, platform?, env? }   -> { ok, push, removed? }   the "Bots at work" Live Activity's
  *                                             APNs push token for one of the person's Xode jobs (session), so the server can move it
  *                                             while the app is shut (src/widgets/activity.ts). `push` false: server pushes are off (APNS_*
@@ -72,7 +72,7 @@ export interface WidgetRouteOptions {
   apnsSender?: ConstructorParameters<typeof ActivityPusher>[0]["sender"];
   /** What the person has seen (an answer marks its thing seen). */
   glance?: GlanceStore;
-  /** Plan Ease, whose buttons answer here too (botsBots/planEase.ts). */
+  /** Nudj, whose buttons answer here too (botsBots/planEase.ts). */
   plan?: PlanEase;
   /** The push engine the Android ongoing notice sends through; null is off, absent reads the server's own (push/index.ts). */
   pushEngine?: Pick<PushEngine, "devicesWith" | "sendData"> | null;
@@ -90,7 +90,7 @@ export function actPartsOf(deps: BotsAreaDeps, parts: Pick<SpaceParts, "tasks" |
     // A space's task and a chat are Spaces': while it is off a button or a reply on one answers that it isn't there (spacesSwitch.ts).
     get spaceTasks() { return spacesOn() ? parts.tasks : null; },
     get threads() { return spacesOn() ? parts.threads : null; },
-    // Plan Ease's own items (pt:, pe:, pm:): a to-do's Done and Later, a Move card's Move it and Keep, the box's Undo.
+    // Nudj's own items (pt:, pe:, pm:): a to-do's Done and Later, a Move card's Move it and Keep, the box's Undo.
     plan: plan ? { scope: (item, action) => plan.scope(item, action), act: (userId, item, action) => plan.act(userId, item, action) } : null,
     // An ask to be put on someone's plan (billing/planShareActs.ts): the Share and Not now on its notification, answered by the
     // plan share routes themselves. Nothing while PLAN_SHARE is off, so with the switch off no button of its can answer anything.

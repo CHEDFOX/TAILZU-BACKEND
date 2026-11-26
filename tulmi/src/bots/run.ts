@@ -14,8 +14,8 @@
  *   7. the drawing  beside the memory, where the answer is drawn (the app's chat asks: `draw`; never an API caller): whether a choice, a
  *                   callout, the steps, a table, a chart, next questions or a drawing would help the words, and which (src/show/design.ts)
  *
- * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
- * business's mail as its knowledge (src/mail/digest.ts), the meeting bot with the person's meetings (src/meet/digest.ts), and Lingo with the
+ * Chamen is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
+ * business's mail as its knowledge (src/mail/digest.ts), the meeting bot with the person's meetings (src/meet/digest.ts), and Babbl with the
  * language course they are on and the words due today (src/lingo/digest.ts).
  *
  * THE MONEY: the cap is checked before every call by the gateway (a call whose worst case would pass it is refused, never made). A request that
@@ -44,7 +44,7 @@ import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
 import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
-import { CINEMA_SLUG, LINGO_SLUG, MAIL_SLUG, MEET_SLUG } from "./builtin.js";
+import { CINEMA_SLUG, LINGO_SLUG, MAIL_SLUG, MEET_SLUG, meetOn } from "./builtin.js";
 import { meetDigest } from "../meet/digest.js";
 import { cinemaDigest } from "../cinema/digest.js";
 import { mailDigest } from "../mail/digest.js";
@@ -61,7 +61,7 @@ export interface RunDeps {
   now?: () => number;
   /** Whether the owner's personalise switch is on (shared.ts); the You store when not given. */
   shared?: Pick<SharedDeps, "on">;
-  /** The Oracle's store, service and place finder (src/oracle); the server's own when not given. */
+  /** Chamen's store, service and place finder (src/oracle); the server's own when not given. */
   oracle?: OracleDeps;
   /** The mail bot's worker (src/mail); the server's own when not given. */
   mail?: { worker?: MailWorker | null };
@@ -126,7 +126,7 @@ export function runBot(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 }
 
 async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
-  // The Oracle's words are its own service's (src/oracle/run.ts): the sky, the turns, the route; no tool loop.
+  // Chamen's words are its own service's (src/oracle/run.ts): the sky, the turns, the route; no tool loop.
   if (r.bot.ownerId === null && r.bot.slug === ORACLE_SLUG) return runOracle(d, r);
   const t0 = (d.now ?? Date.now)();
   // In Talk, every app they connected (the bot's own list first, then the rest, each once).
@@ -177,11 +177,12 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const mail = bot.ownerId === null && bot.slug === MAIL_SLUG
     ? await mailDigest(r.userId, { ...(d.mail?.worker !== undefined ? { worker: d.mail.worker } : {}), ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
     : null;
-  // The meeting bot reads their meetings and what was said in them (meet/digest.ts).
-  const meet = bot.ownerId === null && bot.slug === MEET_SLUG
+  // The meeting bot reads their meetings and what was said in them (meet/digest.ts); so does Sribbu, which is the mail bot and
+  // the meeting bot as one (screens/bots/sribbu.ts), wherever meetings are set up.
+  const meet = bot.ownerId === null && (bot.slug === MEET_SLUG || (bot.slug === MAIL_SLUG && meetOn()))
     ? await meetDigest(r.userId, { ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
     : null;
-  // Lingo reads the course this person is on and which words are due (lingo/digest.ts), so the conversation can be
+  // Babbl reads the course this person is on and which words are due (lingo/digest.ts), so the conversation can be
   // steered onto the ones they are about to forget.
   const lingo = bot.ownerId === null && bot.slug === LINGO_SLUG
     ? await lingoDigest(r.userId, { now: (d.now ?? Date.now)() }).catch(() => null)

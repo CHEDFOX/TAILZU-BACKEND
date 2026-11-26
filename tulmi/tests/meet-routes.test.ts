@@ -430,29 +430,31 @@ describe("the stage", () => {
   });
 });
 
-describe("the meeting bot among the bots", () => {
+describe("the meeting bot among the bots (part of Sribbu, the mail bot: screens/bots/sribbu.ts)", () => {
   afterEach(async () => { delete process.env.RECALL_API_KEY; (await import("../src/config.js")).resetConfigForTests(); });
 
-  it("is listed only where Recall is set up, and its slug is reserved", async () => {
+  it("is never listed on its own; Recall set up lists Sribbu; it still opens by its slug, and its slug is reserved", async () => {
     const { resetConfigForTests } = await import("../src/config.js");
-    const { builtinBots, isBuiltinSlug } = await import("../src/bots/builtin.js");
+    const { builtinBots, builtinBot, isBuiltinSlug } = await import("../src/bots/builtin.js");
     const { RESERVED_SLUGS } = await import("../src/bots/types.js");
     resetConfigForTests();
     expect(builtinBots().some((b) => b.slug === "meet")).toBe(false);
+    expect(builtinBot("meet")).toBeNull();
     process.env.RECALL_API_KEY = "k"; resetConfigForTests();
-    const meet = builtinBots().find((b) => b.slug === "meet");
-    expect(meet).toMatchObject({ name: "Meetings", colour: "pine", ownerId: null, visibility: "private" });
+    expect(builtinBots().some((b) => b.slug === "meet")).toBe(false);
+    expect(builtinBots().find((b) => b.slug === "mail")?.name).toBe("Sribbu");
+    expect(builtinBot("meet")).toMatchObject({ name: "Sribbu", ownerId: null, visibility: "private" });
     expect(isBuiltinSlug("meet")).toBe(true);
     expect(RESERVED_SLUGS).toContain("meet");
   });
 
-  it("is what the front door picks for a call and its notes, never for a meeting to be planned or an invite written", async () => {
+  it("Sribbu is what the front door picks for a call and its notes, never for a meeting to be planned or an invite written", async () => {
     const { resetConfigForTests } = await import("../src/config.js");
     const { builtinBots } = await import("../src/bots/builtin.js");
     const { scoreBots } = await import("../src/bots/door.js");
     process.env.RECALL_API_KEY = "k"; resetConfigForTests();
     const bots = builtinBots();
-    const points = (m: string) => scoreBots(m, bots, { attachments: [], recent: [] } as never).find((s) => s.bot.slug === "meet")?.points ?? 0;
+    const points = (m: string) => scoreBots(m, bots, { attachments: [], recent: [] } as never).find((s) => s.bot.slug === "mail")?.points ?? 0;
     for (const m of ["join my meeting https://meet.google.com/abc-defg-hij", "notes from today's standup", "summary of yesterday's call", "what did we decide in the meeting", "meeting bot"]) {
       expect(points(m), m).toBeGreaterThanOrEqual(8);
     }

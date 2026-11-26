@@ -17,7 +17,7 @@
  *   notes      the meeting notes list;  note:<id>  one meeting's notes (its transcript grows while it records)
  *   room:<id>  one call (src/rooms): who is in it, who waits at its door (published by rooms/service.ts, from the seats and the lobby)
  *   keybot     Keylessbord: its settings, words, voices, history, stats
- *   lingo:<tag> one Lingo course of one person: the unit they are waiting on has been written, so the screen that is
+ *   lingo:<tag> one Babbl course of one person: the unit they are waiting on has been written, so the screen that is
  *              waiting on it reloads itself and the first exercise appears (routes/bots/lingo.ts)
  *   you        You and account settings: profile, plan, notifications, connected apps
  *
@@ -54,7 +54,7 @@ export const noteTopic = (id: unknown): string => (idOf(id) ? `note:${idOf(id)}`
 export const roomTopic = (id: unknown): string => (idOf(id) ? `room:${idOf(id)}` : "");
 /**
  * ONE PERSON'S COURSE IN ONE LANGUAGE. Published when the unit they are waiting on has been written, which is the
- * only moment a Lingo screen has to be told anything: the set screen cannot know when a model will answer, and a
+ * only moment a Babbl screen has to be told anything: the set screen cannot know when a model will answer, and a
  * button that only means "ask again" puts that not-knowing in front of the person. It listens instead.
  */
 export const lingoTopic = (target: unknown): string => (idOf(target) ? `lingo:${idOf(target)}` : "");

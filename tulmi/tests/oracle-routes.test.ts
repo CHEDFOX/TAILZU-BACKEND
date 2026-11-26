@@ -1,5 +1,5 @@
 /**
- * THE ORACLE'S CARDS OVER HTTP (routes/bots/oracle.ts): off unless the Oracle is set up, birth details read and kept (whole, or in parts as the
+ * THE ORACLE'S CARDS OVER HTTP (routes/bots/oracle.ts): off unless Chamen is set up, birth details read and kept (whole, or in parts as the
  * cards ask: the when, then the place), a place not found said in words, places suggested as they type, and forgotten on request.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -29,8 +29,8 @@ async function app(o: { on?: boolean; birthPlaces?: BirthPlaces } = {}) {
 }
 const put = (a: Awaited<ReturnType<typeof app>>["a"], payload: Record<string, unknown>) => a.inject({ method: "PUT", url: "/v1/oracle/sky", payload });
 
-describe("the Oracle's card", () => {
-  it("is off unless the Oracle is set up", async () => {
+describe("Chamen's card", () => {
+  it("is off unless Chamen is set up", async () => {
     const { a } = await app({ on: false });
     expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json()).toMatchObject({ code: "oracle_off" });
   });

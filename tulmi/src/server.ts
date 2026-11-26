@@ -558,7 +558,7 @@ registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
 // Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
 registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
 // Places worth keeping (src/discover): the six images, the feed, one place, a place built from the web, and what
-// somebody did. The same Discover the Travel bot's tools use, so a tap and a tool call move one profile.
+// somebody did. The same Discover Nomaz's tools use, so a tap and a tool call move one profile.
 registerDiscoverRoutes(app, { rateLimit: AUTHED_RL, discover: discover() });
 // The person's context (src/context, docs/context.md): who they are, who they message, their last asks and open work, for the one key's
 // brain and Ask's first step. Off with CONTEXT=false; migration 0065 keeps it.
@@ -635,7 +635,7 @@ registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The native looks: the nlook catalog the widgets and the Live Activity draw, and the art and fonts they draw with
 // (experience/native/*, docs/native-looks.md). Answers 404 while NATIVE_LOOKS is off, which is the default.
 registerNativeLooksRoutes(app, { rateLimit: AUTHED_RL });
-// The Oracle's card: when and where a person was born, for the Oracle to read their sky from (src/oracle, docs/oracle.md).
+// Chamen's card: when and where a person was born, for Chamen to read their sky from (src/oracle, docs/oracle.md).
 registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
 // Who is whose space admin (meet/people.ts; nobody while Spaces is off), made once from the bots area's Spaces: the meeting bot and the mail
 // bot read the same people.
@@ -644,7 +644,7 @@ const spacesPeople = spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(
 // worker's signed notice that mail needs a person (src/mail, docs/mail.md). In a space, an admin reaches a member's businesses whole, and a
 // member answers only the addresses its owner gave them (mail/access.ts).
 registerMailRoutes(app, { rateLimit: AUTHED_RL, bots, people: spacesPeople });
-// Lingo (src/lingo, docs/lingo.md): the language bot. The course a person is on, the session in front of them, and the answers, which are
+// Babbl (src/lingo, docs/lingo.md): the language bot. The course a person is on, the session in front of them, and the answers, which are
 // marked here and never in the app. Off unless LINGO is set; it needs no service of its own.
 registerLingoRoutes(app, { rateLimit: AUTHED_RL, bots });
 

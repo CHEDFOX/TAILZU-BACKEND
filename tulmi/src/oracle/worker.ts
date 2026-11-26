@@ -54,7 +54,7 @@ export class OracleUnavailable extends Error {
 
 const PATH = "/v1/answer";
 const TIMEOUT_MS = 150_000;
-const DOWN = "The Oracle couldn't be reached just now. Nothing was lost; try again in a moment.";
+const DOWN = "Chamen couldn't be reached just now. Nothing was lost; try again in a moment.";
 
 type FetchFn = typeof fetch;
 

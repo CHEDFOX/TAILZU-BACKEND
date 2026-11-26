@@ -278,8 +278,8 @@ function filmPage(ctx: BotsCtx, d: { view?: FilmView }) {
   const v = d.view;
   if (!v) {
     return page(ctx, {
-      back: true, backTitle: "Cinema", title: "Film", nav: CINEMA_SLUG,
-      body: [notice("This film couldn't be read. It may have been deleted.", { mark: "close" }), secondaryButton("Back to Cinema", toCinema, { size: "md" })],
+      back: true, backTitle: "Kutt", title: "Film", nav: CINEMA_SLUG,
+      body: [notice("This film couldn't be read. It may have been deleted.", { mark: "close" }), secondaryButton("Back to Kutt", toCinema, { size: "md" })],
       gap: 18,
     });
   }
@@ -359,7 +359,7 @@ function filmPage(ctx: BotsCtx, d: { view?: FilmView }) {
   ], { gap: 8 }));
 
   return page(ctx, {
-    back: true, backTitle: "Cinema", title: v.title, nav: CINEMA_SLUG, ...(desk ? { maxWidth: 760 } : {}),
+    back: true, backTitle: "Kutt", title: v.title, nav: CINEMA_SLUG, ...(desk ? { maxWidth: 760 } : {}),
     body, gap: 20,
     live: [botTopic(CINEMA_SLUG)],
     state: { cf_note: "", cf_sure: false },
@@ -388,7 +388,7 @@ function shotPage(ctx: BotsCtx, d: { view?: FilmView; n?: number }) {
   if (!v || !c) {
     return page(ctx, {
       back: true, backTitle: "Film", title: "Shot", nav: CINEMA_SLUG,
-      body: [notice("This shot couldn't be read. The film may have changed.", { mark: "close" }), secondaryButton("Back to Cinema", toCinema, { size: "md" })],
+      body: [notice("This shot couldn't be read. The film may have changed.", { mark: "close" }), secondaryButton("Back to Kutt", toCinema, { size: "md" })],
       gap: 18,
     });
   }

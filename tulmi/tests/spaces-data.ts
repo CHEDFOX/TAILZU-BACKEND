@@ -31,7 +31,7 @@ const HOME = {
     { userId: "m", name: "Mom", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: MEMBER, role: null, roleName: "Member", bot: LOOK.m },
     { userId: "r", name: "Rohan", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: MEMBER, role: null, roleName: "Member", bot: LOOK.r },
   ],
-  bots: [{ slug: "plan", name: "Plan Ease", colour: "sea", addedBy: "Aanya", byYou: true }, { slug: "shop-bot", name: "Shop bot", colour: "sand", addedBy: "Mom", byYou: false }],
+  bots: [{ slug: "plan", name: "Nudj", colour: "sea", addedBy: "Aanya", byYou: true }, { slug: "shop-bot", name: "Shop bot", colour: "sand", addedBy: "Mom", byYou: false }],
 };
 const STUDIO = {
   id: "s2", name: "Studio", mine: false, me: { admin: false, perms: MEMBER }, invite: null, roles: [], waiting: 0,
@@ -148,7 +148,7 @@ export const FEED = {
     { id: "f2", at: FIXED_NOW - 50 * MIN, from: { userId: "r", name: "Rohan", you: false }, to: null, text: "Can someone drop me at practice tomorrow?", files: [], thing: null, item: null },
     { id: "f3", at: FIXED_NOW - 40 * MIN, from: { userId: "u", name: "Aanya", you: true }, to: { userId: "m", name: "Mom", you: false }, text: "Your check-up is Friday 7:40, I'll drive you", files: [], thing: null, item: null },
     { id: "f4", at: FIXED_NOW - 39 * MIN, from: { userId: "u", name: "Aanya", you: true }, to: { userId: "m", name: "Mom", you: false }, text: "",
-      files: [], item: null, thing: { grantId: "g1", bot: "plan", botName: "Plan Ease", ownerId: "u", id: "e:doctor@2026-11-14", title: "Doctor, knee check-up", line: "Fri, 7:40 pm" } },
+      files: [], item: null, thing: { grantId: "g1", bot: "plan", botName: "Nudj", ownerId: "u", id: "e:doctor@2026-11-14", title: "Doctor, knee check-up", line: "Fri, 7:40 pm" } },
     { id: "f5", at: FIXED_NOW - 20 * MIN, from: { userId: "m", name: "Mom", you: false }, to: { userId: "r", name: "Rohan", you: false }, text: "Practice is at 5. Take your water bottle.", files: [], thing: null, item: null },
   ],
   payments: [{ id: "p-groceries", amountPaise: 124_000, payee: "Fresh Basket", vpa: "freshbasket@okaxis", note: "This week's groceries", status: "waiting", at: FIXED_NOW - 30 * MIN, askedBy: "Rohan", byYou: false,
@@ -210,9 +210,9 @@ export const FEED_ROHAN = {
   ],
 };
 
-/** Plan Ease's Work in space for Aanya, Home's admin: Mom and Rohan; a note Mom left on Aanya's dentist visit. */
+/** Nudj's Work in space for Aanya, Home's admin: Mom and Rohan; a note Mom left on Aanya's dentist visit. */
 export const WORK_PLAN = {
-  bot: "plan", botName: "Plan Ease", seenBy: [],
+  bot: "plan", botName: "Nudj", seenBy: [],
   spaces: [{ spaceId: "s1", spaceName: "Home", admin: true, people: [
     { userId: "m", name: "Mom", how: "admin", line: "All their plans", bot: LOOK.m }, { userId: "r", name: "Rohan", how: "admin", line: "All their plans", bot: LOOK.r },
   ] }],
@@ -228,7 +228,7 @@ export const WORK_PERSON = {
   ],
 };
 export const WORK_ITEM = {
-  bot: "plan", botName: "Plan Ease", id: DOCTOR, title: "Doctor, knee check-up", line: "Fri 14 Nov · 7:40 pm", at: FIXED_NOW + 3 * DAY,
+  bot: "plan", botName: "Nudj", id: DOCTOR, title: "Doctor, knee check-up", line: "Fri 14 Nov · 7:40 pm", at: FIXED_NOW + 3 * DAY,
   owner: { userId: "m", name: "Mom", you: false }, space: { id: "s1", name: "Home" }, how: "admin",
   detail: { when: "Fri 14 Nov · 7:40 pm", place: "Dr. Rao's clinic, Indiranagar", day: "2026-11-14", time: "19:40" },
   notes: [{ id: "wn1", by: "Rohan", you: false, bot: LOOK.r, text: "I'll drive you there.", at: FIXED_NOW - HOUR }],

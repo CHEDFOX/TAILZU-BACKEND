@@ -1,5 +1,5 @@
 /**
- * PLAN EASE ON A COMPUTER THAT IS IN USE (design A4 "Desktop", B11; the desktop's src/main/notices.js). The phone gets Plan Ease's
+ * PLAN EASE ON A COMPUTER THAT IS IN USE (design A4 "Desktop", B11; the desktop's src/main/notices.js). The phone gets Nudj's
  * pushes. A desktop that shows notices gets the same ones as its own notifications while the person is at it, and the phone's copy
  * then comes without a sound, so nothing rings twice.
  *
@@ -20,7 +20,7 @@
  *
  * The id is the item its buttons answer (widgets/items.ts), so an answer anywhere (the act door) can take it off; a push with no item
  * has its own claim's key. The push engine decides once for both copies (push/engine.ts deliver): "What pings you" (a "drop" sends
- * neither, quiet hours make both silent), the claim, and Plan Ease's daily cap and merging, which come before it is asked.
+ * neither, quiet hours make both silent), the claim, and Nudj's daily cap and merging, which come before it is asked.
  *
  * ONE PROCESS: like the bus, the sockets this knows are this process's. With several, share it where the bus gets its relay.
  */

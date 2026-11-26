@@ -54,7 +54,7 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day Plan Ease could call and be talked back to", () => {
+  it("is effective from the day Nudj could call and be talked back to", () => {
     expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 14, 2026");
     expect(PRIVACY_POLICY_HTML).toContain("Effective: November 14, 2026");
   });
@@ -380,14 +380,14 @@ describe("Service providers (/privacy/providers), part of the policy", () => {
     expect(providers).toContain("only after you agree in the app");
   });
 
-  // A call from Plan Ease has two AI parts: the live voice, and the model that decides what is worth a call.
+  // A call from Nudj has two AI parts: the live voice, and the model that decides what is worth a call.
   it("names who holds a call's voice and who routes the model that decides a call", () => {
-    const calls = providers.slice(providers.indexOf("Calls from Plan Ease (see 1.2)"), providers.indexOf("Ask, on the desktop app"));
-    expect(calls).toContain("holds the live voice conversation when Plan Ease calls you");
+    const calls = providers.slice(providers.indexOf("Calls from Nudj (see 1.2)"), providers.indexOf("Ask, on the desktop app"));
+    expect(calls).toContain("holds the live voice conversation when Nudj calls you");
     expect(calls).toContain("abuse-monitoring logs are kept up to 30 days and not used for training");
     expect(calls).toContain("routes the text model that decides which things on your Plan are worth a call");
     // The policy's own words stay general: the provider, not the company.
-    const section = policy.slice(policy.indexOf("Calls from Plan Ease."), policy.indexOf("Which things Plan Ease calls about."));
+    const section = policy.slice(policy.indexOf("Calls from Nudj."), policy.indexOf("Which things Nudj calls about."));
     expect(section).toContain("our realtime voice provider (see Section 3)");
   });
 });

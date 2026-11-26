@@ -1,5 +1,5 @@
 /**
- * A WAIT'S HAND-OFF (Plan Ease step 4, PLAN_V2_WAITS; docs/plan-ease-people.md; design A6, B10).
+ * A WAIT'S HAND-OFF (Nudj step 4, PLAN_V2_WAITS; docs/plan-ease-people.md; design A6, B10).
  *
  *   bots.plan.send   params: item ("pt:<id>"), go ("send", or "notcame" for a visit that didn't happen), from ("page": the card's
  *                    button, so it goes back there)
@@ -37,7 +37,7 @@ export function planSendPage(ctx: BotsCtx, d: PlanSendData | undefined) {
   if (how === "ask" && url) {
     // A build that can't say which was pressed: one button, the person's own tap, and the Plan underneath.
     return page(ctx, {
-      title: "Plan Ease", nav: "plan",
+      title: "Nudj", nav: "plan",
       body: [col([
         meta(goOf(ctx) === "notcame" ? "Ask if they're coming today?" : "Send the follow-up?", { size: 15 }),
         row([
@@ -48,7 +48,7 @@ export function planSendPage(ctx: BotsCtx, d: PlanSendData | undefined) {
     });
   }
   return page(ctx, {
-    title: "Plan Ease", nav: "plan",
+    title: "Nudj", nav: "plan",
     body: [{ ...col([meta(how === "go" ? opening : "", { size: 14 }), grow()], { flexGrow: 1, alignItems: "center", justifyContent: "center", minHeight: 200 }), on: { onAppear: how === "go" ? go : toPlan } }],
   });
 }

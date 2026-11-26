@@ -78,7 +78,7 @@ describe("the capture card", () => {
     });
   }
 
-  it("reads the share-in screen as the card when what was shared is Plan Ease's, with no bot picker", async () => {
+  it("reads the share-in screen as the card when what was shared is Nudj's, with no bot picker", async () => {
     const d = await draw("bots.share-in", "phone", { params: { text: "PTM on Sat 14 Nov at 9:30 am" }, api: { [`POST ${A}/plan/capture/look`]: { capture: CAPTURE } } });
     expect(d.texts).toContain("4 things from the school circular");
     expect(d.texts).not.toContain("Send to a bot");

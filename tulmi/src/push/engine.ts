@@ -358,7 +358,7 @@ export class PushEngine {
   ): Promise<{ sent: boolean; dropped: number; id?: string } | null> {
     // Spaces switched off (SPACES_ENABLED=false): none of its pushes goes, whoever asks for one (botsBots/spacesSwitch.ts).
     if (isSpacePush(msg.kind) && !spacesOn()) return null;
-    // No phone: still Plan Ease's notice on a computer in use (live/notices.ts), when the person has one.
+    // No phone: still Nudj's notice on a computer in use (live/notices.ts), when the person has one.
     let c = (await this.candidate(userId, now))
       ?? (this.toDesk(userId, msg.kind, now) ? { userId, tokens: [], lastSeenAt: null, createdAt: null, locale: null, entitled: false, tzOffsetMin: null } : null);
     if (!c || (!c.tokens.length && !this.toDesk(userId, msg.kind, now))) return null;
@@ -399,7 +399,7 @@ export class PushEngine {
     return this.verdictOf(c, kind, undefined, now);
   }
 
-  /** Plan Ease's push goes to a computer of theirs too: one in use that shows notices (the app release's switch, PLAN_V2_APP). */
+  /** Nudj's push goes to a computer of theirs too: one in use that shows notices (the app release's switch, PLAN_V2_APP). */
   private toDesk(userId: string, kind: string, now: number): boolean {
     return !!planKind(kind) && planOn("app") && deskHere(userId, now);
   }
@@ -432,7 +432,7 @@ export class PushEngine {
     const level = verdict === "silent" && asked === "time-sensitive" ? "active" : asked;
     const levelFor = (t: Candidate["tokens"][number]): PushMessage["interruptionLevel"] | undefined =>
       level !== "time-sensitive" ? level : planOn("app") && t.platform === "ios" && t.caps?.includes(TIME_SENSITIVE_CAP) ? level : undefined;
-    // THE COMPUTER IN USE (live/notices.ts): Plan Ease's push is shown there too, decided once with the phone's copy (the verdict above,
+    // THE COMPUTER IN USE (live/notices.ts): Nudj's push is shown there too, decided once with the phone's copy (the verdict above,
     // this one claim; the daily cap and merging came before), and the phone's copy then comes without a sound, so nothing rings twice.
     const desk = this.toDesk(c.userId, d.kind, now);
     if (desk) {
@@ -553,7 +553,7 @@ export class PushEngine {
 
   /**
    * A tap on a push opened the app: remember it, for fatigue and for the numbers. With its kind (the push's data.kind, back with the
-   * tap), whoever listens hears it too: Plan Ease's day notes count an opened note (botsBots/planNotes.ts).
+   * tap), whoever listens hears it too: Nudj's day notes count an opened note (botsBots/planNotes.ts).
    */
   markOpened(userId: string, pushId: string, kind?: string): void {
     void this.store.markOpened(userId, pushId, Date.now()).catch(() => { /* a stat */ });

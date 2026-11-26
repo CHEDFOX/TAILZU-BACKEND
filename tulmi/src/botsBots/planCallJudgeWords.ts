@@ -29,7 +29,7 @@ export const SETTLE_MAX_MS = 60_000;
 export const PENDING_MAX = 5_000;
 /** Judgements at once on the process (and one at a time per person). */
 export const JUDGE_CONCURRENCY = 4;
-/** 10:00 local: an untimed item's time (the moment Plan Ease reminds it). */
+/** 10:00 local: an untimed item's time (the moment Nudj reminds it). */
 export const DAY_MINUTE = 600;
 /** No judged ring this soon after the item changed. */
 export const FRESH_MS = 10 * MIN;
@@ -54,7 +54,7 @@ export const VERDICT_CACHE_MS = 60_000;
 export const JUDGING_STALE_MS = 2 * MIN;
 /** How far a series looks for its next start. */
 export const SERIES_AHEAD_MS = 60 * DAY;
-/** The model call's bounds, and where its cost is counted (its own tally: never Plan Ease's budget). */
+/** The model call's bounds, and where its cost is counted (its own tally: never Nudj's budget). */
 export const JUDGE_READ = { maxTokens: 500, timeoutMs: 12_000, totalMs: 20_000, where: "plan:judge" } as const;
 
 // ------------------------------------------------------------------ the prompt
@@ -146,7 +146,7 @@ export interface JudgeFacts {
 
 const fromWords = (s: Source | undefined): string => {
   switch (s?.kind) {
-    case "bot": return "Plan Ease";
+    case "bot": return "Nudj";
     case "space": return "someone in a space";
     case "note": return "a meeting";
     case "capture": return s.label ? `a capture (${s.label.slice(0, 40)})` : "a capture";

@@ -52,9 +52,9 @@ export interface BotPorts {
   web?: (d: WebToolDeps) => WebTools;
   /** The everyday tools (src/everyday): flights, hotels, currency, weather, with no sign-in of the person's. */
   everyday?: Everyday | null;
-  /** Places worth keeping (src/discover): our own written catalogue, behind the Travel bot's ideas. */
+  /** Places worth keeping (src/discover): our own written catalogue, behind Nomaz's ideas. */
   discover?: Discover | null;
-  /** Lingo's course (src/lingo): the one thing its chat can do besides talk — write down a word they reached for. */
+  /** Babbl's course (src/lingo): the one thing its chat can do besides talk — write down a word they reached for. */
   lingo?: LingoWords | null;
   /**
    * The sites the person signed in to (src/sites, docs/sites.md), asked for at each run because the server builds them after

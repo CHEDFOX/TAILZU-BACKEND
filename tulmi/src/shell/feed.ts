@@ -9,7 +9,7 @@
  *   ask       an answer a bot gave through the Bots app's Ask (shell/events.ts): which bot, what was asked, what it cost
  *   payment   a payment the person said they made in their UPI app from bots.approve (shell/events.ts): never one we made
  *   words     Keylessbord: the words they spoke instead of typed on a day (history), and in which apps
- *   call      a call from Plan Ease nobody answered (botsBots/planCall.ts): "Missed call from X0", with the reminder's own line
+ *   call      a call from Nudj nobody answered (botsBots/planCall.ts): "Missed call from X0", with the reminder's own line
  *   follow    a followed item someone else said done, someone couldn't do, or a must-not-miss one nobody did (botsBots/planFollow.ts)
  *
  * No money on any row: what a bot's work cost stays ours (`paise`, for the logs; no screen draws it), and a payment says who and

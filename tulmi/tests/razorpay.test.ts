@@ -330,7 +330,9 @@ describe("the routes", () => {
     await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload: hook,
       headers: { "content-type": "application/json", "x-razorpay-signature": sign("hook-secret", hook) } });
     expect(row().cancel_at_period_end).toBe(true);
-    expect(Date.parse(String(row().entitled_until))).toBe(Number(sub().current_end) * 1000);
+    // The period's end as Razorpay holds it (the subscription set above), not a fresh sub(): that reads the clock again, and a
+    // second can tick over between the two on a slow runner.
+    expect(Date.parse(String(row().entitled_until))).toBe(Number((rz.subs.get("sub_A") as { current_end: number }).current_end) * 1000);
     expect(await ent()).toMatchObject({ renews: false });
 
     // Cancelling twice is not a second call to Razorpay.

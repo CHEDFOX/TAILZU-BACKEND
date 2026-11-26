@@ -66,13 +66,13 @@ export const SCREENS = {
   store: "bots.store",               // BotStore / DBotStore
   plan: "bots.plan",                 // PlanBot / DPlanBot (params: week, day; the threaded home: made, n after "Plan something"'s Done)
   planItem: "bots.plan.item",        // no board: add or change an event or a to-do on the person's own calendar (screens/planItem.ts; params: kind, id, day)
-  planWeek: "bots.plan.week",        // Plan Ease's "See the week": a plain list by day, or one day's rows (screens/bots/planPage.ts; params: day)
+  planWeek: "bots.plan.week",        // Nudj's "See the week": a plain list by day, or one day's rows (screens/bots/planPage.ts; params: day)
   planGo: "bots.plan.go",            // a notification's hand-off: opens Maps (and later UPI, WhatsApp) at once, then the Plan (params: go, to, mode)
-  planLink: "bots.plan.link",        // Plan Ease's "Link your calendar": Google, Outlook or iPhone, one field (screens/bots/planIn.ts; params: again)
+  planLink: "bots.plan.link",        // Nudj's "Link your calendar": Google, Outlook or iPhone, one field (screens/bots/planIn.ts; params: again)
   planCapture: "bots.plan.capture",  // one capture card: "4 things from the school circular", Add all (screens/bots/planIn.ts; params: id)
   planCaptureItem: "bots.plan.capture.item", // a capture row's sheet: title, day, time, who (screens/bots/planIn.ts; params: id, item)
   planSend: "bots.plan.send",        // a wait's hand-off: WhatsApp (or mail) with the follow-up at once, then the Plan (screens/bots/planSend.ts; params: item, go, from)
-  planCall: "bots.plan.call",        // a call from Plan Ease: ringing → talking, missed, ended (screens/bots/planCall.ts; params: call, state, button)
+  planCall: "bots.plan.call",        // a call from Nudj: ringing → talking, missed, ended (screens/bots/planCall.ts; params: call, state, button)
   planFollow: "bots.plan.follow",    // one followed item: who has it, what X0 did, Done / Later / Can't (screens/bots/planFollow.ts; params: follow, button)
   planFollowPeople: "bots.plan.follow.people", // who does an item: you and your X0 people, in order (screens/bots/planFollow.ts; params: kind, id)
   planMake: "bots.plan.make",        // "Plan something": the card (what, when, for who, must not miss), Check, Change, Done, and the box that fills it (screens/bots/planMake.ts; params: from, day, kind, focus)
@@ -154,7 +154,7 @@ export const SCREENS = {
   design: "bots.code.design",        // Design / DeskDesign
   team: "bots.code.team",            // TeamBoard / DTeamBoard
   codeStart: "bots.code.start",      // Enter1-4 / DEnter1-4 (params: step)
-  // screens/bots/lingoPage.ts: Lingo, the language bot (docs/lingo.md)
+  // screens/bots/lingoPage.ts: Babbl, the language bot (docs/lingo.md)
   lingo: "bots.lingo",               // the territory: a card per language, Continue on each, Add a language
   lingoSet: "bots.lingo.set",        // a set: one exercise at a time (params: target)
   lingoAdd: "bots.lingo.add",        // the picker: search at the top, the suggested few, then all of them (params: q)

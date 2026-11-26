@@ -1,10 +1,10 @@
 /**
  * A TURN WITH THE ORACLE: THE PERSON'S SKY, THE TURNS BEFORE, AND THE ROUTE THE LAST QUESTION TOOK, SENT TO THE ORACLE'S SERVICE.
  *
- *   runOracle(deps, req) -> BotAnswer          bots/run.ts sends the Oracle's turns here; every other bot runs the usual loop
+ *   runOracle(deps, req) -> BotAnswer          bots/run.ts sends Chamen's turns here; every other bot runs the usual loop
  *
  *   1. the sky       when and where they were born (store.ts), read only once it is whole (the cards keep the when first), with their name and
- *                    gender from the profile (the About you card's, or the Oracle's last card). Not known yet and the message holds it ("13 July
+ *                    gender from the profile (the About you card's, or Chamen's last card). Not known yet and the message holds it ("13 July
  *                    1994, 9:30 am, Mumbai")? It is read (birth.ts), the place found (places/), kept, and said back in the notes. Still no whole
  *                    sky: there is no reading. The engine is not asked, nothing is charged, and the answer sends them to the cards
  *   2. the turns     what the bot's thread kept (memory.ts), as for any bot; an API caller sends its own
@@ -50,9 +50,9 @@ export async function profilePerson(userId: string): Promise<OraclePerson | null
 }
 
 /** What it says instead of a reading while it has no whole chart (no model is asked for these). */
-export const NEEDS_SKY = "To read this, I need to know when and where you were born: the date, the time and the town. The Oracle's cards ask for them. Then ask me again.";
-export const NEEDS_PLACE = "I have the day you were born, but not the town yet. Add it on the Oracle's card, then ask me again.";
-export const FOUND_NOT = "I couldn't find that birthplace on the map. Try the nearest city, or pick it on the Oracle's card.";
+export const NEEDS_SKY = "To read this, I need to know when and where you were born: the date, the time and the town. Chamen's cards ask for them. Then ask me again.";
+export const NEEDS_PLACE = "I have the day you were born, but not the town yet. Add it on Chamen's card, then ask me again.";
+export const FOUND_NOT = "I couldn't find that birthplace on the map. Try the nearest city, or pick it on Chamen's card.";
 
 /** The service is told who is asking only as a hash: enough to keep one model for one person's conversation, nothing more. */
 export const sessionOf = (userId: string): string => `oracle:${createHash("sha256").update(`oracle:${userId}`).digest("hex").slice(0, 24)}`;
@@ -73,9 +73,9 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
   const bot = r.bot;
   const emit = r.emit ?? (() => undefined);
   const worker = d.oracle?.worker !== undefined ? d.oracle.worker : oracleWorker();
-  if (!worker) throw new BotError("not_configured", "The Oracle isn't set up on this server yet.", 503);
+  if (!worker) throw new BotError("not_configured", "Chamen isn't set up on this server yet.", 503);
   if (r.capPaise < ORACLE_MIN_PAISE) {
-    throw new BotError("budget", "One answer from the Oracle costs more than this bot has left today. It starts again tomorrow.", 402);
+    throw new BotError("budget", "One answer from Chamen costs more than this bot has left today. It starts again tomorrow.", 402);
   }
   const store = d.oracle?.store ?? oracleStore();
   const find = (d.oracle?.places ?? defaultPlaces()).place.bind(d.oracle?.places ?? defaultPlaces());
@@ -100,7 +100,7 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
     notes.push(`Kept your birth details: ${skyLine(sky)}.`);
   }
 
-  // No reading without a chart: the engine is not asked and nothing is charged. They are sent to the cards (the Oracle's page) instead.
+  // No reading without a chart: the engine is not asked and nothing is charged. They are sent to the cards (Chamen's page) instead.
   if (!sky) {
     const text = said.missing === "found" ? FOUND_NOT : row?.sky ? NEEDS_PLACE : NEEDS_SKY;
     r.onText?.(text);
@@ -120,7 +120,7 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
       (e) => { if (e.t === "status") emit(e); else r.onText?.(e.text); }, r.signal);
   } catch (err) {
     if ((err as { name?: unknown } | null)?.name === "AbortError") throw err;
-    const message = err instanceof OracleUnavailable ? err.message : "The Oracle couldn't be reached just now. Nothing was lost; try again in a moment.";
+    const message = err instanceof OracleUnavailable ? err.message : "Chamen couldn't be reached just now. Nothing was lost; try again in a moment.";
     throw new BotError("model_down", message, 503);
   }
   await store.setRoute(r.userId, answer.route ?? null, now()).catch(() => undefined);

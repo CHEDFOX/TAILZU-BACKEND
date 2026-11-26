@@ -4,7 +4,7 @@
  *
  *   client → server   { type: "auth", token }   the first message, unless the upgrade carried `Authorization: Bearer …`
  *                     { type: "pong" }          the answer to a ping (any message counts as alive)
- *                     { type: "notices", v, buttons }        after "ready": this socket shows Plan Ease's notices (a desktop's)
+ *                     { type: "notices", v, buttons }        after "ready": this socket shows Nudj's notices (a desktop's)
  *                     { type: "here", idleMs } | { away }     how long since that computer was used (live/notices.ts)
  *   server → client   { type: "ready", heartbeatMs }
  *                     { type: "event", topic, at, data? }   a hint; the screen's own load decides what it shows

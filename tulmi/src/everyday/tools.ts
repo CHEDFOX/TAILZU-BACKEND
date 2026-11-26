@@ -1,8 +1,8 @@
 /**
  * THE EVERYDAY TOOLS AS A BOT SEES THEM (bots/tools.ts buildTools): their definitions, who gets which, and what the model reads back.
  *
- *   flights_search, hotels_search    a bot that searches the web (web or research on), and the Travel bot
- *   currency_convert, weather        those, and Plan Ease
+ *   flights_search, hotels_search    a bot that searches the web (web or research on), and Nomaz
+ *   currency_convert, weather        those, and Nudj
  *
  * Keylessbord and Xode get none (they write, and Xode's answers go through its own road). What the model reads back is a few lines of
  * data per result, in the fence every tool result is in; the full results become the cards beside the answer.

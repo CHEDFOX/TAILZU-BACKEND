@@ -32,7 +32,7 @@ export async function organiseNote(user: AuthedUser, id: string): Promise<Note |
     ? { ...n, ...body, status: "ready", organised: true }
     : { ...n, status: n.transcript.length ? "failed" : "ready", organised: false });
   await finding;
-  // Ready, with its to-dos: Plan Ease may turn the named ones into one card (notes/ready.ts). Never holds the note up.
+  // Ready, with its to-dos: Nudj may turn the named ones into one card (notes/ready.ts). Never holds the note up.
   const ready = await getNote(user, id).catch(() => null);
   if (ready && ready.status === "ready") noteReady(user.id, ready);
   return ready;

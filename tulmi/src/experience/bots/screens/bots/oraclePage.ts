@@ -1,13 +1,13 @@
 /**
  * THE ORACLE'S PAGE (src/oracle, docs/oracle.md): the chat, and nothing in its way. Its bot page and its chat are this one page.
  *
- *   the head       back, the Oracle, its line, and (once there are turns) one of its two characters on a stage of his own: the Wanderer (undyed
+ *   the head       back, Chamen, its line, and (once there are turns) one of its two characters on a stage of his own: the Wanderer (undyed
  *                  camel wool, a staff and a lantern) or the Seer (midnight cloth, a crystal and cards), one on one day and the other on the next
- *   the cards      what the Oracle needs, asked one card after another over the page (oracleCards.ts): when they were born, where, and their
+ *   the cards      what Chamen needs, asked one card after another over the page (oracleCards.ts): when they were born, where, and their
  *                  name and gender if the app does not have them. Once kept, the sky is one quiet line with Change, which opens the cards again.
  *                  Birth details typed into the chat are read and kept too
  *   the chat       the turns; before the first, the day's character big on a card of his own, and a few first questions to start from
- *   the ask bar    the bots' own (parts.ts chatBar): the words stream in as the Oracle writes them
+ *   the ask bar    the bots' own (parts.ts chatBar): the words stream in as Chamen writes them
  */
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
@@ -18,7 +18,7 @@ import type { About } from "../firstRun/parts.js";
 import { cardsDue, cardsState, openCards, oracleCards } from "./oracleCards.js";
 import { type BotPageData, ANSWERING, askBot, chatBar, chatTurns, isDesk, lookOf } from "./parts.js";
 
-/** What the page reads of the Oracle's own store (GET /v1/oracle/sky): the sky once it is whole, the when as soon as it is kept. */
+/** What the page reads of Chamen's own store (GET /v1/oracle/sky): the sky once it is whole, the when as soon as it is kept. */
 export interface OracleSkyView { sky: { place: string } | null; line: string | null; place?: string | null; when?: { date: string; time: string; line: string } | null }
 /** And the person's name and gender (the About you card's read, GET /v1/bots/first-run/about). */
 export type OraclePageData = BotPageData & { sky?: OracleSkyView; about?: About };
@@ -40,7 +40,7 @@ export function characterOf(ctx: BotsCtx): (typeof CHARACTERS)[number] {
   return CHARACTERS[day % 2]!;
 }
 
-/** The Oracle's tile on Home's grid (beside the first three, shell/home.ts homeShown) wears the day's character and plays his small story once,
+/** Chamen's tile on Home's grid (beside the first three, shell/home.ts homeShown) wears the day's character and plays his small story once,
  *  for a build that plays looks; else it is a plain tile (docs/oracle.md section 3). */
 export function oracleTileLook(ctx: BotsCtx): Pick<BotTileSpec, "avatar" | "moment" | "momentMode"> {
   if (!canMoments(ctx)) return {};
@@ -111,16 +111,16 @@ export function oraclePage(ctx: BotsCtx, d: OraclePageData) {
   const talk: Node[] = turns.length
     ? chatTurns(ctx, bot, turns, { big: !isDesk(ctx), days: isDesk(ctx) || turns.length > 6 })
     : known
-      ? [stage(ctx, look.color, "Ask the Oracle anything", "Love, work, money, health, timing, or a choice in front of you."),
+      ? [stage(ctx, look.color, "Ask Chamen anything", "Love, work, money, health, timing, or a choice in front of you."),
         row(STARTERS.map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })]
-      : [stage(ctx, look.color, "Ask the Oracle anything", "It reads your sky, so first it needs to know when and where you were born.", true)];
+      : [stage(ctx, look.color, "Ask Chamen anything", "It reads your sky, so first it needs to know when and where you were born.", true)];
 
   return page(ctx, {
     back: isDesk(ctx), title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
     pullBot: { top: true, bottom: true, newAt: "bottom", ...(d.turns ? { items: d.turns.map((t) => t.id) } : {}) },
     body: [...cards, head, ...sky, ...talk],
-    // Nothing to ask until the sky is kept: the Oracle reads nothing without it (and oracle/run.ts refuses too).
-    footer: known ? [chatBar(ctx, bot.slug, bot.name, "Ask the Oracle…")] : [],
+    // Nothing to ask until the sky is kept: Chamen reads nothing without it (and oracle/run.ts refuses too).
+    footer: known ? [chatBar(ctx, bot.slug, bot.name, "Ask Chamen…")] : [],
     gap: 18,
     ...(cardsDue(ctx, d) ? { state: cardsState(ctx, d) } : {}),
   });

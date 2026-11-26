@@ -1,5 +1,5 @@
 /**
- * Plan Ease, steps 2 and 3: the work calendar by its link, and getting things in (botsBots/planLinks.ts, planCapture.ts, planDue.ts;
+ * Nudj, steps 2 and 3: the work calendar by its link, and getting things in (botsBots/planLinks.ts, planCapture.ts, planDue.ts;
  * docs/plan-ease.md). Everything is the signed-in person's own, and bodies and links are never logged.
  *
  *   GET    /v1/botsapp/bots/plan/links                 -> { links }                   what the link page lists (never an address)

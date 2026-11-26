@@ -221,7 +221,7 @@ export function tellTarget(f: { user_id: string; people: readonly FollowPerson[]
 /**
  * Health by planSafe's looksHealth OR by the MEDICINE rule. planSafe's HEALTH list does not hold "meds", "capsule", "inhaler", "eye
  * drops", "syrup", "dose", "goli" or "गोली", which autoMust makes must: without this, "Mom's meds" would reach another person's lock
- * screen and a spoken call. planSafe.ts itself is not changed (its tests and every other Plan Ease line stay as they are).
+ * screen and a spoken call. planSafe.ts itself is not changed (its tests and every other Nudj line stay as they are).
  */
 export const looksMed = (title: string): boolean => looksHealth(title) || MEDICINE.test(title);
 

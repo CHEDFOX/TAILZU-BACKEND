@@ -60,7 +60,7 @@ async function main(): Promise<number> {
   const i = {
     model: cfg.OPENAI_REALTIME_MODEL, effort, voice: realtimeVoice("nova"), tools, keywords: ["BESCOM"],
     instructions: callInstructions({
-      name: "Zara", system: "You are Plan Ease, the person's planning bot in X0. You are plain, warm and short.",
+      name: "Zara", system: "You are Nudj, the person's planning bot in X0. You are plain, warm and short.",
       facts: FACTS, context: "",
     }),
   };
