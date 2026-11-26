@@ -69,6 +69,8 @@ export interface BotSites {
   snapshot(userId: string): Promise<{
     logins: Array<{ site: string; onPhone?: boolean; needsSignIn?: boolean }>;
     watches: Array<{ id: string; site: string; label: string; state: string; card?: { title: string; line: string; detail?: string; done?: boolean }; readAt?: number }>;
+    /** What their orders on a food site say about them (src/sites/history/portrait.ts portraitLines). Words a site wrote: data. */
+    habits?: string[];
   }>;
   watch(userId: string, url: string, label: string): Promise<{ id: string; site: string; label: string }>;
 }

@@ -169,6 +169,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   readFiles?: Front["readFiles"];
   /** Talk's picture engine (the cinema bot's), asked for at each message because it is built after this (botsTalk.ts). */
   pictures?: TalkRoutesParts["pictures"];
+  /** Talk's orders (src/sites/history), asked for at each message because they are built after this (botsTalk.ts). */
+  orders?: TalkRoutesParts["orders"];
 } = {}): {
   sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
   chatShared: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
@@ -186,7 +188,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Nudj: the work calendar's link, captures, bills (routes/bots/planIn.ts)
   // TALK: the one screen's one thread (routes/bots/botsTalk.ts, docs/talk-door.md). It answers nothing itself: every message
   // goes through POST /v1/shell/ask, and this keeps the pair of turns so the thread reads as one conversation.
-  registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads, ...(o.pictures ? { pictures: o.pictures } : {}) });
+  registerTalkRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions, threads: spacesArea.threads, ...(o.pictures ? { pictures: o.pictures } : {}), ...(o.orders ? { orders: o.orders } : {}) });
   // ACTIVITIES: what the work turned into, derived on every read from the feed, Talk's threads and the routines
   // (routes/bots/botsActivities.ts over botsBots/activities.ts). Nothing stored, nothing decided here.
   registerActivitiesRoutes(app, deps, { chat: parts.chat, sessions: parts.sessions });

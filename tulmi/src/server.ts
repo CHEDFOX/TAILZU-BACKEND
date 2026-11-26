@@ -67,7 +67,13 @@ import { SITE_READ_PAISE } from "./sites/read.js";
 import { Sites } from "./sites/service.js";
 import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
-import type { TalkPictures } from "./routes/bots/botsTalk.js";
+import type { TalkOrders, TalkPictures } from "./routes/bots/botsTalk.js";
+import { registerSiteHistoryRoutes } from "./routes/bots/botsSiteHistory.js";
+import { SiteHistories } from "./sites/history/service.js";
+import { SITE_ORDERS_PAISE } from "./sites/history/orders.js";
+import { portraitLines } from "./sites/history/portrait.js";
+import { readOrderAsk } from "./sites/history/ask.js";
+import { planLine, planOrder } from "./sites/history/plan.js";
 import type { BotSites } from "./bots/ports.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -580,8 +586,10 @@ routineChat = botsParts.chat;
 // chat message's files are simply ignored and its words asked as before.
 // Talk's pictures are the cinema bot's engine, which is built further down: Talk asks for it at each message.
 let talkPictures: TalkPictures | null = null;
+// Talk's orders: a food site's history and the planner over it (src/sites/history), made in the sites block below.
+let talkOrders: TalkOrders | null = null;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, {
-  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}), pictures: () => talkPictures,
+  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}), pictures: () => talkPictures, orders: () => talkOrders,
 });
 // Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
 // account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
@@ -601,14 +609,29 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
   if (cloudBrowserOn()) {
     const visit = getVisitor();
     const sites = new Sites({ ...(visit ? { visit } : {}), read: { maxPaise: SITE_READ_PAISE } });
+    // What their orders on a food site say about them (src/sites/history, docs/site-portrait.md): learned from the site's own
+    // orders page, read on their phone, and what Talk orders from.
+    const histories = new SiteHistories({ read: { maxPaise: SITE_ORDERS_PAISE } });
     // What Talk's bot knows of them, and the one thing it may do: watch one more page (read only, bots/ports.ts BotSites).
     botSites = {
-      snapshot: async (userId) => ({ logins: await sites.logins(userId), watches: await sites.list(userId) }),
+      snapshot: async (userId) => ({
+        logins: await sites.logins(userId), watches: await sites.list(userId),
+        habits: (await histories.portraits(userId).catch(() => [])).flatMap(portraitLines).slice(0, 12),
+      }),
       watch: async (userId, url, label) => { const w = await sites.watch(userId, url, label); return { id: w.id, site: w.site, label: w.label }; },
     };
     const hold = getHolder();
     const panels = hold ? new Panels({ hold }) : undefined;
     registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
+    registerSiteHistoryRoutes(app, botsAreaDeps, { histories });
+    talkOrders = {
+      plan: async (userId, words, tz) => {
+        const ask = readOrderAsk(words);
+        if (!ask) return null;
+        const options = planOrder(await histories.histories(userId), ask, Date.now(), tz);
+        return options.length ? { options, line: planLine(options) } : null;
+      },
+    };
     // The clock only has something to do with a browser of its own: logins held on a phone are read by the phone.
     const stopSites = visit ? startSitesClock({ sites, log: app.log }) : () => {};
     app.addHook("onClose", async () => { stopSites(); await panels?.closeAll(); });

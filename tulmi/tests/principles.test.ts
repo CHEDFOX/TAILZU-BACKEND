@@ -59,6 +59,7 @@ const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
+const { OrdersReply } = await import("../src/sites/history/orders.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -327,6 +328,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   cinema_take: 1600, // 1432 measured
   widget_digest: 853, // 776 measured
   site_read: 1531, // 1392 measured
+  site_orders: 1438, // 1307 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured
@@ -431,6 +433,7 @@ describe("the contracts say what the parsers read", () => {
     ["cinema_eye", EyeReply],
     ["widget_digest", DigestReply],
     ["site_read", CardReply],
+    ["site_orders", OrdersReply],
   ];
 
   it("name every field of the schema the answer is read with", () => {

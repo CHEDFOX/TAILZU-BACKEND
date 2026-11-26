@@ -8,6 +8,8 @@
  */
 import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, C, box, button, call, chips, col, grid, grow, icon, listCard, listRow, meta, open, page, primaryButton, row, sectionLabel, seq, switchRow, text, when } from "../../kit.js";
+import { loadPortraits, type PortraitsView } from "../sites/data.js";
+import { historyReaders, portraitCard } from "../sites/portrait.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { botRoute, SCREENS } from "../../ids.js";
 import type { IconName } from "../../glyphs.js";
@@ -84,7 +86,7 @@ function tile(c: SectionCard): Node {
   ], { gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, minHeight: 112 }, open(SCREENS.youSpaceSection, { id: c.id }));
 }
 
-function hub(ctx: BotsCtx, d: SpaceOverview | undefined): ScreenResponse {
+function hub(ctx: BotsCtx, d: (SpaceOverview & { sites?: PortraitsView }) | undefined): ScreenResponse {
   const desk = ctx.client === "desktop";
   return page(ctx, {
     back: true, nav: "you", title: "Your space", gap: 18, ...(desk ? { maxWidth: 1040 } : {}),
@@ -98,8 +100,25 @@ function hub(ctx: BotsCtx, d: SpaceOverview | undefined): ScreenResponse {
         meta("“Use what you've told your bots” is off in Privacy. It's all kept here for you.", { size: 12 }),
       ], { gap: 2, padding: 14, borderRadius: 16, backgroundColor: C.surface }, open(SCREENS.privacy))] : []),
       grid((d?.sections ?? []).map(tile), desk ? 4 : 2, 10),
+      ...sitesPart(ctx, d?.sites),
     ],
   });
+}
+
+/**
+ * FROM THEIR SITES: a section per site they order on, each its portrait in a card (screens/sites/portrait.ts). Learned from
+ * the site's own orders page, so it is not a line any bot wrote, and it is forgotten on the portrait itself.
+ */
+function sitesPart(ctx: BotsCtx, v: PortraitsView | undefined): Node[] {
+  if (!v || (!v.portraits.length && !v.readers.length)) return [];
+  return [
+    col([
+      sectionLabel("From your sites"),
+      meta("What your orders say about you, one site at a time.", { size: 12 }),
+    ], { gap: 4 }),
+    ...(v.portraits.length ? [grid(v.portraits.map(portraitCard), ctx.client === "desktop" ? 2 : 1, 10)] : [meta("Reading your orders now. This fills in by itself.", { size: 13 })]),
+    ...historyReaders(ctx, v.readers),
+  ];
 }
 
 // ===================================================================== one section
@@ -232,7 +251,14 @@ function sectionPage(ctx: BotsCtx, v: SectionView | undefined): ScreenResponse {
 }
 
 export const spaceScreens: BotsScreen[] = [
-  screen<SpaceOverview>({ id: SCREENS.youSpace, load: (_ctx, deps) => deps.api<SpaceOverview>("GET", SPACE_API), build: hub }),
+  screen<SpaceOverview & { sites?: PortraitsView }>({
+    id: SCREENS.youSpace,
+    load: async (ctx, deps) => {
+      const [d, sites] = await Promise.all([deps.api<SpaceOverview>("GET", SPACE_API), loadPortraits(deps, ctx.user?.id)]);
+      return { ...d, ...(sites ? { sites } : {}) };
+    },
+    build: hub,
+  }),
   screen<SectionView>({
     id: SCREENS.youSpaceSection,
     load: (ctx, deps) => deps.api<SectionView>("GET", `${SPACE_API}/${encodeURIComponent(String(ctx.params.id ?? "about"))}`),

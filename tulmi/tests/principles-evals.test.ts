@@ -69,6 +69,7 @@ const { EyeReply } = await import("../src/cinema/scene/eye.js");
 const { checkScene } = await import("../src/cinema/scene/check.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
+const { OrdersReply } = await import("../src/sites/history/orders.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -396,6 +397,10 @@ describe("a known-good answer for each role", () => {
         + '"stages":[{"name":"Order placed","when":"8:51 pm","done":true},{"name":"Food ready","when":"9:14 pm","done":true},{"name":"Out for delivery","done":false}],'
         + '"detail":"Rahul is 1.2 km away"}',
       reads: (t) => CardReply.parse(JSON.parse(t)),
+    },
+    site_orders: {
+      text: '{"orders":[{"no":"183746529012","place":"Behrouz Biryani","area":"Koramangala","items":[{"name":"Chicken Dum Biryani","qty":1}],"total":"458","at":"2026-11-21T20:40"},{"no":"183600112233","place":"Truffles","area":"Koramangala","items":[{"name":"All American Cheese Burger","qty":2}],"total":"612","at":"2026-11-16T13:15"}]}',
+      reads: (t) => OrdersReply.parse(JSON.parse(t)),
     },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {

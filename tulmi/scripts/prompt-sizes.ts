@@ -110,6 +110,8 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".
   widget_digest: 776,
   site_read: 1392,
+  // A role that replaced nothing: its first measured size is its own "before".
+  site_orders: 1307,
   // The main assistant (agent/, pipeline/): what each builder sent at 61edee2, the commit before they became roles. The writer is buildAssistSystem with
   // no optional line on (5,645 with every one on), the planner AGENT_SYSTEM on a computer (11,895 with the connected apps' addendum), the picture
   // reader AGENT_VISION_SYSTEM (7,195 in Gemini's order), and the portrait writers' with no rhythms and no voice named (3,762 with rhythms).
@@ -128,7 +130,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "lingo_unit", "lingo_say", "screen_draw"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "bot_show", "widget_digest", "site_read", "site_orders", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply", "code_review", "code_name", "code_which", "code_referent", "cinema_scene", "cinema_eye", "lingo_unit", "lingo_say", "screen_draw"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

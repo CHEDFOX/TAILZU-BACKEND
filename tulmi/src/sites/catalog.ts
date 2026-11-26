@@ -47,6 +47,16 @@ export interface SiteEntry {
    * address, or that has no such page, has none, and is offered no watch.
    */
   orders?: string;
+  /**
+   * The site's own search, with `{q}` where the words go: where an order starts when the restaurant's own page is not
+   * known yet (src/sites/history/plan.ts). Only on the site's host, like everything else here.
+   */
+  search?: string;
+  /**
+   * What the address of one restaurant's page has in it on this site ("/restaurants/"), so a link to it can be picked
+   * out of the orders page and an order can start there instead of at the search.
+   */
+  placePath?: string;
   /** What it is for, shown beside the name. */
   category: string;
   /** Other ways it is typed, lower case. Searching is by name, host and these. */
@@ -71,6 +81,7 @@ export const SITE_CATALOG: readonly SiteEntry[] = [
   {
     id: "swiggy", name: "Swiggy", host: "swiggy.com", category: "Food",
     signIn: "https://www.swiggy.com/auth", orders: "https://www.swiggy.com/my-account/orders",
+    search: "https://www.swiggy.com/search?query={q}", placePath: "/restaurants/",
     aliases: ["swiggy", "food", "order food", "instamart"],
   },
   {

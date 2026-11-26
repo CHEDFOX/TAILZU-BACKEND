@@ -29,6 +29,7 @@ import type { Shown } from "../show/types.js";
 import { table, type Table } from "./rows.js";
 import { botSaid } from "../bots/notifyReply.js";
 import { sessions as sessionStore, type Sessions } from "./sessions.js";
+import { ORDER_TOKEN_MAX } from "../sites/history/token.js";
 
 export interface ChatTurnRow {
   [k: string]: unknown;
@@ -67,7 +68,11 @@ export interface TurnBy { slug: string; name: string; color: string }
  * What an answer left to do: a Xode job to watch, a payment to press, what the everyday tools found, changes waiting for
  * a yes, a routine to save. Ids and counts only — the cards are drawn from them, and nothing here is words a model wrote.
  */
-export interface TurnDid { job?: string; upi?: string; finds?: string; needs?: number; routine?: string }
+export interface TurnDid {
+  job?: string; upi?: string; finds?: string; needs?: number; routine?: string;
+  /** The orders Talk offered for "order my usual" (src/sites/history/token.ts): drawn as the order card under the words. */
+  order?: string;
+}
 
 export interface ChatTurn {
   id: string;
@@ -169,9 +174,10 @@ function didOf(v: unknown): TurnDid | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   const job = word(o.job, ID_RE, 64), finds = word(o.finds, ID_RE, 64), routine = typeof o.routine === "string" ? o.routine.slice(0, 4000) : "";
+  const order = typeof o.order === "string" ? o.order.slice(0, ORDER_TOKEN_MAX) : "";
   const upi = typeof o.upi === "string" && /^upi:\/\//i.test(o.upi) ? o.upi.slice(0, 1000) : "";
   const needs = Number.isFinite(o.needs) ? Math.max(0, Math.min(99, Math.round(o.needs as number))) : 0;
-  const did: TurnDid = { ...(job ? { job } : {}), ...(upi ? { upi } : {}), ...(finds ? { finds } : {}), ...(needs ? { needs } : {}), ...(routine ? { routine } : {}) };
+  const did: TurnDid = { ...(job ? { job } : {}), ...(upi ? { upi } : {}), ...(finds ? { finds } : {}), ...(needs ? { needs } : {}), ...(routine ? { routine } : {}), ...(order ? { order } : {}) };
   return Object.keys(did).length ? did : null;
 }
 

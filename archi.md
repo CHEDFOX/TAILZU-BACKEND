@@ -225,6 +225,8 @@ meet/              the meeting bot: Recall's client, the store, what it says, th
 brief/             the brief, the document the bot makes while a meeting runs: the shapes, its role, applying a pass (docs/brief.md)
 sites/             a browser that belongs to the person (CLOUD_BROWSER, off): the vetted sites a person may sign in to, the gate,
                    the panel and its host, frames, reading a page, the store (docs/sites.md, docs/sign-in.md)
+  history/         what a person's orders on a food site say about them, and an order made from it: the orders page read into
+                   orders, the store, the portrait, the ask, the planner, the card's token, the phone's scripts (docs/site-portrait.md)
 trust/             abuse and fraud prevention: signals, the score, lists, what happens to a score and who it never happens to,
                    App Attest (apple/) and Play Integrity (google/), the sweeper; off | shadow | on (docs/trust.md)
 privacy/           the person's permission to send what they give X0 Bot to AI services (aiConsent.ts) and the gate every
@@ -300,6 +302,7 @@ ads/               Meta and Google Tag Manager events
 | Abuse and fraud prevention (scores, App Attest, Play Integrity) | `tulmi/src/trust/`, `routes/trust/trust.ts`, `routes/admin/trust.ts` (docs/trust.md) |
 | The brief (the document made while a meeting runs) | `tulmi/src/brief/` (docs/brief.md) |
 | A browser that belongs to the person, and signing in on a site | `tulmi/src/sites/`, `routes/bots/botsSites.ts` (docs/sites.md, docs/sign-in.md) |
+| A portrait of a person's food orders, and "order my usual" in Talk | `tulmi/src/sites/history/`, `routes/bots/botsSiteHistory.ts`, the order branch in `routes/bots/botsTalk.ts`, screens `experience/bots/screens/sites/` (`portrait.ts`, `orderCard.ts`, `order.ts`, `data.ts`), the render sample `scripts/bots-render/samples/sitePortrait.ts`, migration 0114, the role `site_orders` (docs/site-portrait.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | The phone's own three (where the day starts, one contact, a fitness bot's workouts) | the contract `shared/types/sdui.ts` (`location.area`, `contact.pick`, `health.sync`), the card words `experience/bots/screens/permitWords.ts`, location in `experience/bots/screens/botsPlaces.ts`, the contact picker `screens/spaces/pickContact.ts` with the invite preview `botsBots/inviteMail.ts` and its retention `botsBots/inviteSweeper.ts`, health in `bots/healthDays.ts` + `bots/healthGate.ts` + `bots/door.ts` `isFitnessBot` + `screens/bots/health.ts` + `POST /v1/bots/:slug/health/days`, migration 0089; all five switches off in `config.ts` (docs/perms.md) |
 | The name you give someone (per reader, the way a phone's contacts are: a username reaches them, this is what they are called) | `tulmi/src/botsBots/personNames.ts` (`known`/`shownName`, resolved over every name a row carries), read in `threads.ts` (contacts, a chat's name and people, every message's name, the last line) and `spaces.ts` (members); routes `routes/bots/botsSpaces.ts` (`PUT /people/:id/name`), migration 0111 (docs/social.md §2) |
@@ -400,5 +403,5 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/perms.md`, `docs/blip.md`, `docs/brief.md`, `docs/cinema-3d.md`, `docs/code-flow.md`, `docs/discover.md`,
 `docs/follow-channels.md` (follow-through's real phone call), `docs/launch.md`, `docs/meet.md`, `docs/native-looks.md`,
 `docs/owner-8.9.1.md` (the owner's checklist for build 8.9.1), `docs/plan-call-judge.md`, `docs/plan-ease-people.md`, `docs/plan-ease.md`,
-`docs/plan-share.md`, `docs/renderer.md`, `docs/screen-draw.md`, `docs/sign-in.md`, `docs/sites.md`, `docs/trust.md`, `docs/user-space.md`,
+`docs/plan-share.md`, `docs/renderer.md`, `docs/screen-draw.md`, `docs/sign-in.md`, `docs/site-portrait.md`, `docs/sites.md`, `docs/trust.md`, `docs/user-space.md`,
 `docs/window-setup.md`, `viewer/docs/artifact-viewer.md`.

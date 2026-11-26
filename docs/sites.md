@@ -13,7 +13,9 @@ Acting on a strange site works perhaps two times in three. **Reading one works n
 whole bet of this first half: there is no button to misclick, no order to place, nothing to spend. The worst a
 strange page can do is be misread, and a misread card is wrong rather than expensive.
 
-Nothing in `src/sites/` can press, type or pay. The verbs do not exist here.
+Nothing in `src/sites/` can type or pay. The one thing that presses is an order a person tapped in Talk: on their phone,
+while they watch, it presses "Add" by each dish and "View cart", and stops there (`src/sites/history/phone.ts`,
+docs/site-portrait.md). The watching and reading below press nothing.
 
 ## The loop
 
@@ -235,4 +237,5 @@ the page reader, the `site_read` role, the service and its manners (`service.ts`
 * **The phone's half of the panel.** The server side is done (`sites/panel.ts`, `sites/frames.ts`, `engine.hold()`,
   the routes); what is missing is the component that draws the frames and sends the taps. It lives in `app/**`, so
   shipping it publishes an OTA — a decision for the owner, not for a build.
-* **Acting.** The other half, and a much bigger one.
+* **Acting.** One narrow piece is built: filling a food order's cart on the phone, never paying (docs/site-portrait.md).
+  Anything wider is still the other half, and a much bigger one.

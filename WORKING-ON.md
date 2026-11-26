@@ -1,5 +1,16 @@
 # Being built right now (read before you start)
 
+## 26 Nov: X0 LEARNS HOW YOU EAT FROM SWIGGY, AND "ORDER MY USUAL" FILLS THE CART
+
+A connected food site now teaches X0 how the person eats: the site's own orders page is read on their phone (at most
+twice a day, a model only when the page changed) into orders, and the orders into a portrait. It shows as conclusions
+only, never the counting: the usual, a few plain habits, favourite places and dishes, on a page per site and as a card
+per site on Sites and in Your space. Talk's bot is told a few lines of it. In Talk, "order my usual", "khana mangwa do",
+"get me a biryani" are answered with an order card; one tap opens Swiggy on the phone, opens the restaurant, presses
+"Add" by each dish once and shows the cart. The person pays. Nothing new in the apps (the SiteView's sign-in mode runs
+the server's step). Needs migration 0114. Not yet tried on Swiggy with a real account: the first live order should be
+watched. docs/site-portrait.md.
+
 ## 24 Nov: NO PLIVO FOR NOW: THE IN-APP CALL IS THE LOUDEST STEP
 
 There is no Plivo account, so real phone calls stay off (`CHANNEL_PHONE_CALLS` unset: the routes answer 404, What pings you

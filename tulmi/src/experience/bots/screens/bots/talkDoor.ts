@@ -42,6 +42,7 @@ import { answerBlocks, answerShare, bubble, clockOf, FRESH_MS, inputBox, refresh
 import { findsCards } from "../finds.js";
 import { isRoutineToken, routineCard, routineCardState } from "../routines.js";
 import { didCards } from "../shell/doorCards.js";
+import { orderCards } from "../sites/orderCard.js";
 import { nameOf, avatarOf } from "../shell/parts.js";
 // Home's asks, drawn here because this is the screen the app opens on (see TalkData.notices).
 import { homeNotices } from "../shell/home.js";
@@ -201,6 +202,8 @@ function talkTurn(ctx: BotsCtx, t: ChatTurn, o: { live: boolean; next?: ChatTurn
     ...drawn,
     ...routine,
     ...finds,
+    // An order Talk made from their orders on a food site (src/sites/history): a card to tap, which fills the site's cart.
+    ...orderCards(ctx, t.did?.order),
     ...didCards(ctx, t.did, slug),
     answerShare(ctx, slug, t as Turn, t.by?.name ?? slug),
   ], { gap: 10 });

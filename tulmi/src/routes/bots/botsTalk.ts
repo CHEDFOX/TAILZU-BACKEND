@@ -32,6 +32,8 @@ import { readTalk, slashBots, talkName, TALK_COMMANDS } from "../../botsBots/tal
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
 import type { Threads } from "../../botsBots/threads.js";
 import { botLook } from "../../experience/bots/palette.js";
+import type { OrderOption } from "../../sites/history/types.js";
+import { orderToken } from "../../sites/history/token.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
 /**
@@ -56,7 +58,23 @@ export interface TalkRoutesParts {
    * absent: no pictures here, and an ask for one goes through the door like any other.
    */
   pictures?: () => TalkPictures | null;
+  /**
+   * ORDERING FOOD, when sites are on (src/sites/history: their orders on a food site, and the planner over them). Asked for
+   * at each message, because the server builds it after this route. Null, or absent: an ask to order goes through the door.
+   */
+  orders?: () => TalkOrders | null;
 }
+
+/**
+ * What Talk needs to answer "order my usual": the orders X0 would place, best first, and the line it says over them. Null
+ * when the words are no ask to order, or there is no history to order from; then the door answers, as before.
+ */
+export interface TalkOrders {
+  plan(userId: string, words: string, tz: number): Promise<{ options: OrderOption[]; line: string } | null>;
+}
+
+/** Who answers with an order: Talk itself, which is where the person asked. */
+const ORDER_BY: TurnBy = { slug: TALK_SLUG, name: "Talk", color: botLook(TALK_SLUG).color };
 
 /** What Talk needs of the picture engine: one picture from the words, with the person's attached photos as references. */
 export interface TalkPictures {
@@ -209,6 +227,24 @@ export function registerTalkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
           ...(files.length ? { files } : {}),
         });
         return reply.send({ turns, shell: { bot: PICTURE_BY, text }, ...(turns[0]?.session ? { session: turns[0].session } : {}) });
+      }
+
+      // AN ORDER, ASKED FOR: what they usually have, from their own orders on a food site, as a card to tap (src/sites/history).
+      // Read off the words alone (no model) and answered with no model either; nothing is spent, and the card only opens the
+      // site with the cart filled — they still check it and pay there. With no history to go on, the door answers as before.
+      const orders = parts.orders?.() ?? null;
+      if (orders && !files.length) {
+        const tz = typeof b.tz === "number" && Number.isFinite(b.tz) ? Math.max(-720, Math.min(840, Math.round(b.tz))) : 330;
+        const plan = await orders.plan(s.user.id, read.message || said, tz).catch(() => null);
+        if (plan) {
+          const did: TurnDid = { order: orderToken(plan.options) };
+          const turns = await s.chat.keepDoor(s.user.id, TALK_SLUG, {
+            said, text: plan.line, by: ORDER_BY, did,
+            ...(read.forName ? { forName: read.forName } : {}),
+            ...(session ? { session } : {}),
+          });
+          return reply.send({ turns, shell: { bot: ORDER_BY, text: plan.line }, ...(turns[0]?.session ? { session: turns[0].session } : {}) });
+        }
       }
 
       // THE DOOR, UNCHANGED: the same route Ask has always used, so the guards, the money, the routine drafts, the outbox's
