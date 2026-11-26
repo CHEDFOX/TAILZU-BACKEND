@@ -70,6 +70,8 @@ const { checkScene } = await import("../src/cinema/scene/check.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
 const { OrdersReply } = await import("../src/sites/history/orders.js");
+const { TasteReply } = await import("../src/sites/history/taste/profile.js");
+const { DiscoverReply } = await import("../src/sites/history/taste/discover.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -401,6 +403,18 @@ describe("a known-good answer for each role", () => {
     site_orders: {
       text: '{"orders":[{"no":"183746529012","place":"Behrouz Biryani","area":"Koramangala","items":[{"name":"Chicken Dum Biryani","qty":1}],"total":"458","at":"2026-11-21T20:40"},{"no":"183600112233","place":"Truffles","area":"Koramangala","items":[{"name":"All American Cheese Burger","qty":2}],"total":"612","at":"2026-11-16T13:15"}]}',
       reads: (t) => OrdersReply.parse(JSON.parse(t)),
+    },
+    site_taste: {
+      text: '{"insights":["You love rich, slow-cooked rice dishes, and biryani is your comfort food.","Weekends are for a treat you trust; weekday lunches are quick and light."],'
+        + '"palate":[{"trait":"Rich, slow-cooked and mildly spicy","why":"Dum biryani again and again, with something sweet after","orders":[1,3]}],'
+        + '"motives":[{"trait":"Reliability over novelty","why":"The same Saturday order most weeks","orders":[1,3]}],'
+        + '"moods":[{"moment":"weekend dinner","wants":"an indulgent favourite","orders":[1,3]}],'
+        + '"mightLike":[{"dish":"Mutton Haleem","cuisine":"Hyderabadi","why":"Slow-cooked and rich like the dum biryani you love, with more depth","reach":"near","orders":[1,3]}],"city":"Bengaluru"}',
+      reads: (t) => TasteReply.parse(JSON.parse(t)),
+    },
+    site_discover: {
+      text: '{"picks":[{"place":"Shah Ghouse","dish":"Mutton Haleem","why":"You love slow-cooked, rich biryani; this haleem is cooked overnight","said":"the haleem here is cooked overnight and it shows","from":1,"hunch":1}]}',
+      reads: (t) => DiscoverReply.parse(JSON.parse(t)),
     },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {

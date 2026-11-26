@@ -10,6 +10,10 @@ import { planLine, planOrder } from "../../../src/sites/history/plan.js";
 import { readOrderAsk } from "../../../src/sites/history/ask.js";
 import { orderToken } from "../../../src/sites/history/token.js";
 import type { SiteOrder } from "../../../src/sites/history/types.js";
+import { tasteFrom } from "../../../src/sites/history/taste/profile.js";
+import { featuresOf } from "../../../src/sites/history/taste/features.js";
+import { picksFrom } from "../../../src/sites/history/taste/discover.js";
+import { pickView, tasteView } from "../../../src/sites/history/service.js";
 
 /** Thursday 26 November 2026, 8:10 pm in Bengaluru. */
 export const PORTRAIT_NOW = Date.UTC(2026, 10, 26, 14, 40);
@@ -41,11 +45,60 @@ export const RIYA_ORDERS: SiteOrder[] = [
   order(15, "2026-10-08T19:50", "Third Wave Coffee", [["Hazelnut Cold Coffee", 2]], 360, { cancelled: true }),
 ];
 
-export const RIYA_PORTRAIT = portraitOf(SITE, RIYA_ORDERS, PORTRAIT_NOW, PORTRAIT_NOW - 2 * 3_600_000);
+/**
+ * HER TASTE, as the taste model would answer for these orders, put through the same checks the real answer is
+ * (tasteFrom: every claim names orders that exist, a "might like" is something she has not had). The reply is written
+ * here because a render must not call a model; what is drawn is what the checks let through.
+ */
+export const RIYA_TASTE = tasteFrom({
+  insights: [
+    "Rich, slow-cooked rice is your comfort food, and Behrouz's dum biryani is the one you trust.",
+    "Saturday night is a treat you don't gamble with; weekday lunches are quick and familiar.",
+    "You like a sweet finish after something savoury and heavy.",
+    "You'll try somewhere new when it's close to a favourite, not when it's a leap.",
+  ],
+  palate: [
+    { trait: "Rich and slow-cooked", why: "Dum biryani most weekends, boneless biryani in between", orders: [1, 3, 4, 5] },
+    { trait: "A sweet finish", why: "Gulab jamun with nearly every biryani", orders: [1, 3, 5] },
+    { trait: "Mild heat, not fire", why: "Biryanis and burgers, never the spiciest thing on a menu", orders: [1, 2, 4] },
+  ],
+  motives: [
+    { trait: "Reliability over novelty", why: "The same Saturday order week after week", orders: [1, 3, 5, 8] },
+    { trait: "Comfort at the end of the week", why: "The richest order lands on Saturday nights", orders: [1, 3, 5] },
+  ],
+  moods: [
+    { moment: "weekend dinner", wants: "A favourite you know will be good, and dessert", orders: [1, 3, 5] },
+    { moment: "weekday lunch", wants: "Something quick and filling you don't have to think about", orders: [2, 6] },
+    { moment: "late night", wants: "Something crispy and indulgent", orders: [7] },
+  ],
+  mightLike: [
+    { dish: "Mutton Haleem", cuisine: "Hyderabadi", why: "Slow-cooked overnight like the dum biryani you love, richer and deeper, and it comes with a sweet.", reach: "near", orders: [1, 3, 5] },
+    { dish: "Kolkata Chicken Biryani", cuisine: "Bengali", why: "Your biryani, lighter on spice, with the potato and egg Kolkata adds: the same comfort, one new thing.", reach: "near", orders: [1, 3, 4] },
+    { dish: "Double ka Meetha", cuisine: "Hyderabadi", why: "The Hyderabadi bread pudding people finish a biryani with, for the sweet tooth that orders gulab jamun.", reach: "near", orders: [1, 3, 5] },
+  ],
+  city: "Bengaluru",
+}, RIYA_ORDERS, featuresOf(RIYA_ORDERS), PORTRAIT_NOW)!;
+
+/** Pages as the web search would bring back for her hunches, and the picks the model would make from them, checked. */
+const PAGES = [
+  { url: "https://www.reddit.com/r/bangalore/comments/haleem_koramangala", text: "Where to get good haleem near Koramangala? We went to Shah Ghouse on 5th Block last Friday. The haleem here is cooked overnight and it shows, thick, peppery, the meat just melts. Paid 280 for a plate and got double ka meetha on the side. Queue at 8 pm but worth it. ".repeat(2) },
+  { url: "https://www.zomato.com/bangalore/oh-calcutta-koramangala/reviews", text: "Oh! Calcutta, Koramangala. Reviews. The Kolkata biryani was fragrant and mild, the potato had soaked up everything, best I have had outside Kolkata. Ordered twice in one week. ".repeat(3) },
+];
+export const RIYA_PICKS = picksFrom({
+  picks: [
+    { place: "Shah Ghouse", dish: "Mutton Haleem", why: "You love slow-cooked, rich biryani. This haleem is cooked overnight, and they serve double ka meetha with it for your sweet finish.", said: "The haleem here is cooked overnight and it shows, thick, peppery, the meat just melts.", from: 1, hunch: 1 },
+    { place: "Oh! Calcutta", dish: "Kolkata Chicken Biryani", why: "Your Saturday biryani, a little milder, with the potato Kolkata adds. Close to what you trust, and new.", said: "The Kolkata biryani was fragrant and mild, the potato had soaked up everything", from: 2, hunch: 2 },
+  ],
+}, RIYA_TASTE.mightLike, PAGES);
+
+export const RIYA_PORTRAIT = {
+  ...portraitOf(SITE, RIYA_ORDERS, PORTRAIT_NOW, PORTRAIT_NOW - 2 * 3_600_000),
+  taste: tasteView(RIYA_TASTE), picks: RIYA_PICKS.map(pickView),
+};
 
 /** What Talk would answer "order my usual" with, at that moment. */
 export function riyaPlan(words = "order my usual") {
-  const options = planOrder([{ site: SITE, orders: RIYA_ORDERS }], readOrderAsk(words)!, PORTRAIT_NOW, 330);
+  const options = planOrder([{ site: SITE, orders: RIYA_ORDERS, chooser: RIYA_TASTE.chooser, picks: RIYA_PICKS }], readOrderAsk(words)!, PORTRAIT_NOW, 330);
   return { options, line: planLine(options), token: orderToken(options) };
 }
 

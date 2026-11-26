@@ -391,3 +391,217 @@ describe.skipIf(!playwright())("the step the phone runs, on a page made to look 
     } finally { await browser.close(); }
   }, 30_000);
 });
+
+// ------------------------------------------------------------------ taste: the signals, the profile, the web
+
+const { featuresOf, chooserOf, flavoursOf, cuisineOf, momentOf } = await import("../src/sites/history/taste/features.js");
+const { tasteFrom, tasteOf, tasteHash } = await import("../src/sites/history/taste/profile.js");
+const { picksFrom, discover, queryFor } = await import("../src/sites/history/taste/discover.js");
+const { wantsNew } = await import("../src/sites/history/plan.js");
+
+const REPLY = {
+  insights: ["Rich, slow-cooked rice is your comfort food.", "You save the treat for Saturday night."],
+  palate: [
+    { trait: "Rich and slow-cooked", why: "Dum biryani most weekends", orders: [1, 3] },
+    { trait: "Invented", why: "No evidence", orders: [] },
+    { trait: "Out of range", why: "Order 99 does not exist", orders: [99] },
+  ],
+  motives: [{ trait: "Reliability over novelty", why: "The same Saturday order", orders: [1, 3, 5] }],
+  moods: [{ moment: "weekend dinner", wants: "a favourite and dessert", orders: [1] }],
+  mightLike: [
+    { dish: "Mutton Haleem", cuisine: "Hyderabadi", why: "Slow-cooked like the biryani", reach: "near" as const, orders: [1, 3] },
+    { dish: "Chicken Dum Biryani", cuisine: "Hyderabadi", why: "Already their usual", reach: "near" as const, orders: [1] },
+    { dish: "Laksa", cuisine: "Malaysian", why: "A stretch", reach: "stretch" as const, orders: [2] },
+    { dish: "Ramen", cuisine: "Japanese", why: "A second stretch", reach: "stretch" as const, orders: [2] },
+    { dish: "Kolkata Biryani", cuisine: "Bengali", why: "No orders named", reach: "near" as const, orders: [] },
+  ],
+  city: "Bengaluru",
+};
+
+describe("the signals in what they order", () => {
+  const f = featuresOf(HISTORY);
+
+  it("reads flavour, cuisine and moment off the words and the clock", () => {
+    expect(flavoursOf("Andhra Chilli Chicken")).toContain("spicy");
+    expect(flavoursOf("Paneer Butter Masala")).toContain("rich");
+    expect(flavoursOf("Gulab Jamun")).toContain("sweet");
+    expect(cuisineOf({ place: "Somewhere", items: [{ name: "Masala Dosa", qty: 1 }] })).toBe("South Indian");
+    expect(cuisineOf({ place: "Behrouz Biryani", items: [{ name: "Something", qty: 1 }] })).toBe("Hyderabadi / biryani");
+    expect(momentOf("2026-11-21T20:40")).toBe("weekend dinner");
+    expect(momentOf("2026-11-19T13:15")).toBe("weekday lunch");
+    expect(momentOf("2026-11-02T23:45")).toBe("late night");
+  });
+
+  it("measures the chooser: how often they come back, how often they try somewhere new", () => {
+    expect(f.orders).toBe(7);
+    expect(f.repeat).toBeCloseTo(0.57, 1);
+    expect(f.explore).toBeCloseTo(0.43, 1);
+    expect(chooserOf(f)).toBe("creature of habit");
+    const roamer = featuresOf(["A", "B", "C", "D", "E"].map((p, i) => o(i, `2026-11-0${i + 1}T20:00`, p, [[`Dish ${p}`, 1]])));
+    expect(chooserOf(roamer)).toBe("explorer");
+  });
+
+  it("knows what each moment of the week wants, and where they order to", () => {
+    expect(f.moments[0]).toMatchObject({ moment: "weekend dinner" });
+    expect(f.moments[0]!.flavours).toContain("rich");
+    expect(featuresOf([o(1, "2026-11-01T20:00", "A", [["x", 1]], 100, { area: "Koramangala" })]).areas).toEqual(["Koramangala"]);
+  });
+});
+
+describe("the taste profile, held to evidence", () => {
+  const f = featuresOf(HISTORY);
+  const t = tasteFrom(REPLY, HISTORY, f, NOW)!;
+
+  it("keeps a claim only when it names orders that exist", () => {
+    expect(t.palate.map((p) => p.trait)).toEqual(["Rich and slow-cooked"]);
+  });
+
+  it("a discovery is something they have not had, with evidence, and one stretch at most", () => {
+    expect(t.mightLike.map((h) => h.dish)).toEqual(["Mutton Haleem", "Laksa"]);
+  });
+
+  it("carries how they choose and the hash of the orders it was made from", () => {
+    expect(t.chooser).toBe("creature of habit");
+    expect(t.hash).toBe(tasteHash(HISTORY));
+    expect(t.city).toBe("Bengaluru");
+  });
+
+  it("asks the reasoning tier once with the orders fenced, and not at all for too few orders", async () => {
+    let calls = 0, tier = "", user = "";
+    const call = (async (req: { tier: string; messages: Array<{ content: unknown }> }) => {
+      calls++; tier = req.tier; user = String(req.messages.at(-1)?.content ?? "");
+      return { json: REPLY, paise: 3, model: "m" };
+    }) as never;
+    expect(await tasteOf(U, HISTORY.slice(0, 2), { call, maxPaise: 90 })).toBeNull();
+    expect(calls).toBe(0);
+    const got = await tasteOf(U, HISTORY, { call, maxPaise: 90 }, NOW);
+    expect(calls).toBe(1);
+    expect(tier).toBe("cheap");
+    expect(user).toContain("Reads as: creature of habit");
+    expect(user).toContain("#1 Sat 2026-11-21 8 pm (weekend dinner) · Behrouz Biryani");
+    expect(got?.insights[0]).toBe("Rich, slow-cooked rice is your comfort food.");
+  });
+});
+
+describe("somewhere new, from the web, vouched for in a reviewer's own words", () => {
+  const t = tasteFrom(REPLY, HISTORY, featuresOf(HISTORY), NOW)!;
+  const PAGE = { url: "https://www.reddit.com/r/bangalore/haleem", text: "We went to Shah Ghouse last Friday. The haleem here is cooked overnight and it shows. Paid 280. ".repeat(5) };
+
+  it("keeps a pick only when its quote and its place are on the page it names", () => {
+    const picks = picksFrom({ picks: [
+      { place: "Shah Ghouse", dish: "Mutton Haleem", why: "Slow-cooked, like your biryani", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
+      { place: "Shah Ghouse", dish: "Haleem again", why: "a second pick at the same place", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
+      { place: "Pista House", dish: "Haleem", why: "made up", said: "Pista House has the best haleem in town, hands down", from: 1, hunch: 1 },
+      { place: "Pista House", dish: "Haleem", why: "a real quote about somewhere else", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 },
+      { place: "Shah Ghouse", dish: "x", why: "no such page", said: "The haleem here is cooked overnight and it shows.", from: 9, hunch: 1 },
+    ] }, t.mightLike, [PAGE]);
+    expect(picks).toEqual([expect.objectContaining({ place: "Shah Ghouse", dish: "Mutton Haleem", host: "reddit.com", reach: "near" })]);
+  });
+
+  it("searches near where they order, reads the pages, and gives nothing when the web gives nothing", async () => {
+    const asked: string[] = [];
+    const call = (async () => ({ json: { picks: [{ place: "Shah Ghouse", dish: "Mutton Haleem", why: "Slow-cooked, like your biryani", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" })) as never;
+    const deps = {
+      call,
+      find: async (q: string) => { asked.push(q); return [{ title: "t", url: PAGE.url }]; },
+      read: async () => PAGE,
+    };
+    const got = await discover(U, { ...t, areas: ["Koramangala"] }, deps);
+    expect(asked[0]).toBe(queryFor("Mutton Haleem", "Koramangala Bengaluru"));
+    expect(got[0]).toMatchObject({ place: "Shah Ghouse" });
+    expect(await discover(U, t, { ...deps, find: async () => [] })).toEqual([]);
+  });
+});
+
+describe("the plan, read through their taste", () => {
+  const PICK = { place: "Shah Ghouse", dish: "Mutton Haleem", cuisine: "Hyderabadi", why: "Slow-cooked like your biryani", said: "The haleem here is cooked overnight", host: "reddit.com", url: "https://reddit.com/x", reach: "near" as const };
+  const h = (chooser: "creature of habit" | "explorer") => [{ site: SITE, orders: HISTORY, chooser, picks: [PICK] }];
+
+  it("a creature of habit gets the usual first and one new thing beside it", () => {
+    const got = planOrder(h("creature of habit"), readOrderAsk("order dinner")!, NOW, 330);
+    expect(got[0]!.place).toBe("Behrouz Biryani");
+    expect(got[1]).toMatchObject({ place: "Shah Ghouse", fresh: true, said: PICK.said, url: "https://www.swiggy.com/search?query=Shah%20Ghouse" });
+    expect(got.filter((x) => x.fresh)).toHaveLength(1);
+  });
+
+  it("an explorer gets the new place first; asked for the usual, anyone gets the usual first", () => {
+    expect(planOrder(h("explorer"), readOrderAsk("order dinner")!, NOW, 330)[0]!.fresh).toBe(true);
+    expect(planOrder(h("explorer"), readOrderAsk("order my usual")!, NOW, 330)[0]!.place).toBe("Behrouz Biryani");
+  });
+
+  it("a dish never ordered is a live find when there is one, and the site's search when there is not", () => {
+    const ask = readOrderAsk("order haleem")!;
+    expect(wantsNew(h("creature of habit"), ask)).toBe(true);
+    expect(wantsNew(h("creature of habit"), readOrderAsk("get me a burger")!)).toBe(false);
+    const live = { ...PICK, asked: "haleem" };
+    const got = planOrder([{ site: SITE, orders: HISTORY }], ask, NOW, 330, [live]);
+    expect(got[0]).toMatchObject({ place: "Shah Ghouse", fresh: true });
+    expect(planLine(got)).toBe("Something new I think you'll love: Mutton Haleem at Shah Ghouse. Slow-cooked like your biryani");
+    expect(planOrder([{ site: SITE, orders: HISTORY }], ask, NOW, 330)[0]!.search).toBe(true);
+  });
+
+  it("the new place rides on the card's token, its reviewer's words with it", () => {
+    const opts = planOrder(h("creature of habit"), readOrderAsk("order dinner")!, NOW, 330);
+    const back = readOrderToken(orderToken(opts));
+    expect(back[1]).toMatchObject({ fresh: true, said: PICK.said, host: "reddit.com" });
+  });
+});
+
+describe("taste, kept and refreshed with manners", () => {
+  async function rig(o: { slowWeb?: boolean } = {}) {
+    let at = NOW, tasteCalls = 0, finds = 0;
+    const logins = new SiteStore(null);
+    const store = new HistoryStore(null);
+    await logins.saveLogin(U, SITE, { cookies: [], onPhone: true });
+    await store.saveOrders(U, SITE, HISTORY);
+    await store.setMark(U, SITE, { readAt: NOW });
+    const call = (async (req: { purpose: string }) => {
+      if (req.purpose === "site.taste") { tasteCalls++; return { json: REPLY, paise: 3, model: "m" }; }
+      return { json: { picks: [{ place: "Shah Ghouse", dish: "Mutton Haleem", why: "Slow-cooked", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" };
+    }) as never;
+    const page = { url: "https://reddit.com/x", text: "Shah Ghouse. The haleem here is cooked overnight and it shows. ".repeat(10) };
+    const h = new SiteHistories({
+      store, logins, now: () => at,
+      taste: { call, maxPaise: 90 },
+      discover: {
+        call,
+        find: async () => { finds++; if (o.slowWeb) await new Promise((r) => setTimeout(r, 60_000)); return [{ title: "t", url: page.url }]; },
+        read: async () => page,
+      },
+    });
+    return { h, store, tick: (ms: number) => { at += ms; }, counts: () => ({ tasteCalls, finds }) };
+  }
+
+  it("works the taste out once per change of orders, and looks for places once a day", async () => {
+    const r = await rig();
+    await Promise.all([r.h.refresh(U, SITE), r.h.refresh(U, SITE)]);
+    expect(r.counts()).toEqual({ tasteCalls: 1, finds: 2 });
+    const p = await r.h.portrait(U, SITE);
+    expect(p.taste?.insights[0]).toBe("Rich, slow-cooked rice is your comfort food.");
+    expect(p.picks?.[0]).toMatchObject({ place: "Shah Ghouse" });
+    // What a screen is given is the conclusions: no order numbers ride along.
+    expect(JSON.stringify(p.taste)).not.toContain("orders");
+    await r.h.refresh(U, SITE);
+    expect(r.counts().tasteCalls).toBe(1);
+    r.tick(25 * 60 * 60_000);
+    await r.h.refresh(U, SITE);
+    expect(r.counts()).toEqual({ tasteCalls: 1, finds: 4 });
+  });
+
+  it("a live look for an ask is held to seconds, whatever the web does", async () => {
+    const r = await rig({ slowWeb: true });
+    await r.store.saveInsight(U, SITE, { taste: tasteFrom(REPLY, HISTORY, featuresOf(HISTORY), NOW)! });
+    const { LIVE_DISCOVER_MS } = await import("../src/sites/history/service.js");
+    const started = Date.now();
+    const got = await r.h.discoverFor(U, "pizza");
+    expect(got).toEqual([]);
+    expect(Date.now() - started).toBeLessThan(LIVE_DISCOVER_MS + 2000);
+  }, 20_000);
+
+  it("forgetting the site forgets its taste too", async () => {
+    const r = await rig();
+    await r.h.refresh(U, SITE);
+    await r.h.forget(U, SITE);
+    expect(await r.store.insight(U, SITE)).toEqual({});
+  });
+});

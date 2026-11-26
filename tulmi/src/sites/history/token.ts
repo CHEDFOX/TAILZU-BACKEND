@@ -18,8 +18,9 @@ const clip = (v: unknown, max: number): string => (typeof v === "string" ? v.rep
 
 export function orderToken(options: readonly OrderOption[]): string {
   const kept = options.slice(0, OPTIONS_KEPT).map((o) => ({
-    site: o.site, place: o.place.slice(0, 80), items: o.items.slice(0, ITEMS_KEPT), why: o.why.slice(0, 120), url: o.url,
+    site: o.site, place: o.place.slice(0, 80), items: o.items.slice(0, ITEMS_KEPT), why: o.why.slice(0, 200), url: o.url,
     ...(o.area ? { area: o.area.slice(0, 60) } : {}), ...(o.total ? { total: o.total } : {}), ...(o.search ? { search: true } : {}),
+    ...(o.fresh ? { fresh: true, said: (o.said ?? "").slice(0, 240), host: (o.host ?? "").slice(0, 60) } : {}),
   }));
   // Fewer options rather than a cut in the middle of one, which would be no JSON at all.
   for (let n = kept.length; n > 0; n--) {
@@ -46,7 +47,7 @@ export function readOrderToken(raw: unknown): OrderOption[] {
   const out: OrderOption[] = [];
   for (const x of j.options.slice(0, OPTIONS_KEPT)) {
     const o = (x ?? {}) as Record<string, unknown>;
-    const site = clip(o.site, 120).toLowerCase(), place = clip(o.place, 80), why = clip(o.why, 120), url = clip(o.url, 600);
+    const site = clip(o.site, 120).toLowerCase(), place = clip(o.place, 80), why = clip(o.why, 200), url = clip(o.url, 600);
     if (!site || !place || !siteAllowed(site) || !onSite(url, site)) continue;
     const items: OrderItem[] = (Array.isArray(o.items) ? o.items : []).slice(0, ITEMS_KEPT).flatMap((it) => {
       const i = (it ?? {}) as Record<string, unknown>;
@@ -58,7 +59,12 @@ export function readOrderToken(raw: unknown): OrderOption[] {
     if (!search && !items.length) continue;
     const total = typeof o.total === "number" && o.total > 0 && o.total < 100_000 ? o.total : undefined;
     const area = clip(o.area, 60);
-    out.push({ site, place, items, why, url, ...(area ? { area } : {}), ...(total ? { total } : {}), ...(search ? { search: true as const } : {}) });
+    // Somewhere new: the reviewer's words and where they were written travel with it, and are only ever drawn as text.
+    const said = o.fresh === true ? clip(o.said, 240) : "", host = o.fresh === true ? clip(o.host, 60).replace(/[^a-z0-9.-]/gi, "") : "";
+    out.push({
+      site, place, items, why, url, ...(area ? { area } : {}), ...(total ? { total } : {}), ...(search ? { search: true as const } : {}),
+      ...(o.fresh === true ? { fresh: true as const, ...(said ? { said } : {}), ...(host ? { host } : {}) } : {}),
+    });
   }
   return out;
 }

@@ -54,6 +54,9 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   widget_digest: "tiny",
   site_read: "tiny",
   site_orders: "tiny",
+  // Reasoning about a person, and judging pages against them: the tiny tier copies, it does not read people.
+  site_taste: "cheap",
+  site_discover: "cheap",
   ask_planner: "cheap", ask_vision: "vision", writer: "cheap", edit_selection: "cheap", answer_about: "cheap", converse: "cheap",
   portrait_update: "code", portrait_transcript: "code", portrait_usage: "code",
   // A unit of a course is written once for a pair and then taught to everybody who ever takes it, so it is worth a

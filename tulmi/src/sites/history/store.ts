@@ -6,17 +6,23 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
 import type { OrderItem, SiteOrder } from "./types.js";
+import type { Taste } from "./taste/profile.js";
+import type { Discovery } from "./taste/discover.js";
 
 /** The most orders kept per site: two years of a weekly habit, and a portrait never needs more. */
 export const ORDERS_KEPT = 120;
 
 export interface HistoryMark { readAt?: number; hash?: string }
 
+/** What was worked out from the orders (taste/profile.ts) and found for it on the web (taste/discover.ts). */
+export interface Insight { taste?: Taste; picks?: Discovery[]; picksAt?: number }
+
 const ms = (s: unknown): number | undefined => (typeof s === "string" && s ? new Date(s).getTime() : undefined);
 
 export class HistoryStore {
   private readonly orders = new Map<string, SiteOrder[]>();
   private readonly marks = new Map<string, HistoryMark>();
+  private readonly insights = new Map<string, Insight>();
 
   constructor(private readonly db: SupabaseClient | null = supabase()) {}
 
@@ -65,9 +71,30 @@ export class HistoryStore {
     }, { onConflict: "owner_id,site" });
   }
 
-  /** Forget everything learned from a site: its orders and when it was read. */
+  async insight(ownerId: string, site: string): Promise<Insight> {
+    if (!this.db) return { ...(this.insights.get(this.key(ownerId, site)) ?? {}) };
+    const { data } = await this.db.from("site_history").select("taste, picks, picks_at").eq("owner_id", ownerId).eq("site", site).maybeSingle();
+    const picksAt = ms(data?.picks_at);
+    return {
+      ...(data?.taste ? { taste: data.taste as Taste } : {}),
+      ...(Array.isArray(data?.picks) ? { picks: data.picks as Discovery[] } : {}),
+      ...(picksAt ? { picksAt } : {}),
+    };
+  }
+
+  /** Keep what was worked out. Only the fields given change. */
+  async saveInsight(ownerId: string, site: string, i: Insight): Promise<void> {
+    if (!this.db) { this.insights.set(this.key(ownerId, site), { ...(this.insights.get(this.key(ownerId, site)) ?? {}), ...i }); return; }
+    await this.db.from("site_history").upsert({
+      owner_id: ownerId, site,
+      ...(i.taste ? { taste: i.taste } : {}),
+      ...(i.picks ? { picks: i.picks, picks_at: new Date(i.picksAt ?? Date.now()).toISOString() } : {}),
+    }, { onConflict: "owner_id,site" });
+  }
+
+  /** Forget everything learned from a site: its orders, when it was read, and what was worked out from them. */
   async forget(ownerId: string, site: string): Promise<void> {
-    if (!this.db) { this.orders.delete(this.key(ownerId, site)); this.marks.delete(this.key(ownerId, site)); return; }
+    if (!this.db) { this.orders.delete(this.key(ownerId, site)); this.marks.delete(this.key(ownerId, site)); this.insights.delete(this.key(ownerId, site)); return; }
     await this.db.from("site_orders").delete().eq("owner_id", ownerId).eq("site", site);
     await this.db.from("site_history").delete().eq("owner_id", ownerId).eq("site", site);
   }

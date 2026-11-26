@@ -73,7 +73,11 @@ import { SiteHistories } from "./sites/history/service.js";
 import { SITE_ORDERS_PAISE } from "./sites/history/orders.js";
 import { portraitLines } from "./sites/history/portrait.js";
 import { readOrderAsk } from "./sites/history/ask.js";
-import { planLine, planOrder } from "./sites/history/plan.js";
+import { planLine, planOrder, wantsNew } from "./sites/history/plan.js";
+import { SITE_TASTE_PAISE } from "./sites/history/taste/profile.js";
+import { SITE_DISCOVER_PAISE } from "./sites/history/taste/discover.js";
+import { search as webSearch, searchEnvFromConfig } from "./web/search/engine.js";
+import { readPage } from "./web/reader.js";
 import type { BotSites } from "./bots/ports.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -611,7 +615,23 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
     const sites = new Sites({ ...(visit ? { visit } : {}), read: { maxPaise: SITE_READ_PAISE } });
     // What their orders on a food site say about them (src/sites/history, docs/site-portrait.md): learned from the site's own
     // orders page, read on their phone, and what Talk orders from.
-    const histories = new SiteHistories({ read: { maxPaise: SITE_ORDERS_PAISE } });
+    // Their taste is worked out from the orders (taste/profile.ts), and new places are found for it on the web and vouched for
+    // by reviewers' own words (taste/discover.ts): the same search and reader the review reader uses (discover/server.ts).
+    const histories = new SiteHistories({
+      read: { maxPaise: SITE_ORDERS_PAISE },
+      taste: { maxPaise: SITE_TASTE_PAISE },
+      discover: {
+        maxPaise: SITE_DISCOVER_PAISE,
+        async find(query, limit) {
+          const out = await webSearch(query, { limit, depth: "quick", env: searchEnvFromConfig() });
+          return out.results.map((r) => ({ title: r.title, url: r.url, ...(typeof r.published === "number" ? { published: r.published } : {}) }));
+        },
+        async read(url, maxChars) {
+          const page = await readPage(url, { maxChars, purpose: "user" }).catch(() => null);
+          return page ? { url: page.finalUrl || page.url, text: page.text } : null;
+        },
+      },
+    });
     // What Talk's bot knows of them, and the one thing it may do: watch one more page (read only, bots/ports.ts BotSites).
     botSites = {
       snapshot: async (userId) => ({
@@ -628,7 +648,11 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
       plan: async (userId, words, tz) => {
         const ask = readOrderAsk(words);
         if (!ask) return null;
-        const options = planOrder(await histories.histories(userId), ask, Date.now(), tz);
+        const had = await histories.histories(userId);
+        if (!had.length) return null;
+        // Something they have never ordered: a live look on the web for it, read through their taste, held to seconds.
+        const live = wantsNew(had, ask) ? await histories.discoverFor(userId, ask.want.join(" ")).catch(() => []) : [];
+        const options = planOrder(had, ask, Date.now(), tz, live);
         return options.length ? { options, line: planLine(options) } : null;
       },
     };

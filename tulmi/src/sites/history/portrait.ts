@@ -189,5 +189,12 @@ export function portraitLines(p: SitePortrait): string[] {
   if (p.usual) lines.push(`Their usual there: ${dishWords(p.usual.items)} from ${p.usual.place}${p.usual.slot ? `, for ${SLOT_WORDS[p.usual.slot]}` : ""}.`);
   const top = p.places.slice(0, 3).map((x) => x.place);
   if (top.length) lines.push(`Places they order from most: ${top.join(", ")}.`);
+  // Their taste, when it has been worked out: what they love and why, and what they would probably love next.
+  if (p.taste) {
+    lines.push(...p.taste.insights.slice(0, 3));
+    if (p.taste.mightLike.length) lines.push(`They would probably love: ${p.taste.mightLike.slice(0, 3).map((h) => h.dish).join(", ")}.`);
+    if (p.picks?.length) lines.push(`New places found for them: ${p.picks.slice(0, 2).map((x) => `${x.dish} at ${x.place}`).join("; ")}.`);
+    return lines;
+  }
   return lines.concat(p.noticed.slice(p.usual ? 1 : 0, (p.usual ? 1 : 0) + 2));
 }

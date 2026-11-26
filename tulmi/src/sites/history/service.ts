@@ -25,10 +25,29 @@ import { mergeOrders, readOrders, type OrdersDeps } from "./orders.js";
 import { portraitOf } from "./portrait.js";
 import type { SiteHistory } from "./plan.js";
 import { historyStore, type HistoryStore } from "./store.js";
-import type { SitePortrait } from "./types.js";
+import type { PickView, SitePortrait, TasteView } from "./types.js";
+import { discover, type DiscoverDeps, type Discovery } from "./taste/discover.js";
+import { tasteHash, tasteOf, TASTE_MIN_ORDERS, type Taste, type TasteDeps } from "./taste/profile.js";
 
 /** How often an orders page may be read. A person orders food a few times a week; twice a day misses nothing. */
 export const HISTORY_EVERY_MS = 12 * 60 * 60_000;
+/** How often new places are looked for, unless their taste changed: places do not open every hour. */
+export const PICKS_EVERY_MS = 24 * 60 * 60_000;
+/** How long an ask waits for a live look on the web before answering with what it has. */
+export const LIVE_DISCOVER_MS = 12_000;
+
+/** The conclusions of a taste, for a screen or a bot: never the order numbers behind them. */
+export function tasteView(t: Taste): TasteView {
+  return {
+    insights: t.insights, palate: t.palate.map((p) => p.trait), motives: t.motives.map((m) => m.trait),
+    moods: t.moods.map((m) => ({ moment: m.moment, wants: m.wants })),
+    mightLike: t.mightLike.map((h) => ({ dish: h.dish, cuisine: h.cuisine, why: h.why, reach: h.reach })),
+    chooser: t.chooser,
+  };
+}
+
+export const pickView = (p: Discovery): PickView =>
+  ({ place: p.place, dish: p.dish, cuisine: p.cuisine, why: p.why, said: p.said, host: p.host, reach: p.reach });
 
 /** The catalog entry of a site whose orders can be learned, if it is one. */
 export function historySite(site: string) {
@@ -42,6 +61,10 @@ export interface HistoryDeps {
   store?: HistoryStore;
   logins?: SiteStore;
   read?: OrdersDeps;
+  /** The taste profile's model (taste/profile.ts). Absent: no taste is worked out, and the portrait is what was counted. */
+  taste?: TasteDeps;
+  /** The web, for new places (taste/discover.ts). Absent: nothing new is looked for. */
+  discover?: DiscoverDeps;
   now?: () => number;
 }
 
@@ -49,6 +72,8 @@ export class SiteHistories {
   private readonly store: HistoryStore;
   private readonly logins: SiteStore;
   private readonly now: () => number;
+  /** Refreshes running, by person and site: one at a time each, however often a screen asks. */
+  private readonly busy = new Map<string, Promise<void>>();
 
   constructor(private readonly d: HistoryDeps = {}) {
     this.store = d.store ?? historyStore();
@@ -118,14 +143,78 @@ export class SiteHistories {
     const known = new Set(had.map((o) => o.key));
     await this.store.saveOrders(userId, site, mergeOrders(had, fresh));
     await this.store.setMark(userId, site, { readAt: now, hash });
+    // The orders changed, so their taste may have: worked out again behind the answer, never in its way.
+    void this.refresh(userId, site);
     return { outcome: "learned", added: fresh.filter((o) => !known.has(o.key)).length };
   }
 
   async portrait(userId: string, rawSite: string): Promise<SitePortrait> {
     const site = siteOf(rawSite);
     this.allowed(userId, site);
-    const [orders, mark] = await Promise.all([this.store.ordersOf(userId, site), this.store.mark(userId, site)]);
-    return portraitOf(site, orders, this.now(), mark.readAt);
+    const [orders, mark, ins] = await Promise.all([this.store.ordersOf(userId, site), this.store.mark(userId, site), this.store.insight(userId, site)]);
+    const p = portraitOf(site, orders, this.now(), mark.readAt);
+    // A taste that is missing or older than the orders is worked out again, behind the page; the page shows what there is.
+    if (this.stale(orders, ins)) void this.refresh(userId, site);
+    return {
+      ...p,
+      ...(ins.taste ? { taste: tasteView(ins.taste) } : {}),
+      ...(ins.picks?.length ? { picks: ins.picks.map(pickView) } : {}),
+    };
+  }
+
+  private stale(orders: readonly import("./types.js").SiteOrder[], ins: { taste?: Taste; picksAt?: number }): boolean {
+    if (!this.d.taste || orders.filter((o) => !o.cancelled).length < TASTE_MIN_ORDERS) return false;
+    if (!ins.taste || ins.taste.hash !== tasteHash(orders)) return true;
+    return !!this.d.discover && (!ins.picksAt || this.now() - ins.picksAt >= PICKS_EVERY_MS);
+  }
+
+  /**
+   * WORK OUT THEIR TASTE AGAIN, AND LOOK FOR NEW PLACES FOR IT. The taste when the orders changed; new places when the taste
+   * changed or a day has passed. One at a time per person and site, and never throws: a failed refresh leaves what was there.
+   */
+  refresh(userId: string, site: string): Promise<void> {
+    const k = `${userId}\u0000${site}`;
+    const running = this.busy.get(k);
+    if (running) return running;
+    const run = (async () => {
+      try {
+        const orders = await this.store.ordersOf(userId, site);
+        const ins = await this.store.insight(userId, site);
+        if (!this.stale(orders, ins)) return;
+        let taste = ins.taste;
+        const changed = !taste || taste.hash !== tasteHash(orders);
+        if (changed && this.d.taste) {
+          const made = await tasteOf(userId, orders, this.d.taste, this.now());
+          if (made) { taste = made; await this.store.saveInsight(userId, site, { taste }); }
+        }
+        if (!taste || !this.d.discover) return;
+        if (!changed && ins.picksAt && this.now() - ins.picksAt < PICKS_EVERY_MS) return;
+        const picks = await discover(userId, taste, this.d.discover);
+        // An empty look is kept too: it says when it was looked for, so it is not looked for again within the day.
+        await this.store.saveInsight(userId, site, { picks, picksAt: this.now() });
+      } catch { /* what was there stays */ } finally {
+        this.busy.delete(k);
+      }
+    })();
+    this.busy.set(k, run);
+    return run;
+  }
+
+  /**
+   * A LIVE LOOK FOR SOMETHING THEY ASKED FOR AND HAVE NEVER ORDERED ("order pizza"): the web, read through their taste.
+   * Held to LIVE_DISCOVER_MS, so an ask is answered in seconds whatever the web does; nothing found is an empty list.
+   */
+  async discoverFor(userId: string, want: string): Promise<Discovery[]> {
+    if (!this.d.discover || !want.trim()) return [];
+    const sites = (await this.store.sitesOf(userId)).filter((s) => historySite(s) && siteAllowed(s));
+    let taste: Taste | undefined;
+    for (const s of sites) { taste = (await this.store.insight(userId, s)).taste; if (taste) break; }
+    if (!taste) return [];
+    let timer: NodeJS.Timeout | undefined;
+    const late = new Promise<Discovery[]>((done) => { timer = setTimeout(() => done([]), LIVE_DISCOVER_MS); timer.unref?.(); });
+    try {
+      return await Promise.race([discover(userId, taste, this.d.discover, { want }), late]);
+    } finally { if (timer) clearTimeout(timer); }
   }
 
   /** A portrait for every site they have orders on, the most ordered first. */
@@ -139,7 +228,10 @@ export class SiteHistories {
   async histories(userId: string): Promise<SiteHistory[]> {
     if (!mayUseCloudBrowser(userId)) return [];
     const sites = (await this.store.sitesOf(userId)).filter((s) => historySite(s) && siteAllowed(s));
-    return Promise.all(sites.map(async (site) => ({ site, orders: await this.store.ordersOf(userId, site) })));
+    return Promise.all(sites.map(async (site) => {
+      const [orders, ins] = await Promise.all([this.store.ordersOf(userId, site), this.store.insight(userId, site)]);
+      return { site, orders, ...(ins.taste ? { chooser: ins.taste.chooser } : {}), ...(ins.picks?.length ? { picks: ins.picks } : {}) };
+    }));
   }
 
   async forget(userId: string, rawSite: string): Promise<void> {

@@ -1,5 +1,14 @@
 # Being built right now (read before you start)
 
+## 26 Nov: X0 WORKS OUT YOUR TASTE, AND FINDS PLACES YOU'D LOVE WITH REVIEWS TO SHOW FOR IT
+
+On top of the orders: taste. Signals by rules (flavour, cuisine, protein; repeat versus explore; what each moment of the
+week wants), then a reasoning model writes the profile (palate, motives, moods, dishes they would probably love and have
+not had), every claim naming the orders it rests on or dropped. New places are found on the web near where they order,
+each kept only with a reviewer's own words checked on the page. Talk's order card now puts the usual first and one new
+place beside it for a creature of habit, the new place first for an explorer, and a live find for a dish never ordered.
+The portrait shows Your taste, What you go for, Your moments and You might love. Needs migration 0115. docs/site-portrait.md §2b.
+
 ## 26 Nov: X0 LEARNS HOW YOU EAT FROM SWIGGY, AND "ORDER MY USUAL" FILLS THE CART
 
 A connected food site now teaches X0 how the person eats: the site's own orders page is read on their phone (at most

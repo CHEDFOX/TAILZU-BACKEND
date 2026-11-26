@@ -72,6 +72,36 @@ export function orderCard(o: OrderOption, o2: { primary?: boolean } = {}): Node 
   ], { gap: 14 });
 }
 
+/**
+ * SOMEWHERE NEW, FOR THEM: a place X0 found on the web for their taste (src/sites/history/taste/discover.ts). It says why it
+ * is for them — which of their likings it answers — and what somebody who ate there said, in their own words, with where
+ * they said it. That quote is the reason to trust a place they have never heard of, so it is never left off.
+ */
+export function freshCard(o: OrderOption, o2: { primary?: boolean } = {}): Node {
+  const name = siteName(o.site);
+  const spark = botLook("talk").color;
+  return card([
+    row([
+      box([icon("spark", { size: 16, color: C.paper })], { width: 32, height: 32, borderRadius: 16, backgroundColor: spark, alignItems: "center", justifyContent: "center" }),
+      col([
+        text("NEW FOR YOU", { size: 11, weight: 600, color: spark, tracking: 0.6, lineHeight: 14 }),
+        text(o.place, { size: 18, weight: 600, lineHeight: 23, lines: 2 }),
+      ], { gap: 1, flexShrink: 1, minWidth: 0 }),
+    ], { gap: 10, alignItems: "center" }),
+    col(o.items.slice(0, 3).map((i) => itemRow(i.name, i.qty)), { gap: 8 }),
+    text(o.why, { size: 14, color: C.grey70, lineHeight: 20, lines: 4 }),
+    ...(o.said ? [row([
+      box([], { width: 3, borderRadius: 2, backgroundColor: C.line, alignSelf: "stretch" }),
+      col([
+        text(`“${o.said}”`, { size: 14, lineHeight: 20, lines: 4, style: { fontStyle: "italic" } }),
+        ...(o.host ? [meta(`someone who ate there, on ${o.host}`, { size: 12 })] : []),
+      ], { gap: 4, flexShrink: 1 }),
+    ], { gap: 10 })] : []),
+    button("Try this", orderAction(o), { kind: o2.primary === false ? "secondary" : "primary", size: "md", icon: "spark", wide: true }),
+    meta(`I open it on ${name} and add it. You check the cart and pay.`, { size: 12, color: C.idle, lines: 2, align: "center" }),
+  ], { gap: 12 });
+}
+
 /** The other ideas, as rows: one line each, a tap opens the same order screen. */
 function othersCard(options: readonly OrderOption[]): Node {
   return listCard(options.map((o) => listRow({
@@ -87,5 +117,10 @@ export function orderCards(_ctx: BotsCtx, token: string | undefined): Node[] {
   const options = token ? readOrderToken(token) : [];
   if (!options.length) return [];
   const [first, ...rest] = options;
-  return [orderCard(first!), ...(rest.length ? [othersCard(rest)] : [])];
+  // Something new gets its own card wherever it is in the list: a place they have never heard of needs its reason and its
+  // reviewer's words to be worth a tap, and a list row has room for neither.
+  const lead = first!.fresh ? freshCard(first!) : orderCard(first!);
+  const newOne = rest.find((o) => o.fresh);
+  const others = rest.filter((o) => !o.fresh);
+  return [lead, ...(newOne ? [freshCard(newOne, { primary: false })] : []), ...(others.length ? [othersCard(others)] : [])];
 }

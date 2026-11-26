@@ -27,7 +27,7 @@ export interface OrderAsk {
   site?: string;
 }
 
-const FOOD = String.raw`(?:food|khana|khaana|dinner|lunch|breakfast|brunch|snacks?|meal|biryani|biriyani|pizza|burgers?|dosa|idli|thali|momos?|noodles|chinese|rolls?|shawarma|paneer|chicken|mutton|fish|sandwich(?:es)?|coffee|chai|tea|dessert|ice\s*cream|cake|curry|paratha|pasta|salad|sushi|kebabs?|tikka|dal|chole|pav\s*bhaji|samosas?|wraps?|fries|juice|shakes?|waffles?|tacos?|bowl|something\s+to\s+eat)`;
+const FOOD = String.raw`(?:food|khana|khaana|dinner|lunch|breakfast|brunch|snacks?|meal|something\s+to\s+eat|biryani|biriyani|pulao|haleem|nihari|kebabs?|kababs?|tikka|tandoori|shawarma|rolls?|frankie|momos?|noodles|chowmein|hakka|manchurian|fried\s+rice|chinese|thali|meals|dosa|idli|vada|uttapam|appam|parotta|paratha|naan|kulcha|roti|curry|dal|chole|rajma|paneer|chicken|mutton|fish|prawns?|egg|keema|butter\s+chicken|korma|pav\s*bhaji|vada\s*pav|chaat|pani\s*puri|samosas?|kachori|pizza|pasta|lasagna|burgers?|fries|wings|sandwich(?:es)?|subs?|wraps?|tacos?|burritos?|nachos|sushi|ramen|pho|bao|dim\s*sum|dumplings?|bibimbap|thai|curry\s+rice|salad|bowls?|poke|soup|waffles?|pancakes?|cake|pastry|brownies?|ice\s*cream|desserts?|sweets?|mithai|kulfi|falooda|kheer|halwa|jalebi|gulab\s*jamun|rasmalai|coffee|chai|tea|juice|shakes?|smoothie|lassi|falafel|hummus|mandi|steak|grill)`;
 const SITE = String.raw`(?:swiggy|zomato|instamart|blinkit)`;
 const USUAL = String.raw`(?:usual|regular|same\s+as\s+(?:last\s+time|always|before)|last\s+order|repeat|reorder|wahi|vahi|hamesha\s+wala)`;
 const GET = String.raw`(?:order|re-?order|get|send|deliver|bring|book)`;
@@ -55,6 +55,8 @@ const NOT = [
   /\bhow\s+(?:do|can|to|should|would)\b/i,
   /\bwhat\s+did\s+i\s+order\b|\bi\s+(?:ordered|had\s+ordered)\b/i,
   /\b(?:in\s+order|order\s+of|alphabetical|sort|ascending|descending|chronological|purchase\s+order|work\s+order)\b/i,
+  // Shopping, rides and tickets are not food, whatever verb they come with.
+  /\b(?:charger|phone|laptop|headphones?|earphones?|shoes?|shirt|dress|book|books|cab|taxi|uber|ola|auto|ride|ticket|tickets|flight|train|bus|hotel|medicine|tablets?|amazon|flipkart|myntra)\b/i,
 ];
 
 const STOP = new Set(("order reorder re get send deliver bring book me us my our the a an some something to eat for from on at with and please pls "

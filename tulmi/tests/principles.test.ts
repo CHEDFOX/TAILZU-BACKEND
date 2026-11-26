@@ -60,6 +60,8 @@ const { EyeReply } = await import("../src/cinema/scene/eye.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
 const { OrdersReply } = await import("../src/sites/history/orders.js");
+const { TasteReply } = await import("../src/sites/history/taste/profile.js");
+const { DiscoverReply } = await import("../src/sites/history/taste/discover.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -329,6 +331,8 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   widget_digest: 853, // 776 measured
   site_read: 1531, // 1392 measured
   site_orders: 1438, // 1307 measured
+  site_taste: 2995, // 2723 measured
+  site_discover: 1778, // 1616 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured
@@ -434,6 +438,8 @@ describe("the contracts say what the parsers read", () => {
     ["widget_digest", DigestReply],
     ["site_read", CardReply],
     ["site_orders", OrdersReply],
+    ["site_taste", TasteReply],
+    ["site_discover", DiscoverReply],
   ];
 
   it("name every field of the schema the answer is read with", () => {

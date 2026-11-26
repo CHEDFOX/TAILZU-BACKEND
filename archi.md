@@ -227,6 +227,9 @@ sites/             a browser that belongs to the person (CLOUD_BROWSER, off): th
                    the panel and its host, frames, reading a page, the store (docs/sites.md, docs/sign-in.md)
   history/         what a person's orders on a food site say about them, and an order made from it: the orders page read into
                    orders, the store, the portrait, the ask, the planner, the card's token, the phone's scripts (docs/site-portrait.md)
+    taste/         their taste, not only their orders: the signals by rules (features.ts), the profile a reasoning model writes and
+                   every claim held to the orders it names (profile.ts), new places found on the web for it, each vouched for by a
+                   reviewer's words checked on the page (discover.ts)
 trust/             abuse and fraud prevention: signals, the score, lists, what happens to a score and who it never happens to,
                    App Attest (apple/) and Play Integrity (google/), the sweeper; off | shadow | on (docs/trust.md)
 privacy/           the person's permission to send what they give X0 Bot to AI services (aiConsent.ts) and the gate every
@@ -302,7 +305,7 @@ ads/               Meta and Google Tag Manager events
 | Abuse and fraud prevention (scores, App Attest, Play Integrity) | `tulmi/src/trust/`, `routes/trust/trust.ts`, `routes/admin/trust.ts` (docs/trust.md) |
 | The brief (the document made while a meeting runs) | `tulmi/src/brief/` (docs/brief.md) |
 | A browser that belongs to the person, and signing in on a site | `tulmi/src/sites/`, `routes/bots/botsSites.ts` (docs/sites.md, docs/sign-in.md) |
-| A portrait of a person's food orders, and "order my usual" in Talk | `tulmi/src/sites/history/`, `routes/bots/botsSiteHistory.ts`, the order branch in `routes/bots/botsTalk.ts`, screens `experience/bots/screens/sites/` (`portrait.ts`, `orderCard.ts`, `order.ts`, `data.ts`), the render sample `scripts/bots-render/samples/sitePortrait.ts`, migration 0114, the role `site_orders` (docs/site-portrait.md) |
+| A portrait of a person's food orders, and "order my usual" in Talk | `tulmi/src/sites/history/`, `routes/bots/botsSiteHistory.ts`, the order branch in `routes/bots/botsTalk.ts`, screens `experience/bots/screens/sites/` (`portrait.ts`, `orderCard.ts`, `order.ts`, `data.ts`), the render sample `scripts/bots-render/samples/sitePortrait.ts`, migrations 0114 and 0115, the roles `site_orders`, `site_taste` and `site_discover` (docs/site-portrait.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | The phone's own three (where the day starts, one contact, a fitness bot's workouts) | the contract `shared/types/sdui.ts` (`location.area`, `contact.pick`, `health.sync`), the card words `experience/bots/screens/permitWords.ts`, location in `experience/bots/screens/botsPlaces.ts`, the contact picker `screens/spaces/pickContact.ts` with the invite preview `botsBots/inviteMail.ts` and its retention `botsBots/inviteSweeper.ts`, health in `bots/healthDays.ts` + `bots/healthGate.ts` + `bots/door.ts` `isFitnessBot` + `screens/bots/health.ts` + `POST /v1/bots/:slug/health/days`, migration 0089; all five switches off in `config.ts` (docs/perms.md) |
 | The name you give someone (per reader, the way a phone's contacts are: a username reaches them, this is what they are called) | `tulmi/src/botsBots/personNames.ts` (`known`/`shownName`, resolved over every name a row carries), read in `threads.ts` (contacts, a chat's name and people, every message's name, the last line) and `spaces.ts` (members); routes `routes/bots/botsSpaces.ts` (`PUT /people/:id/name`), migration 0111 (docs/social.md §2) |

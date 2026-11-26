@@ -28,7 +28,7 @@ import { screen, type BotsScreen } from "../../registry.js";
 import { oops } from "../keybotParts.js";
 import { refresh, toast } from "../bots/parts.js";
 import { forgetHistoryPath, historyReadPath, loadPortrait, type PortraitView, type Reader } from "./data.js";
-import { orderAction, whyLine } from "./orderCard.js";
+import { freshCard, orderAction, whyLine } from "./orderCard.js";
 
 
 
@@ -84,15 +84,53 @@ function usualCard(p: SitePortrait): Node | null {
 
 
 
+/**
+ * YOUR TASTE: what X0 worked out about them as an eater (src/sites/history/taste/profile.ts), when it has — what they love
+ * and why, what drives the choice, what each moment of their week wants. Until then, what the rules noticed.
+ */
 function noticed(p: SitePortrait): Node[] {
-  if (!p.noticed.length) return [];
+  const lines = p.taste?.insights.length ? p.taste.insights : p.noticed;
+  if (!lines.length) return [];
   const spark = botLook("talk").color;
+  const traits = p.taste ? [...p.taste.palate, ...p.taste.motives] : [];
+  const moods = p.taste?.moods ?? [];
   return [
-    sectionLabel("What I've noticed"),
-    card(p.noticed.map((n) => row([
+    sectionLabel(p.taste ? "Your taste" : "What I've noticed"),
+    card(lines.map((n) => row([
       box([icon("spark", { size: 13, color: spark })], { paddingTop: 3 }),
       text(n, { size: 15, lineHeight: 21, style: { flexShrink: 1 } }),
     ], { gap: 10, alignItems: "flex-start" })), { gap: 12 }),
+    ...(traits.length ? [
+      sectionLabel("What you go for"),
+      row(traits.map((t) => chip(t)), { gap: 8, flexWrap: "wrap" }),
+    ] : []),
+    ...(moods.length ? [
+      sectionLabel("Your moments"),
+      listCard(moods.map((m) => listRow({ label: m.moment.charAt(0).toUpperCase() + m.moment.slice(1), sub: m.wants, chevron: false }))),
+    ] : []),
+  ];
+}
+
+/**
+ * YOU MIGHT LOVE: new places found on the web for their taste, each with a reviewer's own words (taste/discover.ts), and the
+ * hunches nothing was found for yet, which open the site's search for the dish. This is the part of the portrait that is
+ * not a mirror: what they have not had, and why X0 thinks they would love it.
+ */
+function mightLove(p: SitePortrait): Node[] {
+  const picks = p.picks ?? [];
+  const found = new Set(picks.map((x) => x.dish.toLowerCase()));
+  const hunches = (p.taste?.mightLike ?? []).filter((h) => !found.has(h.dish.toLowerCase())).slice(0, 3);
+  if (!picks.length && !hunches.length) return [];
+  return [
+    sectionLabel("You might love"),
+    ...picks.slice(0, 2).map((x, i) => freshCard({
+      site: p.site, place: x.place, items: [{ name: x.dish, qty: 1 }], why: x.why, url: startUrl(p.site, x.place),
+      fresh: true, said: x.said, ...(x.host ? { host: x.host } : {}),
+    }, { primary: i === 0 && !p.usual })),
+    ...(hunches.length ? [listCard(hunches.map((h) => listRow({
+      label: h.dish, sub: h.why,
+      onPress: orderAction({ site: p.site, place: h.dish, items: [], why: h.why, url: startUrl(p.site, h.dish), search: true }),
+    })))] : []),
   ];
 }
 
@@ -149,7 +187,9 @@ export function portraitCard(p: SitePortrait): Node {
       grow(),
       icon("chevron", { size: 16, color: C.meta }),
     ], { gap: 10, alignItems: "center" }),
-    ...(p.usual ? [whyLine(`Usually ${dishWords(p.usual.items)} from ${p.usual.place}`)] : p.noticed[0] ? [whyLine(p.noticed[0])] : []),
+    ...(p.taste?.insights[0] ? [whyLine(p.taste.insights[0])]
+      : p.usual ? [whyLine(`Usually ${dishWords(p.usual.items)} from ${p.usual.place}`)] : p.noticed[0] ? [whyLine(p.noticed[0])] : []),
+    ...(p.picks?.[0] ? [meta(`New for you: ${p.picks[0].dish} at ${p.picks[0].place}`, { size: 12, lines: 1 })] : []),
   ], { gap: 10, onPress: open(SCREENS.sitePortrait, { site: p.site }) as ActionRef });
 }
 
@@ -183,6 +223,7 @@ function portraitPage(ctx: BotsCtx, d: PortraitView | undefined): ScreenResponse
       col([title(p.name), meta("What I've learned about how you eat.", { size: 13 })], { gap: 4 }),
       ...(usual ? [usual] : []),
       ...noticed(p),
+      ...mightLove(p),
       ...places(p),
       ...dishes(p),
       col([

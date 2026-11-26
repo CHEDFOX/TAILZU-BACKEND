@@ -5,7 +5,7 @@
  * Everything in a portrait was written by a site (the places, the dishes) or counted from that, so it is cleaned here as
  * any payload is: capped, typed, and anything the wrong shape dropped.
  */
-import { SLOTS, type OrderItem, type SitePortrait, type Slot } from "../../../../sites/history/types.js";
+import { SLOTS, type OrderItem, type PickView, type SitePortrait, type Slot, type TasteView } from "../../../../sites/history/types.js";
 import type { BotsDeps } from "../../live.js";
 import { SITES_API, sitesOn } from "../../sites.js";
 
@@ -29,6 +29,35 @@ function itemsOf(v: unknown): OrderItem[] {
     const i = rec(x);
     const name = str(i.name, 80);
     return name ? [{ name, qty: Math.max(1, Math.min(20, Math.round(num(i.qty) ?? 1))) }] : [];
+  });
+}
+
+const reach = (v: unknown): "near" | "stretch" => (v === "stretch" ? "stretch" : "near");
+const CHOOSERS = ["creature of habit", "explorer", "balanced"] as const;
+
+/** Their taste, as the screens draw it: sentences and names, every one capped. */
+function tasteOf(v: unknown): TasteView | undefined {
+  const t = rec(v);
+  const insights = arr(t.insights, 5).map((x) => str(x, 180)).filter(Boolean);
+  const mightLike = arr(t.mightLike, 5).flatMap((x) => {
+    const h = rec(x); const dish = str(h.dish, 60), why = str(h.why, 220);
+    return dish && why ? [{ dish, why, cuisine: str(h.cuisine, 40), reach: reach(h.reach) }] : [];
+  });
+  if (!insights.length && !mightLike.length) return undefined;
+  return {
+    insights, mightLike,
+    palate: arr(t.palate, 5).map((x) => str(x, 60)).filter(Boolean),
+    motives: arr(t.motives, 4).map((x) => str(x, 60)).filter(Boolean),
+    moods: arr(t.moods, 4).flatMap((x) => { const m = rec(x); const moment = str(m.moment, 40), wants = str(m.wants, 140); return moment && wants ? [{ moment, wants }] : []; }),
+    chooser: (CHOOSERS as readonly string[]).includes(String(t.chooser)) ? t.chooser as TasteView["chooser"] : "balanced",
+  };
+}
+
+function picksOf(v: unknown): PickView[] {
+  return arr(v, 4).flatMap((x) => {
+    const p = rec(x);
+    const place = str(p.place, 80), dish = str(p.dish, 60), why = str(p.why, 200), said = str(p.said, 240);
+    return place && dish && why && said ? [{ place, dish, why, said, cuisine: str(p.cuisine, 40), host: str(p.host, 60).replace(/[^a-z0-9.-]/gi, ""), reach: reach(p.reach) }] : [];
   });
 }
 
@@ -79,6 +108,8 @@ export function cleanPortrait(raw: unknown): SitePortrait | undefined {
     },
     noticed: arr(r.noticed, 5).map((x) => str(x, 160)).filter(Boolean),
     recent,
+    ...(tasteOf(r.taste) ? { taste: tasteOf(r.taste) } : {}),
+    ...(picksOf(r.picks).length ? { picks: picksOf(r.picks) } : {}),
     ...(local(r.since) ? { since: local(r.since) } : {}),
     ...(num(r.readAt) ? { readAt: num(r.readAt) } : {}),
     ...(str(last.place, 80) && lastItems.length ? {

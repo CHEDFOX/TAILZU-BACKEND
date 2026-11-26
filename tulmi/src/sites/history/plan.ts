@@ -19,11 +19,19 @@ import { catalogFor } from "../catalog.js";
 import type { OrderAsk } from "./ask.js";
 import { comboKey, dayOf, dishWords, DAY_NAMES, hourOf, SLOT_WORDS, slotOf } from "./portrait.js";
 import type { OrderItem, OrderOption, SiteOrder, Slot } from "./types.js";
+import type { Discovery } from "./taste/discover.js";
 
 /** The most options a plan offers: one to tap, and two in case tonight is different. */
 export const OPTIONS_MAX = 3;
 
-export interface SiteHistory { site: string; orders: readonly SiteOrder[] }
+export interface SiteHistory {
+  site: string;
+  orders: readonly SiteOrder[];
+  /** How they choose, from their taste profile: decides whether the usual or something new comes first. */
+  chooser?: "creature of habit" | "explorer" | "balanced";
+  /** New places found for their taste (taste/discover.ts). */
+  picks?: readonly Discovery[];
+}
 
 const norm = (s: string): string => s.toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, " ").replace(/\s+/g, " ").trim();
 
@@ -127,11 +135,44 @@ function optionOf(x: Scored): OrderOption {
   };
 }
 
+/** Whether the words name something they have never ordered: then the web is worth a live look (service.ts discoverFor). */
+export function wantsNew(histories: readonly SiteHistory[], ask: OrderAsk): boolean {
+  if (!ask.want.length) return false;
+  return !histories.flatMap(combosOf).some((c) => matches(c, ask.want) > 0);
+}
+
+/** A place found on the web for them, as an order: the dish, at that place, starting at the site's search for the place. */
+function discoveryOption(site: string, d: Discovery): OrderOption {
+  return {
+    site, place: d.place, items: [{ name: d.dish, qty: 1 }], why: d.why, url: startUrl(site, d.place),
+    fresh: true, said: d.said, host: d.host,
+  };
+}
+
+/** The new place that suits this ask best: one for the dish they named, else the nearest hunch first. */
+function bestDiscovery(picks: readonly Discovery[], ask: OrderAsk, tried: ReadonlySet<string>): Discovery | undefined {
+  const fresh = picks.filter((d) => !tried.has(norm(d.place)));
+  if (ask.want.length) {
+    const hit = fresh.find((d) => ask.want.some((w) => ` ${norm(`${d.dish} ${d.place} ${d.cuisine} ${d.asked ?? ""}`)} `.includes(` ${w}`)));
+    if (hit) return hit;
+    return undefined;
+  }
+  return fresh.find((d) => d.reach === "near") ?? fresh[0];
+}
+
 /**
- * The orders to offer, best first. Empty when there is nothing to go on: no history on any site that can take an order.
- * Distinct places where it can, so the second option is a real alternative and not the first one again with raita.
+ * THE ORDERS TO OFFER, best first, up to three, at different places.
+ *
+ * WHAT GOES FIRST IS A JUDGEMENT ABOUT THE PERSON, and it is the one the taste profile exists to make (taste/features.ts
+ * chooserOf). Someone who comes back to what they trust is shown their usual first and one new thing beside it, because a
+ * stranger's favourite pushed at them reads as not being listened to. Someone who rarely repeats is shown the new place
+ * first: their usual is the thing they are least likely to want. Asked for "the usual" or "the same as last time", that is
+ * what comes first, whoever they are; asked for a dish they have never ordered, a place found for it on the web comes first,
+ * with what a reviewer said, and the site's search if nothing was found.
+ *
+ * Empty when there is nothing to go on: no history on any site that can take an order.
  */
-export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now: number, tz: number): OrderOption[] {
+export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now: number, tz: number, live: readonly Discovery[] = []): OrderOption[] {
   const usable = histories.filter((h) => (!ask.site || h.site === ask.site) && h.orders.some((o) => !o.cancelled));
   if (!usable.length) return [];
   const nowLocal = localNow(now, tz);
@@ -142,28 +183,43 @@ export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now:
 
   const all = usable.flatMap(combosOf).map((c) => score(c, ask, slot, day, nowLocal, newest?.key));
   const named = ask.want.length ? all.filter((x) => matches(x.c, ask.want) > 0) : all;
+  const tried = new Set(all.map((x) => norm(x.c.place)));
+  const home = usable.find((h) => catalogFor(h.site)?.search)?.site ?? usable[0]!.site;
+  const picks = [...live, ...usable.flatMap((h) => h.picks ?? [])];
+  const found = bestDiscovery(picks, ask, tried);
+  const chooser = usable.find((h) => h.chooser)?.chooser ?? "balanced";
 
-  // They named a thing they have never had here: the site's own search for it comes first, and what they usually have after.
-  const out: OrderOption[] = [];
-  if (ask.want.length && !named.length) {
-    const site = ask.site && catalogFor(ask.site)?.search ? ask.site : usable.find((h) => catalogFor(h.site)?.search)?.site;
-    const words = ask.want.join(" ");
-    if (site) {
-      out.push({
-        site, place: words, items: [], search: true, url: startUrl(site, words),
-        why: `You haven't ordered ${words} on ${catalogFor(site)?.name ?? site} before. I'll open its search.`,
-      });
-    }
-  }
-
-  const pool = (named.length ? named : all).sort((a, b) => b.score - a.score);
+  const known: OrderOption[] = [];
   const places = new Set<string>();
-  for (const x of pool) {
-    if (out.length >= OPTIONS_MAX) break;
+  for (const x of (named.length ? named : all).sort((a, b) => b.score - a.score)) {
     const p = norm(x.c.place);
     if (places.has(p)) continue;
     places.add(p);
-    out.push(optionOf(x));
+    known.push(optionOf(x));
+  }
+
+  const out: OrderOption[] = [];
+  const add = (o: OrderOption | undefined) => { if (o && out.length < OPTIONS_MAX && !out.some((x) => norm(x.place) === norm(o.place))) out.push(o); };
+  const discovery = found ? discoveryOption(ask.site ?? home, found) : undefined;
+
+  if (ask.want.length && !named.length) {
+    // Something they have never had here: what the web found for it, else the site's own search, then what they usually have.
+    add(discovery);
+    if (!discovery) {
+      const site = ask.site && catalogFor(ask.site)?.search ? ask.site : usable.find((h) => catalogFor(h.site)?.search)?.site;
+      const words = ask.want.join(" ");
+      if (site) add({ site, place: words, items: [], search: true, url: startUrl(site, words), why: `You haven't ordered ${words} on ${catalogFor(site)?.name ?? site} before. I'll open its search.` });
+    }
+    known.forEach(add);
+  } else if (ask.usual || ask.last || ask.want.length || chooser !== "explorer") {
+    // What they asked for, or what they trust: first. One new thing beside it, never more than one.
+    add(known[0]);
+    add(discovery);
+    known.slice(1).forEach(add);
+  } else {
+    // An explorer, asked for nothing in particular: the new place leads.
+    add(discovery);
+    known.forEach(add);
   }
   return out;
 }
@@ -173,6 +229,9 @@ export function planLine(options: readonly OrderOption[]): string {
   const first = options[0];
   if (!first) return "";
   if (first.search) return first.why;
+  if (first.fresh) return `Something new I think you'll love: ${dishWords(first.items)} at ${first.place}. ${first.why}`;
+  const newOne = options.find((o) => o.fresh);
+  if (newOne) return `Ready when you are: ${dishWords(first.items)} from ${first.place}. And something new I think you'd like, below.`;
   const others = options.length - 1;
   return `Ready when you are: ${dishWords(first.items)} from ${first.place}.${others ? ` ${others === 1 ? "One other idea" : `${others === 2 ? "Two" : others} other ideas`} below.` : ""}`;
 }

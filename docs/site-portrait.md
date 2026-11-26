@@ -47,6 +47,38 @@ Where it shows:
 * **What bots know**: Talk's bot is told a few lines of it (`portraitLines`, through `BotSites.snapshot` `habits`), as
   data, so "something I like" means something.
 
+## 2b. Taste: why they choose, not only what
+
+The portrait counts what someone did. Taste is why, and it is three layers (`src/sites/history/taste/`):
+
+1. **Signals, by rules** (`features.ts`, free). What each dish says: heat, richness, sweetness, smoke, freshness,
+   tang; its cuisine; the protein; veg or not. And how they choose: the share of orders that were a first time at a
+   place (explore), exact repeats, how wide their cuisines run (an entropy), and what each moment of the week wants
+   (weekday lunch, weekend dinner, late night) and costs. From these, one word for the chooser: creature of habit,
+   explorer or balanced.
+2. **The profile, by a reasoning model** (`profile.ts`, role `site_taste`, the cheap tier, not the tiny one). It reads
+   the signals and the orders and writes: their palate (the liking behind dishes that look different), their motives
+   (reliability over novelty, a treat at the end of the week), what each moment wants, and 3 to 5 dishes they would
+   probably love and have not had. The psychology is in the role: a stable preference shows across moments, a
+   situational one belongs to one; comfort when tired and late, reward at the end of a week, speed in the middle of one;
+   someone who repeats will try one new thing only if it shares a defining trait with a favourite and differs in one
+   way, so hunches are mostly near and one is a stretch at most, only for an explorer.
+   **Grounded or dropped:** every trait, mood and hunch names the orders it rests on, and anything naming none, or
+   orders that do not exist, is thrown away; a hunch that is something they already ordered is not a discovery and is
+   thrown away too. **Nothing sensitive:** no guessing religion, caste, health, weight or money; veg is a preference.
+   Worked out again only when the orders change (`hash`).
+3. **Discovery, from the web** (`discover.ts`, role `site_discover`). For the best near hunches, the web is searched
+   near where they order (`best mutton haleem restaurant Koramangala Bengaluru reviews`), a few pages are read, and the
+   model picks a restaurant and a dish for this person. **Every pick carries a reviewer's own words**, and a pick whose
+   quote, or whose place, is not on the page it names is dropped: the rule `src/discover/experiences.ts` keeps. Pages
+   are untrusted data. Looked for at most once a day; and live, held to 12 seconds, when someone asks for a dish they
+   have never ordered.
+
+What a person sees is conclusions, never the counting: **Your taste** (the profile's sentences), **What you go for**
+(palate and motives), **Your moments** (what each part of the week wants), and **You might love** (the places found,
+each with its reviewer's quote, and the hunches nothing was found for yet, which open the site's search). Talk's bot is
+told the same in a few lines.
+
 ## 3. Ordering
 
 1. **Talk hears an ask** (`ask.ts readOrderAsk`, no model): a verb of getting and food, a food site or "the usual";
@@ -54,8 +86,10 @@ Where it shows:
    exists ("where is my order", "cancel my order") or a how-to.
 2. **The planner picks** (`plan.ts planOrder`, no model): a dish or place they named narrows it; "the usual" weighs how
    often; "same as last time" is the newest; otherwise this part of the day and this day of the week, how often and how
-   lately. Up to three, at different places. Something they never ordered there opens the site's search, said as that.
-   No history: no plan, and the door answers as before.
+   lately. Up to three, at different places. **What goes first is a judgement about the person:** a creature of habit
+   gets their usual first and one new place beside it; an explorer, asked for nothing in particular, gets the new place
+   first; "the usual" is the usual for anyone. A dish they have never ordered is a live find on the web, said through
+   their taste, else the site's search. No history: no plan, and the door answers as before.
 3. **Talk answers with the card** (`orderCard.ts`): the place, the dishes, about what it costs, why ("Your usual
    Saturday dinner"), one "Order this", and the line "I fill the cart on Swiggy while you watch. You check it and pay
    there." The options ride on the turn (`did.order`, `token.ts`) and are checked again whenever they are read back:
@@ -73,18 +107,22 @@ a button that opens the site at the restaurant.
 
 ## 4. Money and manners
 
-* One tiny model call per changed orders page, capped at `SITE_ORDERS_PAISE` (60). The portrait, the ask and the plan
-  cost nothing.
+* One tiny model call per changed orders page, capped at `SITE_ORDERS_PAISE` (60). The taste profile, once per change
+  of orders (`SITE_TASTE_PAISE`, 90). New places, at most once a day and per live ask (`SITE_DISCOVER_PAISE`, 160). The
+  portrait, the ask and the plan cost nothing.
 * Nothing is spent: the cart is the site's, and paying is the person's own tap on the site.
 * "Forget what I learned" deletes the orders and the read marks (`DELETE /sites/history/:site`).
 
 ## 5. Setting it up
 
-The migration:
+The migrations:
 
 ```
-ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0114"
+ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0114 && ./deploy/migrate.sh 0115"
 ```
+
+New places use the server's web search, which works with no setting (DuckDuckGo's page); `WEB_SEARXNG_URL` or
+`BRAVE_SEARCH_KEY` make it better (`tulmi/src/config.ts`).
 
 Then it is on wherever `CLOUD_BROWSER` is on (with `CONNECTOR_TOKEN_KEY`), for the people `CLOUD_BROWSER_USERS` names.
 

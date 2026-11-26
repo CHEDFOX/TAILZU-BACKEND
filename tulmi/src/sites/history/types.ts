@@ -89,7 +89,23 @@ export interface SitePortrait {
   /** What X0 has noticed, in plain sentences: free to make, the same every time. */
   noticed: string[];
   readAt?: number;
+  /** Their taste, worked out from the orders (taste/profile.ts): absent until there is one. */
+  taste?: TasteView;
+  /** New places found for it on the web (taste/discover.ts), each vouched for by a reviewer's own words. */
+  picks?: PickView[];
 }
+
+/** The taste as a screen and a bot see it: the conclusions, never the evidence numbers behind them. */
+export interface TasteView {
+  insights: string[];
+  palate: string[];
+  motives: string[];
+  moods: Array<{ moment: string; wants: string }>;
+  mightLike: Array<{ dish: string; cuisine: string; why: string; reach: "near" | "stretch" }>;
+  chooser: "creature of habit" | "explorer" | "balanced";
+}
+
+export interface PickView { place: string; dish: string; cuisine: string; why: string; said: string; host: string; reach: "near" | "stretch" }
 
 export interface OrderOption {
   site: string;
@@ -104,4 +120,8 @@ export interface OrderOption {
   url: string;
   /** Nothing they have ordered matches: the site's search for their words, with no dishes to add. */
   search?: true;
+  /** Somewhere new X0 thinks they will love (taste/discover.ts): drawn as "New for you", with what a reviewer said. */
+  fresh?: true;
+  said?: string;
+  host?: string;
 }
