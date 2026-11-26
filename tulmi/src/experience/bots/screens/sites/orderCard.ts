@@ -27,6 +27,32 @@ export function orderAction(o: OrderOption): ActionRef {
   return open(SCREENS.siteOrder, { o: orderToken([o]) }) as ActionRef;
 }
 
+/**
+ * A REAL PICTURE, the width of its card: the site's own photo of the dish or product, or a free photo of something new.
+ * Every address has already been checked against the site's image servers and Commons (sites/history/pictures.ts).
+ * Cover, so a tall bottle and a wide plate both fill the frame; the surface grey shows while it loads.
+ */
+export function photo(url: string, height: number, o: { radius?: number; credit?: string } = {}): Node[] {
+  return [
+    box([{ type: "Image", props: { source: { url }, contentFit: "cover", radius: 0, accessibilityLabel: "" }, style: { width: "100%", height: "100%" } } as Node], {
+      width: "100%", height, borderRadius: o.radius ?? 14, overflow: "hidden", backgroundColor: C.surface,
+    }),
+    ...(o.credit ? [meta(`Photo: ${o.credit}`, { size: 10.5, color: C.idle, lines: 1 })] : []),
+  ];
+}
+
+/** A small square picture, or the kind's own mark on grey when there is no picture: never a stranger's picture. */
+export function thumb(url: string | undefined, site: string, size = 52): Node {
+  if (url) {
+    return box([{ type: "Image", props: { source: { url }, contentFit: "cover", radius: 0, accessibilityLabel: "" }, style: { width: "100%", height: "100%" } } as Node], {
+      width: size, height: size, borderRadius: Math.round(size * 0.24), overflow: "hidden", flexShrink: 0, backgroundColor: C.surface,
+    });
+  }
+  return box([icon(kindOf(site).icon, { size: Math.round(size * 0.42), color: C.meta })], {
+    width: size, height: size, borderRadius: Math.round(size * 0.24), flexShrink: 0, backgroundColor: C.surface, alignItems: "center", justifyContent: "center",
+  });
+}
+
 /** "1×" in a small grey tile beside each dish: the quantity reads before the name, as on a bill. */
 function itemRow(name: string, qty: number): Node {
   return row([
@@ -57,6 +83,8 @@ export function orderCard(o: OrderOption, o2: { primary?: boolean } = {}): Node 
     ], { gap: 12 });
   }
   return card([
+    // The dish or product itself, as the site shows it: the first thing seen, before any word.
+    ...(o.image ? photo(o.image, 168) : []),
     row([
       box([icon(kindOf(o.site).icon, { size: 18 })], { width: 32, height: 32, borderRadius: 16, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
       col([
@@ -85,6 +113,7 @@ export function freshCard(o: OrderOption, o2: { primary?: boolean } = {}): Node 
   const food = kindOf(o.site).kind === "food";
   const spark = botLook("talk").color;
   return card([
+    ...(o.image ? photo(o.image, 176, o.credit ? { credit: o.credit } : {}) : []),
     row([
       box([icon("spark", { size: 16, color: C.paper })], { width: 32, height: 32, borderRadius: 16, backgroundColor: spark, alignItems: "center", justifyContent: "center" }),
       col([
@@ -111,6 +140,7 @@ export function freshCard(o: OrderOption, o2: { primary?: boolean } = {}): Node 
 /** The other ideas, as rows: one line each, a tap opens the same order screen. */
 export function othersCard(options: readonly OrderOption[], title = "Or"): Node {
   return listCard(options.map((o) => listRow({
+    left: thumb(o.image, o.site, 52),
     label: o.search ? `Search ${siteName(o.site)} for “${o.place}”` : kindOf(o.site).kind === "food" ? o.place : itemWords(o.items),
     sub: o.search ? o.why : kindOf(o.site).kind === "food" ? `${itemWords(o.items)} · ${o.why}` : o.why,
     ...(o.total ? { value: money(o.total) } : {}),

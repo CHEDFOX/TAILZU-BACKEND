@@ -20,6 +20,7 @@
  */
 import { catalogFor } from "../catalog.js";
 import { READ_PAGE } from "../phone.js";
+import { imageHosts } from "./pictures.js";
 
 /** The orders page as the server's reader reads it, with the restaurant links put first (orders.ts splitLinks takes them off). */
 export function historyRead(site: string): string {
@@ -41,6 +42,27 @@ export function historyRead(site: string): string {
     }
   }
   if (lines.length) r.text = "[x0-links]\\n" + lines.join("\\n") + "\\n[/x0-links]\\n" + (r.text || "");
+  // THE PICTURES: each one the site shows, from its own image servers only, with what it is of: its alt text, else the
+  // words of the nearest block round it. The server matches them to dishes and products by name (pictures.ts).
+  var HOSTS = ${JSON.stringify(imageHosts(site))};
+  var pics = [], seenPic = {};
+  var imgs = document.querySelectorAll("img");
+  for (var j = 0; j < imgs.length && pics.length < 60; j++) {
+    var im = imgs[j], src = String(im.currentSrc || im.src || "");
+    if (src.indexOf("https://") !== 0 || seenPic[src]) continue;
+    var host = ""; try { host = new URL(src).hostname.toLowerCase(); } catch (e) { continue; }
+    var ok = false; for (var q = 0; q < HOSTS.length; q++) { if (host === HOSTS[q] || host.slice(-HOSTS[q].length - 1) === "." + HOSTS[q]) ok = true; }
+    if (!ok) continue;
+    var r0 = im.getBoundingClientRect(); if (r0.width < 24 || r0.height < 24) continue;
+    var said = String(im.getAttribute("alt") || im.getAttribute("title") || "").trim();
+    var up = im.parentElement;
+    for (var k = 0; k < 4 && up && said.length < 3; k++) { said = String(up.innerText || "").trim(); up = up.parentElement; }
+    said = said.split("\\n")[0].replace(/\\t/g, " ").slice(0, 100);
+    if (!said) continue;
+    seenPic[src] = 1;
+    pics.push(said + "\\t" + src);
+  }
+  if (pics.length) r.text = "[x0-images]\\n" + pics.join("\\n") + "\\n[/x0-images]\\n" + (r.text || "");
   r.text = String(r.text || "").slice(0, 20000);
   return r;
 })()`;

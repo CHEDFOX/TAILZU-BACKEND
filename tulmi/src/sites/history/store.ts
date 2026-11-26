@@ -15,7 +15,7 @@ export const ORDERS_KEPT = 120;
 export interface HistoryMark { readAt?: number; hash?: string }
 
 /** Something X0 did for them on a site: a cart it filled, new places it found. */
-export interface Did { ref: string; kind: "cart" | "found"; title: string; line?: string; at: number }
+export interface Did { ref: string; kind: "cart" | "found"; title: string; line?: string; at: number; image?: string }
 
 /** What was worked out from the orders (taste/profile.ts) and found for it on the web (taste/discover.ts). */
 export interface Insight { taste?: Taste; picks?: Discovery[]; picksAt?: number }
@@ -58,6 +58,7 @@ export class HistoryStore {
     await this.db.from("site_orders").upsert(kept.map((o) => ({
       owner_id: ownerId, site, key: o.key, place: o.place, area: o.area ?? null, items: o.items, total: o.total ?? null,
       local: o.local ?? null, link: o.link ?? null, cancelled: o.cancelled === true, seen_at: new Date(o.seenAt).toISOString(),
+      image: o.image ?? null,
     })), { onConflict: "owner_id,site,key" });
   }
 
@@ -106,17 +107,19 @@ export class HistoryStore {
     }
     await this.db.from("site_did").upsert({
       owner_id: ownerId, site, ref: d.ref, kind: d.kind, title: d.title, line: d.line ?? null, at: new Date(d.at).toISOString(),
+      image: d.image ?? null,
     }, { onConflict: "owner_id,site,ref", ignoreDuplicates: true });
   }
 
   /** What was done, newest first. */
   async didOf(ownerId: string, site: string, limit = 8): Promise<Did[]> {
     if (!this.db) return (this.dids.get(this.key(ownerId, site)) ?? []).slice(0, limit);
-    const { data } = await this.db.from("site_did").select("ref, kind, title, line, at").eq("owner_id", ownerId).eq("site", site)
+    const { data } = await this.db.from("site_did").select("ref, kind, title, line, at, image").eq("owner_id", ownerId).eq("site", site)
       .order("at", { ascending: false }).limit(limit);
     return (data ?? []).map((r) => ({
       ref: String(r.ref), kind: r.kind === "found" ? "found" as const : "cart" as const, title: String(r.title),
       ...(r.line ? { line: String(r.line) } : {}), at: ms(r.at) ?? 0,
+      ...(typeof r.image === "string" && r.image ? { image: r.image } : {}),
     }));
   }
 
@@ -139,7 +142,8 @@ function itemsOf(v: unknown): OrderItem[] {
     const o = (x ?? {}) as Record<string, unknown>;
     const name = typeof o.name === "string" ? o.name.slice(0, 80) : "";
     const qty = typeof o.qty === "number" && o.qty > 0 ? Math.min(20, Math.round(o.qty)) : 1;
-    return name ? [{ name, qty }] : [];
+    const image = typeof o.image === "string" && /^https:\/\//.test(o.image) ? o.image.slice(0, 600) : "";
+    return name ? [{ name, qty, ...(image ? { image } : {}) }] : [];
   }).slice(0, 12);
 }
 
@@ -153,6 +157,7 @@ function rowToOrder(r: Record<string, unknown>): SiteOrder {
     ...(r.local ? { local: String(r.local) } : {}),
     ...(r.link ? { link: String(r.link) } : {}),
     ...(r.cancelled === true ? { cancelled: true as const } : {}),
+    ...(typeof r.image === "string" && /^https:\/\//.test(r.image) ? { image: r.image } : {}),
   };
 }
 

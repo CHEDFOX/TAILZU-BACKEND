@@ -13,6 +13,8 @@ export interface OrderItem {
   /** As the site names the item ("Chicken Dum Biryani"). */
   name: string;
   qty: number;
+  /** Its picture as the site shows it, from the site's own image servers (pictures.ts). */
+  image?: string;
 }
 
 export interface SiteOrder {
@@ -34,6 +36,8 @@ export interface SiteOrder {
   /** The restaurant's own page on the site, when the orders page links to it. Always on the site's host. */
   link?: string;
   cancelled?: true;
+  /** The restaurant's or shop's picture as the orders page showed it (pictures.ts). */
+  image?: string;
   /** When X0 first saw it, epoch ms. */
   seenAt: number;
 }
@@ -99,7 +103,7 @@ export interface SitePortrait {
   did?: DidView[];
 }
 
-export interface DidView { kind: "cart" | "found" | "arrived"; title: string; line?: string; at: number }
+export interface DidView { kind: "cart" | "found" | "arrived"; title: string; line?: string; at: number; image?: string }
 
 /** The taste as a screen and a bot see it: the conclusions, never the evidence numbers behind them. */
 export interface TasteView {
@@ -130,4 +134,8 @@ export interface OrderOption {
   fresh?: true;
   said?: string;
   host?: string;
+  /** The picture on its card: the site's own photo of the dish or product, or a free photo of something new. */
+  image?: string;
+  /** Who took it, for a free photo whose licence asks for a credit. */
+  credit?: string;
 }

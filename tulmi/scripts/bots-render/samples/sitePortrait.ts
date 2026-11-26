@@ -20,9 +20,26 @@ export const PORTRAIT_NOW = Date.UTC(2026, 10, 26, 14, 40);
 const SITE = "swiggy.com";
 const LINK = "https://www.swiggy.com/restaurants/behrouz-biryani-koramangala-bangalore-52311";
 
+/**
+ * THE PICTURES, as the orders page would carry them: each on the site's own image servers (catalog `images`), so they
+ * pass the same checks real ones do. The render swaps each address for a stand-in photo (samples/sitePhotos.ts), because
+ * a render must not reach the real sites.
+ */
+export const SAMPLE_PICS: Record<string, string> = {
+  "Chicken Dum Biryani": "https://media-assets.swiggy.com/swiggy/image/upload/x0-sample/chicken-dum-biryani.jpg",
+  "All American Cheese Burger": "https://media-assets.swiggy.com/swiggy/image/upload/x0-sample/cheese-burger.jpg",
+  "Boneless Chicken Biryani": "https://media-assets.swiggy.com/swiggy/image/upload/x0-sample/boneless-biryani.jpg",
+  "Classic Chicken Wings": "https://media-assets.swiggy.com/swiggy/image/upload/x0-sample/chicken-wings.jpg",
+  "Chicken Burrito Bowl": "https://media-assets.swiggy.com/swiggy/image/upload/x0-sample/burrito-bowl.jpg",
+  "Mamaearth Onion Hair Oil 250ml": "https://m.media-amazon.com/images/I/x0-sample-onion-hair-oil.jpg",
+  "Mutton Haleem": "https://upload.wikimedia.org/wikipedia/commons/thumb/x0-sample/haleem.jpg",
+  "Kolkata Chicken Biryani": "https://upload.wikimedia.org/wikipedia/commons/thumb/x0-sample/kolkata-biryani.jpg",
+  "Minimalist Rosemary Hair Growth Oil": "https://m.media-amazon.com/images/I/x0-sample-rosemary-oil.jpg",
+};
+
 const order = (n: number, local: string, place: string, items: Array<[string, number]>, total: number, o: Partial<SiteOrder> = {}): SiteOrder => ({
   key: `no:18374652${String(n).padStart(4, "0")}`, site: SITE, place, area: "Koramangala", local, total, seenAt: PORTRAIT_NOW,
-  items: items.map(([name, qty]) => ({ name, qty })), ...o,
+  items: items.map(([name, qty]) => ({ name, qty, ...(SAMPLE_PICS[name] ? { image: SAMPLE_PICS[name] } : {}) })), ...o,
 });
 
 const BEHROUZ: Array<[string, number]> = [["Chicken Dum Biryani", 1], ["Gulab Jamun (2 pcs)", 1]];
@@ -84,12 +101,17 @@ const PAGES = [
   { url: "https://www.reddit.com/r/bangalore/comments/haleem_koramangala", text: "Where to get good haleem near Koramangala? We went to Shah Ghouse on 5th Block last Friday. The haleem here is cooked overnight and it shows, thick, peppery, the meat just melts. Paid 280 for a plate and got double ka meetha on the side. Queue at 8 pm but worth it. ".repeat(2) },
   { url: "https://www.zomato.com/bangalore/oh-calcutta-koramangala/reviews", text: "Oh! Calcutta, Koramangala. Reviews. The Kolkata biryani was fragrant and mild, the potato had soaked up everything, best I have had outside Kolkata. Ordered twice in one week. ".repeat(3) },
 ];
-export const RIYA_PICKS = picksFrom({
+export const RIYA_PICKS = withPhotos(picksFrom({
   picks: [
     { place: "Shah Ghouse", item: "Mutton Haleem", why: "You love slow-cooked, rich biryani. This haleem is cooked overnight, and they serve double ka meetha with it for your sweet finish.", said: "The haleem here is cooked overnight and it shows, thick, peppery, the meat just melts.", from: 1, hunch: 1 },
     { place: "Oh! Calcutta", item: "Kolkata Chicken Biryani", why: "Your Saturday biryani, a little milder, with the potato Kolkata adds. Close to what you trust, and new.", said: "The Kolkata biryani was fragrant and mild, the potato had soaked up everything", from: 2, hunch: 2 },
   ],
-}, RIYA_TASTE.mightLike, PAGES);
+}, RIYA_TASTE.mightLike, PAGES));
+
+/** A free photo of each new dish, as the server would find on Commons, with its credit. */
+function withPhotos<T extends { item: string }>(picks: T[]): T[] {
+  return picks.map((p) => (SAMPLE_PICS[p.item] ? { ...p, image: SAMPLE_PICS[p.item], credit: "Wikimedia Commons, CC BY-SA 4.0" } : p));
+}
 
 const DAY = 86_400_000;
 export const RIYA_PORTRAIT = {
@@ -97,16 +119,16 @@ export const RIYA_PORTRAIT = {
   taste: tasteView(RIYA_TASTE), picks: RIYA_PICKS.map(pickView),
   ready: readyFor({ site: SITE, orders: RIYA_ORDERS, chooser: RIYA_TASTE.chooser, picks: RIYA_PICKS }, PORTRAIT_NOW),
   did: [
-    { kind: "found" as const, title: "Found 2 new places you'd like", line: "Mutton Haleem at Shah Ghouse, Kolkata Chicken Biryani at Oh! Calcutta", at: PORTRAIT_NOW - 3 * 3_600_000 },
+    { kind: "found" as const, title: "Found 2 new places you'd like", line: "Mutton Haleem at Shah Ghouse, Kolkata Chicken Biryani at Oh! Calcutta", at: PORTRAIT_NOW - 3 * 3_600_000, image: SAMPLE_PICS["Mutton Haleem"] },
     { kind: "arrived" as const, title: "Kept an eye on Behrouz Biryani until it arrived", line: "Delivered at 9:22 pm", at: PORTRAIT_NOW - 5 * DAY },
-    { kind: "cart" as const, title: "Filled your cart at Behrouz Biryani", line: "Chicken Dum Biryani and Gulab Jamun (2 pcs)", at: PORTRAIT_NOW - 5 * DAY - 3_600_000 },
+    { kind: "cart" as const, title: "Filled your cart at Behrouz Biryani", line: "Chicken Dum Biryani and Gulab Jamun (2 pcs)", at: PORTRAIT_NOW - 5 * DAY - 3_600_000, image: SAMPLE_PICS["Chicken Dum Biryani"] },
   ],
 };
 
 /** The same person on Amazon: a detergent bought every four weeks and due now, hair oil, a protein tub. The same pipeline. */
 const AMAZON = "amazon.in";
 const buy = (n: number, local: string, place: string, name: string, total: number): SiteOrder => ({
-  key: `no:40${n}`, site: AMAZON, place, local, total, seenAt: PORTRAIT_NOW, items: [{ name, qty: 1 }],
+  key: `no:40${n}`, site: AMAZON, place, local, total, seenAt: PORTRAIT_NOW, items: [{ name, qty: 1, ...(SAMPLE_PICS[name] ? { image: SAMPLE_PICS[name] } : {}) }],
 });
 export const RIYA_AMAZON: SiteOrder[] = [
   buy(1, "2026-10-31T21:00", "Surf Excel", "Surf Excel Matic Liquid Detergent 2L Refill Pack", 420),
@@ -123,6 +145,7 @@ export const RIYA_AMAZON_PORTRAIT = {
     place: "Minimalist", item: "Minimalist Rosemary Hair Growth Oil", category: "Personal care", reach: "near",
     why: "You keep coming back to a natural hair oil. This one is lighter, and people say it isn't greasy.",
     said: "It is not greasy at all and my hairfall dropped noticeably by week six.", host: "reddit.com", url: "https://www.reddit.com/r/IndianSkincareAddicts/x",
+    image: SAMPLE_PICS["Minimalist Rosemary Hair Growth Oil"]!,
   }] }, PORTRAIT_NOW),
   did: [{ kind: "cart" as const, title: "Filled your cart with Surf Excel Matic Liquid Detergent 2L Refill Pack", line: "Amazon", at: PORTRAIT_NOW - 26 * DAY }],
 };

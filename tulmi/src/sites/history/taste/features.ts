@@ -140,6 +140,8 @@ export interface Rebuy {
   place: string;
   link?: string;
   total?: number;
+  /** Its picture, from the site, when an order of it showed one. */
+  image?: string;
   /** Days between buys, the median of them. */
   everyDays: number;
   last: string;
@@ -177,6 +179,7 @@ export function rebuysOf(all: readonly SiteOrder[], nowLocal: string): Rebuy[] {
       name: latest.name, place: latest.o.place, everyDays: every, last: latest.o.local!,
       due: now - days[days.length - 1]! >= every * 0.9,
       ...(latest.o.link ? { link: latest.o.link } : {}), ...(latest.o.total && latest.o.items.length === 1 ? { total: latest.o.total } : {}),
+      ...((() => { const img = rows.map((r) => r.o.items.find((i) => norm(i.name) === norm(latest.name))?.image).find(Boolean); return img ? { image: img } : {}; })()),
     });
   }
   return out.sort((a, b) => Number(b.due) - Number(a.due) || a.everyDays - b.everyDays);

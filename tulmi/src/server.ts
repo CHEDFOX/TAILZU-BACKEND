@@ -78,6 +78,7 @@ import { SITE_TASTE_PAISE } from "./sites/history/taste/profile.js";
 import { SITE_DISCOVER_PAISE } from "./sites/history/taste/discover.js";
 import { search as webSearch, searchEnvFromConfig } from "./web/search/engine.js";
 import { readPage } from "./web/reader.js";
+import { photosFromConfig } from "./discover/photos.js";
 import type { BotSites } from "./bots/ports.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -617,11 +618,20 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
     // orders page, read on their phone, and what Talk orders from.
     // Their taste is worked out from the orders (taste/profile.ts), and new places are found for it on the web and vouched for
     // by reviewers' own words (taste/discover.ts): the same search and reader the review reader uses (discover/server.ts).
+    const sitePhotos = photosFromConfig();
     const histories = new SiteHistories({
       read: { maxPaise: SITE_ORDERS_PAISE },
       taste: { maxPaise: SITE_TASTE_PAISE },
       discover: {
         maxPaise: SITE_DISCOVER_PAISE,
+        // A free photo of a dish found for them, with its credit (src/discover/photos.ts): Wikimedia Commons, as the
+        // travel catalogue uses. Absent when COMMONS is off, and then a new find is drawn with its kind's mark.
+        ...(sitePhotos ? {
+          async photo(query: string) {
+            const got = (await sitePhotos.find(`${query} food`, { want: 1 }).catch(() => []))[0];
+            return got ? { url: got.tile ?? got.url, ...(got.credit ? { credit: got.credit } : {}) } : null;
+          },
+        } : {}),
         async find(query, limit) {
           const out = await webSearch(query, { limit, depth: "quick", env: searchEnvFromConfig() });
           return out.results.map((r) => ({ title: r.title, url: r.url, ...(typeof r.published === "number" ? { published: r.published } : {}) }));

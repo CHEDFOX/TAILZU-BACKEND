@@ -1,5 +1,12 @@
 # Being built right now (read before you start)
 
+## 26 Nov: REAL PICTURES ON EVERY CARD
+
+Talk's order card, the site page and the per-site cards show the real dish or product: the picture the site itself
+shows for it (read off the orders page on the phone, only from that site's image servers) and, for something new, a free
+Commons photo of the dish with its credit. Photo-led cards, thumbnails on rows and in Done for you, the kind's mark when
+there is no picture. Needs migration 0117. docs/site-portrait.md §4c.
+
 ## 26 Nov: ANY CONNECTED SITE, AND THE PAGE SHOWS WHAT IS READY AND WHAT WAS DONE
 
 The site page no longer shows how X0 learned someone (no taste, habits, moments or charts): it shows **Ready for you**

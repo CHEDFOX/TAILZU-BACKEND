@@ -143,6 +143,27 @@ Not shown, on purpose: the taste profile, habits, moments, charts, counts, perce
 A section per site: on the Sites page ("For you") and in Your space ("From your sites"), a card per site says what is
 ready there and the last thing done, and opens its page.
 
+## 4c. Real pictures
+
+Every card shows the real thing: the dish or the product, not an icon.
+
+* **What they ordered** carries the picture the site itself shows for it. The phone's read of the orders page
+  (`phone.ts historyRead`) also lists each picture with what it is of (its alt text, else the words beside it), and the
+  server matches pictures to dishes, products and restaurants by name (`pictures.ts imageFor`). Kept with the order
+  (`items[].image`, `site_orders.image`, migration 0117), and kept when a later read does not show it.
+* **Something new** gets a freely licensed photo of the dish from Wikimedia Commons (`src/discover/photos.ts`, the travel
+  catalogue's source), with its credit under it. Food only: a photo of "a hair oil" is not that hair oil, and a wrong
+  product picture is worse than none.
+* **Only from two places.** A picture loads by itself, so every address is checked against the site's own image servers
+  (`images` in `catalog.ts`: Swiggy's, Amazon's, Flipkart's, Zomato's) and Commons, https only, on the way in and again
+  in the card's token and the screen's cleaner (`pictures.ts safeImage`). A card with no picture shows its kind's mark on
+  grey; it never borrows one.
+* **Where they show:** the lead card's photo runs edge to edge above its dark panel; "New for you" and Talk's order card
+  open with the photo; rows, the per-site cards and "Done for you" carry thumbnails.
+
+The renders use stand-in photos (free Unsplash pictures swapped in at render time), because a render must not reach the
+real sites; the addresses in the sample are on the real image hosts so they pass the same checks.
+
 ## 4b. Money and manners
 
 * One tiny model call per changed orders page, capped at `SITE_ORDERS_PAISE` (60). The taste profile, once per change
@@ -156,7 +177,7 @@ ready there and the last thing done, and opens its page.
 The migrations:
 
 ```
-ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0114 && ./deploy/migrate.sh 0115 && ./deploy/migrate.sh 0116"
+ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0114 && ./deploy/migrate.sh 0115 && ./deploy/migrate.sh 0116 && ./deploy/migrate.sh 0117"
 ```
 
 New places use the server's web search, which works with no setting (DuckDuckGo's page); `WEB_SEARXNG_URL` or

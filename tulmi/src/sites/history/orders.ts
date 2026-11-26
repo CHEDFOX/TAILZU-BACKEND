@@ -19,6 +19,7 @@ import { z } from "zod";
 import { askJson } from "../../code/work/model.js";
 import { fenced } from "../../agent/prompt.js";
 import { catalogFor } from "../catalog.js";
+import { imageFor, splitImages, type PageImage } from "./pictures.js";
 import type { OrderItem, SiteOrder } from "./types.js";
 
 /** Where the phone's history read puts the restaurant links it found, above the page's words (src/sites/history/phone.ts). */
@@ -109,7 +110,7 @@ export function linkFor(place: string, site: string, links: readonly PageLink[])
 }
 
 /** What the model said, as orders: anything without a place or a dish is dropped, everything is capped. */
-export function ordersOf(reply: z.infer<typeof OrdersReply>, site: string, links: readonly PageLink[], now: number): SiteOrder[] {
+export function ordersOf(reply: z.infer<typeof OrdersReply>, site: string, links: readonly PageLink[], now: number, images: readonly PageImage[] = []): SiteOrder[] {
   const out: SiteOrder[] = [];
   const keys = new Set<string>();
   for (const r of reply.orders.slice(0, ORDERS_MAX)) {
@@ -118,7 +119,8 @@ export function ordersOf(reply: z.infer<typeof OrdersReply>, site: string, links
     for (const it of (Array.isArray(r.items) ? r.items : []).slice(0, ITEMS_MAX)) {
       const name = clip(it?.name, DISH_MAX);
       const qty = typeof it?.qty === "number" && Number.isFinite(it.qty) ? Math.max(1, Math.min(20, Math.round(it.qty))) : 1;
-      if (name) items.push({ name, qty });
+      const image = imageFor(name, images);
+      if (name) items.push({ name, qty, ...(image ? { image } : {}) });
     }
     if (!place || !items.length) continue;
     const local = localTime(r.at);
@@ -127,12 +129,14 @@ export function ordersOf(reply: z.infer<typeof OrdersReply>, site: string, links
     // A restaurant's link is named by the restaurant; a product's by the product.
     const link = linkFor(place, site, links) ?? linkFor(items[0]!.name, site, links);
     const key = keyOf({ ...(r.no ? { no: r.no } : {}), place, items, ...(local ? { local } : {}) });
+    const image = imageFor(place, images);
     if (keys.has(key)) continue;
     keys.add(key);
     out.push({
       key, site, place, items, seenAt: now,
       ...(area ? { area } : {}), ...(total ? { total } : {}), ...(local ? { local } : {}), ...(link ? { link } : {}),
       ...(r.cancelled === true ? { cancelled: true as const } : {}),
+      ...(image ? { image } : {}),
     });
   }
   return out;
@@ -143,7 +147,13 @@ export function mergeOrders(had: readonly SiteOrder[], fresh: readonly SiteOrder
   const by = new Map(had.map((o) => [o.key, o]));
   for (const o of fresh) {
     const old = by.get(o.key);
-    by.set(o.key, old ? { ...old, ...o, seenAt: old.seenAt, ...(o.link ?? old.link ? { link: o.link ?? old.link } : {}) } : o);
+    // A picture or a link learned once is kept when a later read does not show it.
+    by.set(o.key, old ? {
+      ...old, ...o, seenAt: old.seenAt,
+      ...(o.link ?? old.link ? { link: o.link ?? old.link } : {}),
+      ...(o.image ?? old.image ? { image: o.image ?? old.image } : {}),
+      items: o.items.map((it) => (it.image ? it : { ...it, ...(old.items.find((x) => x.name === it.name)?.image ? { image: old.items.find((x) => x.name === it.name)!.image } : {}) })),
+    } : o);
   }
   return [...by.values()].sort((a, b) => (b.local ?? "").localeCompare(a.local ?? "") || b.seenAt - a.seenAt);
 }
@@ -171,7 +181,8 @@ export interface OrdersDeps {
 export async function readOrders(
   userId: string, site: string, page: { title: string; text: string; finalUrl: string }, d: OrdersDeps, now = Date.now(),
 ): Promise<SiteOrder[] | null> {
-  const { text, links } = splitLinks(page.text);
+  const { text: words, links } = splitLinks(page.text);
+  const { text, images } = splitImages(words, site);
   if (text.length < 20) return null;
   try {
     const r = await askJson({
@@ -181,7 +192,7 @@ export async function readOrders(
       tier: "tiny", purpose: "site.orders", role: "site_orders",
       user: ordersUser({ ...page, text }, now), schema: OrdersReply, maxTokens: 1800,
     });
-    return r.ok ? ordersOf(r.value, site, links, now) : null;
+    return r.ok ? ordersOf(r.value, site, links, now, images) : null;
   } catch {
     return null;
   }

@@ -726,3 +726,103 @@ describe.skipIf(!playwright())("the step on a shop, on a page made to look like 
     } finally { await browser.close(); }
   }, 30_000);
 });
+
+// ------------------------------------------------------------------ real pictures, from the site or Commons only
+
+const { safeImage, splitImages, imageFor, IMAGES_START, IMAGES_END } = await import("../src/sites/history/pictures.js");
+
+describe("the pictures on the cards", () => {
+  const SWIGGY_PIC = "https://media-assets.swiggy.com/swiggy/image/upload/fl_lossy/abc123";
+  const AMAZON_PIC = "https://m.media-amazon.com/images/I/71abc.jpg";
+
+  it("shows a picture only from the site's own image servers or Commons, over https", () => {
+    expect(safeImage(SWIGGY_PIC, SITE)).toBe(SWIGGY_PIC);
+    expect(safeImage(AMAZON_PIC, AMZ)).toBe(AMAZON_PIC);
+    expect(safeImage("https://upload.wikimedia.org/wikipedia/commons/x.jpg", SITE)).toBeTruthy();
+    // Another site's servers, a stranger's, plain http, a login in the address, or not an address at all: no picture.
+    expect(safeImage(AMAZON_PIC, SITE)).toBeUndefined();
+    expect(safeImage("https://evil.example/biryani.jpg", SITE)).toBeUndefined();
+    expect(safeImage("https://media-assets.swiggy.com.evil.example/x.jpg", SITE)).toBeUndefined();
+    expect(safeImage("http://media-assets.swiggy.com/x.jpg", SITE)).toBeUndefined();
+    expect(safeImage("https://u:p@media-assets.swiggy.com/x.jpg", SITE)).toBeUndefined();
+    expect(safeImage("data:image/png;base64,AAAA", SITE)).toBeUndefined();
+  });
+
+  it("takes the pictures block off the words and keeps only allowed ones", () => {
+    const text = `${IMAGES_START}\nChicken Dum Biryani\t${SWIGGY_PIC}\nTracker\thttps://evil.example/pixel.gif\n${IMAGES_END}\nPast Orders`;
+    const r = splitImages(text, SITE);
+    expect(r.images).toEqual([{ label: "Chicken Dum Biryani", url: SWIGGY_PIC }]);
+    expect(r.text).toBe("Past Orders");
+  });
+
+  it("matches a picture to its dish or product by name, a long name cut short included", () => {
+    const pics = [
+      { label: "Chicken Dum Biryani Family Pack", url: "https://media-assets.swiggy.com/a" },
+      { label: "Chicken Dum Biryani", url: "https://media-assets.swiggy.com/b" },
+      { label: "Surf Excel Matic Liquid Detergent 2L Refill Pack, Top Load", url: AMAZON_PIC },
+    ];
+    expect(imageFor("Chicken Dum Biryani", pics)).toBe("https://media-assets.swiggy.com/b");
+    expect(imageFor("Surf Excel Matic Liquid Detergent 2L Refill", pics)).toBe(AMAZON_PIC);
+    expect(imageFor("Gulab Jamun", pics)).toBeUndefined();
+  });
+
+  it("an order read off the page carries its dish's picture, and keeps it when a later read does not show it", () => {
+    const got = ordersOf({ orders: [{ no: "99887766", place: "Behrouz Biryani", items: [{ name: "Chicken Dum Biryani", qty: 1 }], at: "2026-11-21T20:40" }] },
+      SITE, [], 5, [{ label: "Chicken Dum Biryani", url: SWIGGY_PIC }]);
+    expect(got[0]!.items[0]!.image).toBe(SWIGGY_PIC);
+    const later = ordersOf({ orders: [{ no: "99887766", place: "Behrouz Biryani", items: [{ name: "Chicken Dum Biryani", qty: 1 }], at: "2026-11-21T20:40" }] }, SITE, [], 9);
+    expect(mergeOrders(got, later)[0]!.items[0]!.image).toBe(SWIGGY_PIC);
+  });
+
+  it("the card is drawn with the picture, and a picture off the site never survives the token", () => {
+    const withPic = HISTORY.map((x) => (x.place === "Behrouz Biryani" ? { ...x, items: x.items.map((i) => ({ ...i, image: SWIGGY_PIC })) } : x));
+    const opts = planOrder([{ site: SITE, orders: withPic }], readOrderAsk("order my usual")!, NOW, 330);
+    expect(opts[0]!.image).toBe(SWIGGY_PIC);
+    expect(readOrderToken(orderToken(opts))[0]!.image).toBe(SWIGGY_PIC);
+    const bad = JSON.stringify({ v: 1, options: [{ site: SITE, place: "A", items: [{ name: "x", qty: 1 }], why: "w", url: "https://www.swiggy.com/x", image: "https://evil.example/t.gif" }] });
+    expect(readOrderToken(bad)[0]!.image).toBeUndefined();
+  });
+
+  it("something new gets a free photo of the dish with its credit; a product never gets a guessed one", async () => {
+    const t = tasteFrom(REPLY, HISTORY, featuresOf(HISTORY), NOW)!;
+    const PAGE2 = { url: "https://www.reddit.com/r/bangalore/haleem", text: "We went to Shah Ghouse last Friday. The haleem here is cooked overnight and it shows. Paid 280. ".repeat(5) };
+    const call = (async () => ({ json: { picks: [{ place: "Shah Ghouse", item: "Mutton Haleem", why: "Slow-cooked", said: "The haleem here is cooked overnight and it shows.", from: 1, hunch: 1 }] }, paise: 2, model: "m" })) as never;
+    const asked: string[] = [];
+    const deps = {
+      call, find: async () => [{ title: "t", url: PAGE2.url }], read: async () => PAGE2,
+      photo: async (q: string) => { asked.push(q); return { url: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Haleem.jpg/640px-Haleem.jpg", credit: "Someone, CC BY-SA 4.0" }; },
+    };
+    const got = await discover(U, t, deps);
+    expect(got[0]).toMatchObject({ image: expect.stringContaining("upload.wikimedia.org"), credit: "Someone, CC BY-SA 4.0" });
+    expect(asked).toEqual(["Mutton Haleem"]);
+    const shop = await discover(U, { ...t, kind: "shopping" }, deps);
+    expect(shop[0]?.image).toBeUndefined();
+    const elsewhere = await discover(U, t, { ...deps, photo: async () => ({ url: "https://evil.example/x.jpg" }) });
+    expect(elsewhere[0]?.image).toBeUndefined();
+  });
+});
+
+describe.skipIf(!playwright())("the phone's read picks up the site's own pictures, and nobody else's", () => {
+  it("names each picture by its alt text or the words beside it, from allowed hosts only", async () => {
+    const browser = await playwright()!.chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.route("https://www.swiggy.com/**", (route: any) => route.fulfill({ contentType: "text/html", body: `<html><head><title>My Account</title></head><body>
+        <h2>Past Orders</h2>
+        <div><img src="https://media-assets.swiggy.com/swiggy/image/upload/biryani" width="80" height="80" alt="Chicken Dum Biryani"></div>
+        <div><img src="https://media-assets.swiggy.com/swiggy/image/upload/truffles" width="80" height="80" alt=""><span>Truffles</span></div>
+        <img src="https://tracker.example/pixel.gif" width="80" height="80" alt="Chicken Dum Biryani">
+        <img src="https://media-assets.swiggy.com/swiggy/image/upload/dot" width="1" height="1" alt="dot">
+      </body></html>` }));
+      await page.route("https://media-assets.swiggy.com/**", (route: any) => route.fulfill({ contentType: "image/gif", body: Buffer.from("R0lGODlhAQABAAAAACw=", "base64") }));
+      await page.route("https://tracker.example/**", (route: any) => route.fulfill({ contentType: "image/gif", body: Buffer.from("R0lGODlhAQABAAAAACw=", "base64") }));
+      await page.goto("https://www.swiggy.com/my-account/orders");
+      const r = await page.evaluate(historyRead(SITE)) as { text: string };
+      const { images } = splitImages(r.text, SITE);
+      expect(images).toEqual([
+        { label: "Chicken Dum Biryani", url: "https://media-assets.swiggy.com/swiggy/image/upload/biryani" },
+        { label: "Truffles", url: "https://media-assets.swiggy.com/swiggy/image/upload/truffles" },
+      ]);
+    } finally { await browser.close(); }
+  }, 30_000);
+});

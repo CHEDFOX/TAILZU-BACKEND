@@ -109,6 +109,7 @@ export const orderScreens: BotsScreen[] = [
       await deps.api("POST", `${SITES_API}/did`, {
         site: o.site, ref: orderId(token), title: `Filled your cart ${kindOf(o.site).kind === "food" ? "at" : "with"} ${kindOf(o.site).kind === "food" ? o.place : itemWords(o.items)}`,
         line: kindOf(o.site).kind === "food" ? itemWords(o.items) : siteName(o.site),
+        ...(o.image ? { image: o.image } : {}),
       }).catch(() => undefined);
       return undefined;
     },

@@ -9,6 +9,7 @@
  * option that fails any of it is dropped, so a row that was tampered with can at most lose its card.
  */
 import { siteAllowed } from "../gate.js";
+import { safeImage } from "./pictures.js";
 import type { OrderItem, OrderOption } from "./types.js";
 
 export const ORDER_TOKEN_MAX = 3000;
@@ -21,6 +22,7 @@ export function orderToken(options: readonly OrderOption[]): string {
     site: o.site, place: o.place.slice(0, 80), items: o.items.slice(0, ITEMS_KEPT), why: o.why.slice(0, 200), url: o.url,
     ...(o.area ? { area: o.area.slice(0, 60) } : {}), ...(o.total ? { total: o.total } : {}), ...(o.search ? { search: true } : {}),
     ...(o.fresh ? { fresh: true, said: (o.said ?? "").slice(0, 240), host: (o.host ?? "").slice(0, 60) } : {}),
+    ...(o.image ? { image: o.image } : {}), ...(o.credit ? { credit: o.credit.slice(0, 120) } : {}),
   }));
   // Fewer options rather than a cut in the middle of one, which would be no JSON at all.
   for (let n = kept.length; n > 0; n--) {
@@ -61,9 +63,12 @@ export function readOrderToken(raw: unknown, max = OPTIONS_KEPT, maxChars = ORDE
     const area = clip(o.area, 60);
     // Somewhere new: the reviewer's words and where they were written travel with it, and are only ever drawn as text.
     const said = o.fresh === true ? clip(o.said, 240) : "", host = o.fresh === true ? clip(o.host, 60).replace(/[^a-z0-9.-]/gi, "") : "";
+    // A picture is shown only from the site's own image servers or Commons (pictures.ts), checked again here.
+    const image = safeImage(o.image, site), credit = image ? clip(o.credit, 120) : "";
     out.push({
       site, place, items, why, url, ...(area ? { area } : {}), ...(total ? { total } : {}), ...(search ? { search: true as const } : {}),
       ...(o.fresh === true ? { fresh: true as const, ...(said ? { said } : {}), ...(host ? { host } : {}) } : {}),
+      ...(image ? { image } : {}), ...(credit ? { credit } : {}),
     });
   }
   return out;

@@ -135,12 +135,19 @@ function score(c: Combo, ask: OrderAsk, slot: Slot, day: number, nowLocal: strin
   return { c, score: s, why };
 }
 
+/** The picture an order is drawn with: its first item's own photo, else its place's, from any time it was ordered. */
+export function pictureOf(orders: readonly SiteOrder[]): string | undefined {
+  for (const o of orders) { const i = o.items.find((x) => x.image)?.image; if (i) return i; }
+  return orders.find((o) => o.image)?.image;
+}
+
 function optionOf(x: Scored): OrderOption {
   const total = median(x.c.orders.map((o) => o.total).filter((t): t is number => !!t));
+  const image = pictureOf(x.c.orders);
   return {
-    site: x.c.site, place: x.c.place, items: x.c.items, why: x.why,
+    site: x.c.site, place: x.c.place, items: x.c.items.map(({ name, qty }) => ({ name, qty })), why: x.why,
     url: startFor(x.c.site, x.c.place, x.c.items, x.c.link),
-    ...(x.c.area ? { area: x.c.area } : {}), ...(total ? { total } : {}),
+    ...(x.c.area ? { area: x.c.area } : {}), ...(total ? { total } : {}), ...(image ? { image } : {}),
   };
 }
 
@@ -167,6 +174,7 @@ function discoveryOption(site: string, d: Discovery): OrderOption {
   return {
     site, place: d.place, items: [{ name: d.item, qty: 1 }], why: d.why, url: startFor(site, d.place, [{ name: d.item, qty: 1 }]),
     fresh: true, said: d.said, host: d.host,
+    ...(d.image ? { image: d.image } : {}), ...(d.credit ? { credit: d.credit } : {}),
   };
 }
 
@@ -226,6 +234,7 @@ export function planOrder(histories: readonly SiteHistory[], ask: OrderAsk, now:
     .map(({ h, r }): OrderOption => ({
       site: h.site, place: r.place, items: [{ name: r.name, qty: 1 }], why: "About time for more",
       url: startFor(h.site, r.place, [{ name: r.name, qty: 1 }], r.link), ...(r.total ? { total: r.total } : {}),
+      ...(r.image ? { image: r.image } : {}),
     }));
 
   const out: OrderOption[] = [];

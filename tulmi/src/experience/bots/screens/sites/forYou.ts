@@ -25,14 +25,14 @@ import { itemWords, money } from "../../../../sites/history/portrait.js";
 import type { DidView, OrderOption, SitePortrait } from "../../../../sites/history/types.js";
 import { FIND_LOGIN, PAGE_SHAPE } from "../../../../sites/phone.js";
 import {
-  type BotsCtx, C, back, box, button, call, canSiteView, card, col, emptyState, grow, icon, meta, open, page,
+  type BotsCtx, C, back, button, call, canSiteView, card, col, emptyState, grow, icon, meta, open, page,
   row, SCREENS, sectionLabel, seq, siteView, text, timeline, title,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { oops } from "../keybotParts.js";
 import { refresh, toast } from "../bots/parts.js";
 import { forgetHistoryPath, historyReadPath, loadPortrait, type PortraitView, type Reader } from "./data.js";
-import { freshCard, orderAction, othersCard } from "./orderCard.js";
+import { freshCard, orderAction, othersCard, photo, thumb } from "./orderCard.js";
 
 const siteName = (site: string): string => catalogFor(site)?.name ?? site;
 
@@ -44,28 +44,32 @@ function leadLabel(o: OrderOption): string {
   return "PICKED FOR YOU";
 }
 
-/** THE LEAD: the one dark card, the thing X0 would get them right now, one tap from a filled cart. */
+/**
+ * THE LEAD: the one dark card, the thing X0 would get them right now, one tap from a filled cart. Its photo runs edge to
+ * edge across the top when there is one: the dish or the product, as the site shows it.
+ */
 function leadCard(o: OrderOption): Node {
   const paper = C.paper, soft = "#b8b8b8";
   const k = kindOf(o.site);
+  const words = col([
+    row([
+      icon("spark", { size: 14, color: paper }),
+      text(leadLabel(o), { size: 11, weight: 600, color: soft, tracking: 0.6, lineHeight: 14 }),
+      grow(),
+      ...(o.total ? [text(`about ${money(o.total)}`, { size: 14, weight: 600, color: paper, lineHeight: 20 })] : []),
+    ], { gap: 6, alignItems: "center" }),
+    text(k.kind === "food" ? o.place : itemWords(o.items), { size: 22, weight: 700, color: paper, lineHeight: 27, tracking: -0.3, lines: 2 }),
+    text(k.kind === "food" ? itemWords(o.items) : o.place, { size: 15, color: paper, lineHeight: 20, lines: 3 }),
+    ...(leadLabel(o) === "PICKED FOR YOU" ? [meta(o.why, { size: 13, color: soft, lines: 2 })] : []),
+    row([text(k.verb === "buy" ? "Buy it now" : "Order it now", { size: 15, weight: 600, color: C.ink, lineHeight: 20 }), icon("chevron", { size: 16, color: C.ink })], {
+      height: 46, borderRadius: 23, paddingHorizontal: 20, gap: 6, justifyContent: "center", alignItems: "center",
+      alignSelf: "flex-start", backgroundColor: paper,
+    }, orderAction(o)),
+  ], { gap: 12, padding: 18 });
   return {
     type: "Stack",
-    style: { flexDirection: "column", gap: 12, padding: 18, borderRadius: 20, backgroundColor: C.ink },
-    children: [
-      row([
-        icon("spark", { size: 14, color: paper }),
-        text(leadLabel(o), { size: 11, weight: 600, color: soft, tracking: 0.6, lineHeight: 14 }),
-        grow(),
-        ...(o.total ? [text(`about ${money(o.total)}`, { size: 14, weight: 600, color: paper, lineHeight: 20 })] : []),
-      ], { gap: 6, alignItems: "center" }),
-      text(k.kind === "food" ? o.place : itemWords(o.items), { size: 22, weight: 700, color: paper, lineHeight: 27, tracking: -0.3, lines: 2 }),
-      text(k.kind === "food" ? itemWords(o.items) : o.place, { size: 15, color: paper, lineHeight: 20, lines: 3 }),
-      ...(leadLabel(o) === "PICKED FOR YOU" ? [meta(o.why, { size: 13, color: soft, lines: 2 })] : []),
-      row([text(k.verb === "buy" ? "Buy it now" : "Order it now", { size: 15, weight: 600, color: C.ink, lineHeight: 20 }), icon("chevron", { size: 16, color: C.ink })], {
-        height: 46, borderRadius: 23, paddingHorizontal: 20, gap: 6, justifyContent: "center", alignItems: "center",
-        alignSelf: "flex-start", backgroundColor: paper,
-      }, orderAction(o)),
-    ],
+    style: { flexDirection: "column", borderRadius: 20, overflow: "hidden", backgroundColor: C.ink },
+    children: [...(o.image ? photo(o.image, 200, { radius: 0 }) : []), words],
   } as Node;
 }
 
@@ -93,12 +97,13 @@ function when(at: number, now: number): string {
 }
 
 /** DONE FOR YOU: what X0 actually did here, newest first. */
-function done(dids: readonly DidView[] | undefined, now: number): Node[] {
+function done(dids: readonly DidView[] | undefined, now: number, site: string): Node[] {
   if (!dids?.length) return [];
   return [
     sectionLabel("Done for you"),
     card([timeline(dids.slice(0, 6).map((d) => ({
       mark: "done" as const, title: d.title,
+      ...(d.image ? { left: thumb(d.image, site, 40) } : {}),
       meta: [d.line, when(d.at, now)].filter(Boolean).join(" · "),
     })))]),
   ];
@@ -126,7 +131,8 @@ export function siteCard(p: SitePortrait): Node {
     : "Getting your picks ready";
   return card([
     row([
-      box([icon(k.icon, { size: 18 })], { width: 34, height: 34, borderRadius: 17, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
+      // What is ready there, as a picture: the lead's own photo, or the kind's mark.
+      thumb(lead?.image, p.site, 48),
       col([
         text(p.name, { size: 16, weight: 600, lineHeight: 21 }),
         meta(line, { size: 12, lines: 1 }),
@@ -144,7 +150,7 @@ function forYouPage(ctx: BotsCtx, d: PortraitView | undefined): ScreenResponse {
   const readers = historyReaders(ctx, d?.reader ? [d.reader] : []);
   if (!p) return page(ctx, { title: "For you", body: [emptyState({ title: "Nothing to show", body: "This isn't switched on here." })], back: back() });
   const name = siteName(p.site);
-  const body = [...ready(p), ...done(p.did, Date.now())];
+  const body = [...ready(p), ...done(p.did, Date.now(), p.site)];
   if (!body.length) {
     return page(ctx, {
       title: name,

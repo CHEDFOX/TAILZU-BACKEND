@@ -6,6 +6,7 @@
  * any payload is: capped, typed, and anything the wrong shape dropped.
  */
 import { readOrderToken } from "../../../../sites/history/token.js";
+import { safeImage } from "../../../../sites/history/pictures.js";
 import { SLOTS, type DidView, type OrderItem, type PickView, type SitePortrait, type Slot, type TasteView } from "../../../../sites/history/types.js";
 import type { BotsDeps } from "../../live.js";
 import { SITES_API, sitesOn } from "../../sites.js";
@@ -63,12 +64,13 @@ function picksOf(v: unknown): PickView[] {
 }
 
 /** What was done for them: three kinds, each a line of words and a time. */
-function didOf(v: unknown): DidView[] {
+function didOf(v: unknown, site: string): DidView[] {
   return arr(v, 8).flatMap((x) => {
     const d = rec(x);
+    const image = safeImage(d.image, site);
     const kind = d.kind === "found" || d.kind === "arrived" ? d.kind : d.kind === "cart" ? "cart" : null;
     const title = str(d.title, 120);
-    return kind && title ? [{ kind, title, at: num(d.at) ?? 0, ...(str(d.line, 160) ? { line: str(d.line, 160) } : {}) }] : [];
+    return kind && title ? [{ kind, title, at: num(d.at) ?? 0, ...(str(d.line, 160) ? { line: str(d.line, 160) } : {}), ...(image ? { image } : {}) }] : [];
   });
 }
 
@@ -121,7 +123,7 @@ export function cleanPortrait(raw: unknown): SitePortrait | undefined {
     recent,
     // What is ready goes through the same checks as Talk's card (token.ts): every address on the site, every field capped.
     ...(Array.isArray(r.ready) && r.ready.length ? { ready: readOrderToken(JSON.stringify({ v: 1, options: r.ready.slice(0, 4) }), 4, 12_000) } : {}),
-    ...(didOf(r.did).length ? { did: didOf(r.did) } : {}),
+    ...(didOf(r.did, site).length ? { did: didOf(r.did, site) } : {}),
     ...(tasteOf(r.taste) ? { taste: tasteOf(r.taste) } : {}),
     ...(picksOf(r.picks).length ? { picks: picksOf(r.picks) } : {}),
     ...(local(r.since) ? { since: local(r.since) } : {}),

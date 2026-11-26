@@ -98,7 +98,9 @@ export function registerSiteHistoryRoutes(app: FastifyInstance, deps: BotsAreaDe
     const b = body(req);
     const ref = str(b.ref, 40).replace(/[^a-z0-9-]/gi, ""), title = str(b.title, 120);
     if (!ref || !title) throw new SiteError("bad_request", "That isn't something I did.", 400);
-    await o.histories.noteCart(user.id, str(b.site, 120).toLowerCase(), { ref, title, ...(str(b.line, 160) ? { line: str(b.line, 160) } : {}) });
+    await o.histories.noteCart(user.id, str(b.site, 120).toLowerCase(), {
+      ref, title, ...(str(b.line, 160) ? { line: str(b.line, 160) } : {}), ...(str(b.image, 600) ? { image: str(b.image, 600) } : {}),
+    });
     return { ok: true };
   }));
 

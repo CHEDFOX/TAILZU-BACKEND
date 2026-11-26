@@ -23,6 +23,7 @@ import { z } from "zod";
 import { askJson } from "../../../code/work/model.js";
 import type { Hunch, Taste } from "./profile.js";
 import { KINDS, type SiteKind } from "../kinds.js";
+import { COMMONS_IMAGES, safeImage } from "../pictures.js";
 
 /** One look for new places: a few searches, a handful of pages, one reasoning call. Done at most daily, and cached. */
 export const SITE_DISCOVER_PAISE = 160;
@@ -41,6 +42,11 @@ export interface DiscoverDeps {
   call?: Parameters<typeof askJson>[0]["call"];
   gateway?: Parameters<typeof askJson>[0]["gateway"];
   maxPaise?: number;
+  /**
+   * A free photo of a dish (src/discover/photos.ts, Wikimedia Commons): the picture on something new's card. Food only: a
+   * photo of "a hair oil" is not a photo of THAT hair oil, and a wrong product picture is worse than none.
+   */
+  photo?(query: string): Promise<{ url: string; credit?: string } | null>;
 }
 
 /** A place to try, and why it is for them. */
@@ -55,6 +61,9 @@ export interface Discovery {
   host: string;
   url: string;
   reach: "near" | "stretch";
+  /** A free photo of the item (Wikimedia Commons), and its credit, when one was found: food only. */
+  image?: string;
+  credit?: string;
   /** The item they asked for, when this was found for an ask rather than ahead of time. */
   asked?: string;
 }
@@ -140,7 +149,14 @@ export async function discover(userId: string, t: Taste, d: DiscoverDeps, o: { w
       tier: "cheap", purpose: "site.discover", role: "site_discover",
       user: discoverUser(t, hunches, pages), schema: DiscoverReply, maxTokens: 1000,
     });
-    return r.ok ? picksFrom(r.value, hunches, pages, o.want) : [];
+    const picks = r.ok ? picksFrom(r.value, hunches, pages, o.want) : [];
+    if (!d.photo || t.kind !== "food") return picks;
+    return Promise.all(picks.map(async (p) => {
+      const got = await d.photo!(p.item).catch(() => null);
+      // Commons only: the one picture source for something new (pictures.ts).
+      const image = got && COMMONS_IMAGES.some((h) => { try { return new URL(got.url).hostname === h; } catch { return false; } }) ? safeImage(got.url, "") : undefined;
+      return image ? { ...p, image, ...(got?.credit ? { credit: got.credit.slice(0, 120) } : {}) } : p;
+    }));
   } catch {
     return [];
   }

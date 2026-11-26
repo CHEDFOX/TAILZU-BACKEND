@@ -27,6 +27,7 @@ import type { SiteHistory } from "./plan.js";
 import { historyStore, type HistoryStore } from "./store.js";
 import { kindOf } from "./kinds.js";
 import { readyFor } from "./plan.js";
+import { safeImage } from "./pictures.js";
 import type { PickView, SitePortrait, TasteView } from "./types.js";
 import { discover, type DiscoverDeps, type Discovery } from "./taste/discover.js";
 import { tasteHash, tasteOf, TASTE_MIN_ORDERS, type Taste, type TasteDeps } from "./taste/profile.js";
@@ -167,7 +168,7 @@ export class SiteHistories {
       ...(ins.taste ? { taste: tasteView(ins.taste) } : {}),
       ...(ins.picks?.length ? { picks: ins.picks.map(pickView) } : {}),
       ...(ready.length ? { ready } : {}),
-      ...(did.length ? { did: did.map((d) => ({ kind: d.kind, title: d.title, ...(d.line ? { line: d.line } : {}), at: d.at })) } : {}),
+      ...(did.length ? { did: did.map((d) => ({ kind: d.kind, title: d.title, ...(d.line ? { line: d.line } : {}), at: d.at, ...(d.image ? { image: d.image } : {}) })) } : {}),
     };
   }
 
@@ -209,6 +210,7 @@ export class SiteHistories {
             ref: `found:${new Date(this.now()).toISOString().slice(0, 10)}`, kind: "found", at: this.now(),
             title: fresh.length === 1 ? `Found you something new: ${fresh[0]!.item}` : `Found ${fresh.length} new ${k.kind === "food" ? "places" : "things"} you'd like`,
             line: fresh.map((p) => `${p.item} ${k.kind === "food" ? "at" : "from"} ${p.place}`).join(", ").slice(0, 160),
+            ...(fresh.find((p) => p.image)?.image ? { image: fresh.find((p) => p.image)!.image } : {}),
           });
         }
       } catch { /* what was there stays */ } finally {
@@ -254,10 +256,13 @@ export class SiteHistories {
   }
 
   /** A cart filled on their phone (screens/sites/order.ts): noted once per order, shown under "Done for you". */
-  async noteCart(userId: string, rawSite: string, c: { ref: string; title: string; line?: string }): Promise<void> {
+  async noteCart(userId: string, rawSite: string, c: { ref: string; title: string; line?: string; image?: string }): Promise<void> {
     const site = siteOf(rawSite);
     this.allowed(userId, site);
-    await this.store.addDid(userId, site, { ref: `cart:${c.ref}`, kind: "cart", title: c.title, ...(c.line ? { line: c.line } : {}), at: this.now() });
+    const image = safeImage(c.image, site);
+    await this.store.addDid(userId, site, {
+      ref: `cart:${c.ref}`, kind: "cart", title: c.title, ...(c.line ? { line: c.line } : {}), ...(image ? { image } : {}), at: this.now(),
+    });
   }
 
   async forget(userId: string, rawSite: string): Promise<void> {
