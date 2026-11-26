@@ -188,9 +188,9 @@ export const DESKTOP_ROUTER = {
 } as const;
 
 /**
- * "ADD THIS" (the desktop's addThis.js, for a build that declares DeskAddThis): words that hand Plan Ease what is on the screen, and
+ * "ADD THIS" (the desktop's addThis.js, for a build that declares DeskAddThis): words that hand Nudj what is on the screen, and
  * the words that point at it. Only such a build is sent them: the server's lists replace the desktop's own, and an older one would send
- * "save this" to Plan Ease with nothing to save. The same as the desktop's router.js, so the copy on the computer cannot drift.
+ * "save this" to Nudj with nothing to save. The same as the desktop's router.js, so the copy on the computer cannot drift.
  */
 export const DESKTOP_ADD_THIS = {
   tasks: [
@@ -237,7 +237,7 @@ export function desktopLists(o: { addThis?: boolean } = {}): Record<string, unkn
   const router: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(DESKTOP_ROUTER)) router[`desktop.router.${k}`] = v;
   if (o.addThis) {
-    // Plan Ease's "add this" tasks go after its own, so "add <thing> to my calendar" still reads as it did.
+    // Nudj's "add this" tasks go after its own, so "add <thing> to my calendar" still reads as it did.
     const tasks = DESKTOP_ROUTER.tasks as readonly { slug: string; re: string }[];
     const lastPlan = tasks.map((t) => t.slug).lastIndexOf("plan");
     router["desktop.router.tasks"] = [...tasks.slice(0, lastPlan + 1), ...DESKTOP_ADD_THIS.tasks, ...tasks.slice(lastPlan + 1)];

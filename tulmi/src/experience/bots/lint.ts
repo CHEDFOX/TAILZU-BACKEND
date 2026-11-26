@@ -86,7 +86,7 @@ export function lintTree(root: Node, opts: LintOpts = {}): string[] {
     else if (!KIT_TYPES.has(n.type)) bad.push(`type ${n.type}`);
     // A CONDITION'S PATH IS BARE, never "$state."-prefixed. Both clients put the prefix on themselves
     // (`resolveValue(`$state.${cond.eq[0]}`)`), so a path that carries one is looked up as `$state.$state.i`,
-    // comes back undefined, and the node is hidden — silently, for ever. It blanked the whole of Lingo's set
+    // comes back undefined, and the node is hidden — silently, for ever. It blanked the whole of Babbl's set
     // screen, every exercise hidden behind a condition that could never be true, and it had already been hiding
     // that screen's three verdict lines since the day they were written. Nothing about it looks wrong in the
     // code, and nothing says so at runtime, so it is said here.

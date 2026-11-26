@@ -117,7 +117,7 @@ export class PlanTravelling {
     await this.prefs.patch(userId, { saves: saves.slice(-SAVES_KEPT), shown: null });
   }
 
-  /** The suggestion shown, kept for moved(); written only when it changed. Plan Ease's Move card says its own (planEase.ts). */
+  /** The suggestion shown, kept for moved(); written only when it changed. Nudj's Move card says its own (planEase.ts). */
   async keepShown(userId: string, had: PlanPrefsRow | null | undefined, s: Pick<Suggestion, "eventId" | "startIso" | "key" | "savedMin"> | null): Promise<void> {
     if (had === undefined) had = await this.row(userId);
     const next: ShownMove | null = s ? { eventId: s.eventId, startIso: s.startIso, key: s.key, ...(s.savedMin ? { savedMin: s.savedMin } : {}) } : null;

@@ -1,7 +1,7 @@
 /**
  * PLAN EASE'S "NEEDS YOU": ONE QUESTION AT A TIME (docs/plan-ease.md "Needs-you cards"; design A1, B4).
  *
- * Every question Plan Ease could ask the person is a card of some type. needsYou() asks every type for its cards, drops the ones
+ * Every question Nudj could ask the person is a card of some type. needsYou() asks every type for its cards, drops the ones
  * answered or left alone (plan_skips, keyed "<type>:<id>:<version>"), orders the rest by when each stops being useful (soonest first,
  * then the types' own order), and the first is THE card: one on the page, one on the widget, one in a note. Nothing is stored but the
  * answers, so a card answered anywhere (the page, the widget, a notification's button: all through the act door, POST /v1/widgets/act)

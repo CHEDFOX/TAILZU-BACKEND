@@ -8,7 +8,7 @@
  * anybody will ever write, so it is written when the FIRST person on a pair reaches the unit, and kept — the next
  * person on Spanish-from-Tamil pays nothing and waits for nothing.
  *
- * That is the whole reason a course can exist for any pair at all. It also ends Lingo's dependence on somebody
+ * That is the whole reason a course can exist for any pair at all. It also ends Babbl's dependence on somebody
  * having poured a corpus in: a pair with no corpus used to mean a course with nothing in it.
  *
  * WHAT IS KEPT IS SHARED AND IS NOBODY'S. A unit is the same for everyone learning that pair, so nothing here is

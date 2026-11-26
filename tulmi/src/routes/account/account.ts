@@ -154,11 +154,11 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       // A fitness bot's daily steps and workouts (migration 0090). It cascades from the account and from the bot; it is listed
       // here so the most sensitive thing X0 Bot holds goes first and by name, not only by a cascade nobody can see.
       ["bot_health_days", null],
-      // The Oracle (migration 0078): when and where they were born, and the route of their last question.
+      // Chamen (migration 0078): when and where they were born, and the route of their last question.
       ["oracle_people", null],
       // The mail bot (migration 0080): the hash its worker knows their account by, for the push.
       ["mail_owners", null],
-      // Lingo (migration 0087): the languages they were learning, and every word and phrase with it.
+      // Babbl (migration 0087): the languages they were learning, and every word and phrase with it.
       ["lingo_items", null], ["lingo_learners", null],
       // Apple's token for revoking the sign-in (migration 0061), revoked just above.
       ["apple_sign_in", null],
@@ -173,7 +173,7 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     }
 
     try { await deleteViewerData(admin, user.id); } catch (err) { req.log.error({ err }, "delete artifact_data"); }
-    // Plan Ease's follow-through (migration 0081): numbers other people kept for this person go (plan_numbers.member_id also cascades),
+    // Nudj's follow-through (migration 0081): numbers other people kept for this person go (plan_numbers.member_id also cascades),
     // and their name leaves other people's follows. Their own follows, steps and phone go with the account just below.
     try { await planFollows().forget(user.id); } catch (err) { req.log.error({ err }, "forget follow person"); }
     // The invites they sent and the mail those invites queued (botsBots/inviteSweeper.ts). Neither goes with the account on its

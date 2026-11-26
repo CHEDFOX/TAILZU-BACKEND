@@ -9,8 +9,8 @@
  *   code       code_ask                         Xode's answer about the person's project (code/chat), read-only. A change to the code is the Code
  *                                               bot's own flow: the bot tells the person to ask it, and nothing here starts a job
  *   files      search_knowledge                 the bot's own files, by the question's words (knowledge.ts)
- *   everyday   flights_search, hotels_search, currency_convert, weather   src/everyday: live, free, no sign-in of the person's; the Travel bot
- *                                               and any bot that searches the web get all four, Plan Ease currency and weather (everyday/tools.ts)
+ *   everyday   flights_search, hotels_search, currency_convert, weather   src/everyday: live, free, no sign-in of the person's; Nomaz
+ *                                               and any bot that searches the web get all four, Nudj currency and weather (everyday/tools.ts)
  *   connectors <app>__<tool> for each tool of each connected app the owner gave the bot, through connectors/tasks.ts use(): the assistant's own permission tiers;
  *                                               each may carry x0_widget {question, private}: the bot's own words for the yes on the owner's phone
  *
@@ -193,7 +193,7 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
     }
   }
 
-  // ---- Lingo: writing down a word they reached for, which is the only thing its chat can do that talking cannot.
+  // ---- Babbl: writing down a word they reached for, which is the only thing its chat can do that talking cannot.
   // Its own bot and nobody else's: another bot handed this would be filing words into a course it knows nothing
   // about. src/lingo/tool.ts says why it matters that this exists at all.
   if (ports.lingo && bot.id === LINGO_SLUG) {

@@ -6,7 +6,7 @@
  * src/discover knows nothing about any of these. It declares what it needs (builder.ts BuilderDeps) and this file
  * is the only place the three are named:
  *
- *   resolve   src/places — the same geocoder Plan Ease uses for travel times, so a place resolves once for the
+ *   resolve   src/places — the same geocoder Nudj uses for travel times, so a place resolves once for the
  *             whole server and "hampi" cannot become two cards
  *   research  src/web/research through code/webTools — several pages read and an answer that CITES them; those
  *             citations become the card's sources, which is why the model is never asked for its own

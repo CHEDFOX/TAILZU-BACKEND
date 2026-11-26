@@ -30,7 +30,7 @@ function withoutSpacesAction(flags: Record<string, unknown>): Record<string, unk
 }
 
 /**
- * Plan Ease's notification buttons and Android channels (botsBots/planKinds.ts), after the app's own: the phone registers the buttons at
+ * Nudj's notification buttons and Android channels (botsBots/planKinds.ts), after the app's own: the phone registers the buttons at
  * launch and makes the channels at its next push registration. A category or channel the app already lists is left as it is. While its
  * reminders are switched off (PLAN_V2_REMINDERS) no push carries them, so none is listed. A call's buttons (Answer, Not now, Call back)
  * come too while calls are on (BOT_CALLS): an older JS registers them harmlessly, since no push of its uses them. A call's channels never

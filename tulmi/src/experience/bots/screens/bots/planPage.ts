@@ -11,7 +11,7 @@
  * door (POST /v1/widgets/act), as the widget's and a notification's do: answered here, it's gone there too. The page listens to
  * "bot:plan", which every change publishes, and its live reload keeps what is on it (an answer's grey line, the box's reply).
  *
- * Look: white paper and ink; Plan Ease's ochre only on its own bot, the Needs-you dot and the leave-by time in the big line. People are
+ * Look: white paper and ink; Nudj's ochre only on its own bot, the Needs-you dot and the leave-by time in the big line. People are
  * their tiny bots, never initials. Words a person wrote or will send are in Bricolage (messageText).
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
@@ -54,7 +54,7 @@ export interface PlanWeekData { today: string; days: Array<{ key: string; date: 
 const ACT = "/v1/widgets/act";
 const OCHRE = lookOf("plan").color;
 
-/** A press of one of Plan Ease's buttons, through the act door; its own key, so pressing it again later is a new answer. */
+/** A press of one of Nudj's buttons, through the act door; its own key, so pressing it again later is a new answer. */
 export const act = (ctx: BotsCtx, item: string, action: string, then?: { ok?: ActionRef; fail?: ActionRef }): ActionSpec =>
   call("POST", ACT, { item, action, key: `${item}:${action}:${ctx.live.now}`.slice(0, 120) }, {
     ok: then?.ok ?? seq(), fail: then?.fail ?? toast("Couldn't do that. Try again.", true), stay: true,
@@ -62,13 +62,13 @@ export const act = (ctx: BotsCtx, item: string, action: string, then?: { ok?: Ac
 
 // ------------------------------------------------------------------ the parts
 
-/** Back, Plan Ease's bot and its name: the header is just the name. */
+/** Back, Nudj's bot and its name: the header is just the name. */
 function head(ctx: BotsCtx): Node {
   const look = lookOf("plan");
   return row([
     ...(isDesk(ctx) ? [] : [labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back")]),
     botAvatar(look, isDesk(ctx) ? 40 : 36),
-    text("Plan Ease", { size: isDesk(ctx) ? 22 : 19, weight: 600, lineHeight: 26 }),
+    text("Nudj", { size: isDesk(ctx) ? 22 : 19, weight: 600, lineHeight: 26 }),
   ], { gap: 10 });
 }
 
@@ -162,7 +162,7 @@ function dayPart(ctx: BotsCtx, d: PlanTodayData["days"][number]): Node[] {
 
 // ------------------------------------------------------------------ the box (here, and on "Plan something": screens/bots/planMake.ts)
 
-/** From the Plan's own +, what is shared is always Plan Ease's: the capture card, never the bot picker. */
+/** From the Plan's own +, what is shared is always Nudj's: the capture card, never the bot picker. */
 const shareIn = (pick: "photo" | "camera" | "file") => uploadPick(pick, "boxFiles", open(SCREENS.shareIn, { file: "$state.sent.file.id", from: "plan" }));
 
 /**
@@ -188,7 +188,7 @@ export function boxPicks(ctx: BotsCtx): Node[] {
 
 /**
  * What runs once the box's answer is at state `boxed` (POST .../plan/box, or "Plan something"'s draft route answering kind "box"): the
- * chat's question asks the Plan Ease chat (its own route, its consent gate and its budget, as before); pasted words read into a capture
+ * chat's question asks the Nudj chat (its own route, its consent gate and its budget, as before); pasted words read into a capture
  * card open it; "link my work calendar" opens the link page (botsBots/planInBox.ts); anything else clears the box.
  */
 export function afterBox(_ctx: BotsCtx): ActionRef {
@@ -243,7 +243,7 @@ export function boxReply(ctx: BotsCtx, o: { pill?: boolean } = {}): Node[] {
 
 /**
  * The one box: "Tell me anything, or add a photo". The server says what it was (POST .../plan/box): added (a grey line with Undo), a
- * day's answer, or the chat's (sent to the Plan Ease chat as before). The + picks a photo, a camera shot or a file, and the share-in
+ * day's answer, or the chat's (sent to the Nudj chat as before). The + picks a photo, a camera shot or a file, and the share-in
  * screen reads it.
  */
 function planBox(ctx: BotsCtx): Node {
@@ -272,7 +272,7 @@ const STATE = { say: "", boxPick: false, planHome: "", askQ: "", askBusy: false 
 
 export function planTodayPhone(ctx: BotsCtx, d: PlanTodayData | undefined) {
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...STATE }, gap: 26,
+    title: "Nudj", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...STATE }, gap: 26,
     body: [
       head(ctx),
       ...(!d ? [noRead()] : [
@@ -296,7 +296,7 @@ export function planTodayDesk(ctx: BotsCtx, d: PlanTodayData | undefined) {
     { borderWidth: 1, borderColor: C.line, borderRadius: 20, overflow: "hidden" }),
   ], { gap: 10, width: 320, flexShrink: 0 }) : box([], { width: 320 });
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", maxWidth: 1080, live: ["bot:plan", "calendar", "tasks"], state: { ...STATE },
+    title: "Nudj", nav: "plan", maxWidth: 1080, live: ["bot:plan", "calendar", "tasks"], state: { ...STATE },
     body: [row([
       col([
         head(ctx),
@@ -324,7 +324,7 @@ export function planWeekPage(ctx: BotsCtx, d: PlanWeekData | undefined) {
   const one = d?.days.find((x) => x.key === day);
   // One day (a day's "2 more", a day tapped on the list): its rows. The week: a plain list, one line a day; a tap opens that day.
   return page(ctx, {
-    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), title: one ? one.date : "This week", nav: "plan", maxWidth: 680, live: ["bot:plan", "calendar", "tasks"],
+    back: true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), title: one ? one.date : "This week", nav: "plan", maxWidth: 680, live: ["bot:plan", "calendar", "tasks"],
     body: !d ? [noRead()] : one ? [
       text(one.date, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }),
       col(one.rows.map((r) => planRow(ctx, r)), { gap: 2 }),
@@ -361,12 +361,12 @@ export function planGoPage(ctx: BotsCtx, d?: { url?: string }) {
   const how = handoffOf(ctx, ["p_pay", "p_map"]);
   if (how === "ask" && (pay || url)) {
     return page(ctx, {
-      title: "Plan Ease", nav: "plan",
+      title: "Nudj", nav: "plan",
       body: [row([primaryButton(pay ? "Pay" : "Open map", go, { size: "md" }), secondaryButton("Open Plan", home, { size: "md" })], { gap: 10, flexWrap: "wrap", paddingTop: 24 })],
     });
   }
   return page(ctx, {
-    title: "Plan Ease", nav: "plan",
+    title: "Nudj", nav: "plan",
     body: [{ ...col([meta(how === "go" ? (pay ? "Opening…" : url ? "Opening Maps…" : "") : "", { size: 14 }), grow()], { flexGrow: 1, alignItems: "center", justifyContent: "center", minHeight: 200 }), on: { onAppear: how === "go" ? go : home } }],
   });
 }

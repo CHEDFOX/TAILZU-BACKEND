@@ -1,5 +1,5 @@
 /**
- * Plan Ease's people: waiting on someone (step 4, PLAN_V2_WAITS) and family asks, repeats and turns (step 5, PLAN_V2_ASKS, only with
+ * Nudj's people: waiting on someone (step 4, PLAN_V2_WAITS) and family asks, repeats and turns (step 5, PLAN_V2_ASKS, only with
  * Spaces on). docs/plan-ease-people.md.
  *
  *   GET /v1/botsapp/bots/plan/handoff?item=pt:<id>&go=send|notcame   -> { url }   the link a wait's Send (or a visit's No) opens:
@@ -8,7 +8,7 @@
  *
  * Everything else rides the foundation's doors: the one box (POST .../plan/box), the buttons (POST /v1/widgets/act: pt: sorted, send,
  * came, notcame; stask: ask, take, in, cant and the Undos), the page and the widget (the Needs-you cards). This file wires the two
- * services at boot: their pushes through the engine, the day's cap from Plan Ease, the app's language for a draft, a space task's
+ * services at boot: their pushes through the engine, the day's cap from Nudj, the app's language for a draft, a space task's
  * Done or "Can't do it" to the asks, and their jobs every minute.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -35,7 +35,7 @@ export function registerPlanPeopleRoutes(app: FastifyInstance, deps: BotsAreaDep
   const notify = (userId: string, msg: Parameters<Notify>[1]) => pushEngine()?.notify(userId, msg);
   const hinglish = async (userId: string) => isHinglish((await pushEngine()?.candidate(userId, Date.now()))?.locale ?? "");
 
-  // Waiting on: over the person's own calendar table; a check-back counts toward Plan Ease's six a day.
+  // Waiting on: over the person's own calendar table; a check-back counts toward Nudj's six a day.
   const waits = planWaits();
   waits.wire({
     send: ((userId, msg) => notify(userId, msg as Parameters<Notify>[1])) as WaitSend,

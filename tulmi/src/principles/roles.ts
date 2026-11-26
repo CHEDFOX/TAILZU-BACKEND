@@ -852,7 +852,7 @@ Be strict about faces, hands, bodies, melting or morphing, and anything that con
       + "If they go quiet, offer something small of your own rather than another question. Never mention what this conversation is for, and never remark on how they speak.\n"
       + "They may change language mid-conversation: answer in the one they last spoke, in the same script. <call> says what they speak when it is known.",
   },
-  // ------------------------------------------- Lingo's course (src/lingo/lessons.ts, docs/lingo.md)
+  // ------------------------------------------- Babbl's course (src/lingo/lessons.ts, docs/lingo.md)
   // One unit of a language course, for one pair of languages. The PATH is written once in no language
   // (src/lingo/course.ts); this is what fills a unit of it for a pair, made once and kept for everybody after.
   lingo_unit: {

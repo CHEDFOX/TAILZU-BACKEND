@@ -82,7 +82,7 @@ function section(label: string, rows: Node[], none: string): Node {
   return rows.length ? listCard(rows, { title: label }) : col([sectionLabel(label), meta(none, { size: 13 })], { gap: 8 });
 }
 
-export function mailPage(ctx: BotsCtx, d: MailPageData) {
+export function mailPage(ctx: BotsCtx, d: MailPageData, o: { tabs?: Node[] } = {}) {
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
   const m: MailData = d.mail ?? {};
@@ -98,7 +98,7 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
   ], { gap: 1, flexShrink: 1 });
   const settings = b && accessOf(b) !== "handler" ? [labelled(box([icon("settings", { size: 20, color: C.ink })], { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
     open(SCREENS.mailSettings, { b: b.id })), "Settings")] : [];
-  // The postie in the head, as the Oracle's page has its character: he stamps a letter and sends it off as the page opens.
+  // The postie in the head, as Chamen's page has its character: he stamps a letter and sends it off as the page opens.
   const postie = b && canBuddy(ctx) ? [botBuddy({
     kind: "custom", color: look.color, life: "page.mail", width: desk ? 150 : 64, height: desk ? 60 : 48, size: desk ? 38 : 30, state: "idle",
     avatar: POSTIE, lookTo: "down", ...botMoment(ctx, "m.stamp", "once"),
@@ -119,7 +119,7 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
   // The set-up card's stage: the postie, catching the first letter as the card opens.
   const who = b ? accessLine(b) : undefined;
   const cards = mailCards(ctx, m, { color: look.color, ...(canMoments(ctx) ? { avatar: POSTIE, moment: botMoment(ctx, "m.catch", "once") } : {}) });
-  const body: Node[] = [...cards, head, ...switcher, ...(who ? [meta(who, { size: 13, lineHeight: 18 })] : [])];
+  const body: Node[] = [...cards, head, ...(o.tabs ?? []), ...switcher, ...(who ? [meta(who, { size: 13, lineHeight: 18 })] : [])];
 
   if (m.down) {
     body.push(notice("The mail service couldn't be reached just now. Pull to try again.", { mark: "close" }));

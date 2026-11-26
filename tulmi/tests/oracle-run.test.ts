@@ -47,18 +47,18 @@ const req = (message: string, o: Record<string, unknown> = {}) => ({
   bot: builtinBot("oracle")!, userId: ALICE, message, surface: "chat" as const, capPaise: 600, ...o,
 });
 
-describe("the Oracle among the bots", () => {
+describe("Chamen among the bots", () => {
   it("is listed only where its service is set up", async () => {
     expect(builtinBots().map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk"]);
     on();
     expect(builtinBots().map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel", "talk", "oracle"]);
-    expect(builtinBot("oracle")).toMatchObject({ name: "Oracle", colour: "plum", ownerId: null, skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] } });
+    expect(builtinBot("oracle")).toMatchObject({ name: "Chamen", colour: "plum", ownerId: null, skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] } });
     const r = await rig();
     expect((await r.bots.list(ALICE)).map((b) => b.slug)).toContain("oracle");
   });
 });
 
-describe("a turn with the Oracle", () => {
+describe("a turn with Chamen", () => {
   it("keeps birth details given in the chat, reads with them, and never names the person to the service", async () => {
     on();
     const f = fakeWorker(() => ({ text: "You will meet them at work." }));
@@ -71,7 +71,7 @@ describe("a turn with the Oracle", () => {
     expect(f.asked[0]!.session).not.toContain(ALICE);
     expect((await store.get(ALICE))!.sky).toMatchObject({ place: "Mumbai, Maharashtra, India" });
     expect(a.paise).toBe(220);                                         // 0.025 dollars at 88 rupees
-    expect(a.bot).toEqual({ slug: "oracle", name: "Oracle", colour: "plum", builtin: true });
+    expect(a.bot).toEqual({ slug: "oracle", name: "Chamen", colour: "plum", builtin: true });
   });
 
   it("reads a sky only once it is whole, and sends their name and gender with it", async () => {
@@ -138,7 +138,7 @@ describe("Ask any bot", () => {
   const none = { projectId: undefined as string | undefined, attachments: [] as never[], recent: [] as never[], mode: "text" as const };
   const top = (message: string) => { const [a, b] = scoreBots(message, builtinBots(), none); return { slug: a!.bot.slug, sure: a!.points >= SURE_POINTS && a!.points - (b?.points ?? 0) >= 3 }; };
 
-  it("sends a reading asked for in so many words to the Oracle, in English, Hinglish and Hindi, with no model asked", () => {
+  it("sends a reading asked for in so many words to Chamen, in English, Hinglish and Hindi, with no model asked", () => {
     on();
     for (const m of ["what does my kundli say about my marriage?", "is this year good for my career astrologically", "pull a tarot card for me",
       "what's my horoscope for this week", "when will I get married?", "meri shaadi kab hogi", "mera rashifal batao", "kya main manglik hoon",

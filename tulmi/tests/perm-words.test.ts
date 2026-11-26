@@ -96,9 +96,9 @@ describe("the card's words", () => {
       expect(l).toContain("Next, your iPhone asks you.");
     }
     // With the AI permission given, the card says a model reads them; without it, that it does not until they allow it.
-    expect(yes).toContain("Plan Ease's AI reads them to plan your day");
+    expect(yes).toContain("Nudj's AI reads them to plan your day");
     expect(no).toContain("doesn't send your to-dos to AI unless you allow it");
-    expect(no).not.toContain("Plan Ease's AI reads them");
+    expect(no).not.toContain("Nudj's AI reads them");
   });
 
   it("the motion card names the ten minutes, the 31 days, and no places", () => {
@@ -184,7 +184,7 @@ describe("the system prompt says what the card said", () => {
     expect(usage).toMatch(/Motion & Fitness to count your steps/);
     expect(usage).toMatch(/fitness bot/);
     // If N0 cuts the driving check, this clause leaves the string AND the switch is not drawn: the pair moves together.
-    expect(usage).toMatch(/whether you're driving just before Plan Ease calls/);
+    expect(usage).toMatch(/whether you're driving just before Nudj calls/);
     expect(usage).toMatch(/never uses/);
   });
 

@@ -1,6 +1,6 @@
 /**
  * WHEN AND WHERE SOMEONE WAS BORN, FROM THEIR OWN WORDS: "13 July 1994, 9:30 am, Mumbai", "born 1994-07-13 at 21:15 in Pune",
- * "13/07/1994 subah 9 baje Delhi". The same reading serves the chat and the Oracle's card (routes/bots/oracle.ts).
+ * "13/07/1994 subah 9 baje Delhi". The same reading serves the chat and Chamen's card (routes/bots/oracle.ts).
  *
  *   readBirth(words)  the date, the time if given, and the words for the place; never a model, the same answer for the same words
  *   skyOf(read, place)  what the oracle's engine is given: the local time at the place, which the engine turns into UT itself

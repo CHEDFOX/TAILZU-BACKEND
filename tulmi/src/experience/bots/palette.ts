@@ -45,7 +45,7 @@ export const PALETTE_HEX: Record<string, string> = {
   // also the fallback colour below, so nothing that ships may wear it.
   ash: "#6B6762",
   // A cool graphite for the one built-in that is not a specialist. Distinct from both neutrals above on purpose:
-  // stone is greener and may not ship at all, ash is warmer and is Lingo's.
+  // stone is greener and may not ship at all, ash is warmer and is Babbl's.
   slate: "#4A535C",
 };
 
@@ -100,8 +100,8 @@ export function botLook(slug: string, colour?: string): BotLook {
   // Tailzu itself is not a bot in builtin.ts, so it keeps its own ink.
   if (slug === "tailzu") return { color: C.ink, icon: BUILTIN_ICON.tailzu!, ...(headUrl(slug) ? { head: headUrl(slug)! } : {}) };
   // The icon is looked up FIRST and outside the branch below, because it does not depend on configuration. A bot
-  // whose service is not set up is not in builtinBot() at all, and it was that which used to leave the Oracle, the
-  // meeting bot and Lingo wearing the generic spark: their icon is known whether or not their service is.
+  // whose service is not set up is not in builtinBot() at all, and it was that which used to leave Chamen, the
+  // meeting bot and Babbl wearing the generic spark: their icon is known whether or not their service is.
   const icon = BUILTIN_ICON[slug] ?? ownIcon(slug);
   const own = builtinColour(slug);
   if (own) return { color: own, icon, ...(headUrl(slug) ? { head: headUrl(slug)! } : {}) };

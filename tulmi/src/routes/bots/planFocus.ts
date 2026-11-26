@@ -3,7 +3,7 @@
  *
  *   POST /v1/botsapp/plan/focus { on, hold?, source? }  -> { ok: true, on }
  *
- * The phone's `focus.sync` posts here on Plan Ease page appear, with the person's own session. It exists for two reasons: the
+ * The phone's `focus.sync` posts here on Nudj page appear, with the person's own session. It exists for two reasons: the
  * iPhone's Focus Filter posts with the WIDGETS' token, which a phone only gets at its next reissue (so the first days after
  * 8.9.1 the filter's own post is 403 and this is what the server hears), and Android has no filter at all — it reads Do Not
  * Disturb with no permission and says so here.

@@ -171,7 +171,7 @@ describe("owner only", () => {
       expect(res.statusCode, `${method} ${url}`).toBe(403);
       expect(res.json().code).toBe("builtin");
     }
-    expect((await s.get("/v1/bots/travel")).json().bot).toMatchObject({ builtin: true, name: "Travel bot" });
+    expect((await s.get("/v1/bots/travel")).json().bot).toMatchObject({ builtin: true, name: "Nomaz" });
   });
 
   it("changes a bot, checks what it is given, and deletes it with everything of it", async () => {

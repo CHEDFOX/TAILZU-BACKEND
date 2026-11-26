@@ -439,7 +439,7 @@ describe("what a call cost (a record, never a cap)", () => {
 describe("the tools, through the sideband", () => {
   const fn = (name: string, id = "fc1") => done({ output: [{ type: "function_call", name, call_id: id, arguments: "{}" }] });
 
-  it("marks a bill paid through Plan Ease's own button, and writes it on the row", async () => {
+  it("marks a bill paid through Nudj's own button, and writes it on the row", async () => {
     const c = await goLive({ source: "due", seed: BILL, item: BILL.item, source_key: "due:t1" });
     await post(U, `${CALLS}/${c.id}/live/ready`);
     sent.length = 0;
@@ -495,7 +495,7 @@ describe("the tools, through the sideband", () => {
 // ---------------------------------------------------------------- the transcript
 
 describe("the record of what was said", () => {
-  it("keeps both sides in the Plan Ease chat, and the bot's words on the row", async () => {
+  it("keeps both sides in the Nudj chat, and the bot's words on the row", async () => {
     const c = await goLive();
     await post(U, `${CALLS}/${c.id}/live/ready`);
     done({ metadata: { kind: "opening" } });

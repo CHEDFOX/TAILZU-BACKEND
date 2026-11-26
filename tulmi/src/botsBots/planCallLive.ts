@@ -13,7 +13,7 @@
  *   stopFor(userId)            every live call of this person ends NOW: they took their AI permission back
  *   sweepOrphans()             at boot: rows another process left marked live are hung up
  *
- * WHAT IS NOT HERE: ANY MONEY LIMIT. A call is never refused, shortened or stopped for cost, and nothing is charged to Plan Ease's day
+ * WHAT IS NOT HERE: ANY MONEY LIMIT. A call is never refused, shortened or stopped for cost, and nothing is charged to Nudj's day
  * budget, the person's spend gate or their plan quota. Each response's cost is PRICED AND RECORDED on the call's row, for the owner to
  * read. The only limits are technical: one reply's length, a tool loop, the idle end, and a hard maximum length against a stuck
  * session. The AI permission is the one thing that can stop a call outright, and it stops it at once.
@@ -49,7 +49,7 @@ import {
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
 const QUIET: Log = { info: () => undefined, warn: () => undefined };
 
-/** The Plan Ease bot a call speaks as. */
+/** The Nudj bot a call speaks as. */
 const SLUG = "plan";
 /** How long a prepared session is kept before it is thrown away (one server's memory). */
 const PREPARE_KEEP_MS = 2 * 60_000;
@@ -405,7 +405,7 @@ export class PlanCallLive {
     // ("One moment"), is part of the call too, and the branches below may end the call and never come back here.
     if (text && kind !== "opening") {
       l.spoke = true;
-      // The bot's words: on the call row (the 5-minute sweep stays away) and in the Plan Ease chat, as a typed chat shows them.
+      // The bot's words: on the call row (the 5-minute sweep stays away) and in the Nudj chat, as a typed chat shows them.
       await this.calls.said(l.user.id, l.id, spokenOf(text), { rt: true }).catch(() => 0);
       await this.chat()?.noteTurn(l.user.id, SLUG, "bot", scrub(text).text).catch(() => undefined);
     }
@@ -670,7 +670,7 @@ export class PlanCallLive {
   }
 }
 
-/** The call's own actions, said out loud instead of tapped: each is one of Plan Ease's own buttons (planEase.ts PLAN_ACTS). */
+/** The call's own actions, said out loud instead of tapped: each is one of Nudj's own buttons (planEase.ts PLAN_ACTS). */
 const ACTIONS: Readonly<Record<string, string>> = {
   mark_paid: "paid", remind_later: "later", item_done: "done",
   follow_done: "done", follow_later: "later", follow_cant: "cant",

@@ -25,7 +25,7 @@ async function digestFor(over: Partial<Learner> = {}): Promise<string> {
   return (await lingoDigest("u1", { store, now: T0 })) ?? "";
 }
 
-describe("what Lingo's chat is told", () => {
+describe("what Babbl's chat is told", () => {
   it("says there is no language yet, rather than nothing at all", async () => {
     const store = new MemoryLingoStore();
     const d = await lingoDigest("u1", { store, now: T0 });

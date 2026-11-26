@@ -179,7 +179,7 @@ describe("a call's voice and the usage meter", () => {
       await costOf(c.id, READ_USD);
     });
 
-    it("a turn asks the chat with no call flag, so Plan Ease's day budget and the spend gate hold it as they hold any chat turn", async () => {
+    it("a turn asks the chat with no call flag, so Nudj's day budget and the spend gate hold it as they hold any chat turn", async () => {
       const c = await put();
       const r = await app.inject({ method: "POST", url: `${CALLS}/${c.id}/say`, headers: as(U), payload: { words: "Move it to 6" } });
       expect(r.statusCode).toBe(200);
@@ -213,7 +213,7 @@ describe("the call's turn, past the meter", () => {
   });
 
   it("an answer dearer than the bot's per-answer figure still comes back on a call: no 402 mid-call", async () => {
-    // THE OWNER'S ANSWER: no ₹ cap on a call. Plan Ease's per-answer figure is ₹1.50, and a turn that costs more used to come back
+    // THE OWNER'S ANSWER: no ₹ cap on a call. Nudj's per-answer figure is ₹1.50, and a turn that costs more used to come back
     // as a 402 in the middle of a spoken sentence. The engine still meters the run, but against a runaway loop, not a budget.
     const r = await rig(() => "ok", { paise: 400 });
     await r.bots.create(ALICE, def({ slug: "buddy", budgets: { perRequestPaise: 150, dailyPaise: 5_000 } }));

@@ -30,8 +30,8 @@ import type { FeedRow } from "../src/shell/feed.js";
 
 const N = 1_700_000_000_000;
 const LOOKS: Record<string, { name: string; color: string }> = {
-  travel: { name: "Travel bot", color: "#3f7d8c" },
-  plan: { name: "Plan Ease", color: "#b08a3e" },
+  travel: { name: "Nomaz", color: "#3f7d8c" },
+  plan: { name: "Nudj", color: "#b08a3e" },
   code: { name: "Xode", color: "#5f7d4f" },
   tailzu: { name: "X0", color: "#0a0a0a" },
 };
@@ -55,7 +55,7 @@ describe("an activity is work, not conversation", () => {
     const s = session("s1", "What's on tomorrow?", N);
     const turns = new Map([["s1", [
       turn({ id: "t1", role: "me", text: "What's on tomorrow?" }),
-      turn({ id: "t2", by: { slug: "plan", name: "Plan Ease", color: "#b08a3e" }, text: "Three things." }),
+      turn({ id: "t2", by: { slug: "plan", name: "Nudj", color: "#b08a3e" }, text: "Three things." }),
     ]]]);
     const r = read({ sessions: [s], turns });
     expect(r.now).toEqual([]);
@@ -66,16 +66,16 @@ describe("an activity is work, not conversation", () => {
     const s = session("s1", "Three days in Goa", N);
     const turns = new Map([["s1", [
       turn({ id: "t1", role: "me", text: "three days in Goa" }),
-      turn({ id: "t2", by: { slug: "travel", name: "Travel bot", color: "#3f7d8c" }, did: { finds: "f1" } }),
+      turn({ id: "t2", by: { slug: "travel", name: "Nomaz", color: "#3f7d8c" }, did: { finds: "f1" } }),
       turn({ id: "t3", role: "me", text: "put it on my calendar" }),
-      turn({ id: "t4", by: { slug: "plan", name: "Plan Ease", color: "#b08a3e" }, did: { needs: 1 } }),
+      turn({ id: "t4", by: { slug: "plan", name: "Nudj", color: "#b08a3e" }, did: { needs: 1 } }),
       // The same bot again adds no second head.
-      turn({ id: "t5", by: { slug: "travel", name: "Travel bot", color: "#3f7d8c" }, text: "Booked." }),
+      turn({ id: "t5", by: { slug: "travel", name: "Nomaz", color: "#3f7d8c" }, text: "Booked." }),
     ]]]);
     const [a] = read({ sessions: [s], turns }).now;
     expect(a!.title).toBe("Three days in Goa");
     expect(a!.bots.map((b) => b.slug)).toEqual(["travel", "plan"]);
-    expect(a!.bots[0]).toMatchObject({ name: "Travel bot", color: "#3f7d8c" });
+    expect(a!.bots[0]).toMatchObject({ name: "Nomaz", color: "#3f7d8c" });
     // The most pressing thing any part of it is doing.
     expect(a!.state).toBe("needs");
   });
@@ -83,10 +83,10 @@ describe("an activity is work, not conversation", () => {
   it("the line is composed by rule from what was done — never by a model, and never more than three things", () => {
     const s = session("s1", "Everything at once", N);
     const turns = new Map([["s1", [
-      turn({ id: "t1", did: { finds: "f1" }, by: { slug: "travel", name: "Travel bot", color: "#3f7d8c" } }),
+      turn({ id: "t1", did: { finds: "f1" }, by: { slug: "travel", name: "Nomaz", color: "#3f7d8c" } }),
       turn({ id: "t2", did: { routine: "{}" }, by: { slug: "tailzu", name: "X0", color: "#0a0a0a" } }),
       turn({ id: "t3", did: { upi: "upi://pay?pa=x@y" }, by: { slug: "tailzu", name: "X0", color: "#0a0a0a" } }),
-      turn({ id: "t4", did: { needs: 2 }, by: { slug: "plan", name: "Plan Ease", color: "#b08a3e" } }),
+      turn({ id: "t4", did: { needs: 2 }, by: { slug: "plan", name: "Nudj", color: "#b08a3e" } }),
     ]]]);
     const [a] = read({ sessions: [s], turns }).now;
     // Newest first, at most three.

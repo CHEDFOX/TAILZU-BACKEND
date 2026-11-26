@@ -2,11 +2,11 @@
  * THE MEETING BOT'S PAGE (src/meet, routes/bots/meet.ts): bots.bot with slug "meet". Its chat is the usual bots.chat; this is its meetings.
  *
  *   the head       back, the bot's name, and a line: "In a call: <title>", else what it does
- *   the join card  one card in the Plan Ease idiom (screens/planItem.ts): the meeting link, and once there is one, When, Time, For (a
+ *   the join card  one card in the Nudj idiom (screens/planItem.ts): the meeting link, and once there is one, When, Time, For (a
  *                  member an admin sends the bot for) and the name it shows in the call, then Join. Nothing but the link until a link
- *                  is in, so the page opens on the meetings and not on a form. When is Plan Ease's week strip (planHome.ts stripNodes),
+ *                  is in, so the page opens on the meetings and not on a form. When is Nudj's week strip (planHome.ts stripNodes),
  *                  swiped where the build draws a row sideways, with "Now" kept out of the scroller so it is there however far the days
- *                  have been pushed. Time is the Plan Ease item form's: a few chips and, always under them, a field for any other time.
+ *                  have been pushed. Time is the Nudj item form's: a few chips and, always under them, a field for any other time.
  *   in a call now the meetings it is in or joining, each with where it stands; each opens its meeting (meetScreens.ts)
  *   coming up      shut: a heading and how many. Open: the meetings it will join, soonest first, with when
  *   recent         shut the same way. Open: the latest meetings that are over — when, how long and the state. One with its notes ready
@@ -40,7 +40,7 @@ const refresh: ActionSpec = { kind: "refresh" };
 const titleOf = (m: MeetingView): string => plain(m.title) || "Meeting";
 /** The line under a meeting, and "· Sent by <name>" when an admin sent the bot to it. */
 const subOf = (text: string, m: MeetingView): string => (m.by ? `${text} · Sent by ${plain(m.by)}` : text);
-/** A label over its row, as the Plan Ease card sets one (screens/planItem.ts). */
+/** A label over its row, as the Nudj card sets one (screens/planItem.ts). */
 const section = (label: string, kids: Node[]): Node => col([sectionLabel(label), ...kids], { gap: 8 });
 /**
  * A list that opens on its heading: the heading says how many are in it, and the rows (with the lines between them) are behind
@@ -60,13 +60,13 @@ function fold(title: string, path: string, rows: Node[]): Node {
 
 /**
  * The days the strip offers after "Now". A build that draws a row sideways (kit canScrollX) gets a fortnight to swipe
- * along, as Plan Ease's week strip does (planHome.ts stripNodes); one that cannot gets the few that fit the width.
+ * along, as Nudj's week strip does (planHome.ts stripNodes); one that cannot gets the few that fit the width.
  */
 const STRIP_DAYS = 14;
 const STRIP_FIT = 5;
 /** Seven of these and their gaps leave the week shown whole on a phone, with the edge of the next day past it (planHome.ts). */
 const STRIP_CELL = 42;
-/** The handful worth a tap, as the Plan Ease item form has them (screens/planItem.ts). Any other time is typed. */
+/** The handful worth a tap, as the Nudj item form has them (screens/planItem.ts). Any other time is typed. */
 const TIMES = [
   { label: "9 am", value: "09:00" }, { label: "12 pm", value: "12:00" }, { label: "4 pm", value: "16:00" },
   { label: "6 pm", value: "18:00" }, { label: "8 pm", value: "20:00" },
@@ -100,7 +100,7 @@ function recentRow(ctx: BotsCtx, m: MeetingView): Node {
 }
 
 /**
- * WHEN: "Now", then the days, as Plan Ease's week strip draws them (planHome.ts stripNodes) — the weekday over the date,
+ * WHEN: "Now", then the days, as Nudj's week strip draws them (planHome.ts stripNodes) — the weekday over the date,
  * the chosen one filled in. "Now" is kept out of the scroller, the way the strip keeps its arrow out, so it is there
  * however far along the days have been pushed.
  */
@@ -169,7 +169,7 @@ function joinCard(ctx: BotsCtx, sendFor: Array<{ id: string; name: string }>, de
   ], { gap: 14, padding: desk ? 20 : 16 });
 }
 
-export function meetPage(ctx: BotsCtx, d: MeetPageData) {
+export function meetPage(ctx: BotsCtx, d: MeetPageData, opts: { tabs?: Node[] } = {}) {
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
   const data: MeetData = d.meet ?? {};
@@ -189,7 +189,7 @@ export function meetPage(ctx: BotsCtx, d: MeetPageData) {
       name, grow(),
     ], { gap: 6 });
 
-  const body: Node[] = [head];
+  const body: Node[] = [head, ...(opts.tabs ?? [])];
 
   if (!o) {
     body.push(notice("The meetings couldn't be read just now. Pull to try again.", { mark: "close" }));

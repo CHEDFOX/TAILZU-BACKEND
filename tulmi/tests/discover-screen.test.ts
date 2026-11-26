@@ -1,5 +1,5 @@
 /**
- * The Travel bot's feed screen (experience/bots/screens/discoverFeed.ts), built pure from a ctx and data.
+ * Nomaz's feed screen (experience/bots/screens/discoverFeed.ts), built pure from a ctx and data.
  *
  * THERE IS NO ONBOARDING. The feed is the first thing a new person sees, ordered by wow and rarity until they have
  * done anything (query.ts) — which in a catalogue where every card had to clear the bar is a strong feed for
@@ -68,7 +68,7 @@ describe("what people who went say, on its own screen", () => {
   });
 });
 
-describe("the feed on the Travel bot's own screen", () => {
+describe("the feed on Nomaz's own screen", () => {
   const card = (over: Partial<FeedView["cards"][number]> = {}): FeedView["cards"][number] => ({
     slug: "erg-chebbi-silence",
     title: "The silence of Erg Chebbi",

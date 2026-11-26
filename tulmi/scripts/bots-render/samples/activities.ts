@@ -8,8 +8,8 @@
 const N = Date.UTC(2026, 9, 28, 9, 12);
 const H = 3_600_000;
 
-const TRAVEL = { slug: "travel", name: "Travel bot", color: "#3f7d8c" };
-const PLAN = { slug: "plan", name: "Plan Ease", color: "#b08a3e" };
+const TRAVEL = { slug: "travel", name: "Nomaz", color: "#3f7d8c" };
+const PLAN = { slug: "plan", name: "Nudj", color: "#b08a3e" };
 const CODE = { slug: "code", name: "Xode", color: "#5f7d4f" };
 const MAIL = { slug: "mail", name: "Mail", color: "#b89b72" };
 const X0 = { slug: "tailzu", name: "X0", color: "#0a0a0a" };
@@ -51,19 +51,19 @@ export const ACTIVITIES_EMPTY_API: Record<string, unknown> = {
 };
 
 /**
- * EVERY BUILT-IN SET UP, for the picker: without the Oracle, the meeting bot, the mail bot, the cinema bot and Lingo,
+ * EVERY BUILT-IN SET UP, for the picker: without Chamen, the meeting bot, the mail bot, the cinema bot and Babbl,
  * three of the four groups are empty and the sideways-scrolling one never shows itself.
  */
 export const ALL_BOTS = [
-  { slug: "plan", name: "Plan Ease", colour: "ochre", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.", builtin: true },
-  { slug: "oracle", name: "Oracle", colour: "plum", purpose: "Reads your birth chart and the world's divination traditions to answer what you ask about your life.", builtin: true },
+  { slug: "plan", name: "Nudj", colour: "ochre", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.", builtin: true },
+  { slug: "oracle", name: "Chamen", colour: "plum", purpose: "Reads your birth chart and the world's divination traditions to answer what you ask about your life.", builtin: true },
   { slug: "meet", name: "Meeting bot", colour: "sea", purpose: "Joins your video calls, takes the notes, and turns what was agreed into your to-dos.", builtin: true },
   { slug: "mail", name: "Mail", colour: "sand", purpose: "Keeps your business's email: sorts what arrives, drafts the replies in your voice.", builtin: true },
   { slug: "notes", name: "Notes", colour: "stone", purpose: "What was said in your meetings, and what you asked to keep.", builtin: true },
   { slug: "code", name: "Xode", colour: "moss", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests.", builtin: true },
-  { slug: "cinema", name: "Cinema", colour: "rust", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true },
-  { slug: "travel", name: "Travel bot", colour: "clay", purpose: "Plans trips: routes, stays and timings, with sources.", builtin: true },
-  { slug: "lingo", name: "Lingo", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true },
+  { slug: "cinema", name: "Kutt", colour: "rust", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true },
+  { slug: "travel", name: "Nomaz", colour: "clay", purpose: "Plans trips: routes, stays and timings, with sources.", builtin: true },
+  { slug: "lingo", name: "Babbl", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true },
   { slug: "keybot", name: "Keylessbord", colour: "clay", purpose: "Writes, rewrites and replies in your own voice, in any language you mix.", builtin: true },
   { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Plans your workouts around your week.", builtin: false },
   { slug: "recipe-bot", name: "Recipe bot", colour: "sand", purpose: "What to cook from what is in the fridge.", builtin: false },

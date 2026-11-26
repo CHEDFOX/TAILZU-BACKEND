@@ -15,7 +15,7 @@
  *   opened(user, kind)      a day note was opened (push/engine.ts setPushOpenHook): it counts, and the quiet rule starts again
  *   rides(user, day)        whether the Daily summary rides in tonight's evening note, so it isn't sent on its own (you/push.ts)
  *
- * Rules and templates only, so it costs nothing to run every day: what needs thinking is the Plan Ease chat's, through its own route,
+ * Rules and templates only, so it costs nothing to run every day: what needs thinking is the Nudj chat's, through its own route,
  * consent and budget.
  */
 import { BotError } from "../bots/types.js";
@@ -62,7 +62,7 @@ export const BUSY_LINE = "This overlaps something in your calendar";
 export const ARRIVE_MAX = 10;
 export const ARRIVE_RADIUS_M = 150;
 /**
- * The screen an arrival reminder's tap opens: Plan Ease's home, which needs no params (SCREENS.plan, shared/types/sdui.ts
+ * The screen an arrival reminder's tap opens: Nudj's home, which needs no params (SCREENS.plan, shared/types/sdui.ts
  * has no id export the engine may import, so the one string lives here). The item screen would need the item's own id, which
  * `ArrivalItem` has no room for, and the phone passes `userInfo` straight in as params — so it would open the add form.
  */
@@ -81,7 +81,7 @@ const READ_DAYS = 8;
  * handful of people at a time rather than one after another — each person's own reminders still go in order.
  */
 export const TICK_AT_ONCE = 20;
-/** Plan Ease's own pushes a day, besides the day note and the person's own timed reminders. */
+/** Nudj's own pushes a day, besides the day note and the person's own timed reminders. */
 export const DAY_CAP = 6;
 /** A note more than this late (the server was down) is not sent: the moment has gone. */
 const NOTE_LATE_MS = 3 * HOUR;
@@ -156,7 +156,7 @@ export interface PlanEaseDeps {
   hinglish?: (userId: string) => Promise<boolean>;
 }
 
-/** One button of Plan Ease's, as the act door runs it: what a widget needs to press it, and what it does. */
+/** One button of Nudj's, as the act door runs it: what a widget needs to press it, and what it does. */
 export interface PlanAct {
   scope: WidgetScope | "session";
   run(p: PlanEase, userId: string, item: QuickItem, tz: number): Promise<ActResult>;
@@ -271,7 +271,7 @@ export class PlanEase {
     });
   }
 
-  /** The calendar asks here: a leave-by already sent, and whether one more of Plan Ease's own pushes fits today. */
+  /** The calendar asks here: a leave-by already sent, and whether one more of Nudj's own pushes fits today. */
   readonly policy = {
     leaveSent: async (userId: string, eventId: string, start: number): Promise<boolean> =>
       !!(await this.prefs.get(userId))?.leaves?.some((l) => l.eventId === eventId && l.start === start && l.sent),

@@ -36,7 +36,7 @@ const VIEW = (over: Record<string, unknown> = {}) => ({
 async function build(o: { client?: "phone" | "desktop"; view?: unknown } = {}) {
   const client = o.client ?? "phone";
   const deps = fakeDeps({
-    bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Cinema", colour: "plum", purpose: "Films", builtin: true }],
+    bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Kutt", colour: "plum", purpose: "Films", builtin: true }],
     api: { "GET /v1/botsapp/bots/session/s1": o.view ?? VIEW() },
   });
   const built = await buildBotsScreen({
@@ -150,7 +150,7 @@ for (const client of ["phone", "desktop"] as const) {
 
     it("draws the frame alone for a build that draws no bot", async () => {
       const deps = fakeDeps({
-        bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Cinema", colour: "plum", purpose: "Films", builtin: true }],
+        bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Kutt", colour: "plum", purpose: "Films", builtin: true }],
         api: { "GET /v1/botsapp/bots/session/s1": VIEW({ made: [{ kind: "film", id: "f1", at: T0 + 5000, title: "Chai", status: "rendering", hold: null, aspect: "16:9", seconds: 24, shots: 4, done: 2 }] }) },
       });
       const built = await buildBotsScreen({

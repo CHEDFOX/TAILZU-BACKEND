@@ -439,7 +439,7 @@ const ITEM_API = {
   },
 };
 
-/** An answered Plan Ease call that can talk, which is the only shape that draws the microphone card. */
+/** An answered Nudj call that can talk, which is the only shape that draws the microphone card. */
 const CALL_API = {
   [`GET ${A}/plan/calls/${CALL_ID}`]: {
     id: CALL_ID, state: "answered", origin: "server", name: "X0", source: "plan", line: "Leave by 9 pm",

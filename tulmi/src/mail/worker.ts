@@ -2,7 +2,7 @@
  * THE MAIL BOT, FROM THE VPS'S SIDE: SIGNED JSON CALLS TO THE MAIL WORKER IN mail-worker/ (docs/mail.md).
  *
  * The worker keeps each business's mailbox on our mail server and answers its mail with our AI. Every call is signed exactly as the media
- * and Oracle workers' are (media/worker.ts `workerSignature`: timestamp, nonce, method, path and the body's hash) with MAIL_WORKER_SECRET,
+ * and Chamen workers' are (media/worker.ts `workerSignature`: timestamp, nonce, method, path and the body's hash) with MAIL_WORKER_SECRET,
  * and every call is inside one X0 account: `/v1/o/<owner>/...`, where the owner is a hash of the person's id (ownerOf), never the id.
  *
  * The worker's errors are `{ code, message }`, the message written for a person: they are passed on with their status (400, 404, 409, 422,

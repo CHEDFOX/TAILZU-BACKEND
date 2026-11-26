@@ -271,7 +271,7 @@ describe("waiting on: the box, the page and the check-back", () => {
     expect(await r.c.fromNote(U, note.noteId)).toEqual({ t1: { id: w!.id, done: false } });
   });
 
-  it("counts toward Plan Ease's six a day: past them the card still waits in the app", async () => {
+  it("counts toward Nudj's six a day: past them the card still waits in the app", async () => {
     const r = rig(ist(10, 10));
     await r.ease.box(U, "Rahul will send the numbers by Thursday", IST);
     await r.prefs.patch(U, { sent: { day: "2026-11-12", n: 6 } });
@@ -360,7 +360,7 @@ describe("waiting on: on the screen", () => {
 // ===================================================================== the push kinds
 
 describe("the push kinds of steps 4 and 5", () => {
-  it("go through What pings you: a wait as Plan Ease's own, the family's as a person's word, the quiet ones never with a sound", () => {
+  it("go through What pings you: a wait as Nudj's own, the family's as a person's word, the quiet ones never with a sound", () => {
     const s = structuredClone(DEFAULT_SETTINGS);
     const planOff = { ...s, notify: { ...s.notify, botsOff: ["plan"] } };
     const quiet = { ...s, notify: { ...s.notify, quiet: true, quietFrom: 22 * 60, quietTo: 7 * 60 } };

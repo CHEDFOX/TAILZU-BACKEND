@@ -1,8 +1,8 @@
 /**
- * WHAT ELSE IS ON THE PERSON'S DAYS, BESIDES THEIR OWN CALENDAR (docs/plan-ease.md "Sources"). Plan Ease reads the person's own events and
+ * WHAT ELSE IS ON THE PERSON'S DAYS, BESIDES THEIR OWN CALENDAR (docs/plan-ease.md "Sources"). Nudj reads the person's own events and
  * to-dos (src/calendar); a source adds what lives somewhere else, and everything that reads the days sees it with no plumbing of its own:
  * the page and its one next thing, the Needs-you cards (a work meeting is busy time a Move must keep clear of, and is never moved itself),
- * the clash lines, the day notes, the widget's line and the Plan Ease chat's list of the person's days.
+ * the clash lines, the day notes, the widget's line and the Nudj chat's list of the person's days.
  *
  *   addPlanSource(s)                  a source, once at start (planLinks.ts: the work calendar by its link)
  *   sourceItems(user, window)          every source's items in the window, as DayItems
@@ -14,7 +14,7 @@
  *   sourceLines(user, window)          the chat's list (calendar/bots.ts list_events): one line each, the words a bot reads back
  *
  * A source that fails gives nothing: the person's own days never wait on it or break with it. Kept free of runtime imports, so the
- * calendar's bot tools and Plan Ease can both read it without a cycle.
+ * calendar's bot tools and Nudj can both read it without a cycle.
  */
 import type { DayItem } from "./planRows.js";
 

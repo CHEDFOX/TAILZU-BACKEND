@@ -9,7 +9,7 @@
  *   onAiConsentOff, aiConsentWentOff           run when a person takes back their AI yes (aiConsent.ts calls the second)
  */
 
-/** A judged call's seed. `item` is the Plan Ease item of this start ("pe:<eventRef>:<day>" or "pt:<taskId>", widgets/items.ts). */
+/** A judged call's seed. `item` is the Nudj item of this start ("pe:<eventRef>:<day>" or "pt:<taskId>", widgets/items.ts). */
 export interface ItemSeed {
   source: "item";
   item: string;

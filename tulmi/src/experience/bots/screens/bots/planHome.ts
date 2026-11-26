@@ -70,7 +70,7 @@ export const planSomething = (day: string, o: { box?: boolean } = {}): ActionSpe
 // ------------------------------------------------------------------ the header
 
 /**
- * Back (the phone), then THE TOP AREA, one pressable row: Plan Ease's avatar, its name and its ochre line, and its walking tiny bot
+ * Back (the phone), then THE TOP AREA, one pressable row: Nudj's avatar, its name and its ochre line, and its walking tiny bot
  * (BotBuddy ignores touches, so a tap goes through to the row); a build without BotBuddy has the still avatar in the same row. Then the
  * + (the phone) or "Plan something" (the window), a sibling. After Done the tiny bot plays "celebrate" once (BotMoments).
  */
@@ -83,12 +83,12 @@ export function homeHead(ctx: BotsCtx, d: PlanDayData | undefined, day: string):
   const top = labelled(row([
     botAvatar(look, desk ? 44 : 40),
     col([
-      text("Plan Ease", { size: desk ? 22 : 19, weight: 600, lineHeight: desk ? 26 : 24, lines: 1 }),
+      text("Nudj", { size: desk ? 22 : 19, weight: 600, lineHeight: desk ? 26 : 24, lines: 1 }),
       ...(d?.head ? [text(d.head, { size: desk ? 13 : 12, weight: 500, color: OCHRE, lineHeight: desk ? 18 : 16, lines: 1 })] : []),
     ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     ...buddy,
   ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: desk ? 12 : 10, alignItems: "center", minHeight: desk ? 56 : 48 }, planSomething(day, { box: true })),
-  "Plan Ease. Tap to plan something.");
+  "Nudj. Tap to plan something.");
   if (desk) {
     return row([top, secondaryButton("Plan something", planSomething(day), { icon: "plus", size: "md" })], { gap: 14, alignItems: "center" });
   }
@@ -185,7 +185,7 @@ function wordsOf(ctx: BotsCtx, r: RowView, metaLine: string): Node {
   ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }, itemAction(r.open.kind, r.open.id));
 }
 
-/** A just-added row's own mark, for its 10 minutes: Plan Ease's ochre edge on a light ochre ground, never the must row's ink edge. */
+/** A just-added row's own mark, for its 10 minutes: Nudj's ochre edge on a light ochre ground, never the must row's ink edge. */
 const FRESH_FILL = "#fbf3e4";
 
 /**
@@ -427,7 +427,7 @@ export function focusSync(ctx: BotsCtx, d?: PlanDayData): Node[] {
 
 export function planHomePhone(ctx: BotsCtx, d: PlanDayData | undefined) {
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 22,
+    title: "Nudj", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 22,
     body: [
       homeHead(ctx, d, shownDay(ctx, d)),
       ...(!d ? [noRead()] : [
@@ -460,7 +460,7 @@ export function planHomeDesk(ctx: BotsCtx, d: PlanDayData | undefined) {
   const rail = col(d ? [...week, ...openPart(ctx, d), ...places.homePart(ctx, d.travel)] : [], { gap: 20, width: 320, flexShrink: 0 });
   // The header first and across (Work in space's tabs go under it, workTab.ts), then the day and the rail.
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", maxWidth: 1080, live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 24,
+    title: "Nudj", nav: "plan", maxWidth: 1080, live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 24,
     body: [
       homeHead(ctx, d, shownDay(ctx, d)),
       ...(!d ? [noRead()] : [row([

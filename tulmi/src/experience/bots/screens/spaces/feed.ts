@@ -15,7 +15,7 @@
  *
  * The messages have no faces and no box: the sender's name, small and grey, over theirs; a 2 px line down the left of theirs in their
  * own colour and down the right of yours in ink; the words in Bricolage (Geist for a build without FontBricolage). A shared thing is
- * words by the same line, with "Open in Plan Ease" a plain link. The "@" list carries each person's own tiny bot (docs/spaces.md
+ * words by the same line, with "Open in Nudj" a plain link. The "@" list carries each person's own tiny bot (docs/spaces.md
  * "How the feed looks"). Only a build that draws the new Spaces gets this screen, so older builds keep what they have.
  */
 
@@ -132,7 +132,7 @@ const colourOf = (people: Array<{ userId: string; bot?: PersonLookSpec }>, userI
 /** "To Mom": a message to one person, as its sender and the space's admin see it (the recipient sees a plain message). */
 const toLine = (name: string): Node => row([icon("send", { size: 12, color: C.idle }), overLine(`To ${name}`)], { gap: 4 });
 
-/** A plain link button: ink words, no box, the height of a finger (Open in Plan Ease, Stop sharing). */
+/** A plain link button: ink words, no box, the height of a finger (Open in Nudj, Stop sharing). */
 const linkButton = (label: string, onPress: ActionRef): Node =>
   labelled(row([text(label, { size: 14, weight: 600, lineHeight: 20 })], { minHeight: 32 }, onPress), label);
 
@@ -146,7 +146,7 @@ const stopSharing = (f: FeedRead, t: NonNullable<FeedMessage["thing"]>): Node =>
 
 /**
  * A thing shared from a bot, with no box: who shared it (and whose it is, when the admin shared a member's: "Aanya shared Mom's"),
- * its title and line as words, and "Open in Plan Ease" as a plain link. It sits by its message's line, in the sharer's colour.
+ * its title and line as words, and "Open in Nudj" as a plain link. It sits by its message's line, in the sharer's colour.
  */
 function thingParts(f: FeedRead, m: FeedMessage, t: NonNullable<FeedMessage["thing"]>): Node[] {
   const who = m.from.you ? "You" : m.from.name;

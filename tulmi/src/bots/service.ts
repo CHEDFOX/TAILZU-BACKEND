@@ -152,7 +152,7 @@ function onlyHealthOff(p: Record<string, unknown>): "health" | "healthSleep" | n
  * reaches, there against a runaway tool loop and nothing else. What the turn really cost is recorded on the call's row.
  *
  * Why this figure cannot bind: one turn is at most MAX_TURNS (5) model calls of at most 4,000 tokens of scope, which is about ₹30 at
- * the rates Plan Ease's tiers are priced at, or about ₹90 on a dearer fallback model — ten to thirty times under ₹1,000. The real
+ * the rates Nudj's tiers are priced at, or about ₹90 on a dearer fallback model — ten to thirty times under ₹1,000. The real
  * bounds on a turn are those: the turns in a row, the scope, and the call's own hard length.
  */
 const CALL_RUN_PAISE = 100_000;
@@ -490,7 +490,7 @@ export class Bots {
   }
 
   /**
-   * What a bot's own work outside its chat cost today (Plan Ease reading a shared circular, botsBots/planCapture.ts), on the same day
+   * What a bot's own work outside its chat cost today (Nudj reading a shared circular, botsBots/planCapture.ts), on the same day
    * meter its chat is held to: the two share one budget.
    */
   spendToday(userId: string, botId: string, paise: number): void {

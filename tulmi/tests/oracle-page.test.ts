@@ -17,7 +17,7 @@ const { needsYou } = await import("../src/experience/bots/screens/bots/oracleCar
 
 const DRAWS = ["BotsKit", "BotsMotion", "BotBuddy", "BotMoments"];
 const ORACLE = {
-  slug: "oracle", name: "Oracle", colour: "plum", builtin: true, publicCard: false, tone: "", principles: [],
+  slug: "oracle", name: "Chamen", colour: "plum", builtin: true, publicCard: false, tone: "", principles: [],
   purpose: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
   skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] },
 };
@@ -29,7 +29,7 @@ const turn = (id: string, role: "me" | "bot", text: string) => ({ id, role, text
 async function oraclePage(o: { sky?: unknown; about?: unknown; turns?: ReturnType<typeof turn>[]; can?: string[]; now?: number; screen?: string; edit?: boolean } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
-    bots: [...SAMPLE_BOTS, { slug: "oracle", name: "Oracle", colour: "plum", purpose: ORACLE.purpose, builtin: true }], calls,
+    bots: [...SAMPLE_BOTS, { slug: "oracle", name: "Chamen", colour: "plum", purpose: ORACLE.purpose, builtin: true }], calls,
     ...(o.now ? { now: o.now } : {}),
     api: {
       "GET /v1/bots/oracle": { bot: ORACLE }, "GET /v1/bots/oracle/memory": { facts: [], summary: "", turns: 0 }, "GET /v1/bots/oracle/connectors": { connectors: [] },
@@ -93,13 +93,13 @@ describe("there is a way off the screen", () => {
     for (const c of clears) expect(c.visibleIf, String((c.props as { accessibilityLabel?: string }).accessibilityLabel)).toBeDefined();
   });
 
-  it("leaving is leaving the Oracle, not putting the cards off: nothing marks them closed", async () => {
+  it("leaving is leaving Chamen, not putting the cards off: nothing marks them closed", async () => {
     const q = await oraclePage({});
     expect(JSON.stringify(q.card!.on?.onDismiss)).not.toContain("oc_closed");
   });
 });
 
-describe("the Oracle's cards", () => {
+describe("Chamen's cards", () => {
   it("ask when, then where, then name and gender (only when the app lacks them), over the page with the day's character", async () => {
     const p = await oraclePage({ about: UNKNOWN });
     expect(p.card?.props).toMatchObject({ overlay: true, kind: "custom", avatar: expect.stringMatching(/^(wanderer|seer)$/), doneWhen: { all: [{ truthy: "oc_when" }, { truthy: "oc_place" }, { truthy: "oc_you" }] } });
@@ -182,10 +182,10 @@ describe("the Oracle's cards", () => {
   });
 });
 
-describe("the Oracle's page", () => {
+describe("Chamen's page", () => {
   it("shows the day's character big on his own stage before the first question, with a way back to the cards", async () => {
     const p = await oraclePage({ about: KNOWN });
-    expect(p.texts).toContain("Ask the Oracle anything");
+    expect(p.texts).toContain("Ask Chamen anything");
     expect(p.buddies).toHaveLength(1);                                   // one character: on the stage, none in the head
     expect(p.buddies[0]).toMatchObject({ kind: "custom", life: "page.oracle", avatar: expect.stringMatching(/^(wanderer|seer)$/) });
     expect(Number(p.buddies[0]!.size)).toBeGreaterThan(60);
@@ -193,20 +193,20 @@ describe("the Oracle's page", () => {
   });
 
   it("has nothing to ask with until the sky is kept, and the ask bar once it is", async () => {
-    const bar = (p: Awaited<ReturnType<typeof oraclePage>>) => p.nodes.some((n) => n.type === "TextField" && n.props?.placeholder === "Ask the Oracle…");
+    const bar = (p: Awaited<ReturnType<typeof oraclePage>>) => p.nodes.some((n) => n.type === "TextField" && n.props?.placeholder === "Ask Chamen…");
     expect(bar(await oraclePage({ about: KNOWN }))).toBe(false);
     expect(bar(await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "", line: "13 July 1994, time not known" } }, about: KNOWN }))).toBe(false);
     expect(bar(await oraclePage({ sky: WHOLE, about: KNOWN }))).toBe(true);
   });
 
-  it("is a tap away from Ask's answer when the Oracle answered", async () => {
-    const deps = fakeDeps({ bots: [...SAMPLE_BOTS, { slug: "oracle", name: "Oracle", colour: "plum", purpose: ORACLE.purpose, builtin: true }] });
+  it("is a tap away from Ask's answer when Chamen answered", async () => {
+    const deps = fakeDeps({ bots: [...SAMPLE_BOTS, { slug: "oracle", name: "Chamen", colour: "plum", purpose: ORACLE.purpose, builtin: true }] });
     const s = await buildBotsScreen({
       screenId: "bots.ask", client: "phone", params: { message: "meri shaadi kab hogi", answer: "To read this, I need to know when and where you were born.", bot: "oracle" },
       tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya" }, can: new Set(DRAWS), desk: { pages: false, notes: false },
     }, deps);
     const nodes = walk(s.root as Node);
-    const open = nodes.find((n) => n.props?.label === "Open the Oracle" || n.props?.content === "Open the Oracle");
+    const open = nodes.find((n) => n.props?.label === "Open Chamen" || n.props?.content === "Open Chamen");
     expect(open).toBeDefined();
     expect(JSON.stringify(nodes.map((n) => n.on ?? {}))).toContain('"screenId":"bots.chat","params":{"slug":"oracle"}');
   });
@@ -226,7 +226,7 @@ describe("the Oracle's page", () => {
 
   it("once there are turns, the character is up in the head, small, and the stage is gone", async () => {
     const p = await oraclePage({ sky: WHOLE, screen: "bots.chat", turns: [turn("t1", "me", "Will I find the right person?"), turn("t2", "bot", "Yes, though not in the season you're standing in.")] });
-    expect(p.texts).not.toContain("Ask the Oracle anything");
+    expect(p.texts).not.toContain("Ask Chamen anything");
     expect(p.buddies).toHaveLength(1);
     expect(Number(p.buddies[0]!.size)).toBeLessThan(60);
     expect(p.texts.some((t) => t.includes("not in the season"))).toBe(true);
@@ -235,6 +235,6 @@ describe("the Oracle's page", () => {
   it("a build that cannot draw him gets the plain empty state, and no character anywhere", async () => {
     const p = await oraclePage({ can: ["BotsKit"], sky: WHOLE });
     expect(p.buddies).toHaveLength(0);
-    expect(p.texts).toContain("Ask the Oracle anything");
+    expect(p.texts).toContain("Ask Chamen anything");
   });
 });

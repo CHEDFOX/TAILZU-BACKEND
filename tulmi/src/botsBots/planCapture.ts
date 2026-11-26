@@ -3,7 +3,7 @@
  * circular, a bill SMS, a ticket screenshot, a PDF or pasted words become one card: "4 things from the school circular", each thing
  * ticked when we are sure of it, an unsure date left unticked with "Date?", and one button that says what it will do ("Add all", "Add 3").
  *
- *   capture.look(user, shared)     the share screen asks: is this Plan Ease's? (rules for words and PDFs; one tiny look at a photo).
+ *   capture.look(user, shared)     the share screen asks: is this Nudj's? (rules for words and PDFs; one tiny look at a photo).
  *                                  Yes: the card is made and read in the background, and the screen shows it as it comes
  *   capture.view(user, id)         the card, for the screen ("Reading the circular…", then the rows)
  *   capture.toggle / edit           a row ticked or not; its title, day, time and who (a family member: a space task for them)
@@ -23,7 +23,7 @@
  *
  * CONSENT AND MONEY. Nothing is sent before the person's yes to AI (privacy/aiGate.ts: every call asks, and runs as the person), and
  * without it nothing here asks for one: the rules road, as above. Each
- * read is charged to them (usage/cost.ts chargedTo, "plan"), added to Plan Ease's own day meter (the chat's ₹8, bots/service.ts), and
+ * read is charged to them (usage/cost.ts chargedTo, "plan"), added to Nudj's own day meter (the chat's ₹8, bots/service.ts), and
  * kept in plan_prefs.capture_paise, which is what is checked: reading shares may spend ₹5 of the day, so the chat always has ₹3. Past
  * that, words take the rules road and a photo waits for after midnight. Nothing ever tells the person about money or limits.
  *
@@ -59,7 +59,7 @@ const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 export const KEEP_MS = 7 * DAY;
 /** At most this many things from one share. */
 export const ITEMS_MAX = 8;
-/** Reading shares may spend this much of Plan Ease's day (₹8), so the chat keeps the rest. One share never more than ₹1.50. */
+/** Reading shares may spend this much of Nudj's day (₹8), so the chat keeps the rest. One share never more than ₹1.50. */
 export const DAY_PAISE = 500;
 export const SHARE_PAISE = 150;
 /**
@@ -353,7 +353,7 @@ export function checkItems(raw: unknown, o: { today: string; source: string | nu
   return { label, items: out };
 }
 
-/** Rules only: is this shared text Plan Ease's? A date word or a ₹ amount, and enough of it to be a notice. */
+/** Rules only: is this shared text Nudj's? A date word or a ₹ amount, and enough of it to be a notice. */
 export function looksPlanny(text: string, now: number, tz: number): boolean {
   const s = text.slice(0, 4000);
   if (amountOf(s) !== null && /\b(?:due|pay|bill|fee|fees|rent|amount|payable|last date)\b/i.test(s)) return true;
@@ -380,7 +380,7 @@ export interface CaptureDeps {
   } | null;
   /** Whether this person said yes to AI (privacy/aiConsent.ts through the gate). */
   aiOk?: (userId: string) => Promise<boolean>;
-  /** Plan Ease's own day meter (bots/service.ts): what reading cost goes on the same budget as its chat. */
+  /** Nudj's own day meter (bots/service.ts): what reading cost goes on the same budget as its chat. */
   spend?: (userId: string, paise: number) => void;
   /** What is left of that meter today, in paise: reading never spends what the chat's day no longer has. */
   leftToday?: (userId: string) => number;
@@ -391,7 +391,7 @@ export interface CaptureDeps {
   takeBackTask?: (userId: string, spaceId: string, taskId: string) => Promise<void>;
   /** A push (plan_decide) when a card was read after they left. */
   send?: (userId: string, msg: { kind: string; key: string; vars: Record<string, string>; data?: Record<string, string>; category?: string }) => Promise<unknown>;
-  /** The day's six: whether one more of Plan Ease's own pushes fits today (planEase.ts policy.spend). */
+  /** The day's six: whether one more of Nudj's own pushes fits today (planEase.ts policy.spend). */
   fits?: (userId: string, day: string) => Promise<boolean>;
   /** Their offset. */
   tzOf?: (userId: string) => Promise<number>;
@@ -435,7 +435,7 @@ export class PlanCapture {
 
   /**
    * One small read of a person's words for "Plan something" (planMakeService.ts): their yes, one at a time (never waits: "busy" while
-   * another of theirs runs), Plan Ease's budget with today's last ₹1 kept for shares ("spent"). The same paid road as every read
+   * another of theirs runs), Nudj's budget with today's last ₹1 kept for shares ("spent"). The same paid road as every read
    * (paidRead: held, settled, as the person, charged to them). null: the read failed; its error is never logged (it can echo the words).
    */
   async readWords(userId: string, _tz: number, system: string, user: string): Promise<ReadAnswer | "consent" | "spent" | "busy" | null> {
@@ -464,7 +464,7 @@ export class PlanCapture {
   // ------------------------------------------------------------------ in
 
   /**
-   * The share screen asks whether what came in is Plan Ease's. Rules first (words and PDFs with text: a date or an amount); a photo gets
+   * The share screen asks whether what came in is Nudj's. Rules first (words and PDFs with text: a date or an amount); a photo gets
    * one tiny look (about ₹0.01), only with the person's yes to AI. From the Plan page's own + it always is. Yes: the card, reading.
    */
   async look(userId: string, s: Shared): Promise<{ capture: CaptureView } | { plan: false }> {
@@ -499,7 +499,7 @@ export class PlanCapture {
     if (!consent) {
       // No yes to AI: nothing is asked and nothing is sent. The rules road at once: the words' own dates become the card's things, to
       // tick as any card's; nothing found, or a photo (from the Plan page's +), one to-do with the file. What was on a desktop's screen
-      // is never stored, so with nothing found there it is not Plan Ease's.
+      // is never stored, so with nothing found there it is not Nudj's.
       const items = words ? rulesItems(words, now, tz, await this.onPlan(userId, dayOf(now, tz), tz)) : [];
       if (!items.length && s.seen) return { plan: false };
       const row: CaptureRow = { ...base, state: items.length ? "ready" : "failed", items };
@@ -668,7 +668,7 @@ export class PlanCapture {
 
   /**
    * Paise left for reading today: the smaller of reading's own share (₹5, kept in the person's row: one server's memory is not the
-   * truth) and what Plan Ease's day meter still has (its chat and reading share the ₹8).
+   * truth) and what Nudj's day meter still has (its chat and reading share the ₹8).
    */
   private async budgetLeft(userId: string, tz: number): Promise<number> {
     const row = await this.d.prefs.get(userId).catch(() => null);
@@ -721,7 +721,7 @@ export class PlanCapture {
   }
 
   /**
-   * One paid read: as the person (their yes to AI, through the gate), charged to them, on Plan Ease's budget. One at a time a person,
+   * One paid read: as the person (their yes to AI, through the gate), charged to them, on Nudj's budget. One at a time a person,
    * with today's share held back first. "spent": not enough of today's reading is left; null: the read failed.
    */
   private async paidRead(userId: string, tz: number, need: number, call: () => Promise<ReadAnswer>, row?: CaptureRow): Promise<ReadAnswer | null | "spent"> {
@@ -898,7 +898,7 @@ export class PlanCapture {
   }
 
   /**
-   * The evening note's line for a card left alone, once: "4 things from the school circular. Add them in Plan Ease". `asked`: the item
+   * The evening note's line for a card left alone, once: "4 things from the school circular. Add them in Nudj". `asked`: the item
    * the note's own question is about. That card rides as the question, so it is counted as told and never said a second time as well.
    */
   async eveningLine(userId: string, asked?: string): Promise<string[]> {
@@ -912,7 +912,7 @@ export class PlanCapture {
     await this.store.update({ id: r.id, user_id: userId }, { told_ms: now }).catch(() => undefined);
     const n = r.items.filter((x) => !x.dupe).length;
     if (!n) return [];
-    return [`${n === 1 ? "1 thing" : `${n} things`} from the ${safeLabel(r.label)}. Add ${n === 1 ? "it" : "them"} in Plan Ease`];
+    return [`${n === 1 ? "1 thing" : `${n} things`} from the ${safeLabel(r.label)}. Add ${n === 1 ? "it" : "them"} in Nudj`];
   }
 
   /** The morning note's line for a photo read overnight (it waited for the day's reading to start again). */

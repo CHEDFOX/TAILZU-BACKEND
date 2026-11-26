@@ -229,7 +229,7 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
   // The group's sub-bots (each person's own Plan, Notes, Travel and Xode, as much as they share), then the bots the group shares.
   const shareable = (mineBots ?? []).filter((b) => !s.bots.some((x) => x.slug === b.slug));
   const subs = (o.sharing ?? []).map((b) => subBotChip(ctx, s, b));
-  // A bot that is a sub-bot too (Plan Ease) shows once, as the sub-bot.
+  // A bot that is a sub-bot too (Nudj) shows once, as the sub-bot.
   const sharedBots = s.bots.filter((b) => !(o.sharing ?? []).some((x) => x.bot === b.slug));
   const botsNow = section(`Bots in ${s.name}`, [
     ...(subs.length ? [row(subs, { gap: 10, flexWrap: "wrap" })] : []),

@@ -454,15 +454,15 @@ describe("reporting a bot's answer", () => {
 
   it("files it with the answer as the person saw it, due in 24 hours, and the admin sees whose answer it was", async () => {
     const s = await served();
-    const r = await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", id: "turn-1", bot: "Plan Ease", text: "Skip the doctor, it's nothing.", reason: "other", note: "bad advice" });
+    const r = await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", id: "turn-1", bot: "Nudj", text: "Skip the doctor, it's nothing.", reason: "other", note: "bad advice" });
     expect(r.status).toBe(201);
     expect(r.body.blocked).toBe(false);
     const listed = (await s.call("GET", "/v1/admin/reports", null, undefined, ADMIN)).body;
     const one = (listed.reports as Array<{ kind: string; what: string; snapshot: Record<string, unknown>; reported: { id: string | null } }>).find((x) => x.kind === "answer")!;
-    expect(one.what).toBe("An answer from Plan Ease");
-    expect(one.snapshot).toMatchObject({ text: "Skip the doctor, it's nothing.", bot: "Plan Ease" });
+    expect(one.what).toBe("An answer from Nudj");
+    expect(one.snapshot).toMatchObject({ text: "Skip the doctor, it's nothing.", bot: "Nudj" });
     expect(one.reported.id).toBeNull();
-    expect((await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", bot: "Plan Ease", reason: "other" })).status).toBe(400);
+    expect((await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", bot: "Nudj", reason: "other" })).status).toBe(400);
   });
 
   /**
@@ -471,7 +471,7 @@ describe("reporting a bot's answer", () => {
    * someone who wants to say one sentence. So an answer gets its own card: what the bot said, one box, Send.
    */
   it("the report card asks one thing, carries the answer, and needs no reason", async () => {
-    const r = await buildBotsScreen({ screenId: "bots.report", client: "phone", params: { kind: "answer", bot: "Plan Ease", text: "Skip the doctor." }, tzOffsetMinutes: IST, user: { id: A_ }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api: {} }));
+    const r = await buildBotsScreen({ screenId: "bots.report", client: "phone", params: { kind: "answer", bot: "Nudj", text: "Skip the doctor." }, tzOffsetMinutes: IST, user: { id: A_ }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api: {} }));
     expect(lintTree(r.root!)).toEqual([]);
     const s = JSON.stringify(r.root);
     expect(s).toContain("Bots are learning");
@@ -488,14 +488,14 @@ describe("reporting a bot's answer", () => {
   it("goes to the chat mailbox as feedback, not to safety as a case, and needs no reason", async () => {
     const s = await served();
     // No `reason` at all: the card does not ask for one.
-    const r = await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", id: "turn-9", bot: "Plan Ease", text: "Skip the doctor, it's nothing.", note: "that is dangerous" });
+    const r = await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", id: "turn-9", bot: "Nudj", text: "Skip the doctor, it's nothing.", note: "that is dangerous" });
     expect(r.status).toBe(201);
 
     const mail = await s.outbox.byRef("chat_report", r.body.report.id);
     expect(mail).toMatchObject({ to_email: "chatreport@x0bot.com", status: "queued" });
     expect(mail!.body_text).toContain("that is dangerous");
     expect(mail!.body_text).toContain("Skip the doctor, it's nothing.");
-    expect(mail!.body_text).toContain("Plan Ease");
+    expect(mail!.body_text).toContain("Nudj");
     // Who sent it, so it can be answered.
     expect(mail!.body_text).toContain(A_);
     // It must not read as a safety case: there is no account behind a bot to suspend.

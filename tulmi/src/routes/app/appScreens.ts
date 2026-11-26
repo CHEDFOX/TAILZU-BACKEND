@@ -340,7 +340,7 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
       // assistant's connected apps are switched on.
       deskTasks: !!connectors && Array.isArray(reqBody.capabilities?.components)
         && reqBody.capabilities!.components!.includes("DeskConnectors"),
-      // Plan Ease on the desktop (the app release): its notices, and "add this".
+      // Nudj on the desktop (the app release): its notices, and "add this".
       deskNotices: Array.isArray(reqBody.capabilities?.components)
         && reqBody.capabilities!.components!.includes("DeskNotices"),
       deskAddThis: Array.isArray(reqBody.capabilities?.components)

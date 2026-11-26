@@ -1,5 +1,5 @@
 /**
- * Bots app · the Plan and Travel bots' outside data: a trip's weather, main places and stays compared, and where Plan Ease's day starts
+ * Bots app · the Plan and Travel bots' outside data: a trip's weather, main places and stays compared, and where Nudj's day starts
  * (src/botsBots/tripExtras.ts, trips.ts, planTravel.ts; src/places for the providers). Registered by routes/bots/botsBots.ts with its parts.
  *
  *   GET    /v1/botsapp/bots/trip/:id/extras?tz=        -> { extras }        dates, weather, places, stays compared; from memory at once, the
@@ -7,7 +7,7 @@
  *   POST   /v1/botsapp/bots/trip/:id/spots { text }    -> { trip }          one of the trip's main places;  DELETE .../spots/:i
  *   POST   /v1/botsapp/bots/trip/:id/stays { name?, url?, area?, price?, rating?, label?, from? }  -> 201 { trip }
  *                                                         a stay to compare: typed by the person, or (from: "chat", label) a link the
- *                                                         Travel bot opened
+ *                                                         Nomaz opened
  *   DELETE /v1/botsapp/bots/trip/:id/stays/:stay       -> { trip }
  *   PUT    /v1/botsapp/bots/trip/:id/stays/:stay/pick  -> { trip }          the person's pick (again: not any more)
  *   POST   /v1/botsapp/bots/trip/:id/stays/find        -> 202 { finding }   a web search for stays, in the background

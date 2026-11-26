@@ -198,7 +198,7 @@ describe("no initials in Spaces: each person is their own tiny bot", () => {
   });
 
   it("Work in space on a bot's page, someone's things and one of them: their tiny bots, never a letter", async () => {
-    // Plan Ease's week page has the tab; its simpler page (PLAN_V2_PAGE) has none: someone's plans are on their page, bots.work, below.
+    // Nudj's week page has the tab; its simpler page (PLAN_V2_PAGE) has none: someone's plans are on their page, bots.work, below.
     vi.stubEnv("PLAN_V2_PAGE", "false"); resetConfigForTests();
     for (const client of ["phone", "desktop"] as const) {
       const tab = await build("bots.plan", client);
@@ -307,8 +307,8 @@ describe("the feed: no faces, no box, a grey name, a line in their colour, Brico
       const cardLine = parentOf(s.root!, title)!;
       expect(cardLine.style).toMatchObject({ borderRightWidth: 2, borderRightColor: "#0a0a0a" });
       expect(noBox(cardLine)).toBe(true);
-      expect(texts(walk(cardLine))).toEqual(expect.arrayContaining(["You shared", "Doctor, knee check-up", "from Plan Ease · Fri, 7:40 pm", "Open in Plan Ease", "Stop sharing"]));
-      const openLink = walk(cardLine).find((n) => n.on?.onPress && walk(n).includes(textNode(nodes, "Open in Plan Ease")!))!;
+      expect(texts(walk(cardLine))).toEqual(expect.arrayContaining(["You shared", "Doctor, knee check-up", "from Nudj · Fri, 7:40 pm", "Open in Nudj", "Stop sharing"]));
+      const openLink = walk(cardLine).find((n) => n.on?.onPress && walk(n).includes(textNode(nodes, "Open in Nudj")!))!;
       expect(noBox(openLink)).toBe(true);
       expect(walk(cardLine).some((n) => n.style?.width === 256)).toBe(false);
       // The "@" list: each person's own tiny bot, as the server picked it.
@@ -317,9 +317,9 @@ describe("the feed: no faces, no box, a grey name, a line in their colour, Brico
     });
   }
 
-  it("a member's thing the admin shared: no box, by the admin's line, \"Aanya shared Mom's\", Open in Plan Ease; only the admin's \"/\" lists others' things", async () => {
+  it("a member's thing the admin shared: no box, by the admin's line, \"Aanya shared Mom's\", Open in Nudj; only the admin's \"/\" lists others' things", async () => {
     const at = D.FEED.messages[0]!.at + 60_000;
-    const thing = { grantId: "g9", bot: "plan", botName: "Plan Ease", ownerId: "m", ownerName: "Mom", id: "e:knee", title: "Doctor, knee check-up", line: "Event" };
+    const thing = { grantId: "g9", bot: "plan", botName: "Nudj", ownerId: "m", ownerName: "Mom", id: "e:knee", title: "Doctor, knee check-up", line: "Event" };
     const goes = { kind: "navigate", screenId: "bots.work", params: { bot: "plan", space: "s1", owner: "m", item: "e:knee" } };
     const opens = (root: Node) => walk(root).some((n) => JSON.stringify(n.on?.onPress) === JSON.stringify(goes));
     // Rohan, who it was shared with: the admin's name over it, a line in her colour on the left, no Stop sharing, no "To".
@@ -329,7 +329,7 @@ describe("the feed: no faces, no box, a grey name, a line in their colour, Brico
       const line = parentOf(s.root!, textNode(nodes, "Doctor, knee check-up")!)!;
       expect(line.style, client).toMatchObject({ borderLeftWidth: 2, borderLeftColor: D.LOOK.u.color, paddingLeft: 10 });
       expect(noBox(line)).toBe(true);
-      expect(texts(walk(line))).toEqual(["Aanya shared Mom's", "Doctor, knee check-up", "from Plan Ease · Event", "Open in Plan Ease"]);
+      expect(texts(walk(line))).toEqual(["Aanya shared Mom's", "Doctor, knee check-up", "from Nudj · Event", "Open in Nudj"]);
       expect(textNode(nodes, "Aanya")?.style).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, color: "#8a8a8a" });
       expect(texts(nodes)).not.toContain("To Rohan");
       expect(opens(s.root!)).toBe(true);
@@ -340,7 +340,7 @@ describe("the feed: no faces, no box, a grey name, a line in their colour, Brico
     const { s, nodes } = await build("bots.spaces", "phone", { params: { id: "s1" }, api: { ...(await sampleApi()), ...D.spacesApi(), [`GET ${A}/spaces/s1/feed`]: admin } });
     const line = parentOf(s.root!, textNode(nodes, "Doctor, knee check-up")!)!;
     expect(line.style).toMatchObject({ borderRightWidth: 2, borderRightColor: "#0a0a0a", paddingRight: 10 });
-    expect(texts(walk(line))).toEqual(["You shared Mom's", "Doctor, knee check-up", "from Plan Ease · Event", "Open in Plan Ease", "Stop sharing"]);
+    expect(texts(walk(line))).toEqual(["You shared Mom's", "Doctor, knee check-up", "from Nudj · Event", "Open in Nudj", "Stop sharing"]);
     expect(textNode(nodes, "To Rohan")?.style).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, lineHeight: 16, color: "#8a8a8a" });
     expect(parentOf(s.root!, parentOf(s.root!, textNode(nodes, "To Rohan")!)!)!.style).toMatchObject({ paddingRight: 12 });
     expect(opens(s.root!)).toBe(true);

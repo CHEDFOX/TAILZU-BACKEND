@@ -61,7 +61,7 @@ const signOut = { kind: "signOut" } as ActionSpec;
 function fourDots(): Node {
   const dots = [PALETTE_HEX.moss!, CLAY, PALETTE_HEX.ochre!, PALETTE_HEX.sea!];
   return shapes(dots.map((fill, i) => ({ circle: [4 + i * 14, 4, 4] as [number, number, number], fill, motion: "pop" as const, delayMs: i * 90 })), {
-    viewBox: "0 0 50 8", width: 50, height: 8, label: "Your first bots: Xode, Keylessbord, Plan Ease and Travel bot",
+    viewBox: "0 0 50 8", width: 50, height: 8, label: "Your first bots: Xode, Keylessbord, Nudj and Nomaz",
   });
 }
 

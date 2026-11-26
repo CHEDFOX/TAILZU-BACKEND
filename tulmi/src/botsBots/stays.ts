@@ -5,14 +5,14 @@
  * kept on the row, never drawn).
  *
  *   by the person     a name, a link, an area, typed or pasted (Trips.addStay)
- *   from the chat     a stay link the Travel bot opened in its chat ("Compare this")
+ *   from the chat     a stay link Nomaz opened in its chat ("Compare this")
  *   from the web      webStaySource: our web search (src/web/search, the engines it already uses: SearXNG when we run one, then
  *                     DuckDuckGo's page, then Brave with a key), kept to pages that are ONE property on a booking or review site,
  *                     with the price and rating only when the result itself says them. Held to 10 searches a person a day
  *
- *   compareStays(stays, { nights, minutes })   which is Travel bot's pick, which is closer, which is better rated
+ *   compareStays(stays, { nights, minutes })   which is Nomaz's pick, which is closer, which is better rated
  *
- * Distances to the trip's places are worked out by tripExtras.ts with the same routing as Plan Ease.
+ * Distances to the trip's places are worked out by tripExtras.ts with the same routing as Nudj.
  */
 import { search, type SearchOptions } from "../web/search/engine.js";
 import type { SearchPlan } from "../web/search/types.js";
@@ -88,7 +88,7 @@ export function linkOf(v: unknown): { url: string; host: string } | null {
   } catch { return null; }
 }
 
-/** A link the Travel bot opened, as a stay: "Shanti Residency · Koregaon Park · ₹3,200 a night". */
+/** A link Nomaz opened, as a stay: "Shanti Residency · Koregaon Park · ₹3,200 a night". */
 export function stayFromLabel(label: string): { name: string; area: string; nightPaise: number | null } {
   const parts = clean(label, 200).split(/\s+[·|–-]\s+/).map((p) => p.trim()).filter(Boolean);
   const name = parts[0] ?? "";
@@ -191,7 +191,7 @@ export class StaysLimit extends Error {
 
 // ------------------------------------------------------------------ the comparison
 
-export type StayLabel = "Your pick" | "Travel bot's pick" | "Closer" | "Better rated" | "";
+export type StayLabel = "Your pick" | "Nomaz's pick" | "Closer" | "Better rated" | "";
 
 export interface StayCompared extends StayRow {
   label: StayLabel;
@@ -205,7 +205,7 @@ export interface StayCompared extends StayRow {
 }
 
 /**
- * Travel bot's pick is the best balance of rating (50%) and time to the main place (50%), each scored against the others on the list; a stay
+ * Nomaz's pick is the best balance of rating (50%) and time to the main place (50%), each scored against the others on the list; a stay
  * that doesn't say one scores lowest on it (the pick rests on what is known). Price plays no part: the app shows none. Then: the closest that
  * is not the pick is "Closer", the best rated "Better rated" (each only when it really is, against the pick). The person's own pick wins the
  * label.
@@ -235,7 +235,7 @@ export function compareStays(stays: StayRow[], o: { nights: number | null; minut
   const pick = rows.length >= 2 && informed >= 2 ? total.indexOf(Math.max(...total)) : -1;
   const anchor = yours >= 0 ? yours : pick;
   if (yours >= 0) rows[yours]!.label = "Your pick";
-  else if (pick >= 0) rows[pick]!.label = "Travel bot's pick";
+  else if (pick >= 0) rows[pick]!.label = "Nomaz's pick";
   if (anchor < 0) return rows;
   const a = rows[anchor]!;
   const best = (key: (r: StayCompared) => number | null, better: (x: number, y: number) => boolean): number => {

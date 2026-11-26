@@ -1,5 +1,5 @@
 /**
- * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Plan Ease, the Travel bot, the Oracle, the mail bot, Spaces, sending a
+ * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Nudj, Nomaz, Chamen, the mail bot, Spaces, sending a
  * shared file or link to a bot, and Blip's five moments (BotPage, Chat, MakeBot, BotEdit, BotKeys, BotStore, PlanBot, TravelBot, Spaces,
  * ShareIn, Avatars; D<Board> in the window).
  *
@@ -63,6 +63,8 @@ import { mailCallScreens } from "./bots/mailCalls.js";
 import { callRoomScreens } from "./bots/callRoom.js";
 import type { MailData } from "./bots/mailParts.js";
 import { meetPage, type MeetPageData } from "./bots/meetPage.js";
+import { sribbuAt, sribbuPart, sribbuTabs } from "./bots/sribbu.js";
+import { notesLoad, notesPage, type NotesData } from "./notes.js";
 import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
 import { cinemaPage, type CinemaPageData } from "./bots/cinemaPage.js";
 import { cinemaScreens, loadCinema, type CinemaData } from "./bots/cinemaScreens.js";
@@ -71,18 +73,18 @@ import type { About } from "./firstRun/parts.js";
 import type { Moves } from "../../../bots/healthDays.js";
 import { HEALTH_PAGE_STATE, healthRefresh, movesLine } from "./bots/health.js";
 
-/** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
+/** Nudj's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
 const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
 /** The threaded home (screens/bots/planHome.ts): the same builds, with PLAN_V2_HOME too; off, the simpler page as it was. */
 const homeFor = (ctx: BotsCtx): boolean => planV2(ctx) && homeOn();
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
-async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean; cinema?: boolean; slug?: string } = {}): Promise<OraclePageData & MailPageData & MeetPageData & CinemaPageData> {
+async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean; cinema?: boolean; slug?: string } = {}): Promise<OraclePageData & MailPageData & MeetPageData & CinemaPageData & { notes?: NotesData & { work?: WorkRead } }> {
   // `o.slug` is for a page that is a TAB: a tab root is fetched with no params, so there is nowhere to read one from.
   const slug = o.slug ?? slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sessions, sky, about, mail, meet, cinema] = await Promise.all([
+  const [bot, memory, linked, chat, sessions, sky, about, mail, meet, cinema, notes] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
@@ -90,16 +92,19 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     // THIS BOT'S CONVERSATIONS: what its page is now (screens/bots/botSessions.ts). The store was built before any
     // screen drew it (botsBots/sessions.ts), so this is the first read of it.
     deps.api<{ sessions: BotSession[] }>("GET", `${A}/sessions/${enc(slug)}`).then((r) => r.sessions).catch(() => undefined),
-    // The Oracle's own card: when and where they were born (routes/bots/oracle.ts).
+    // Chamen's own card: when and where they were born (routes/bots/oracle.ts).
     slug === "oracle" ? deps.api<OracleSkyView>("GET", "/v1/oracle/sky").catch(() => undefined) : Promise.resolve(undefined),
     // And whether its last card is owed: the person's name and gender, as the About you card reads them.
     slug === "oracle" ? deps.api<About>("GET", "/v1/bots/first-run/about").catch(() => undefined) : Promise.resolve(undefined),
     // The mail bot's page: its businesses' mail (routes/bots/mail.ts), on bots.bot only (its chat is the usual one).
-    slug === "mail" && o.mail ? loadMail(ctx, deps).catch((): MailData => ({ down: true })) : Promise.resolve(undefined),
-    // The meeting bot's page: its meetings (routes/bots/meet.ts), on bots.bot only (its chat is the usual one).
-    slug === "meet" && o.meet ? loadMeet(ctx, deps).catch((): MeetData => ({ down: true })) : Promise.resolve(undefined),
+    // Sribbu's page (sribbu.ts) reads only the part that is open: its mail, its meetings or its notes.
+    slug === "mail" && o.mail && sribbuPart(ctx) === "inbox" ? loadMail(ctx, deps).catch((): MailData => ({ down: true })) : Promise.resolve(undefined),
+    // The meeting bot's page: its meetings (routes/bots/meet.ts), on bots.bot only (its chat is the usual one). Sribbu's Meetings part too.
+    (slug === "meet" || (slug === "mail" && sribbuPart(ctx) === "meetings")) && o.meet ? loadMeet(ctx, deps).catch((): MeetData => ({ down: true })) : Promise.resolve(undefined),
     // The cinema bot's page: its films and pictures (routes/bots/cinema.ts), on bots.bot only (its chat is the usual one).
     slug === "cinema" && o.cinema ? loadCinema(ctx, deps).catch((): CinemaData => ({ down: true })) : Promise.resolve(undefined),
+    // Sribbu's Notes part: every meeting written up (notes.ts).
+    slug === "mail" && o.mail && sribbuPart(ctx) === "notes" ? notesLoad(ctx, deps).catch(() => undefined) : Promise.resolve(undefined),
   ]);
   // THE MOVES COUNTS, on their own route and only for a bot that is counting (docs: perms §4.6). They are asked for after
   // the bot is known, and only then, so a page that can never show them never reads a health row, and nothing on the bot's
@@ -110,11 +115,20 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
   return {
     bot, memory, linked, turns: chat, ...(sessions ? { sessions } : {}), ...(moves ? { moves } : {}),
     ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}),
-    ...(cinema ? { cinema } : {}),
+    ...(cinema ? { cinema } : {}), ...(notes ? { notes } : {}),
   };
 }
 
-/** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
+/** Sribbu's page (sribbu.ts): the part that is open, with the parts as tabs under its name. */
+function sribbuPage(ctx: BotsCtx, d: MailPageData & MeetPageData & { notes?: NotesData & { work?: WorkRead } }) {
+  const part = sribbuPart(ctx);
+  const tabs = sribbuTabs(ctx, part);
+  if (part === "meetings") return meetPage(ctx, d, { tabs });
+  if (part === "notes") return notesPage(workCtx(ctx, d.notes?.work), d.notes, { name: d.bot!.name, tabs, at: (p) => sribbuAt("notes", p) });
+  return mailPage(ctx, d, { tabs });
+}
+
+/** Chamen is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
 const isOracle = (d: BotPageData): boolean => d.bot?.slug === "oracle" && d.bot.builtin;
 /** The mail bot's page is its mail (screens/bots/mailPage.ts); its chat is the usual chat. */
 const isMail = (d: BotPageData): boolean => d.bot?.slug === "mail" && d.bot.builtin;
@@ -451,7 +465,7 @@ function dayTimeline(ctx: BotsCtx, d: PlanRead, day: PlanDay): Node {
   if (!rows.length) {
     return card([
       text(`Nothing on ${day.key === d.today ? "today" : day.key === d.tomorrow ? "tomorrow" : dayLabelOf(d, day.key)}`, { size: 15, weight: 500, lineHeight: 20 }),
-      meta("A free day. Add something, or ask Plan Ease to fill it.", { size: 13 }),
+      meta("A free day. Add something, or ask Nudj to fill it.", { size: 13 }),
     ], { dashed: true });
   }
   return col(rows, { gap: 8 });
@@ -484,9 +498,9 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
   const sel = d ? planDay(ctx, d) : "";
   const day = d ? d.days.find((x) => x.key === sel) ?? { key: sel, events: [], tasks: [] } : undefined;
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
+    title: "Nudj", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
     body: [
-      phoneHead(look, "Plan Ease", planHeadLine(d), undefined, headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING })),
+      phoneHead(look, "Nudj", planHeadLine(d), undefined, headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING })),
       ...(!d || !day ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : [
           dayStrip(d, sel, week),
@@ -504,7 +518,7 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
     ],
     footer: [
       ...(d ? [row(planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })), { gap: 8, flexWrap: "wrap" })] : []),
-      chatBar(ctx, "plan", "Plan Ease", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
+      chatBar(ctx, "plan", "Nudj", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
     ],
   });
 }
@@ -538,7 +552,7 @@ function tripForm(_ctx: BotsCtx): Node {
   const start = ifFilled("t_place", write("POST", `${A}/trip`, { place: "$state.t_place", when: "$state.t_when", who: "$state.t_who" }, { ok: "Trip started" }), "Where are you going?");
   return card([
     text("Where to next?", { size: 17, weight: 600, lineHeight: 22 }),
-    meta("Travel bot keeps the trip in one place: the bookings it finds for you, your tickets, what to pack.", { size: 13 }),
+    meta("Nomaz keeps the trip in one place: the bookings it finds for you, your tickets, what to pack.", { size: 13 }),
     inputBox([field("t_place", "t_place", "Where: Pune, Goa, Jaipur…")], { radius: 14 }),
     row([box([inputBox([field("t_when", "t_when", "When: 14–16 Nov")], { radius: 14 })], { flexGrow: 1, flexBasis: 0 }), box([inputBox([field("t_who", "t_who", "Who: you + Rohan")], { radius: 14 })], { flexGrow: 1, flexBasis: 0 })], { gap: 10 }),
     button("Start the trip", start, { size: "md" }),
@@ -550,7 +564,7 @@ function bookingCards(ctx: BotsCtx, d: TravelData, place: string): Node[] {
   if (!opens.length) {
     return [card([
       row([box([icon("pin", { size: 18, color: lookOf("travel").color })], { width: 36, height: 36, borderRadius: 10, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
-        col([text("Nothing to book yet", { size: 15, weight: 600, lineHeight: 20 }), meta("Ask Travel bot for trains, flights or stays. It opens the app for you to book; you press pay.", { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" }),
+        col([text("Nothing to book yet", { size: 15, weight: 600, lineHeight: 20 }), meta("Ask Nomaz for trains, flights or stays. It opens the app for you to book; you press pay.", { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" }),
       row([chip(`Trains to ${place}`, { onPress: askBot("travel", `Find trains to ${place}${d.t?.trip?.when ? ` for ${d.t.trip.when}` : ""}`) }), chip(`Stays in ${place}`, { onPress: askBot("travel", `Find two or three stays in ${place}${d.t?.trip?.when ? ` for ${d.t.trip.when}` : ""}`) })], { gap: 8, flexWrap: "wrap" }),
     ], { gap: 12 })];
   }
@@ -591,7 +605,7 @@ function travelParts(ctx: BotsCtx, d: TravelData) {
     label: f.name, sub: `${kb(f.bytes)} · ${shortDate(ctx, f.createdAt)}`, left: icon("clip", { size: 18, color: C.meta }), onPress: open(SCREENS.shareIn, { file: f.id }),
   })))], { gap: 8 }) : null;
   const facts = d.t?.facts ?? [];
-  const remembers = facts.length ? col([sectionLabel("Travel bot remembers"), ...facts.slice(0, 5).map((f) => dotLine(f.text))], { gap: 6 }) : null;
+  const remembers = facts.length ? col([sectionLabel("Nomaz remembers"), ...facts.slice(0, 5).map((f) => dotLine(f.text))], { gap: 6 }) : null;
   const needs = s.travelNeeds.slice(0, 2).map((n) => needsCard(n));
   // Share the trip with a space or a person (a copy, with its packing list: screens/spaces.ts bots.share).
   const over = trip ? row([...shareButtonsFor(ctx, { kind: "trip", ref: trip.id, title: `Trip to ${trip.place}` }), quietButton("Trip over", write("DELETE", `${A}/trip/${enc(trip.id)}`, undefined, { ok: "Trip cleared" }), { size: "md" })], { gap: 4 }) : null;
@@ -601,9 +615,9 @@ function travelParts(ctx: BotsCtx, d: TravelData) {
 function travelPhone(ctx: BotsCtx, d: TravelData) {
   const p = travelParts(ctx, d);
   return page(ctx, {
-    title: "Travel bot", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "", dq: "", ...places.TRIP_STATE }, live: ["bot:travel"],
+    title: "Nomaz", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "", dq: "", ...places.TRIP_STATE }, live: ["bot:travel"],
     body: [
-      phoneHead(p.look, "Travel bot", p.headLine, undefined, headerBuddy(ctx, "travel", { lookTo: "down", thinkWhen: ANSWERING })),
+      phoneHead(p.look, "Nomaz", p.headLine, undefined, headerBuddy(ctx, "travel", { lookTo: "down", thinkWhen: ANSWERING })),
       // Somewhere to look before anything is planned (screens/discoverFeed.ts).
       ...feedBlocks(ctx, d.feed, d.taste),
       ...(!d.t ? [emptyState({ pose: "think", title: "Couldn't load your trip", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
@@ -627,7 +641,7 @@ function travelPhone(ctx: BotsCtx, d: TravelData) {
             ...places.tripFoot(d.x),
           ]),
     ],
-    footer: [chatBar(ctx, "travel", "Travel bot", "Ask about this trip…", open(SCREENS.chat, { slug: "travel" }))],
+    footer: [chatBar(ctx, "travel", "Nomaz", "Ask about this trip…", open(SCREENS.chat, { slug: "travel" }))],
   });
 }
 
@@ -654,12 +668,12 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
   const right: Node[] = [
     ...(p.files ? [p.files] : []),
     ...(p.remembers ? [p.remembers] : []),
-    col([sectionLabel("Ask Travel bot"), chatBar(ctx, "travel", "Travel bot", "Ask about this trip…", open(SCREENS.chat, { slug: "travel" }))], { gap: 8 }),
+    col([sectionLabel("Ask Nomaz"), chatBar(ctx, "travel", "Nomaz", "Ask about this trip…", open(SCREENS.chat, { slug: "travel" }))], { gap: 8 }),
   ];
   return page(ctx, {
-    title: "Travel bot", nav: "travel", maxWidth: 1100, state: { t_place: "", t_when: "", t_who: "", pack: "", ...places.TRIP_STATE }, live: ["bot:travel"],
+    title: "Nomaz", nav: "travel", maxWidth: 1100, state: { t_place: "", t_when: "", t_who: "", pack: "", ...places.TRIP_STATE }, live: ["bot:travel"],
     body: [
-      row([botAvatar(p.look, 44), col([title("Travel bot", { size: 26 }), text(p.headLine, { size: 13, weight: 500, color: p.look.color, lineHeight: 18 })], { gap: 2 }),
+      row([botAvatar(p.look, 44), col([title("Nomaz", { size: 26 }), text(p.headLine, { size: 13, weight: 500, color: p.look.color, lineHeight: 18 })], { gap: 2 }),
         ...headerBuddy(ctx, "travel", { lookTo: "right", thinkWhen: ANSWERING })], { gap: 14 }),
       row([col(left, { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 22 }), col(right, { width: 300, flexShrink: 0, gap: 22 })], { gap: 28, alignItems: "flex-start" }),
     ],
@@ -718,8 +732,8 @@ const MOMENTS: Array<{ pose: "hello" | "listen" | "think" | "needs" | "done"; wh
   { pose: "hello", who: "X0 Bot · Hello", slug: "tailzu", line: "Ink · no light · home, welcome" },
   { pose: "listen", who: "Keylessbord · Listening", slug: "keybot", line: "Clay" },
   { pose: "think", who: "Xode · On it", slug: "code", line: "Moss" },
-  { pose: "needs", who: "Plan Ease · Needs you", slug: "plan", line: "Ochre" },
-  { pose: "done", who: "Travel bot · All set", slug: "travel", line: "Sea" },
+  { pose: "needs", who: "Nudj · Needs you", slug: "plan", line: "Ochre" },
+  { pose: "done", who: "Nomaz · All set", slug: "travel", line: "Sea" },
 ];
 
 function avatarsPage(ctx: BotsCtx) {
@@ -743,10 +757,10 @@ function avatarsPage(ctx: BotsCtx) {
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
 export const botsScreens: BotsScreen[] = [
-  screen<OraclePageData & MailPageData & MeetPageData & CinemaPageData>({
+  screen<OraclePageData & MailPageData & MeetPageData & CinemaPageData & { notes?: NotesData & { work?: WorkRead } }>({
     id: SCREENS.bot,
     load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : ["mail", "meet", "cinema"].includes(slugParam(ctx)) ? 1 : 6, { mail: true, meet: true, cinema: true }),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isCinema(d) ? cinemaPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? sribbuPage(ctx, d) : isMeet(d) ? meetPage(ctx, d, { tabs: sribbuTabs(ctx, "meetings") }) : isCinema(d) ? cinemaPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
   /**
    * TALK: THE ONE SCREEN, and the tab the app opens on (screens/bots/talkDoor.ts, docs/talk-door.md).
@@ -892,7 +906,7 @@ export const botsScreens: BotsScreen[] = [
         .filter((g): g is Got => !!g?.file && !!g.attachment);
       const text0 = String(ctx.params.text ?? ""), url = String(ctx.params.url ?? "");
       if (!got.length && !text0 && !url) return {};
-      // What is Plan Ease's (a circular, a bill, a ticket) becomes its card here, with no bot picker (screens/bots/planIn.ts).
+      // What is Nudj's (a circular, a bill, a ticket) becomes its card here, with no bot picker (screens/bots/planIn.ts).
       const capture = await shareCapture(ctx, deps, got.map((g) => g.file.id), text0);
       if (capture) return { capture };
       const name = got.map((g) => g.file.name).join(", ").slice(0, 200);
@@ -907,7 +921,7 @@ export const botsScreens: BotsScreen[] = [
   ...planItemScreens,
   // "Plan something": the card, Check, Done, and the box that fills it (screens/bots/planMake.ts).
   ...planMakeScreens,
-  // Plan Ease's link page and capture card (screens/bots/planIn.ts).
+  // Nudj's link page and capture card (screens/bots/planIn.ts).
   ...planInScreens,
   ...mailScreens,
   ...mailInboxScreens,

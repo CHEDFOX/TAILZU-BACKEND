@@ -110,7 +110,7 @@ export function eveningNote(i: EveningInput): NoteWords | null {
   if (left > 0 && !question) bits.push(sentence(`${left} ${w(hg, "more")}`));
   for (const x of i.extra ?? []) bits.push(sentence(x));
   if (i.summary) bits.push(sentence(i.summary));
-  if (i.first) bits.push("I'll send this each evening. Say 'no evening notes' in Plan Ease to stop.");
+  if (i.first) bits.push("I'll send this each evening. Say 'no evening notes' in Nudj to stop.");
   return {
     title: cutAt(lockSafe(title, 80), 80), body: lockSafe(bits.join(" "), 240),
     ...(question ? { category: question.category ?? "x0_move", item: question.item } : {}),

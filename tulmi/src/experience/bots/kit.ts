@@ -17,7 +17,7 @@
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
 import type { ActionRef, ActionSpec, BlockName, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
-import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STAGE, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, SITE_VIEW_COMPONENT, type LiveViewProps, type SiteViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
@@ -411,13 +411,14 @@ export function makeTileSpec(onPress?: ActionRef): BotTileSpec {
  * look at it before the tile opens. Only for a build that can draw it (canMove); others get botTile / makeBotTile.
  * `strip`: one more tile as a full-width row under the grid, in the same world (only for canStrip).
  */
-export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"] }): Node {
+export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"]; stage?: number; subLines?: number; nameGap?: number }): Node {
   return {
     type: "BotTiles",
     props: {
       tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold },
       ...(o.strip ? { strip: o.strip, stripHeight: o.stripHeight ?? 104 } : {}),
       ...(o.surprises ? { surprises: o.surprises } : {}),
+      ...(o.stage ? { stage: o.stage, subLines: o.subLines ?? 2, ...(o.nameGap ? { nameGap: o.nameGap } : {}) } : {}),
     },
   };
 }
@@ -445,6 +446,8 @@ export function homeSurprises(ctx: BotsCtx): BotTilesProps["surprises"] {
 
 /** A build that draws a strip under the living grid (BotTilesProps.strip). */
 export const canStrip = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_TILES_STRIP);
+/** A build that puts the bot at the top of a tile and its words under him (BotTilesProps.stage). */
+export const canStage = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_TILES_STAGE);
 
 /**
  * A card with the tiny bot playing across its top (BotCard) and its steps below: each step a node with its own
@@ -589,7 +592,7 @@ export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.
 export const canVoice = (ctx: BotsCtx): boolean =>
   ctx.can.has(VOICE_LIVE_CAPABILITY) && ctx.can.has(LIVE_WORDS_COMPONENT) && ctx.can.has(DOUBLE_TAP_CAPABILITY);
 /**
- * A phone whose JS takes Plan Ease's calls (BOT_CALL_CAPABILITY): it draws the call screen's pieces (speak.loud and onDone, voiceLive
+ * A phone whose JS takes Nudj's calls (BOT_CALL_CAPABILITY): it draws the call screen's pieces (speak.loud and onDone, voiceLive
  * duplex, Text format "elapsed"). Every other build, and the window, gets the call as a record (screens/bots/planCall.ts).
  */
 export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(BOT_CALL_CAPABILITY);
@@ -1053,7 +1056,7 @@ export function stepper(value: string, onMinus: ActionRef | undefined, onPlus: A
 /**
  * GOING UP, NOT FORWARD. A link that leaves a screen for its parent (a back arrow that names where, "Stop for now", "All meetings")
  * was an ordinary navigate, so every build PUSHED the parent on top of where the person had been: the stack grew with each one
- * and Back then walked through every step again (a lesson, its Done, Lingo; Lingo again). Sent as `replace`, every build that
+ * and Back then walked through every step again (a lesson, its Done, Babbl; Babbl again). Sent as `replace`, every build that
  * exists swaps the screen up for the parent instead, and a build that knows the stack (the window's go, the phone's navStack)
  * goes back down to the parent when it is already there. Anything that is not a navigate is left as it is.
  */
@@ -1355,10 +1358,18 @@ function navItem(labelText: string, glyph: Node, active: boolean, onPress: Actio
 // the stack stops growing with every click in the sidebar.
 const asRoot = (a: ActionSpec): ActionSpec => (a.kind === "navigate" ? { ...a, root: true, replace: true } : a);
 
+/**
+ * The bots a person is SHOWN as bots: every one but Talk, which is the screen every bot answers in, not one of them
+ * (it is the first tab).
+ */
+export const listedBots = (ctx: Pick<BotsCtx, "live">): LiveBot[] => ctx.live.bots.filter((b) => !(b.builtin && b.slug === "talk"));
+/** Sribbu is listed (the mail bot, with the meetings and Notes inside it: screens/bots/sribbu.ts), so Notes has no place of its own. */
+export const sribbuListed = (ctx: Pick<BotsCtx, "live">): boolean => ctx.live.bots.some((b) => b.builtin && b.slug === "mail");
+
 export function sidebar(ctx: BotsCtx, active?: string): Node {
   const live = ctx.live;
   const plain = (name: IconName, on: boolean) => icon(name, { size: 20, color: on ? C.ink : C.meta });
-  const botItems = live.bots.slice().sort((a, b) => ORDER(a) - ORDER(b)).map((b) => {
+  const botItems = listedBots(ctx).slice().sort((a, b) => ORDER(a) - ORDER(b)).map((b) => {
     const dot = statusMark("working", { color: b.color, still: !b.working });
     const right = b.needs ? statusMark("needs")
       : b.working ? text("working", { size: 12, weight: 500, color: b.color }) : undefined;
@@ -1372,7 +1383,7 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
     navItem("Make a bot", icon("plus", { size: 18, color: C.meta }), active === "make", asRoot(open(SCREENS.make)), 38),
     box([], { height: 1, backgroundColor: C.divider, marginVertical: 8, marginHorizontal: 10 }),
     ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", asRoot(open(SCREENS.today)), 40)] : []),
-    ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", asRoot(open(SCREENS.notes)), 40)] : []),
+    ...(ctx.desk.notes && !sribbuListed(ctx) ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", asRoot(open(SCREENS.notes)), 40)] : []),
     grow(),
     navItem("Settings", plain("settings", active === "settings"), active === "settings", asRoot(open(SCREENS.settings)), 40),
   ], {

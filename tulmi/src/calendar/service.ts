@@ -15,9 +15,9 @@
  * (botsBots/planSafe.ts: no amount, a health visit is "Appointment"): an event is "Design review at 6 pm" with its place, a to-do is its
  * title with Done and Later. A to-do with a day and no time is reminded at 10 am that day. Two or more due within 10 minutes go as one
  * push with no buttons ("2 things at 6 pm: dentist, call Mom"). An event whose leave-by reminder went (planEase.ts) is not reminded
- * again, and Plan Ease's own reminders (not the person's timed ones) stop at 6 a day (the policy, setReminderPolicy). Off: as before.
+ * again, and Nudj's own reminders (not the person's timed ones) stop at 6 a day (the policy, setReminderPolicy). Off: as before.
  *
- * `source` says where a thing came from: the person, a bot ("Plan Ease"), someone in a space, a meeting's to-do. Someone else's plan
+ * `source` says where a thing came from: the person, a bot ("Nudj"), someone in a space, a meeting's to-do. Someone else's plan
  * or task is theirs to change: here it can be ticked, or said no to ("Can't do it", through the space), and nothing else.
  * Every change tells the person's open screens (live "calendar", "tasks", "bot:plan").
  */
@@ -51,7 +51,7 @@ export interface CalEvent {
   day: string;
   repeat: Repeat;
   remindMin: number | null;
-  /** Who put it there, when not the person: "Meera S.", "Plan Ease", a meeting's title. */
+  /** Who put it there, when not the person: "Meera S.", "Nudj", a meeting's title. */
   from: string | null;
   source: Source["kind"];
   /** Someone else's: only they change it. */
@@ -116,14 +116,14 @@ export interface Listed { events: CalEvent[]; tasks: CalTask[]; open: CalTask[] 
 export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanKindId; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string; call?: CallSeed }) => Promise<unknown>;
 
 /**
- * What Plan Ease says about a reminder before it goes (botsBots/planEase.ts): whether a leave-by reminder already went for that start
+ * What Nudj says about a reminder before it goes (botsBots/planEase.ts): whether a leave-by reminder already went for that start
  * (then the event's own is not sent too), and whether one more of its own pushes fits today (at most 6; the person's own timed
  * reminders don't count). Unset: every one goes.
  */
 export interface ReminderPolicy {
   leaveSent(userId: string, eventId: string, start: number): Promise<boolean>;
   spend(userId: string, day: string): Promise<boolean>;
-  /** Plan Ease's follow-through (botsBots/planFollow.ts): true when this occurrence is followed, so its own push is not sent. */
+  /** Nudj's follow-through (botsBots/planFollow.ts): true when this occurrence is followed, so its own push is not sent. */
   follow?(userId: string, c: FollowCandidate): Promise<boolean>;
 }
 
@@ -168,7 +168,7 @@ const LATE_MS = 6 * 60 * MIN;
  * and botsBots/planCallCheck.ts asks the phone and waits), so they go a handful at a time rather than one after another.
  */
 const DUE_AT_ONCE = 20;
-/** Plan Ease's reminders: a to-do with a day and no time is reminded at 10 am that day. */
+/** Nudj's reminders: a to-do with a day and no time is reminded at 10 am that day. */
 const TASK_DAY_MINUTE = 10 * 60;
 /** Reminders due this close together go as one push. */
 const MERGE_MS = 10 * MIN;
@@ -247,7 +247,7 @@ export class Calendar {
   /** Spaces answer here when the person ticks, or says no to, something a space gave them (routes/bots/botsSpaces.ts). */
   onSpaceAnswer(fn: SpaceAnswer | null): void { this.spaceAnswer = fn; }
 
-  /** Plan Ease's say on each reminder (botsBots/planEase.ts). */
+  /** Nudj's say on each reminder (botsBots/planEase.ts). */
   setReminderPolicy(p: ReminderPolicy | null): void { this.policy = p; }
 
   /** Who hears a to-do ticked, un-ticked or taken out (follow-through, wired by routes/bots/planFollows.ts). Fire and forget. */
@@ -536,7 +536,7 @@ export class Calendar {
     this.changed(userId, { kind: "event", id: row.id }, o.one ? "changed" : "gone");
   }
 
-  /** To another start, the same length (Plan Ease's suggestion, said yes to). One start of a series moves alone. */
+  /** To another start, the same length (Nudj's suggestion, said yes to). One start of a series moves alone. */
   async moveEvent(userId: string, id: unknown, startMs: number): Promise<CalEvent> {
     if (!Number.isFinite(startMs)) throw bad("start is when it moves to.");
     const { row, day } = await this.eventRowOf(userId, id);
@@ -588,7 +588,7 @@ export class Calendar {
     const row: TaskRow = {
       id: randomUUID(), user_id: userId, title, notes: longText(b.notes, 1000), list: clean(b.list, 40),
       due_day: d.day, due_ms: d.at, tz_min: tz, done: false, done_ms: null,
-      // A to-do with a time is reminded at the time; with only a day, at 10 am that day (Plan Ease's reminders), else none unless asked.
+      // A to-do with a time is reminded at the time; with only a day, at 10 am that day (Nudj's reminders), else none unless asked.
       remind_min: remindOf(b.remind, d.at !== null || (d.day && planOn("reminders")) ? 0 : null), next_remind_ms: null,
       source: by, source_key: key, created_ms: at, updated_ms: at,
       // A bill or a capture's to-do: only the columns given are written (a plain to-do writes none of 0072's).
@@ -613,7 +613,7 @@ export class Calendar {
     const d = this.due(raw, tz, row);
     const next: TaskRow = {
       ...row, title, notes: raw.notes !== undefined ? longText(raw.notes, 1000) : row.notes, list: raw.list !== undefined ? clean(raw.list, 40) : row.list,
-      // Given a day it had none of, it gets the day's reminder (Plan Ease's reminders), unless one was said.
+      // Given a day it had none of, it gets the day's reminder (Nudj's reminders), unless one was said.
       due_day: d.day, due_ms: d.at, tz_min: tz, remind_min: remindOf(raw.remind, row.remind_min ?? (d.day && !row.due_day && planOn("reminders") ? 0 : null)), updated_ms: this.now(),
       ...(raw.done !== undefined ? { done: raw.done === true, done_ms: raw.done === true ? this.now() : null } : {}),
     };
@@ -900,7 +900,7 @@ export class Calendar {
     return sent;
   }
 
-  /** Plan Ease's reminders (PLAN_V2_REMINDERS): lock-safe words and buttons, 10 am for a to-do with only a day, close ones merged. */
+  /** Nudj's reminders (PLAN_V2_REMINDERS): lock-safe words and buttons, 10 am for a to-do with only a day, close ones merged. */
   private async remindPlan(send: ReminderSend, limit: number): Promise<number> {
     const now = this.now();
     const due: DueReminder[] = [];
@@ -950,12 +950,12 @@ export class Calendar {
       const today = dayOf(now, t.tz_min);
       const title = safeTitle(t.title);
       if (bill) {
-        // "Electricity due today" [Pay] [Paid]: Plan Ease's own, so it counts toward the day's six. Never its amount.
+        // "Electricity due today" [Pay] [Paid]: Nudj's own, so it counts toward the day's six. Never its amount.
         due.push({ userId: t.user_id, at, title, clock: "", own: false, msg: dueReminder(t, today, at) });
         continue;
       }
       const timed = t.due_ms !== null;
-      // Its own timed reminder is the person's; the day's 10 am one and a Later are Plan Ease's, and count toward the day's six.
+      // Its own timed reminder is the person's; the day's 10 am one and a Later are Nudj's, and count toward the day's six.
       const own = timed && (t.snoozes ?? 0) === 0;
       const onDay = dayName(t.due_day, today);
       due.push({
@@ -979,7 +979,7 @@ export class Calendar {
      */
     const onePerson = async ([userId, all]: [string, DueReminder[]]): Promise<number> => {
       all.sort((a, b) => a.at - b.at);
-      // A push with any of Plan Ease's own reminders in it counts once toward the day's six; past them, only the person's own go.
+      // A push with any of Nudj's own reminders in it counts once toward the day's six; past them, only the person's own go.
       const ours = all.some((d) => !d.own);
       const day = dayOf(now, this.tzFor(userId));
       const fits = !ours || !this.policy || await this.policy.spend(userId, day).catch(() => true);

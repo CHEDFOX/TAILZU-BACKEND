@@ -1,5 +1,5 @@
 /**
- * Your space, as routes/bots/botsYouSpace.ts answers it for one person: Aanya, who talks to Plan Ease, Travel, Xode and her own Gym bot.
+ * Your space, as routes/bots/botsYouSpace.ts answers it for one person: Aanya, who talks to Nudj, Travel, Xode and her own Gym bot.
  * The screens' tests and the render samples (scripts/bots-render) read these.
  */
 import { FIXED_NOW } from "../src/experience/bots/fixtures.js";
@@ -12,15 +12,15 @@ const line = (key: string, text: string, section: SpaceLine["section"], from: st
   ({ key, text, section, from, forAll: o.forAll ?? true, at: NOW - ago, pinned: o.pinned ?? false });
 
 export const LINES: SpaceLine[] = [
-  line("a1b2c3d4e5f6", "Prefers short replies, in English with a little Hindi", "likes", ["Plan Ease", "Travel"], 2 * H, { pinned: true }),
+  line("a1b2c3d4e5f6", "Prefers short replies, in English with a little Hindi", "likes", ["Nudj", "Travel"], 2 * H, { pinned: true }),
   line("b1b2c3d4e5f6", "Goes to the gym at 6:30 am on weekdays", "day", ["Gym bot"], 5 * H),
   line("c1b2c3d4e5f6", "Her sister Meera lives in Pune", "people", ["Travel"], D + 3 * H),
-  line("d1b2c3d4e5f6", "Works as a product designer at a fintech startup", "work", ["Xode", "Plan Ease"], 2 * D),
-  line("e1b2c3d4e5f6", "Lives in Indiranagar, Bangalore", "places", ["Plan Ease"], 3 * D),
+  line("d1b2c3d4e5f6", "Works as a product designer at a fintech startup", "work", ["Xode", "Nudj"], 2 * D),
+  line("e1b2c3d4e5f6", "Lives in Indiranagar, Bangalore", "places", ["Nudj"], 3 * D),
   line("f1b2c3d4e5f6", "Vegetarian, loves South Indian breakfast", "likes", ["Travel"], 4 * D),
   line("a2b2c3d4e5f6", "Speaks Kannada, Hindi and English", "about", [], 6 * D),
-  line("a3b2c3d4e5f6", "Pays rent on the 5th of every month", "money", ["Plan Ease"], 9 * D, { forAll: false }),
-  line("a4b2c3d4e5f6", "Her dad's birthday is on 14 March", "people", ["Plan Ease"], 12 * D),
+  line("a3b2c3d4e5f6", "Pays rent on the 5th of every month", "money", ["Nudj"], 9 * D, { forAll: false }),
+  line("a4b2c3d4e5f6", "Her dad's birthday is on 14 March", "people", ["Nudj"], 12 * D),
 ];
 
 export const SPACE: SpaceOverview = {
@@ -33,7 +33,7 @@ export const SPACE: SpaceOverview = {
     { id: "likes", name: "Likes", count: 2, peek: "Prefers short replies, in English with a little Hindi", off: false },
     { id: "money", name: "Money", count: 1, peek: "Pays rent on the 5th of every month", off: true },
     { id: "work", name: "Work", count: 3, peek: "Works as a product designer at a fintech startup", off: false },
-    { id: "bots", name: "Bots", count: 4, peek: "Plan Ease, Travel, Xode", off: false },
+    { id: "bots", name: "Bots", count: 4, peek: "Nudj, Travel, Xode", off: false },
     { id: "files", name: "Files & notes", count: 6, peek: "Design review with Kabir", off: false },
     { id: "timeline", name: "Timeline", count: LINES.length, peek: "Prefers short replies, in English with a little Hindi", off: false },
   ],

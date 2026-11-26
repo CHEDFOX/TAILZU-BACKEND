@@ -108,7 +108,7 @@ export class SupabaseTable<R extends Row> implements Table<R> {
 const AREA_TABLES = [
   "bot_chat_turns", "bot_drafts", "bot_listings", "bot_listing_adds", "bot_key_usage",
   "spaces", "space_members", "space_bots", "space_invites", "plan_skips", "trips",
-  // migration 0052: where Plan Ease's day starts, and the travel its moves saved
+  // migration 0052: where Nudj's day starts, and the travel its moves saved
   "plan_prefs",
   // migration 0099: places worth keeping (src/discover) — cards built for one person, and who searched for what
   "discover_cards", "discover_asks",

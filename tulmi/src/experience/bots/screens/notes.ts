@@ -173,7 +173,7 @@ function figures(ctx: BotsCtx, s: NotesStats): Node {
 
 // ===================================================================== the meetings
 
-interface NotesData { notes: NoteSummary[] }
+export interface NotesData { notes: NoteSummary[] }
 
 /** A window that stops a named note (NOTES_STOP): its own, or one the server still thinks is recording that it no longer holds. */
 export const NOTES_STOP = "NotesStop";
@@ -186,7 +186,7 @@ export function stopNotes(ctx: BotsCtx, id: string | undefined): ActionSpec {
 }
 
 /** The meetings, and (the new Spaces) Work in space's people for the Notes bot (screens/work/workTab.ts). */
-async function notesLoad(ctx: BotsCtx, deps: Pick<BotsDeps, "api">): Promise<NotesData & { work?: WorkRead }> {
+export async function notesLoad(ctx: BotsCtx, deps: Pick<BotsDeps, "api">): Promise<NotesData & { work?: WorkRead }> {
   const [notes, work] = await Promise.all([deps.api<NotesData>("GET", "/v1/notes?limit=100"), loadWork(ctx, deps, "notes")]);
   return { ...notes, work };
 }
@@ -199,7 +199,8 @@ function leftLine(n: NoteSummary): string {
   return bits.join(", ");
 }
 
-function notesPage(ctx: BotsCtx, d: NotesData | undefined) {
+/** `inside`: drawn as Sribbu's Notes part (sribbu.ts): its name, its tabs, its place in the sidebar, and a search that stays there. */
+export function notesPage(ctx: BotsCtx, d: NotesData | undefined, inside?: { name: string; tabs: Node[]; at: (params: Record<string, string>) => ActionSpec }) {
   const tz = ctx.tzOffsetMinutes;
   const desk = ctx.client === "desktop";
   const q = String(ctx.params.q ?? "").trim().toLowerCase();
@@ -258,7 +259,7 @@ function notesPage(ctx: BotsCtx, d: NotesData | undefined) {
     box([], { width: 16 }), box([sectionLabel("Meeting")], { flexGrow: 1, flexBasis: 0 }), box([sectionLabel("Length")], { width: 110 }),
     box([sectionLabel("Speakers")], { width: 170 }), box([sectionLabel("Status")], { width: 130, alignItems: "flex-end" }),
   ], { gap: 14, paddingHorizontal: 16 }) : null;
-  const to = (params: Record<string, string>): ActionSpec => ({ kind: "navigate", screenId: SCREENS.notes, params, replace: true } as ActionSpec);
+  const to = (params: Record<string, string>): ActionSpec => inside ? inside.at(params) : ({ kind: "navigate", screenId: SCREENS.notes, params, replace: true } as ActionSpec);
   const keep = (p: Record<string, string>) => ({ ...(q ? { q } : {}), ...(onlyOpen ? { f: "todos" } : {}), ...p });
   const search = row([
     icon("search", { size: 18, color: C.meta }),
@@ -285,13 +286,14 @@ function notesPage(ctx: BotsCtx, d: NotesData | undefined) {
     ...(desk && !q && !onlyOpen ? { action: { label: "Start notes", onPress: { kind: "notes.toggle" } as ActionSpec } } : {}),
   });
   return page(ctx, {
-    ...(desk ? { nav: "notes" } : { back: true }), title: "Notes", gap: 18, maxWidth: 1000, state: { nq: q }, live: ["notes"],
+    ...(desk ? { nav: inside ? "mail" : "notes" } : { back: true }), title: inside?.name ?? "Notes", gap: 18, maxWidth: 1000, state: { nq: q }, live: ["notes"],
     body: [
       row([
-        col([title("Notes"), meta(weekLine, { size: 13 })], { gap: 4, flexShrink: 1, flexGrow: 1, minWidth: 0 }),
+        col([title(inside?.name ?? "Notes"), meta(weekLine, { size: 13 })], { gap: 4, flexShrink: 1, flexGrow: 1, minWidth: 0 }),
         ...headerBot(ctx, s.recording || s.organising > 0),
         ...(desk ? [start] : []),
       ], { gap: 16, alignItems: "flex-end" }),
+      ...(inside?.tabs ?? []),
       ...(d && every.length ? [figures(ctx, s)] : []),
       desk ? row([search, chips], { gap: 12 }) : col([search, chips], { gap: 10 }),
       ...(!d ? [couldNot("your meetings")]

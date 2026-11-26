@@ -61,7 +61,7 @@ export function planChips(d: PlanRead): string[] {
   return [busy && busy.events.length >= 2 ? `Free up ${PLAN_WEEKDAYS_LONG[keyDate(busy.key).getUTCDay()]}` : "Plan my week", "What should I do first tomorrow?"];
 }
 
-/** "From Meera S.", "Added by Plan Ease": who put it on the person's days, when not them. */
+/** "From Meera S.", "Added by Nudj": who put it on the person's days, when not them. */
 export const fromWords = (x: { from?: string }) => (x.from ? (x.from === "You" ? "" : x.from.endsWith(" bot") ? `Added by ${x.from}` : `From ${x.from}`) : "");
 
 /** A to-do on a day or a list: its tick (on its own), and its words (open it). */
@@ -172,12 +172,12 @@ export function planDesk(ctx: BotsCtx, d: PlanRead | undefined) {
     ...(d ? openTodos(ctx, d) : []),
     ...places.homePart(ctx, d?.travel),
     row(d ? planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })) : [], { gap: 8, flexWrap: "wrap" }),
-    chatBar(ctx, "plan", "Plan Ease", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
+    chatBar(ctx, "plan", "Nudj", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
   ], { width: 300, flexShrink: 0, gap: 18 });
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", maxWidth: 1180, live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
+    title: "Nudj", nav: "plan", maxWidth: 1180, live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
     body: [
-      row([botAvatar(look, 44), col([title("Plan Ease", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }),
+      row([botAvatar(look, 44), col([title("Nudj", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }),
         ...headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING }), grow(),
         ...(d ? [secondaryButton("Add", addAction(d.tomorrow), { size: "md", icon: "plus" }), nav] : [])], { gap: 14 }),
       ...(!d ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]

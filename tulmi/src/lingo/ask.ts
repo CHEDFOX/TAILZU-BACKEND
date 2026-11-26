@@ -3,7 +3,7 @@
  *
  *   askLingo(ctx, o) -> Said | null
  *
- * The ask box sits at the bottom of every Lingo screen, including the middle of a set. That is the point: the
+ * The ask box sits at the bottom of every Babbl screen, including the middle of a set. That is the point: the
  * moment somebody wants a word is the moment they are using the language, and making them leave the lesson to go
  * and have a conversation about it loses both the word and the lesson.
  *

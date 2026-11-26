@@ -1,6 +1,6 @@
 /**
  * THE TRAVEL BOT'S TRIP: where and when, who is going, and the packing list, kept per person; the rest of the trip view is what the
- * Travel bot already has (its memory, the booking links it opened in chat, the person's ticket files, its waiting tasks).
+ * Nomaz already has (its memory, the booking links it opened in chat, the person's ticket files, its waiting tasks).
  *
  *   current(user)                 the latest trip, or null
  *   create(user, { place, when, who })

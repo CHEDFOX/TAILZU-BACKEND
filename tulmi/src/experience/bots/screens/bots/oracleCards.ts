@@ -1,13 +1,13 @@
 /**
- * THE ORACLE'S CARDS (docs/oracle.md section 2): what the Oracle needs, asked as the microphone and keyboard card asks (firstRun/arrivalCard.ts):
- * one card over the Oracle's page (a BotCard overlay, the page blurred behind it) with the day's character on its stage, and one step after the
+ * THE ORACLE'S CARDS (docs/oracle.md section 2): what Chamen needs, asked as the microphone and keyboard card asks (firstRun/arrivalCard.ts):
+ * one card over Chamen's page (a BotCard overlay, the page blurred behind it) with the day's character on its stage, and one step after the
  * other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
  *   back        the card is a modal over the page, so the page's own back is behind it and the phone's edge swipe never reaches it:
  *                it carries its own way out (`onLeave`, the card draws a Back and takes a swipe to the right and the phone's back).
- *                It leaves the Oracle; it does not put the cards off, and what was answered is kept for next time
+ *                It leaves Chamen; it does not put the cards off, and what was answered is kept for next time
  *   1. when      the date of birth, and the time if they know it: PUT /v1/oracle/sky { date, time }. There is no putting the cards off: the
- *                Oracle reads nothing without a chart (oracle/run.ts refuses too). Opened by Change, with a sky kept, Cancel leaves it as it was
+ *                Chamen reads nothing without a chart (oracle/run.ts refuses too). Opened by Change, with a sky kept, Cancel leaves it as it was
  *   2. where     the town or city, with suggestions as they type (GET /v1/oracle/places: Google's with GOOGLE_PLACES_API_KEY, else the
  *                server's own); a tap keeps one (PUT { placeId, place, session }), Keep finds what they typed (PUT { place })
  *   3. you       their name and gender, only when the app does not have them (the About you card's own read, GET /v1/bots/first-run/about,
@@ -35,7 +35,7 @@ export const OC = {
 const HITS = 5;
 const WIDTH = { phone: 330, desktop: 360 };
 
-/** What the cards read: the Oracle's store (GET /v1/oracle/sky) and the profile (GET /v1/bots/first-run/about). */
+/** What the cards read: Chamen's store (GET /v1/oracle/sky) and the profile (GET /v1/bots/first-run/about). */
 export interface OracleCardsData {
   /** `sky` is the whole one (null while anything the engine needs is owed); `place` is the place card's own answer, kept
    *  whether or not the rest is, so the cards ask only for what is missing. */
@@ -71,7 +71,7 @@ export function cardsState(ctx: BotsCtx, d: OracleCardsData): Record<string, unk
   };
 }
 
-/** Back to the Oracle's page as it is now (without `edit`, so the cards do not open again). */
+/** Back to Chamen's page as it is now (without `edit`, so the cards do not open again). */
 const again = (): ActionSpec => ({ kind: "navigate", screenId: SCREENS.chat, params: { slug: "oracle" }, replace: true });
 /** Opens the cards again, filled in: the sky line's Change, and the stage's "Add your birth details". */
 export const openCards = (): ActionSpec => ({ kind: "navigate", screenId: SCREENS.chat, params: { slug: "oracle", edit: "1" }, replace: true });
@@ -99,7 +99,7 @@ function cardField(path: string, placeholder: string, desk: boolean, o: { label:
 }
 
 /**
- * The cards, while they are due; nothing otherwise. `look`: the character on the stage (the page's day character) and the Oracle's colour.
+ * The cards, while they are due; nothing otherwise. `look`: the character on the stage (the page's day character) and Chamen's colour.
  */
 export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: string; avatar?: string; moment?: Record<string, unknown> }): Node[] {
   if (!cardsDue(ctx, d)) return [];
@@ -130,7 +130,7 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
   const whenStep = permitStep({
     when: { falsy: OC.when },
     title: "When were you born?",
-    lines: [line("The date and the time you were born. The time is what fixes the sky to that moment, so the Oracle asks for both.")],
+    lines: [line("The date and the time you were born. The time is what fixes the sky to that moment, so Chamen asks for both.")],
     extra: [
       cardField(OC.date, "Date, like 13 July 1994", desk, { label: "the date" }),
       cardField(OC.time, "Time, like 9:30 am", desk, { label: "the time", onSubmit: saveWhen }),
@@ -194,11 +194,11 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
     // The Back is drawn here, as a part of the card, so every build that is already out has one; the apps add the swipe and
     // the phone's own back on top of it (`onLeave`).
     return [botCard([cardBack(back()), ...steps, done], {
-      kind: "custom", color: look.color, stageHeight: 96, overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "The Oracle",
+      kind: "custom", color: look.color, stageHeight: 96, overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "Chamen",
       ...(look.avatar ? { avatar: look.avatar } : {}), ...(look.moment ?? {}),
       doneWhen: allKept, doneDelayMs: 1800, onComplete: seq(setState(OC.closed, true), again()), closeWhen: { truthy: OC.closed },
       // A way off the screen. The card is a modal over the page, so without this there is no back and no swipe on either phone.
-      // It does not put the cards off — there is nothing to read without a sky — it leaves the Oracle, and they are here again
+      // It does not put the cards off — there is nothing to read without a sky — it leaves Chamen, and they are here again
       // next time, filled in as far as they got.
       onLeave: back(),
     })];

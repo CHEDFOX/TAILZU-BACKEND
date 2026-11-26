@@ -3,7 +3,7 @@
  *
  *   setup(user, tz)      GET .../plan/make: today, the people to pick (You first, as their tiny bots), follow-through on, the AI's state
  *   draft(user, body)    POST .../plan/make/draft: the box's words as drafts (rules, then one small AI read only when the rules are
- *                        unsure, with the person's yes, inside Plan Ease's budget), a bill's or a wait's preview, or the box's own answer
+ *                        unsure, with the person's yes, inside Nudj's budget), a bill's or a wait's preview, or the box's own answer
  *   check(user, body)    POST .../plan/make/check: the card (and every draft) checked by rules, a fix or Take out applied
  *   done(user, body)     POST .../plan/make: everything checked again, then made through the calendar and follow-through's setItem
  *   undo(user, body)     POST .../plan/make/undo: exactly the rows that Done made
@@ -496,7 +496,7 @@ export class PlanMake {
 
 let shared: PlanMake | null = null;
 
-/** The server's: over Plan Ease's calendar, follow-through's people and capture's reader (each read when used). */
+/** The server's: over Nudj's calendar, follow-through's people and capture's reader (each read when used). */
 export function planMake(): PlanMake {
   return (shared ??= new PlanMake({
     ease: planEase, calendar: () => planEase().calendar, people: () => (followOn() ? planFollows().people : null), capture: planCapture,

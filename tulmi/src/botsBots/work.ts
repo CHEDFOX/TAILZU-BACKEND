@@ -1,5 +1,5 @@
 /**
- * WORK IN SPACE: on each of the four bots' pages (Plan Ease, Notes, Travel bot, Xode), the things people in your spaces let you see,
+ * WORK IN SPACE: on each of the four bots' pages (Nudj, Notes, Nomaz, Xode), the things people in your spaces let you see,
  * beside your own (docs/spaces.md). Shared work lives in the bots, not in the space.
  *
  *   read(viewer, bot)                 the people whose things the viewer may open in that bot, per space (every space they are
@@ -70,7 +70,7 @@ export interface WorkItem {
 export type SharedItem = OwnItem & { sharedBy?: string };
 export type WorkHow = WorkItem["how"];
 
-export const BOT_NAMES: Record<ShareBot, string> = { plan: "Plan Ease", notes: "Notes", travel: "Travel bot", code: "Xode" };
+export const BOT_NAMES: Record<ShareBot, string> = { plan: "Nudj", notes: "Notes", travel: "Nomaz", code: "Xode" };
 /** What one thing is called in each bot: plan(s), note(s), trip(s), project(s). */
 const NOUN: Record<ShareBot, string> = { plan: "plan", notes: "note", travel: "trip", code: "project" };
 const nouns = (bot: ShareBot, n: number) => `${n} ${NOUN[bot]}${n === 1 ? "" : "s"}`;
@@ -173,7 +173,7 @@ export class Work {
 
   /**
    * Only the notes others left on the viewer's own things in `bot`, newest first, each writer as their tiny bot in the space it came
-   * through (Plan Ease puts the newest on its row: botsBots/planEase.ts notesOf). No titles: the viewer's page has its own.
+   * through (Nudj puts the newest on its row: botsBots/planEase.ts notesOf). No titles: the viewer's page has its own.
    */
   async notesOnMine(viewer: string, botIn: unknown): Promise<WorkRead["notesOnMine"]> {
     const { bot } = this.source(botIn);

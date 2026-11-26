@@ -9,7 +9,7 @@
  * WHAT IS IN A BLOCK, AND WHAT NEVER IS. Start, end and all-day. Not a title, a place, a note, who is invited, which calendar
  * it came from, or whether it is work or home: the phone's Swift reads the events and hands JavaScript `{s, e, allDay}` only,
  * so nothing else exists to store. The blocks are used by deterministic server code alone — the day's clash lines and whether a
- * Plan Ease call rings — and `tests/perms2.test.ts` keeps this file off every path that reaches an AI service.
+ * Nudj call rings — and `tests/perms2.test.ts` keeps this file off every path that reaches an AI service.
  *
  * Supabase with the service key when the server has one, else memory (tests, and a server with none), as `bots/healthDays.ts`
  * does. The table is RLS-on with no policy, so no client ever reads a row.

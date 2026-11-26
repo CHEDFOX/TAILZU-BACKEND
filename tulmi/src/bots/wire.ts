@@ -8,7 +8,7 @@
  * chat (code/chat), read-only, on the cheap tier, as the front door asks it. Only server.ts imports this file, so the platform itself stays light.
  *
  * In front of the connected apps sit Tailzu's own calendar and to-dos ("calendar", "tasks": src/calendar/bots.ts), always on, so a bot
- * given them (Plan Ease is) reads and writes the person's own days, with or without connected apps switched on.
+ * given them (Nudj is) reads and writes the person's own days, with or without connected apps switched on.
  */
 import type { Artifacts } from "../artifacts/index.js";
 import { lingoWords } from "../lingo/tool.js";
@@ -61,7 +61,7 @@ export function botPorts(o: WireOptions): BotPorts {
     // Places worth going (src/discover): our own written catalogue, and a card built from the web for a place
     // nobody has written yet. The model is handed in so a build can fill its slots.
     discover: discover({ ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}) }),
-    // Lingo's own: writing down a word somebody reached for, mid-conversation. buildTools gives it to Lingo alone.
+    // Babbl's own: writing down a word somebody reached for, mid-conversation. buildTools gives it to Babbl alone.
     lingo: lingoWords(),
     ...(o.sites ? { sites: o.sites } : {}),
   };

@@ -187,7 +187,7 @@ export interface ScreenData {
   looks?: { v: number; f: number; spec: unknown };
   /**
    * Which phone this is (`--platform android`). The default is the iPhone, as it was. Several screens read it — the
-   * calendar place on Plan Ease, the Motion row's words, the arrival card — so an Android shot is the only way to see what
+   * calendar place on Nudj, the Motion row's words, the arrival card — so an Android shot is the only way to see what
    * an Android phone is really sent. It is ignored for the window, which is neither.
    */
   platform?: "ios" | "android";
@@ -198,7 +198,7 @@ const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma",
 export const SPACES_COMPONENTS = ["BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras", "BotPeek", "BotMark"];
 /** People as their own tiny bots, and a space's messages in Bricolage (shared/types/sdui.ts 3j): both builds say these now. */
 export const LOOK_COMPONENTS = ["PersonBot", "FontBricolage"];
-export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "DeskTalkTo"];
+export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotTilesStage", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "DeskTalkTo"];
 /** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles, the media actions, the new Spaces (and the
  *  "$state" params their navigation needs, ActionParams), and the call screen's pieces (BotCall: --without BotCall draws its record). */
 // "ScrollX" is here because the real phone build declares it (TAILZU-FRONTEND app/src/sdui/registry.ts): without it the
@@ -207,7 +207,7 @@ export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "
 // "MentionField" and "MentionCommands" are here for ScrollX's reason, which Talk proved again: the real phone build
 // declares both, and without them the check drew Talk's bar in its PLAIN fallback shape — so the bar every real phone
 // actually gets was never once looked at, and shipped with the field not filling the row beside the "+".
-export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", "ScrollX", "MentionField", "MentionCommands", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "BotCall"];
+export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotTilesStage", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", "ScrollX", "MentionField", "MentionCommands", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "BotCall"];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer

@@ -77,7 +77,7 @@ const SAMPLE_TRIP_EXTRAS = {
   spots: [{ text: "Sakshi and Arjun's wedding, Koregaon Park", found: true }],
   main: "the wedding",
   stays: [
-    stay("s1", "Shanti Residency", "Koregaon Park", 3200, 4.4, 1820, "https://www.booking.com/hotel/in/shanti-residency-pune.html", { label: "Travel bot's pick", minutes: 12, mode: "drive", totalPaise: 640000, stars: 4.4 }),
+    stay("s1", "Shanti Residency", "Koregaon Park", 3200, 4.4, 1820, "https://www.booking.com/hotel/in/shanti-residency-pune.html", { label: "Nomaz's pick", minutes: 12, mode: "drive", totalPaise: 640000, stars: 4.4 }),
     stay("s2", "Deccan Courtyard", "FC Road", 2600, 4.1, 960, "https://www.makemytrip.com/hotels/deccan_courtyard-details-pune.html", { label: "Cheaper", minutes: 28, mode: "drive", totalPaise: 520000, stars: 4.1 }),
   ],
   finding: false, searched: null, canFind: true, canMeasure: true, pending: false,
@@ -114,7 +114,7 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
     ] },
     "GET /v1/bots": { bots: [
       { slug: "code", name: "Xode", colour: "pine", builtin: true }, { slug: "keybot", name: "Keylessbord", colour: "ochre", builtin: true },
-      { slug: "plan", name: "Plan Ease", colour: "sea", builtin: true }, { slug: "travel", name: "Travel bot", colour: "clay", builtin: true },
+      { slug: "plan", name: "Nudj", colour: "sea", builtin: true }, { slug: "travel", name: "Nomaz", colour: "clay", builtin: true },
       { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }, { slug: "shop-bot", name: "Shop bot", colour: "sand", builtin: false },
     ] },
     [`GET ${A}/listing/gym-bot`]: { listed: true },

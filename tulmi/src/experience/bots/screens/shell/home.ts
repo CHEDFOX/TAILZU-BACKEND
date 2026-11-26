@@ -12,6 +12,7 @@ import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, C, headBar, type PageOpts, hasOutbox,
   needsCard,  page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
+  listedBots, sribbuListed,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homePeek, homePeekEar, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import { askBar, ASK_BAR_STATE } from "../../ask.js";
@@ -104,21 +105,23 @@ const FEATURED: readonly string[] = ["oracle", "mail", "cinema"];
  */
 const HOME_TILES = 8;
 
-/** The bots Home's grid draws: the first three, then the Oracle, the mail bot and the cinema bot. */
+/** The bots Home's grid draws: the first three, then Chamen, the mail bot and the cinema bot. */
 export function homeShown(ctx: BotsCtx): LiveBot[] {
-  const first = ctx.live.bots.slice(0, HOME_TILES);
-  return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
+  const bots = listedBots(ctx);
+  const first = bots.slice(0, HOME_TILES);
+  return [...first, ...bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
 }
 
 export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, spacesIn: Space[] = [], planLine = ""): Node {
   const shown = homeShown(ctx);
-  // Plan Ease's tile says the one thing that matters next, as its page does (botsBots/planDay.ts), when it isn't busy with something.
+  // Nudj's tile says the one thing that matters next, as its page does (botsBots/planDay.ts), when it isn't busy with something.
   const idleLine = (b: LiveBot, client: BotsCtx["client"]) => (b.slug === "plan" && planLine && !b.working ? planLine : idleLineOf(b, client));
   // Spaces switched off: no Space card and no group tiles, whatever was read (kit hasSpaces).
   const groups = hasSpaces(ctx) ? spacesIn : [];
   const groupsShown = groups.slice(0, GROUPS_ON_HOME);
   const gap = columns === 4 ? 14 : 12;
-  const withNotes = hasNotes(ctx);
+  // Notes is inside Sribbu where Sribbu is listed (screens/bots/sribbu.ts): no strip of its own then.
+  const withNotes = hasNotes(ctx) && !sribbuListed(ctx);
   if (canMove(ctx)) {
     const strip = withNotes && canStrip(ctx) ? notesTileSpec(ctx, notes) : undefined;
     // Now and then an idle bot does something of his own (a sneeze, a hiccup…): the catalog's, for a build that plays them.
@@ -128,7 +131,7 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const living = botTiles([
       ...shown.map((b) => ({
         ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}),
-        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts);
+        // Chamen wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts);
         // the cinema bot, the director clapping his board (cinemaPage.ts).
         ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : b.slug === "cinema" && b.builtin ? cinemaTileLook(ctx) : {}),
       })),
@@ -146,12 +149,12 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
 }
 
 /**
- * The bots Home's grid does not draw (the Travel bot, the ones they made): one chip each, so every bot has a way in on the phone. The
+ * The bots Home's grid does not draw (Nomaz, the ones they made): one chip each, so every bot has a way in on the phone. The
  * window lists them all in its sidebar.
  */
 export function moreBots(ctx: BotsCtx): Node[] {
   const shown = new Set(homeShown(ctx).map((b) => b.slug));
-  const rest = ctx.live.bots.filter((b) => !shown.has(b.slug));
+  const rest = listedBots(ctx).filter((b) => !shown.has(b.slug));
   if (!rest.length) return [];
   return [col([
     sectionLabel("More bots"),

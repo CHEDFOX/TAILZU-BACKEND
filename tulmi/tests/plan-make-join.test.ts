@@ -96,7 +96,7 @@ async function server() {
 
   const app: FastifyInstance = Fastify();
   // The server's own wiring (routes/bots/botsBots.ts): plan/day, plan/box, the act door, follow-through, then "Plan something" over
-  // this Plan Ease. Spaces' contacts and invite are the test's, and so is the reader.
+  // this Nudj. Spaces' contacts and invite are the test's, and so is the reader.
   registerBotsBotsRoutes(app, { rateLimit: RL, bots: null, code: null, jobs: null, connectors: null, media: null, artifacts: null }, {
     parts: { ...botsAreaParts({ bots: null, connectors: null, now: clock }), ease },
   });
@@ -582,7 +582,7 @@ describe("the home's own calls", () => {
       const h = new Driver(await build(S, "bots.plan", client, { week: "1" }), client, S.send);
       const day = S.sent.filter((x) => x.path.startsWith(`${A}/plan/day`)).at(-1)!;
       expect(day).toMatchObject({ path: `${A}/plan/day?tz=${IST}&week=1`, status: 200, answer: { day: "2026-11-19" } });
-      await h.tap("Plan Ease");
+      await h.tap("Nudj");
       expect(h.went.at(-1)).toEqual({ kind: "navigate", screenId: "bots.plan.make", params: { from: "plan", day: "2026-11-19", focus: "box" } });
       const plus = h.nodes.find((n) => n.props?.accessibilityLabel === "Plan something" && n.on?.onPress) ?? h.pressable("Plan something");
       await h.run(plus.on!.onPress as Act);

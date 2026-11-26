@@ -6,7 +6,7 @@
  *   link     "link my work calendar": the link page opens (the offer card is asked only once, so this is how it is found again)
  *   seen     a desktop's "add this" (its addThis.js): the words came with what was on the screen (`seen`: the selection, the page in
  *            front, or the window's text). One clear line is added as the box adds any line; a notice with several things in it
- *            goes to capture, with its consent gate and Plan Ease's budget, as a shared circular does. Its slot is planBox.ts's SEEN,
+ *            goes to capture, with its consent gate and Nudj's budget, as a shared circular does. Its slot is planBox.ts's SEEN,
  *            first of all when `seen` is there; these are its parts
  *
  * The bill in a line ("Electricity 2140 due 14th") is planDue.ts's slot; a plain line is the item slot's.
@@ -90,7 +90,7 @@ export function seenLine(seen: Seen, words: string): string | null {
 }
 
 /**
- * A notice that was seen: the capture card, read with the person's yes to AI and on Plan Ease's budget; without that yes, by the rules
+ * A notice that was seen: the capture card, read with the person's yes to AI and on Nudj's budget; without that yes, by the rules
  * at once. What was seen is never stored either way (planCapture.ts look's `seen`). Null with capture off, or nothing found.
  */
 export async function seenCapture(userId: string, seen: Seen, tz: number): Promise<BoxReply | null> {

@@ -607,7 +607,7 @@ describe("cost and logs", () => {
     expect(r.all()[0]!.usd).toBeCloseTo(0.0008, 6);
     expect(sink).not.toHaveBeenCalled();
   });
-  it("the read goes with the judge's own prompt and read bounds, never Plan Ease's budget", async () => {
+  it("the read goes with the judge's own prompt and read bounds, never Nudj's budget", async () => {
     const r = rig();
     const e = await flight(r);
     await r.judge.judge(U, refOf(e.id));
