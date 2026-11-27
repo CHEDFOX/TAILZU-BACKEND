@@ -86,6 +86,10 @@ function aiOf(companyId: string, threadIds: string[]): Map<string, { run: number
 const person = (a?: Addr[] | null) => (a?.[0] ? { name: a[0].name ?? "", email: a[0].email } : { name: "", email: "" });
 const people = (a?: Addr[] | null) => (a ?? []).map((x) => ({ name: x.name ?? "", email: x.email }));
 
+/** A message's named files, as the list shows them: name, size, type and the file's own id (X0 Bot turns it into a signed link). */
+const filesOf = (e: Email) => (e.attachments ?? []).filter((a) => a.name && a.blobId)
+  .map((a) => ({ name: String(a.name).slice(0, 120), size: a.size ?? 0, type: a.type ?? "", blob: a.blobId! }));
+
 /** One folder's conversations, newest first, a page at a time; with `q`, only those whose words, sender or subject have it. */
 export async function messages(company: Company, o: { folder?: string; page?: number; limit?: number; q?: string } = {}) {
   const box = new Mailbox(company.email);
@@ -98,7 +102,7 @@ export async function messages(company: Company, o: { folder?: string; page?: nu
   const filter = words ? { operator: "AND", conditions: [filterOf(folder, all), { text: words }] } : filterOf(folder, all);
   const [q, g, t] = await box.request([
     ["Email/query", { filter, sort: [{ property: "receivedAt", isAscending: false }], collapseThreads: true, position: page * limit, limit, calculateTotal: true }, "q"],
-    ["Email/get", { "#ids": { resultOf: "q", name: "Email/query", path: "/ids" }, properties: ["id", "threadId", "from", "to", "subject", "preview", "receivedAt", "keywords", "mailboxIds"] }, "g"],
+    ["Email/get", { "#ids": { resultOf: "q", name: "Email/query", path: "/ids" }, properties: ["id", "threadId", "from", "to", "subject", "preview", "receivedAt", "keywords", "mailboxIds", "attachments"] }, "g"],
     ["Thread/get", { "#ids": { resultOf: "g", name: "Email/get", path: "/list/*/threadId" } }, "t"],
   ]);
   const total = Number(unwrap("Email/query", q!).total ?? 0);
@@ -111,6 +115,8 @@ export async function messages(company: Company, o: { folder?: string; page?: nu
       id: e.id, threadId: e.threadId, from: person(e.from), to: people(e.to), subject: e.subject ?? "", preview: (e.preview ?? "").slice(0, 200),
       at: Date.parse(e.receivedAt) || 0, unread: !e.keywords?.$seen, starred: !!e.keywords?.$flagged, count: sizes.get(e.threadId) ?? 1,
       ...(ai.has(e.threadId) ? { ai: ai.get(e.threadId) } : {}),
+      // Its files (the newest message's), for the list's small previews: four at most, how many in all.
+      ...(filesOf(e).length ? { files: filesOf(e).slice(0, 4), fileCount: filesOf(e).length } : {}),
     })),
   };
 }

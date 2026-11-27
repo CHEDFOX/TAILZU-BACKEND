@@ -17,7 +17,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, page, row, col, text, C, card, chip, chips, meta, notice, primaryButton, secondaryButton, quietButton, sectionLabel,
-  call, seq, when, SCREENS, icon, infoChip, divider, labelled, grow, box, canScrollX, scrollRow,
+  call, seq, when, SCREENS, icon, infoChip, divider, labelled, grow, box, canScrollX, scrollRow, picture,
 } from "../../kit.js";
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
@@ -27,7 +27,7 @@ import {
 } from "./mailParts.js";
 import { clockOf, dayKeyOf, isDesk, setState, shortDate } from "./parts.js";
 import { shareButtonsFor } from "../../shareAction.js";
-import { openMedia } from "../media.js";
+import { mediaKind, openMedia } from "../media.js";
 import { plusCircle } from "../spaces/start.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
@@ -65,27 +65,67 @@ function initial(who: string): Node {
     { width: 38, height: 38, borderRadius: 19, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
 }
 
+const fileSize = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const THUMB = 44;
+
+/**
+ * A file's small preview in the list, a tap from the viewer (bots.media): a photo as itself, a video as a dark square with a play mark,
+ * a sound with a mic, any other file as a small pill with its name. Without a link (an older server) it is only its name, not tappable.
+ */
+function fileThumb(f: NonNullable<MessageRow["files"]>[number]): Node {
+  const kind = mediaKind(f.type, f.name);
+  const go = f.url ? openMedia({ url: f.url, name: f.name, mime: f.type, size: fileSize(f.size) }) : undefined;
+  const tile = (child: Node, bg: string) => box([child], { width: THUMB, height: THUMB, borderRadius: 10, backgroundColor: bg, alignItems: "center", justifyContent: "center", overflow: "hidden", flexShrink: 0 }, go);
+  let n: Node;
+  if (kind === "image" && f.url) n = box([picture(f.url, THUMB, THUMB, { fit: "cover", label: f.name })], { width: THUMB, height: THUMB, borderRadius: 10, overflow: "hidden", borderWidth: 1, borderColor: C.line, flexShrink: 0 }, go);
+  else if (kind === "video") n = tile(text("▶", { size: 14, color: "#ffffff", lineHeight: 18 }), "#111111");
+  else if (kind === "audio") n = tile(icon("mic", { size: 18, color: C.ink }), C.surface);
+  else {
+    n = row([icon("clip", { size: 14, color: C.meta }), text(f.name, { size: 12, color: C.ink, lineHeight: 16, lines: 1, style: { flexShrink: 1 } })],
+      { gap: 4, height: 30, maxWidth: 150, paddingHorizontal: 10, borderRadius: 15, borderWidth: 1, borderColor: C.line, alignItems: "center", flexShrink: 1 }, go);
+  }
+  return go ? labelled(n, `Open ${f.name}`) : n;
+}
+
+/** The files of a conversation's newest message, in a line under its text: three at most, then "+N". */
+function fileLine(m: MessageRow): Node[] {
+  const files = m.files ?? [];
+  if (!files.length) return [];
+  const shown = files.slice(0, 3);
+  const more = Math.max(files.length, m.fileCount ?? 0) - shown.length;
+  return [row([...shown.map(fileThumb), ...(more > 0 ? [text(`+${more}`, { size: 12, color: C.meta, lineHeight: 16 })] : [])], { gap: 6, alignItems: "center", paddingTop: 6 })];
+}
+
 /** One conversation: who, when, the subject, the start of its last message; bold while unread, and what the AI did with it. */
 export function messageRow(ctx: BotsCtx, b: string, folder: string, m: MessageRow): Node {
   const who = m.from.email ? nameOf(m.from) : m.to[0] ? `To ${nameOf(m.to[0])}` : "(no sender)";
   const tag = m.ai && AI_TAG[m.ai.status];
-  return labelled(row([
-    initial(who),
-    col([
-      row([
-        text(who, { size: 15, weight: m.unread ? 600 : 400, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }),
-        ...(m.count > 1 ? [text(String(m.count), { size: 12, color: C.meta, lineHeight: 16 })] : []),
-        grow(),
-        text(clockOf(ctx, m.at), { size: 12, weight: m.unread ? 600 : 400, color: m.unread ? C.ink : C.meta, lineHeight: 16, style: { flexShrink: 0 } }),
-      ], { gap: 6, alignItems: "center" }),
-      text(m.subject || "(no subject)", { size: 14, weight: m.unread ? 600 : 400, lineHeight: 19, lines: 1 }),
-      row([
-        text(m.preview, { size: 13, color: C.meta, lineHeight: 18, lines: 1, style: { flexShrink: 1, flexGrow: 1, minWidth: 0 } }),
-        ...(tag ? [infoChip(tag)] : []),
-        ...(m.starred ? [infoChip("Starred")] : []),
-      ], { gap: 6, alignItems: "center" }),
-    ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 1 }),
-  ], { gap: 12, paddingVertical: 10, alignItems: "flex-start" }, openThread(b, m.threadId, folder)), `${who}: ${m.subject || "no subject"}`);
+  const go = openThread(b, m.threadId, folder);
+  const words = col([
+    row([
+      text(who, { size: 15, weight: m.unread ? 600 : 400, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }),
+      ...(m.count > 1 ? [text(String(m.count), { size: 12, color: C.meta, lineHeight: 16 })] : []),
+      grow(),
+      text(clockOf(ctx, m.at), { size: 12, weight: m.unread ? 600 : 400, color: m.unread ? C.ink : C.meta, lineHeight: 16, style: { flexShrink: 0 } }),
+    ], { gap: 6, alignItems: "center" }),
+    text(m.subject || "(no subject)", { size: 14, weight: m.unread ? 600 : 400, lineHeight: 19, lines: 1 }),
+    row([
+      text(m.preview, { size: 13, color: C.meta, lineHeight: 18, lines: 1, style: { flexShrink: 1, flexGrow: 1, minWidth: 0 } }),
+      ...(tag ? [infoChip(tag)] : []),
+      ...(m.starred ? [infoChip("Starred")] : []),
+    ], { gap: 6, alignItems: "center" }),
+  ], { gap: 1 });
+  const files = fileLine(m);
+  const label = `${who}: ${m.subject || "no subject"}`;
+  // Without files the whole row opens the conversation. With them, the previews open the viewer, so the row is two taps side by side:
+  // the initial and the words open the conversation, each preview its file (a tap inside a tap is not drawn the same everywhere).
+  if (!files.length) {
+    return labelled(row([initial(who), col([words], { flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12, paddingVertical: 10, alignItems: "flex-start" }, go), label);
+  }
+  return row([
+    box([initial(who)], { flexShrink: 0 }, go),
+    col([labelled(box([words], {}, go), label), ...files], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 0 }),
+  ], { gap: 12, paddingVertical: 10, alignItems: "flex-start" });
 }
 
 const HOUR = 3_600_000;

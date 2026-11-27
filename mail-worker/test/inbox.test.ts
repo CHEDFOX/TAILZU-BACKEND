@@ -166,6 +166,9 @@ test("an attachment's file: only one of that message, in that conversation; anyt
   mail.deliver({ id: "m9", messageId: "<m9@x>", from: "asha@customer.test", name: "Asha", to: "hello@shop.test", subject: "Receipt", text: "Here it is.", thread: "t-m9" });
   const e = mail.emails.find((x) => x.id === "m9")! as any;
   e.attachments = [{ blobId: "blob-r1", name: "receipt.pdf", type: "application/pdf", size: 12 }];
+  // The list carries the newest message's files, for its small previews.
+  const row = (await call("GET", `${B}/messages?folder=inbox`)).json.messages.find((m: any) => m.threadId === "t-m9");
+  assert.deepEqual([row.files, row.fileCount], [[{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-r1" }], 1]);
   const t = (await call("GET", `${B}/threads/t-m9`)).json;
   assert.deepEqual(t.messages[0].attachments, [{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-r1" }]);
   const get = async (url: string) => {

@@ -329,6 +329,27 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
     };
   };
 
+  /** A folder's list, its files signed the same way: each message's own (its thread, its id), so the list can show a small preview. */
+  const signList = (out: unknown, me: string, id: string): unknown => {
+    if (!out || typeof out !== "object" || !Array.isArray((out as { messages?: unknown }).messages)) return out;
+    const t = out as { messages: Array<Record<string, unknown>> };
+    return {
+      ...t,
+      messages: t.messages.map((m) => {
+        const mid = typeof m.id === "string" && FILE_ID.test(m.id) ? m.id : "";
+        const tid = typeof m.threadId === "string" && TID.test(m.threadId) ? m.threadId : "";
+        const list = Array.isArray(m.files) ? (m.files as Array<Record<string, unknown>>) : [];
+        if (!list.length) return m;
+        return {
+          ...m,
+          files: list.map(({ blob, ...a }) => (mid && tid && typeof blob === "string" && BLOB_ID.test(blob)
+            ? { ...a, url: `${BASE}/businesses/${id}/threads/${tid}/files/${mid}/${encodeURIComponent(blob)}?${signQuery(me, [id, tid, mid, blob], now())}` }
+            : a)),
+        };
+      }),
+    };
+  };
+
   /** A business its owner or their admin may change, with whose it is and who answers each address. */
   const dress = async (b: MailBusinessView, reach: MailReach): Promise<MailBusinessView> => {
     const rows = (await handlers().ofBusinesses([b.id]).catch((err) => { kept("handlers")(err); return [] as MailHandler[]; }))
@@ -543,7 +564,7 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
             if (!r.handler) return reply.code(404).send(NOT_FOUND);
             const out = await asHandler(r.handler, { w: got.w, me, reach, id: p.id, p, q, b, rest, body, r });
             if (out === REFUSED) return reply.code(404).send(NOT_FOUND);
-            return answer(reply, r.handler === "thread" ? signAttachments(out, me, p.id, p.tid!) : out);
+            return answer(reply, r.handler === "thread" ? signAttachments(out, me, p.id, p.tid!) : r.handler === "messages" ? signList(out, me, p.id) : out);
           }
           // Their own, or a member's as their space's admin: as the owner, inside the owner's account.
           const out = await got.w.call<{ business?: unknown }>(ownerOf(reach.ownerId), r.to ?? r.method, rest, body);
@@ -553,6 +574,7 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
           }
           if (r.forget === "address") await handlers().forgetAddress(p.id, Number(p.aid)).catch(kept("forget"));
           if (r.handler === "thread" && r.method === "GET") return answer(reply, signAttachments(out, me, p.id, p.tid!));
+          if (r.handler === "messages") return answer(reply, signList(out, me, p.id));
           return answer(reply, out && typeof out === "object" && isBusiness(out.business) ? { ...out, business: await dress(out.business, reach) } : out);
         } catch (err) {
           return fail(reply, err);

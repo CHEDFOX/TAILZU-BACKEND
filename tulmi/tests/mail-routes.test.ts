@@ -373,7 +373,8 @@ function spaceWorker() {
       if (sub === "/messages") {
         const all = biz.id === "solo-co" ? SOLO_FOLDERS : FOLDERS;
         const folder = all.find((f) => f.key === new URLSearchParams(query).get("folder")) ?? all[0];
-        return { folder, folders: all, page: 0, more: false, total: 1, messages: [{ id: "m-1", threadId: "t-1", subject: "Hi" }] } as T;
+        return { folder, folders: all, page: 0, more: false, total: 1, messages: [{ id: "m-1", threadId: "t-1", subject: "Hi" },
+          { id: "m-att", threadId: "t-att", subject: "Receipt", files: [{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-1" }], fileCount: 1 }] } as T;
       }
       const t = /^\/threads\/([^/]+)(\/[a-z]+)?$/.exec(sub);
       if (t) {
@@ -759,6 +760,18 @@ describe("a conversation's attachments", () => {
     expect((await a.inject({ method: "GET", url: att.url.replace("blob-1", "blob-2") })).statusCode).toBe(404);
     expect((await a.inject({ method: "GET", url: att.url.replace(/sig=[^&]+/, "sig=bad") })).statusCode).toBe(404);
     expect((await a.inject({ method: "GET", url: att.url.split("?")[0]! })).statusCode).toBe(404);
+  });
+
+  it("show in a folder's list too, each with its own signed link, so the list can preview them", async () => {
+    const { a, call } = await spaceApp();
+    for (const [who, folder] of [[RAVI, "inbox"], [SAM, "f-sup"]] as const) {
+      const list = (await call(who, "GET", `${L}/messages?folder=${folder}`)).json();
+      const f = list.messages.find((m: { id: string }) => m.id === "m-att").files[0];
+      expect(f).toMatchObject({ name: "receipt.pdf", type: "application/pdf" });
+      expect(f.blob).toBeUndefined();
+      expect(f.url).toMatch(/^\/v1\/mail\/businesses\/leaf-co\/threads\/t-att\/files\/m-att\/blob-1\?v=.+&sig=/);
+      expect((await a.inject({ method: "GET", url: f.url })).statusCode, who).toBe(200);
+    }
   });
 
   it("a member who answers an address: the files of conversations that involve it, and none of the rest", async () => {

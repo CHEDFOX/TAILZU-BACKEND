@@ -223,7 +223,11 @@ mailbox with q, which the worker asks Stalwart for as JMAP's text filter), then 
 mail, each alias's once there are several addresses, Sent and more), each with what is unread. When replies wait for a person, one line
 says how many and opens the first. Then the newest mail, 30 at most, under its day: today by the part of the day (**This morning** before
 noon, **This afternoon** to five, **This evening** after), then **Yesterday**, the weekday this week, and the date before that; each row
-the sender's initial, who, when, the subject, the start of it, and what the AI did ("Needs you", "AI draft", "AI answered"). **More mail**
+the sender's initial, who, when, the subject, the start of it, and what the AI did ("Needs you", "AI draft", "AI answered"). A mail with
+files shows them small under its text (the newest message's, three and then "+N"): a photo as a 44-point thumbnail, a video as a dark square
+with a play mark, a sound with a mic, any other file as a pill with its name; each opens the viewer (`bots.media`). The worker lists each
+message's files with their ids, and X0 Bot signs a link for each for the viewer (as a conversation's attachments are), so a preview is
+seen only by whoever may see that conversation. **More mail**
 opens the mailbox at its next page. A handler's list and search are their first address's. Before anything arrives, one line says that
 mail comes once the domain points here, with the records a tap away. Calls sit under the mail; at the foot, the chat.
 
