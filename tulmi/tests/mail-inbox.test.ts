@@ -333,3 +333,18 @@ describe("sharing and handing over addresses", () => {
     ]));
   });
 });
+
+describe("an attachment in a conversation", () => {
+  it("opens in the app's viewer when it has its link; without one (an older worker) it is its name", async () => {
+    const url = "/v1/mail/businesses/leaf-co/threads/t1/files/m1/blob-1?v=u1&exp=9&sig=x";
+    const withLink = THREAD();
+    (withLink.messages[0] as { attachments: unknown[] }).attachments = [{ name: "receipt.pdf", size: 52_000, type: "application/pdf", url }];
+    const p = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" }, { api: { [`GET ${B}/threads/t1`]: withLink } });
+    expect(p.lint).toEqual([]);
+    const opens = navs(p.every()).filter((a) => a.screenId === "bots.media");
+    expect(opens).toEqual([expect.objectContaining({ params: { u: url, n: "receipt.pdf", m: "application/pdf", s: "51 KB" } })]);
+    expect(p.texts).toContain("Open");
+    const plain = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" });
+    expect(navs(plain.every()).some((a) => a.screenId === "bots.media")).toBe(false);
+  });
+});

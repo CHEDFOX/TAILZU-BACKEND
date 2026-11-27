@@ -17,7 +17,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, page, row, col, text, C, card, chip, chips, meta, notice, primaryButton, secondaryButton, quietButton, listCard, sectionLabel,
-  call, seq, when, SCREENS, icon, statusMark, infoChip, divider, labelled,
+  call, seq, when, SCREENS, icon, statusMark, infoChip, divider, labelled, grow,
 } from "../../kit.js";
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
@@ -27,6 +27,7 @@ import {
 } from "./mailParts.js";
 import { clockOf, isDesk, setState, shortDate } from "./parts.js";
 import { shareButtonsFor } from "../../shareAction.js";
+import { openMedia } from "../media.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
@@ -160,7 +161,13 @@ export function threadPage(ctx: BotsCtx, d: ThreadData | undefined) {
     divider(),
     text(m.text.trim() || "(no text)", { size: 14, color: C.grey70, lineHeight: 20 }),
     ...(m.attachments.length ? [col([sectionLabel(m.attachments.length === 1 ? "1 attachment" : `${m.attachments.length} attachments`),
-      ...m.attachments.map((a) => row([icon("clip", { size: 14, color: C.meta }), text(a.name, { size: 13, lineHeight: 18, lines: 1, style: { flexShrink: 1 } }), meta(size(a.size), { size: 12 })], { gap: 6, alignItems: "center" }))], { gap: 6 })] : []),
+      // Each opens in the app's viewer (screens/media.ts): seen or played, saved or shared. One without a link (an older worker) is its name.
+      ...m.attachments.map((a) => row([
+        icon("clip", { size: 14, color: a.url ? C.ink : C.meta }),
+        text(a.name, { size: 13, weight: a.url ? 500 : 400, lineHeight: 18, lines: 1, style: { flexShrink: 1 } }),
+        meta(size(a.size), { size: 12 }),
+        ...(a.url ? [grow(), text("Open", { size: 13, weight: 600, lineHeight: 18 })] : []),
+      ], { gap: 6, alignItems: "center", minHeight: a.url ? 36 : undefined }, a.url ? openMedia({ url: a.url, name: a.name, mime: a.type, size: size(a.size) }) : undefined))], { gap: 6 })] : []),
   ], { gap: 10, ...(m.mine ? { style: { backgroundColor: C.surface } } : {}) }));
 
   // A reply goes to the last message someone else sent; a forward carries the last message.

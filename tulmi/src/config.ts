@@ -1692,7 +1692,8 @@ const EnvSchema = z.object({
    *   BOTS_SCENES_USERS    a comma-separated list of account ids. Set, only those accounts get format 2 even with BOTS_SCENES
    *                        on (the owner's device checks, then internal accounts). Empty (the default): the switch decides
    *   SDUI_V2              the screen vocabulary 2 (pure/SPEC.md section 2: expressions, templates, rules, motion, gestures,
-   *                        lists, inputs, media, paint, device facts, local values, data, shell). Off: no client is treated as
+   *                        lists, inputs, media, paint, device facts, local values, data, shell). ON by default (the media viewer's
+   *                        player, the call room); SDUI_V2=false in the env turns it off. Off: no client is treated as
    *                        having any block, so a screen that states `needs` is never served as one — a builder's sduiV2Live()
    *                        check keeps drawing today's screen and nobody sees the "open X0 again" page
    *   SDUI_V2_USERS        a comma-separated list of account ids. Set, only those accounts are served a vocabulary-2 screen,
@@ -1706,7 +1707,7 @@ const EnvSchema = z.object({
   ANDROID_BOTS_NOTICE: bool(false),
   BOTS_SCENES: bool(false),
   BOTS_SCENES_USERS: orDefault(""),
-  SDUI_V2: bool(false),
+  SDUI_V2: bool(true),
   SDUI_V2_USERS: orDefault(""),
   /**
    * THE PHONE'S OWN THINGS (docs: perms). Each is off, so a server deployed before the store build draws none of the three

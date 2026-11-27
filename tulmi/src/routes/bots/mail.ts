@@ -65,6 +65,7 @@
 import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
+import { signQuery, verifyQuery } from "../../botsBots/spaceLinks.js";
 import { mailOn } from "../../bots/builtin.js";
 import { MemoryNonceStore, type NonceStore } from "../../code/jobs/handoff/sign.js";
 import { getConfig } from "../../config.js";
@@ -116,6 +117,9 @@ const B = `${BASE}/businesses/:id`;
 const ID = /^[a-z0-9-]{1,80}$/;
 const NUM = /^[1-9][0-9]{0,11}$/;
 const TID = /^[A-Za-z0-9_-]{1,64}$/;
+/** A message's id and an attachment's blob id, as the worker's mail server makes them. */
+const FILE_ID = /^[A-Za-z0-9_-]{1,80}$/;
+const BLOB_ID = /^[A-Za-z0-9_.:-]{1,200}$/;
 const ACTION = /^(read|unread|star|unstar|archive|trash|junk|inbox)$/;
 /** A person's id in a path or a body (Supabase's are uuids). */
 const PERSON = /^[A-Za-z0-9_-]{1,64}$/;
@@ -300,6 +304,29 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) { reply.code(401).send({ code: "unauthorized", message: "Sign in again." }); return null; }
     return { user, w };
+  };
+
+  /**
+   * A conversation's attachments, each with a link the app can open without a session (the media viewer's picture, player and download
+   * send none): signed for this viewer, this business, this conversation, this message and this file, for an hour (spaceLinks.ts). The
+   * worker's own id for the file goes no further than the link.
+   */
+  const signAttachments = (out: unknown, me: string, id: string, tid: string): unknown => {
+    if (!out || typeof out !== "object" || !Array.isArray((out as { messages?: unknown }).messages)) return out;
+    const t = out as { messages: Array<Record<string, unknown>> };
+    return {
+      ...t,
+      messages: t.messages.map((m) => {
+        const mid = typeof m.id === "string" && FILE_ID.test(m.id) ? m.id : "";
+        const list = Array.isArray(m.attachments) ? (m.attachments as Array<Record<string, unknown>>) : [];
+        return {
+          ...m,
+          attachments: list.map(({ blob, ...a }) => (mid && typeof blob === "string" && BLOB_ID.test(blob)
+            ? { ...a, url: `${BASE}/businesses/${id}/threads/${tid}/files/${mid}/${encodeURIComponent(blob)}?${signQuery(me, [id, tid, mid, blob], now())}` }
+            : a)),
+        };
+      }),
+    };
   };
 
   /** A business its owner or their admin may change, with whose it is and who answers each address. */
@@ -514,7 +541,8 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
           if (reach.access === "handler") {
             if (!r.handler) return reply.code(404).send(NOT_FOUND);
             const out = await asHandler(r.handler, { w: got.w, me, reach, id: p.id, p, q, b, rest, body, r });
-            return out === REFUSED ? reply.code(404).send(NOT_FOUND) : answer(reply, out);
+            if (out === REFUSED) return reply.code(404).send(NOT_FOUND);
+            return answer(reply, r.handler === "thread" ? signAttachments(out, me, p.id, p.tid!) : out);
           }
           // Their own, or a member's as their space's admin: as the owner, inside the owner's account.
           const out = await got.w.call<{ business?: unknown }>(ownerOf(reach.ownerId), r.to ?? r.method, rest, body);
@@ -523,6 +551,7 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
             await handlers().forgetBusiness(p.id).catch(kept("forget"));
           }
           if (r.forget === "address") await handlers().forgetAddress(p.id, Number(p.aid)).catch(kept("forget"));
+          if (r.handler === "thread" && r.method === "GET") return answer(reply, signAttachments(out, me, p.id, p.tid!));
           return answer(reply, out && typeof out === "object" && isBusiness(out.business) ? { ...out, business: await dress(out.business, reach) } : out);
         } catch (err) {
           return fail(reply, err);
@@ -530,6 +559,37 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
       },
     });
   }
+
+  // ------------------------------------------------------------------------------------------------------------ an attachment's file
+
+  /**
+   * One attachment, as itself, for the link signAttachments() made: no session (the app's picture, player and download send none), so
+   * the link says who it is for, and who that is may STILL see the conversation is checked here again: the owner or their admin, or a
+   * member given an address the conversation involves. Anyone else, or a link changed or out of date: 404.
+   */
+  app.get(`${BASE}/businesses/:id/threads/:tid/files/:mid/:blob`, rl, async (req, reply) => {
+    const w = deps.bots && mailOn() ? worker() : null;
+    if (!w?.file) return off(reply);
+    const p = (req.params ?? {}) as Record<string, string>;
+    const id = p.id ?? "", tid = p.tid ?? "", mid = p.mid ?? "", blob = p.blob ?? "";
+    if (!ID.test(id) || !TID.test(tid) || !FILE_ID.test(mid) || !BLOB_ID.test(blob)) return reply.code(404).send(NOT_FOUND);
+    const viewer = verifyQuery((req.query ?? {}) as Record<string, unknown>, [id, tid, mid, blob], now());
+    if (!viewer) return reply.code(404).send(NOT_FOUND);
+    try {
+      const reach = await access().resolve(viewer, id);
+      if (!reach) return reply.code(404).send(NOT_FOUND);
+      const owner = ownerOf(reach.ownerId);
+      if (reach.access === "handler") {
+        const t = await w.call<ThreadLook>(owner, "GET", `/businesses/${id}/threads/${tid}?peek=1`);
+        if (!involves(t, reach.addresses ?? new Set<string>())) return reply.code(404).send(NOT_FOUND);
+      }
+      const f = await w.file(owner, `/businesses/${id}/threads/${tid}/files/${mid}/${encodeURIComponent(blob)}`);
+      return reply.header("content-type", f.type).header("content-length", String(f.body.length))
+        .header("content-disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`).header("cache-control", "private, no-store").send(f.body);
+    } catch (err) {
+      return fail(reply, err);
+    }
+  });
 
   // --------------------------------------------------------------------------------------------- who answers an address (owner and admin)
 

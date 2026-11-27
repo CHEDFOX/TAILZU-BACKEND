@@ -60,7 +60,7 @@ export interface FolderView { key: string; id: string; name: string; role: strin
 export interface Person { name: string; email: string }
 export interface MessageRow { id: string; threadId: string; from: Person; to: Person[]; subject: string; preview: string; at: number; unread: boolean; starred: boolean; count: number; ai?: { run: number; status: string } }
 export interface MessagesView { folder: FolderView; folders: FolderView[]; page: number; more: boolean; total: number; messages: MessageRow[] }
-export interface ThreadMessage { id: string; from: Person; to: Person[]; cc: Person[]; at: number; text: string; unread: boolean; mine: boolean; attachments: Array<{ name: string; size: number; type: string }> }
+export interface ThreadMessage { id: string; from: Person; to: Person[]; cc: Person[]; at: number; text: string; unread: boolean; mine: boolean; attachments: Array<{ name: string; size: number; type: string; url?: string }> }
 export interface ThreadView { threadId: string; subject: string; starred: boolean; where: string[]; messages: ThreadMessage[]; ai?: { run: number; status: string } }
 export interface RuleView { id: number; name: string; enabled: boolean; line: string }
 

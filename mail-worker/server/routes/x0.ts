@@ -26,6 +26,7 @@
  *   GET    /v1/o/:owner/businesses/:id/messages?folder=&page=  a folder's conversations, newest first, 30 a page, each with the AI's last word
  *   GET    /v1/o/:owner/businesses/:id/threads/:tid?peek=   one conversation, every message's text (the unread ones marked read; peek=1: left as they are)
  *   POST   /v1/o/:owner/businesses/:id/threads/:tid/:action read, unread, star, unstar, archive, trash, junk, inbox
+ *   GET    /v1/o/:owner/businesses/:id/threads/:tid/files/:eid/:blob   one attachment's file (only one of that message, in that conversation)
  *   POST   /v1/o/:owner/businesses/:id/send                 { from, to, cc?, subject, text, replyTo? | forward? }: sent from one of its addresses
  *   POST   /v1/o/:owner/businesses/:id/write                { replyTo?, from?, instruction }: the AI writes it, a draft for the person
  *   GET    /v1/o/:owner/businesses/:id/rules                each rule as a sentence
@@ -48,13 +49,13 @@ import { getProfile, saveProfile } from "../ai/prompt.ts";
 import { AiError } from "../ai/model.ts";
 import { activityView, allowance, cancelScheduled, counts, discardDraft, draftView, editDraft, rewriteDraft, sendNow, spend, waiting } from "../ai/engine.ts";
 import { draftBrief } from "../ai/brief.ts";
-import { act, addRule, folders, messages, removeRule, ruleViews, send, thread, toggleRule, write, type ThreadAction } from "../inbox.ts";
+import { act, addRule, attachment, folders, messages, removeRule, ruleViews, send, thread, toggleRule, write, type ThreadAction } from "../inbox.ts";
 import { NonceCache, refused } from "../security.ts";
 
 const OWNER = /^[A-Za-z0-9:_-]{8,80}$/;
 const nonces = new NonceCache();
 
-type P = { owner: string; id?: string; aid?: string; run?: string; tid?: string; action?: string; rid?: string };
+type P = { owner: string; id?: string; aid?: string; run?: string; tid?: string; action?: string; rid?: string; eid?: string; blob?: string };
 const params = (req: FastifyRequest) => req.params as P;
 const body = (req: FastifyRequest) => (req.body ?? {}) as Record<string, unknown>;
 const business = (req: FastifyRequest): Company => getCompany(String(params(req).id), params(req).owner);
@@ -182,6 +183,15 @@ export async function x0Routes(app: FastifyInstance) {
     return messages(business(req), { ...(typeof q.folder === "string" ? { folder: q.folder.slice(0, 80) } : {}), page: Number(q.page) || 0 });
   }));
   app.get("/v1/o/:owner/businesses/:id/threads/:tid", route(async (req) => thread(business(req), threadIdOf(req), { peek: (req.query as { peek?: unknown }).peek === "1" })));
+  // One attachment's file, as itself (not JSON): X0 Bot streams it on to the person who may see it.
+  app.get("/v1/o/:owner/businesses/:id/threads/:tid/files/:eid/:blob", route(async (req, reply) => {
+    const p = params(req);
+    const eid = String(p.eid ?? ""), blob = String(p.blob ?? "");
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(eid) || !/^[A-Za-z0-9_.:-]{1,200}$/.test(blob)) throw new InputError("No such attachment.");
+    const f = await attachment(business(req), threadIdOf(req), eid, blob);
+    return reply.header("content-type", f.type).header("content-length", String(f.body.length))
+      .header("content-disposition", `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`).header("cache-control", "private, no-store").send(f.body);
+  }));
   app.post("/v1/o/:owner/businesses/:id/threads/:tid/:action", route(async (req) => {
     await act(business(req), threadIdOf(req), String(params(req).action) as ThreadAction);
     return { ok: true };

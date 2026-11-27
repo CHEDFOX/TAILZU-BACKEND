@@ -808,4 +808,10 @@ A file someone shared opens in the app's own viewer (`bots.media`, `tulmi/src/ex
 - **Saving** is download's `then` (`MediaSave`, the app's `actions.ts`): "photos" saves what came down to Photos, "files" hands it to the
   share sheet (Save to Files). A build without it is offered "Open in browser", where the file can still be kept.
 - **Only this server's files**: a `/v1/...` path or https on `PUBLIC_ORIGIN`'s host (`safeMediaUrl`); any other link is "This file
-  can't be opened here". Mail attachments are not in it yet: the mail worker serves no attachment's bytes.
+  can't be opened here".
+- **Mail attachments** open in it too: the worker names each attachment's file (`blob`) and hands it over as itself
+  (`GET /v1/o/:owner/businesses/:id/threads/:tid/files/:eid/:blob`, only one of that message in that conversation, 40 MB at most);
+  the backend gives each attachment a link signed for the viewer (`spaceLinks.ts`, an hour) and serves it from
+  `GET /v1/mail/businesses/:id/threads/:tid/files/:mid/:blob`, checking again that the viewer may still see the conversation (its
+  owner or admin, or a member given an address it involves).
+- **On by default**: `SDUI_V2` (the player) is on unless the env says `SDUI_V2=false`.

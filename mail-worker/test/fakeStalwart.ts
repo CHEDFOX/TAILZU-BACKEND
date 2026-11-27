@@ -44,6 +44,12 @@ export function fakeStalwart() {
         return send(200, { username: user, capabilities: {}, accounts: { a1: {} }, primaryAccounts: { "urn:stalwart:jmap": "admin1", "urn:ietf:params:jmap:mail": "mail1" } });
       }
       if (req.method === "POST" && req.url?.startsWith("/jmap/upload/")) return send(200, { blobId: `b${seq++}`, size: raw.length, type: "application/sieve" });
+      // A blob's bytes (an attachment): "file <blobId>", as its type was asked for.
+      if (req.method === "GET" && req.url?.startsWith("/jmap/download/")) {
+        const [, , , , blob] = req.url.split("?")[0]!.split("/");
+        const type = new URL(req.url, "http://x").searchParams.get("accept") ?? "application/octet-stream";
+        res.writeHead(200, { "content-type": type }); return res.end(`file ${decodeURIComponent(blob ?? "")}`);
+      }
       if (req.method !== "POST" || req.url !== "/jmap/") return send(404, {});
       const { methodCalls } = JSON.parse(raw) as { methodCalls: [string, Record<string, unknown>, string][] };
       const done = new Map<string, Record<string, unknown>>();

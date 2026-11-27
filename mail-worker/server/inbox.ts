@@ -138,10 +138,32 @@ export async function thread(company: Company, threadId: string, o: { peek?: boo
     messages: list.map((e) => ({
       id: e.id, from: person(e.from), to: people(e.to), cc: people(e.cc), at: Date.parse(e.sentAt ?? e.receivedAt) || Date.parse(e.receivedAt) || 0,
       text: bodyText(e as never).slice(0, 20_000), unread: unseen.includes(e.id), mine: company.addresses.some((a) => a.email === e.from?.[0]?.email?.toLowerCase()),
-      attachments: (e.attachments ?? []).filter((a) => a.name).slice(0, 20).map((a) => ({ name: String(a.name).slice(0, 120), size: a.size ?? 0, type: a.type ?? "" })),
+      // `blob`: the attachment's own id, for its file (attachment() below); X0 Bot signs a link to it per viewer.
+      attachments: (e.attachments ?? []).filter((a) => a.name).slice(0, 20).map((a) => ({ name: String(a.name).slice(0, 120), size: a.size ?? 0, type: a.type ?? "", ...(a.blobId ? { blob: a.blobId } : {}) })),
     })),
     ...(aiOf(company.id, [threadId]).has(threadId) ? { ai: aiOf(company.id, [threadId]).get(threadId) } : {}),
   };
+}
+
+/** The most one attachment may be when it is handed over: bigger ones are opened in the mail app. */
+export const ATTACHMENT_MAX = 40 * 1024 * 1024;
+
+/**
+ * One attachment's file: only when it is an attachment OF that message, and that message is IN that conversation, so a blob id alone
+ * opens nothing. Its name and type are the message's own, never what was asked for.
+ */
+export async function attachment(company: Company, threadId: string, emailId: string, blobId: string): Promise<{ body: Buffer; name: string; type: string }> {
+  const box = new Mailbox(company.email);
+  const got = await box.call("Email/get", { ids: [emailId], properties: ["id", "threadId", "attachments"] });
+  const e = ((got.list ?? []) as Email[])[0];
+  const a = e && e.threadId === threadId ? (e.attachments ?? []).find((x) => x.blobId === blobId && x.name) : undefined;
+  if (!a) throw new InputError("No such attachment: it may have been deleted.");
+  if ((a.size ?? 0) > ATTACHMENT_MAX) throw new InputError("That attachment is too big to open here. Open it in your mail app.");
+  const res = await box.download(blobId, String(a.name), a.type ?? "");
+  if (!res.ok) throw new InputError("Couldn't get that attachment just now. Try again.");
+  const body = Buffer.from(await res.arrayBuffer());
+  if (body.length > ATTACHMENT_MAX) throw new InputError("That attachment is too big to open here. Open it in your mail app.");
+  return { body, name: String(a.name).slice(0, 120), type: (a.type || "application/octet-stream").slice(0, 100) };
 }
 
 export const ACTIONS = ["read", "unread", "star", "unstar", "archive", "trash", "junk", "inbox"] as const;

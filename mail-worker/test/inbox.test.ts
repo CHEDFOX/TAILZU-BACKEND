@@ -153,3 +153,25 @@ test("rules one at a time: added as a sentence, turned off, removed", async () =
   assert.equal((await call("POST", `${B}/rules`, { field: "from", value: "", action: "delete" })).status, 400);
   assert.equal((await call("POST", `${B}/rules`, { field: "from", value: "x", action: "forward", target: "nobody" })).status, 400);
 });
+
+test("an attachment's file: only one of that message, in that conversation; anything else is no such attachment", async () => {
+  mail.deliver({ id: "m9", messageId: "<m9@x>", from: "asha@customer.test", name: "Asha", to: "hello@shop.test", subject: "Receipt", text: "Here it is.", thread: "t-m9" });
+  const e = mail.emails.find((x) => x.id === "m9")! as any;
+  e.attachments = [{ blobId: "blob-r1", name: "receipt.pdf", type: "application/pdf", size: 12 }];
+  const t = (await call("GET", `${B}/threads/t-m9`)).json;
+  assert.deepEqual(t.messages[0].attachments, [{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-r1" }]);
+  const get = async (url: string) => {
+    const timestamp = Math.floor(Date.now() / 1000), nonce = crypto.randomBytes(16).toString("hex");
+    const headers = { "x-tailzu-timestamp": String(timestamp), "x-tailzu-nonce": nonce, "x-tailzu-signature": sign(SECRET, { timestamp, nonce, method: "GET", pathWithQuery: url, body: Buffer.from("") }) };
+    return app.inject({ method: "GET", url, headers });
+  };
+  const ok = await get(`${B}/threads/t-m9/files/m9/blob-r1`);
+  assert.equal(ok.statusCode, 200);
+  assert.equal(ok.headers["content-type"], "application/pdf");
+  assert.match(String(ok.headers["content-disposition"]), /receipt\.pdf/);
+  assert.equal(ok.body, "file blob-r1");
+  // Another conversation's id, another blob, a bad id: nothing.
+  assert.equal((await get(`${B}/threads/t-m1/files/m9/blob-r1`)).statusCode, 404);
+  assert.equal((await get(`${B}/threads/t-m9/files/m9/blob-other`)).statusCode, 404);
+  assert.equal((await get(`${B}/threads/t-m9/files/m9/bad!blob`)).statusCode, 404);
+});
