@@ -167,7 +167,7 @@ function thought(ctx: BotsCtx, L: Layout, d: SpacesFull, focusCode: boolean): No
 /** A small black circle with a bold white + (round ends): Create space in the box, Add a person at the top right. */
 export const PLUS_SIZE = 32;
 export function plusCircle(onPress: ActionRef, label: string, size = PLUS_SIZE): Node {
-  return labelled(box([icon("plus", { size: Math.round(size * 0.56), color: C.paper, weight: 2.6 })], {
+  return labelled(box([icon("plus", { size: Math.round(size * 0.56), color: C.paper, weight: 3.6 })], {
     width: size, height: size, borderRadius: size / 2, backgroundColor: C.ink,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   }, onPress), label);
