@@ -11,7 +11,7 @@
  */
 
 import type { Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, C, SCREENS, canSpaces2, col, hasSpaces, icon, meta, open, row, sectionLabel, segmented, text, when, type PersonLookSpec } from "../../kit.js";
+import { type BotsCtx, C, SCREENS, box, canSpaces2, col, hasSpaces, icon, meta, open, row, sectionLabel, segmented, text, when, type PersonLookSpec } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
 import { A, isDesk, names, personMark, rowsCard, shareLook, type ShareBot } from "../spaces/parts.js";
 import { ago } from "../spaces/spaceDetail.js";
@@ -65,14 +65,26 @@ export function withWork(ctx: BotsCtx, work: WorkRead | undefined, body: Node[])
   ], { gap: 8 }));
   return [
     ...(head ? [head] : []),
-    segmented([{ label: "Your work", value: "mine" }, { label: "Work in space", value: "space" }], "workTab"),
-    when({ eq: ["workTab", "mine"] }, col([...notes, ...rest, meta(seen, { size: 12 })], { gap })),
-    when({ eq: ["workTab", "space"] }, col(spaces, { gap })),
+    workSwitch(),
+    ...tabBodies(rest, notes, seen, spaces, gap),
   ];
 }
+
+const workSwitch = (): Node => segmented([{ label: "Your work", value: "mine" }, { label: "Work in space", value: "space" }], "workTab");
+const tabBodies = (rest: Node[], notes: Node[], seen: string, spaces: Node[], gap: number): Node[] => [
+  when({ eq: ["workTab", "mine"] }, col([...notes, ...rest, meta(seen, { size: 12 })], { gap })),
+  when({ eq: ["workTab", "space"] }, col(spaces, { gap })),
+];
 
 /** The ctx a bot page builds with: every page it draws gets the two tabs and their state (kit BotsCtx.wrap). */
 export function workCtx(ctx: BotsCtx, work: WorkRead | undefined): BotsCtx {
   if (!shows(ctx, work)) return ctx;
-  return { ...ctx, wrap: { body: (b) => withWork(ctx, work, b), state: { workTab: ctx.params.tab === "space" ? "space" : "mine" } } };
+  return { ...ctx, wrap: {
+    body: (b) => withWork(ctx, work, b), state: { workTab: ctx.params.tab === "space" ? "space" : "mine" },
+    // A pinned head (kit page `top`): the head and the switch pin; the rest of the head (the days) only on Your work; the body is the tabs.
+    split: {
+      top: (top) => [...top.slice(0, 1), workSwitch(), ...top.slice(1).map((n) => when({ eq: ["workTab", "mine"] }, n))],
+      body: (body) => withWork(ctx, work, [box([], { height: 0 }), ...body]).slice(2),
+    },
+  } };
 }

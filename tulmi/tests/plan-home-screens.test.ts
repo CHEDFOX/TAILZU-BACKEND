@@ -85,6 +85,30 @@ describe("the threaded home", () => {
     }
   });
 
+  it("the phone pins the head and the days over the scroll; the day's content slides in, the day shown pops in", async () => {
+    const { s } = await draw("bots.plan", "phone");
+    const root = s.root!;
+    const [pinned, screen] = root.children ?? [];
+    expect(screen!.type).toBe("Screen");
+    const up = walk(pinned!);
+    expect(up.some((n) => n.props?.accessibilityLabel === "Nudj. Tap to plan something.")).toBe(true);
+    // The days are in the pinned part, not in the scroll.
+    const shown = up.find((n) => n.motion && (n.motion as { appear?: string }).appear === "scaleIn")!;
+    expect(shown).toBeTruthy();
+    expect(walk(screen!).some((n) => (n.motion as { appear?: string } | undefined)?.appear === "scaleIn")).toBe(false);
+    const block = walk(screen!).find((n) => (n.motion as { appear?: string } | undefined)?.appear === "slideInRight")!;
+    expect(walk(block).some((n) => n.type === "Text" && String(n.props?.content ?? "").startsWith("Today"))).toBe(true);
+    // The block's index flips with the day, so a new day mounts it afresh (and a refresh of the same day does not).
+    const holder = walk(screen!).find((n) => (n.children ?? []).includes(block))!;
+    const other = await draw("bots.plan", "phone", { params: { day: "2026-10-29" } });
+    const block2 = walk(other.s.root!).find((n) => (n.motion as { appear?: string } | undefined)?.appear === "slideInRight")!;
+    const holder2 = walk(other.s.root!).find((n) => (n.children ?? []).includes(block2))!;
+    expect(holder.children!.indexOf(block)).not.toBe(holder2.children!.indexOf(block2));
+    // The window draws its head in the body, as before.
+    const desk = await draw("bots.plan", "desktop");
+    expect(JSON.stringify(desk.s.root)).toContain("Nudj. Tap to plan something.");
+  });
+
   it("+ and the top area open bots.plan.make with from plan and the day shown; the top area asks for the box", async () => {
     const today = await draw("bots.plan", "phone");
     expect(labelled(today.nodes, "Nudj. Tap to plan something.")!.on?.onPress).toEqual({ kind: "navigate", screenId: "bots.plan.make", params: { from: "plan", day: "2026-10-28", focus: "box" } });

@@ -148,11 +148,14 @@ describe("the thread", () => {
 });
 
 describe("the home's day", () => {
-  it("the day opens on today, and on tomorrow after 5 pm when today is done", async () => {
-    const r = rig(ist(12, 16));
+  it("the day opens on today, and on tomorrow as soon as today is done (a free day: from 5 pm)", async () => {
+    const r = rig(ist(12, 9));
     await r.c.addEvent(U, { title: "Standup", day: "2026-11-12", time: "10:00", tz: IST });
     await r.c.addEvent(U, { title: "Swim", day: "2026-11-13", time: "07:00", tz: IST });
     expect((await r.ease.day(U, IST)).day).toBe("2026-11-12");
+    // The standup is past and nothing else is open today: tomorrow, at 4 pm already.
+    r.clock.t = ist(12, 16);
+    expect((await r.ease.day(U, IST)).day).toBe("2026-11-13");
     r.clock.t = ist(12, 17, 30);
     const eve = await r.ease.day(U, IST);
     expect(eve).toMatchObject({ v: 3, day: "2026-11-13", label: "Tomorrow", date: "Fri 13 Nov", today: "2026-11-12", tomorrow: "2026-11-13" });

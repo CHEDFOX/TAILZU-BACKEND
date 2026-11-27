@@ -252,15 +252,17 @@ export function stripOf(day: string, today: string, items: readonly DayItem[], w
 }
 
 /**
- * Which day the home opens on: today; tomorrow instead from 5 pm when today has nothing open still to come (no open timed item from
- * 5 minutes ago on, no open to-do, and no item with a follow line), as the simple page's ladder says (planDay.ts nextThing rung 5).
+ * Which day the home opens on: today; tomorrow instead once today is done, at any hour: nothing open still to come (no open timed item
+ * from 5 minutes ago on, no open to-do, and no item with a follow line). A day with nothing on at all stays today until 5 pm, as the
+ * simple page's ladder says (planDay.ts nextThing rung 5); from then on tomorrow comes first.
  * Follow lines exist only for today's items, so the home opens on today, not tomorrow, all day otherwise, and in the evening too while
  * one of today's items is still being followed ("Mom · not done yet" on the 9 pm medicine is seen at 9:20 pm). `followed`: the row ids
  * that have a follow line (planFollow.ts followLinesOf).
  */
 export function defaultDay(items: readonly DayItem[], now: number, tz: number, followed: ReadonlySet<string> | ReadonlyMap<string, unknown> = new Set()): string {
   const today = new Date(now + tz * MIN).toISOString().slice(0, 10);
-  if (minuteOf(now, tz) < EVENING_HOUR * 60) return today;
+  // A free day stays today until the evening; a day that had things moves on as soon as they are all done or past.
+  if (minuteOf(now, tz) < EVENING_HOUR * 60 && !items.some((it) => it.day === today)) return today;
   const left = items.some((it) => it.day === today && (
     (!it.done && (timed(it) ? it.start! >= now - 5 * MIN : it.ref === "task")) || isFresh(rowIdOf(it), followed)));
   return left ? today : shiftDay(today, 1);

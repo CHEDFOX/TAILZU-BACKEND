@@ -89,7 +89,11 @@ export interface BotsCtx {
    * Around whatever page this screen's builder draws, and its state: Work in space's tab on a bot's page (screens/work/workTab.ts),
    * which every page of that bot (Xode's several, Plan's two clients) gets the same way. page() applies it.
    */
-  wrap?: { body: (body: Node[]) => Node[]; state?: Record<string, unknown> };
+  wrap?: {
+    body: (body: Node[]) => Node[]; state?: Record<string, unknown>;
+    /** For a page with a pinned `top`: what goes into the pinned part, and what the body becomes (the tabs' switch pins with the head). */
+    split?: { top: (top: Node[]) => Node[]; body: (body: Node[]) => Node[] };
+  };
   /**
    * False while Spaces is switched off (SPACES_ENABLED, botsBots/spacesSwitch.ts): no screen shows a way into it (hasSpaces). Absent
    * is on, so a test's ctx draws Spaces as it always did.
@@ -1430,6 +1434,11 @@ export interface PageOpts {
   fixed?: boolean;
   /** Over the top of the page, outside its scroll (a HeadBar): before the phone's Screen, before the window's column. */
   pinned?: Node[];
+  /**
+   * The phone's head that stays put while the body scrolls under it (Nudj: its head, Your work / Work in space, the days), drawn
+   * in the page's own padding. The window, which has room, draws it at the top of the body as before.
+   */
+  top?: Node[];
   /** Live topics this screen listens to (src/live/bus.ts): when one changes, the open screen reloads itself. */
   live?: string[];
   /**
@@ -1482,7 +1491,18 @@ function pullBotOf(o: NonNullable<PageOpts["pullBot"]>): PullBotSpec | undefined
 /** A page for whichever client is asking: phonePage or deskPage. Most screens need only this. */
 export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
   const w = ctx.wrap;
-  const p = w ? { ...o, body: w.body(o.body), state: { ...(w.state ?? {}), ...(o.state ?? {}) } } : o;
+  const state = w ? { ...(w.state ?? {}), ...(o.state ?? {}) } : o.state;
+  if (o.top?.length && ctx.client !== "desktop") {
+    // The phone: the head pinned over the scroll, the body under it. A wrap that cannot split keeps the head in the body.
+    if (!w || w.split) {
+      const top = w?.split ? w.split.top(o.top) : o.top;
+      const body = w?.split ? w.split.body(o.body) : o.body;
+      const pinnedTop = col(top, { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 10, gap: 12, backgroundColor: C.paper, borderBottomWidth: 1, borderBottomColor: C.divider });
+      return phonePage(ctx, { ...o, top: undefined, pinned: [...(o.pinned ?? []), pinnedTop], body, ...(state ? { state } : {}) });
+    }
+  }
+  const merged = o.top?.length ? { ...o, top: undefined, body: [...o.top, ...o.body] } : o;
+  const p = w ? { ...merged, body: w.body(merged.body), ...(state ? { state } : {}) } : merged;
   return ctx.client === "desktop" ? deskPage(ctx, p) : phonePage(ctx, p);
 }
 

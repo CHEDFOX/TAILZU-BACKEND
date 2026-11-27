@@ -87,6 +87,11 @@ something on) and the to-dos with no day on the right. Work in space's tabs sit 
 - **Today** shows up to 6 rows and **Tomorrow** up to 3, then "2 more". After 5 pm Tomorrow comes first and Today keeps only what is
   open. Done items fade and go to the end. The source of an item is only in its details. The one exception is the tiny bot of the person
   who set it.
+- **The threaded home** (`screens/bots/planHome.ts`) opens on today, and on tomorrow as soon as today is done, at any hour (nothing open
+  still to come, no follow line; a day with nothing on stays today until 5 pm: `planThread.ts` defaultDay). On the phone the head,
+  Your work / Work in space and the days stay pinned at the top while the day scrolls under them (kit page `top`). The day's content
+  slides in whenever it is drawn for another day, including when the live channel brings tomorrow in after the last thing is done, and
+  the day picked in the strip pops in where it now is.
 - **See the week** (`bots.plan.week`) is a plain list, one line a day ("Sat 14 · PTM 9:30 · 2 more"); an empty day is just its date,
   and a tap opens that day's rows. The window has the rest of the week on the right.
 - **One box**: "Tell me anything, or add a photo". The server decides what it was (section 4). The + opens Photo, Camera and File, and
