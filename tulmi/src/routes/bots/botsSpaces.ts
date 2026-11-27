@@ -66,6 +66,7 @@
  *   GET    /v1/botsapp/bots/threads                     -> { threads, unread }
  *   PUT    /v1/botsapp/bots/people/:id/name { name }    -> { name }   WHAT YOU CALL SOMEONE: yours alone, shown to nobody else
  *                                                        (docs/social.md). An empty name takes it off and their row's own name shows
+ *   GET    /v1/botsapp/bots/people/search?q=        -> { people: [{ username, bot }] }   Add a person, as they type
  *   GET    /v1/botsapp/bots/people/names                -> { names: [{ userId, name, at }] }   the names you have given
  *   GET    /v1/botsapp/bots/threads/contacts            -> { people, groupSpaces }
  *   POST   /v1/botsapp/bots/threads/direct { person }   -> { id };   POST .../threads/group { space, name?, people: [ids] | "all" } -> { id }
@@ -329,6 +330,8 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
     }
     const draft = await spaces.draftInvite({ id: user.id }, to, shownName(user)); reply.code(201); return { draft };
   }));
+  // Add a person as they type: the usernames that start with it (botsBots/spaceJoin.ts SEARCH AS YOU TYPE).
+  app.get(`${AREA}/people/search`, RL, run(async (user, req) => ({ people: await join.search(user.id, queryOf(req).q) })));
   // "Add a person": one to one, by username. Asked, or (they had asked you) connected at once.
   app.post(`${AREA}/spaces/people`, tight(20), run(async (user, req, reply) => {
     const r = await join.addPerson(joinerOf(user), bodyOf(req.body).username, shownName(user));

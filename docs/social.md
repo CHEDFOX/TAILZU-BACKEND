@@ -78,7 +78,13 @@ person's own messages. So:
 
 Migration 0113; `botsBots/spaceJoin.ts` (inviteByName, addPerson, people), `botsBots/spaces.ts` (inviteAccount, makePair, pairs),
 `routes/bots/botsSpaces.ts` (`POST .../spaces/people`; the invite routes take a username in `email`), Spaces' start screen
-(`screens/spaces/start.ts`: Add · One Person, Your people). Tests: `tests/spaces-username.test.ts`.
+(`screens/spaces/start.ts`: the + at the top right, "Add a person" in his thought, Your people). Tests: `tests/spaces-username.test.ts`.
+
+**Found as they type** (`GET .../people/search?q=`, `botsBots/spaceJoin.ts` search, `profile/username.ts` namesStarting): the usernames
+that start with what was typed, from three letters, five at most, each as its username and its tiny bot only (no name, no picture, no
+email, no id). Never the person asking, never anyone with a block either way. Braked on its own, 240 an hour a person, since a
+keystroke is a search; the 60-an-hour brake on look-ups by a whole name is untouched. This trades a little of "a look-up says only yes
+or no" for finding someone without knowing their exact name: a prefix walk is possible, but only at the brake's pace.
 
 
 **By username**, which is the point of having one. The existing paths keep their own jobs:

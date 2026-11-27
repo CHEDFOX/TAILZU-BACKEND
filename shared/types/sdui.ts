@@ -1609,7 +1609,7 @@ export interface BotStageProps {
 
 export interface BotCrowdProps {
   life: string;
-  /** 5 to 9 tiny bots, each on his own patch, lots of empty space. */
+  /** 1 to 9 tiny bots, each on his own patch, lots of empty space (Spaces: 7 in its box, one under Add a person). */
   bots: Array<{ kind: BotTileKind; color: string; avatar?: BotAvatarRef }>;
   /** Each bot's height in px. */
   size: number;

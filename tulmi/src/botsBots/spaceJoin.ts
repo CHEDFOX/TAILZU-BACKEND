@@ -23,6 +23,11 @@
  * you that you were blocked. Look-ups are braked, 60 an hour a person (docs/username.md), because asking repeatedly is how a list
  * of everyone would be made.
  *
+ * SEARCH AS YOU TYPE (search): Add a person lists the usernames that start with what was typed, at least three characters, five at
+ * most, each as its username and its tiny bot only (no name, no picture, no email). The person asking and anyone with a block
+ * either way are left out. Searches are braked on their own, 240 an hour a person: a keystroke is a search, so the 60 of a look-up
+ * would run out in a few names, and the cap still keeps a walk through every prefix slow.
+ *
  * GUESSING. A space's own code is 6 characters and never expires, so a code alone must never say whose space it is: asking answers
  * "requested" with no name, the person's waiting line shows the code they typed, not the space, and peek names only an email
  * invite's own code (8 characters, seven days). Codes that don't work count against the person: after 20 in a day, every code
@@ -37,7 +42,7 @@ import { screenPost } from "./filter.js";
 import { cleanEmail } from "./mail.js";
 import { looksIn, lookOf, type PersonLook } from "./personLook.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
-import { checkShape, idFor } from "../profile/username.js";
+import { checkShape, idFor, namesStarting, USERNAME_MIN } from "../profile/username.js";
 import { codeOf, isJoinCodeShape, isPair, showCode, type InviteRow, type Publish, type SpaceRow, type Spaces } from "./spaces.js";
 
 /** "requested" names no space: the code alone was all they had (the rules at the top). */
@@ -84,6 +89,9 @@ const ASK_AGAIN_MS = 7 * DAY_MS;
 const MISSES_A_DAY = 20;
 /** Usernames looked up, a person, an hour (docs/username.md "What a look-up gives away"). */
 const LOOKUPS_AN_HOUR = 60;
+/** Searches as they type, a person, an hour (SEARCH AS YOU TYPE at the top), and what one search shows. */
+const SEARCHES_AN_HOUR = 240;
+const SEARCH_HITS = 5;
 const HOUR_MS = 3600_000;
 const noUser = () => new BotError("no_user", "Nobody has that username. Check it and try again.", 404);
 
@@ -106,6 +114,8 @@ export class SpaceJoin {
   private readonly misses: Limiter;
   /** Usernames looked up, per person (BY USERNAME at the top). */
   private readonly lookups: Limiter;
+  /** Searches as they type, per person (SEARCH AS YOU TYPE at the top). */
+  private readonly searches: Limiter;
 
   constructor(
     private readonly spaces: Spaces,
@@ -118,6 +128,7 @@ export class SpaceJoin {
     this.blocks = o.blocks ?? new Blocks(now);
     this.misses = new Limiter(MISSES_A_DAY, DAY_MS, { now });
     this.lookups = new Limiter(LOOKUPS_AN_HOUR, HOUR_MS, { now });
+    this.searches = new Limiter(SEARCHES_AN_HOUR, HOUR_MS, { now });
     spaces.onMembers(async (e) => {
       if (e.deleted) await this.rows.remove({ space_id: e.spaceId });
       // In by another door (an invitation): their request for the space is answered.
@@ -168,6 +179,18 @@ export class SpaceJoin {
   async people(userId: string): Promise<Awaited<ReturnType<Spaces["pairs"]>>> {
     const hidden = await this.blocks.hiddenFor(userId);
     return (await this.spaces.pairs(userId)).filter((p) => !hidden.has(p.userId));
+  }
+
+  /** The usernames that start with what was typed, for Add a person as they type: never theirs, never across a block, braked. */
+  async search(userId: string, q: unknown): Promise<Array<{ username: string; bot: PersonLook }>> {
+    const typed = typeof q === "string" ? q.trim().replace(/^@+/, "").toLowerCase() : "";
+    if (typed.length < USERNAME_MIN) return [];
+    if (!this.searches.allow(userId)) throw new BotError("check_limit", "That's a lot of searching this hour. Try again later.", 429);
+    const hidden = await this.blocks.hiddenFor(userId);
+    // One more than shown for each person who may be left out, so a block or themselves never makes the list come up short.
+    const found = await namesStarting(typed, SEARCH_HITS + Math.min(hidden.size, 10) + 1);
+    return found.filter((f) => f.userId !== userId && !hidden.has(f.userId)).slice(0, SEARCH_HITS)
+      .map((f) => ({ username: f.name, bot: lookOf(f.userId) }));
   }
 
   /** Whose this username is, braked; a block either way reads as nobody (BY USERNAME at the top). */

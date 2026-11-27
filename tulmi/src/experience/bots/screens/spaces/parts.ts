@@ -79,7 +79,7 @@ export const canDo = (s: Space, p: Perm) => s.me.perms.includes(p);
 export interface FieldExtras { kind?: "text" | "email" | "code"; autoFocus?: boolean; maxLength?: number }
 
 /** A text field the kit's way: no frame of its own, Geist, 44 tall. Put it in `inputBox`. */
-export function field(id: string, path: string, placeholder: string, o: { onSubmit?: ActionRef; multiline?: boolean; keyboard?: "numeric" | "email-address"; extras?: FieldExtras } = {}): Node {
+export function field(id: string, path: string, placeholder: string, o: { onSubmit?: ActionRef; onChange?: ActionRef; multiline?: boolean; keyboard?: "numeric" | "email-address"; extras?: FieldExtras } = {}): Node {
   const x = o.extras;
   return {
     type: "TextField", id, bind: { value: path },
@@ -89,7 +89,7 @@ export function field(id: string, path: string, placeholder: string, o: { onSubm
       ...(o.keyboard ? { keyboardType: o.keyboard, autoCapitalize: "none" } : {}),
       ...(x?.kind ? { keyboard: x.kind } : {}), ...(x?.autoFocus ? { autoFocus: true } : {}), ...(x?.maxLength ? { maxLength: x.maxLength } : {}),
     },
-    ...(o.onSubmit ? { on: { onSubmit: o.onSubmit } } : {}),
+    ...(o.onSubmit || o.onChange ? { on: { ...(o.onSubmit ? { onSubmit: o.onSubmit } : {}), ...(o.onChange ? { onChange: o.onChange } : {}) } } : {}),
     style: {
       flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: o.multiline ? 72 : 44, paddingHorizontal: 0, paddingVertical: 0, fontFamily: FACE.regular,
       fontSize: 15, lineHeight: 22, color: C.ink, borderWidth: 0, backgroundColor: "transparent", outlineStyle: "none",

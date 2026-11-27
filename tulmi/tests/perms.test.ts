@@ -635,21 +635,15 @@ describe("Spaces' start screen, before the first invite", () => {
     spaces: [], you: "Asha", unread: 0, invitations: [], requests: [], asked: [], draft, mailPreview: PREVIEW,
   } as never);
 
-  it("draws the picker AND the preview with no draft at all: the first invite is the one 5.1.2(v) is about", () => {
+  it("draws neither the picker nor the preview: Call Your People takes a typed username or address only (5.1.2(v) is the Invite page's)", () => {
     envOn(["PERM_CONTACT_PICK"]);
-    const s = JSON.stringify(startScreen(ctx(), data(null)));
-    expect(s).toContain("Add from contacts");
-    expect(s).toContain("See the whole email");
-    expect(s).toContain(PREVIEW.subject);
-    expect(s).toContain(PREVIEW.sender);
-  });
-
-  it("the draft's own preview wins once there is one", () => {
-    envOn(["PERM_CONTACT_PICK"]);
-    const draft = { id: "d1", name: null, invites: [], mailPreview: { ...PREVIEW, subject: "Asha invited you to Family on X0 Bot" } };
-    const s = JSON.stringify(startScreen(ctx(), data(draft)));
-    expect(s).toContain("Asha invited you to Family on X0 Bot");
-    expect(s).not.toContain(PREVIEW.subject);
+    for (const draft of [null, { id: "d1", name: null, invites: [], mailPreview: { ...PREVIEW, subject: "Asha invited you to Family on X0 Bot" } }]) {
+      const s = JSON.stringify(startScreen(ctx(), data(draft)));
+      expect(s).not.toContain("Add from contacts");
+      expect(s).not.toContain("See the whole email");
+      expect(s).not.toContain("Asha invited you");
+      expect(s).not.toContain(PREVIEW.sender);
+    }
   });
 
   it("the window and an older binary get the email box exactly as they always did", () => {

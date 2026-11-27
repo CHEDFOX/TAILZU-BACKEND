@@ -72,10 +72,11 @@ denied/blocked lines. No new route: Save is the `PUT /v1/botsapp/bots/plan/home`
 
 **Contacts** — `screens/spaces/pickContact.ts` (the button), `screens/spaces/parts.ts` `mailPreview()` (the preview), and
 `botsBots/inviteMail.ts`, the one pure function that writes both the preview and the mail, so App Review 5.1.2(v)'s "how the
-message will appear to the recipient" cannot drift from what is sent. A space's preview comes from its own draft or space
-row; on Spaces' start screen **before the first Invite there is no draft at all**, and the very first invite a person sends
-is exactly the one the rule is about, so `GET .../spaces?full=1` also carries `mailPreview` from `Spaces.blankPreview()`,
-the same function with the words standing in for the space, the code and the address. Retention:
+message will appear to the recipient" cannot drift from what is sent. The picker and the preview are on a space's Invite
+page only, the preview coming from its space row. Spaces' start screen (Create, Call Your People) has **neither**: it takes a
+typed username or address, never a picked contact, so nothing it sends falls under the rule. `GET .../spaces?full=1` still
+carries `mailPreview` from `Spaces.blankPreview()` (the same function, the words standing in for the space, the code and the
+address) for an older build that draws the picker there. Retention:
 `botsBots/inviteSweeper.ts` deletes an invite seven days after it expires and an outbox row seven days after it was queued
 once it is sent, failed, cancelled — or still `sending`, which is a send that crashed mid-way and would otherwise hold an
 address for ever. Only `queued` is left alone, however old. `forgetInvitesOf()` takes both with the account (neither went

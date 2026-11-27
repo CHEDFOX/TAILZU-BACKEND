@@ -313,7 +313,9 @@ Sending…, Sent, Couldn't send · Try again; the window's Edit and Cancel), and
 bar keeps an ask the same way while `online` is false (kit `keptOffline`: the ask bar, Ask's own send, the Code bot's "Tell Code bot
 what to do"), clears the field and says "Kept. It will send when you're back."; online, it sends as before.
 
-**Spaces, the family redesign** (shared/types/sdui.ts section 3i; the phone mirrors it in `app/src/sdui/types.ts`). Five nodes, each
+**Spaces, the family redesign** (the start screen, now: a bold + at the box's top left with CREATE SPACE, a bold + at the top right
+for Add a person, which grows the same box with one tiny bot in it; Call Your People shows no mail preview; Done goes straight to the
+list, with no "is ready" moment) (shared/types/sdui.ts section 3i; the phone mirrors it in `app/src/sdui/types.ts`). Five nodes, each
 in `KIT_TYPES`, and four names that are not nodes, each declared by name in `capabilities.components`:
 
 * **`BotStage`** (`botStage(props, children, on)`): a full tiny bot on a stage of his own (`life` keeps him across screens and
@@ -327,7 +329,7 @@ in `KIT_TYPES`, and four names that are not nodes, each declared by name in `cap
   `size + 18 + 82 + 48` tall: the box sits inside it, never over the page.
 * **`BotCrowd`** (`botCrowd`): a box of 5 to 9 tiny bots playing, grown taller while `grownWhen` holds (Call Your People sits in it),
   all cheering on `cheerWhen`; `surprises` is kit `crowdSurprises(ctx)`.
-* **`Vanish`** (`vanish`): its children vaporise while `goneWhen` holds (Create and "Your Own Space"); kept per `key`.
+* **`Vanish`** (`vanish`): its children vaporise while `goneWhen` holds; kept per `key`.
 * **`MentionField`** (`mentionField`): the space's box. "@" picks a person, "/" one of the person's four shareable bots and then one of
   its things (GET `thingsPath`), or one of `tools`; it writes a `MentionDraft` to `draftPath`; `on.onSubmit` sends it.
 * **`LiveWords`** (`liveWords`): the words a voice session hears, nothing else.

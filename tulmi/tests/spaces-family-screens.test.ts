@@ -131,39 +131,45 @@ describe("the gates", () => {
 
 describe("Spaces (bots.spaces)", () => {
   for (const client of ["phone", "desktop"] as const) {
-    it(`FIRST on the ${client}: his stage (the whole top is his), the crowd, a dotted Create on the left, no list; the waiting invitation open`, async () => {
+    it(`FIRST on the ${client}: his stage (the whole top is his), the crowd with a bold + and CREATE SPACE, the + for a person at the top right; the waiting invitation open`, async () => {
       const calls: Array<{ method: string; path: string }> = [];
       const { s, nodes } = await build("bots.spaces", client, { api: { [`GET ${A}/spaces?full=1`]: D.FULL_FIRST }, calls });
       expect(lintTree(s.root!)).toEqual([]);
       // The load of a new build reads one thing.
       expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`GET ${A}/spaces?full=1`]);
       const stage = ofType(nodes, "BotStage")[0]!;
-      expect(stage.props).toMatchObject({ life: "spaces.me", hit: "stage", toys: false, outWhen: { truthy: "creating" }, thought: { style: "space", openPath: "thOpen", veil: true, place: "low" } });
-      // A tap opens his thought, except while Call Your People is open: he is out at the side and stays out.
-      expect(stage.on?.onPress).toEqual({ kind: "condition", if: { falsy: "creating" }, then: { kind: "setState", path: "thOpen", value: true } });
-      expect(ofType(nodes, "BotCrowd")).toHaveLength(1);
-      // A square box: no height (as tall as it is wide); the window's held to a square that fits it.
-      expect(ofType(nodes, "BotCrowd")[0]!.props!.height).toBeUndefined();
-      // The window: his stage, the box and the rows in ONE centred column as wide as the box, so he is right over it (as on the phone).
+      expect(stage.props).toMatchObject({ life: "spaces.me", hit: "stage", toys: false, outWhen: { any: [{ truthy: "creating" }, { truthy: "adding" }] }, thought: { style: "space", openPath: "thOpen", veil: true, place: "low" } });
+      // A tap opens his thought, except while a box is open: he is out at the side and stays out.
+      expect(stage.on?.onPress).toEqual({ kind: "condition", if: { all: [{ falsy: "creating" }, { falsy: "adding" }] }, then: { kind: "setState", path: "thOpen", value: true } });
+      // The box of seven, and the box of one under Add a person (drawn only while it is open).
+      const crowds = ofType(nodes, "BotCrowd");
+      expect(crowds.map((c) => (c.props!.bots as unknown[]).length)).toEqual([7, 1]);
+      expect(crowds[0]!.props!.height).toBeUndefined();
+      expect(crowds[1]!.props).toMatchObject({ grownWhen: { truthy: "adding" } });
       if (client === "desktop") {
-        const column = nodes.find((n) => n.children?.some((c) => c.type === "BotStage") && n.children?.some((c) => c.type === "BotCrowd"))!;
+        const column = nodes.find((n) => n.children?.some((c) => c.type === "BotStage"))!;
         expect(column.style).toMatchObject({ maxWidth: 400, width: "100%", alignSelf: "center" });
       }
-      const rows = ofType(nodes, "Vanish")[0]!.children![0]!;
-      const row = rows.children![0]!;
-      expect(row.children![0]!.style).toMatchObject({ borderStyle: "dotted", borderWidth: 2 });
-      expect(texts(walk(row.children![0]!))).toEqual(["Create"]);
-      expect(texts(walk(row.children![1]!))).toEqual(["Your Own Space"]);
-      // And under it, the same shape: one person, by username (docs/social.md §3).
-      expect(texts(walk(rows.children![1]!))).toEqual(["Add", "One Person"]);
-      expect(callTo(rows, "POST", `${A}/spaces/people`)?.body).toEqual({ username: "$state.who" });
+      // No dotted Create / Add row under the box any more.
+      expect(ofType(nodes, "Vanish")).toHaveLength(0);
+      expect(texts(nodes)).not.toContain("Your Own Space");
+      expect(texts(nodes)).not.toContain("One Person");
+      expect(texts(walk(crowds[0]!))).toContain("CREATE SPACE");
+      const pluses = nodes.filter((n) => n.props?.accessibilityLabel === "Create a space" || n.props?.accessibilityLabel === "Add a person");
+      expect(pluses.map((n) => n.props!.accessibilityLabel).sort()).toEqual(["Add a person", "Create a space"]);
+      for (const n of pluses) expect(n.style).toMatchObject({ borderWidth: 2.5, borderRadius: 22 + (n.props!.accessibilityLabel === "Create a space" ? 2 : 0) });
+      // Add a person: a username, the names that start with it as it is typed, Add.
+      expect(texts(walk(crowds[1]!))).toEqual(expect.arrayContaining(["Add a person", "By their username. Once they say yes, you can message each other."]));
+      expect(callTo(crowds[1]!, "GET", `${A}/people/search?q=$state.who`)).toBeTruthy();
+      expect(callTo(crowds[1]!, "POST", `${A}/spaces/people`)?.body).toEqual({ username: "$state.who" });
+      expect(callsIn(crowds[1]!).filter((c) => c.path === `${A}/spaces/people`).map((c) => c.body)).toContainEqual({ username: "$state.whoFound.people.0.username" });
       expect(texts(nodes)).not.toContain("Your spaces");
       // An invitation waiting on the first Spaces screen is shown, not hidden behind a tap; he hops for it.
-      expect(s.state).toMatchObject({ thOpen: true, news: 1, creating: false, made: false });
-      expect(texts(nodes)).toEqual(expect.arrayContaining(["You have an invitation", "Sharma Family", "Aanya invited you · 3 people", "Asked to join with the code 7KQ-29D. The space's admin will let you in.", "Have a code?"]));
+      expect(s.state).toMatchObject({ thOpen: true, news: 1, creating: false, adding: false });
+      expect(texts(nodes)).toEqual(expect.arrayContaining(["You have an invitation", "Sharma Family", "Aanya invited you · 3 people", "Asked to join with the code 7KQ-29D. The space's admin will let you in.", "Have a code?", "Add a person"]));
+      // His thought finds a person too, under the code box.
+      expect(callTo(stage, "GET", `${A}/people/search?q=$state.find`)).toBeTruthy();
       const acc = callTo(stage, "PUT", `${A}/spaces/invitations/SHARMA22`);
-      // Which line it showed goes with the yes (spacePerms.ts lineShown).
-      // Nothing about a line is sent any more: there is none (docs/social.md §4).
       expect(acc?.body).toEqual({ decision: "accept" });
       expect(texts(nodes)).not.toContain("Make a new space");
       // Every refusal here says the server's own words.
@@ -171,25 +177,27 @@ describe("Spaces (bots.spaces)", () => {
     });
   }
 
-  it("CREATE: two Sent rows, Invite to the draft, Continue to the name, Back deletes the draft; he has walked out", async () => {
+  it("CREATE: two Sent rows, Invite to the draft, Continue to the name, Back deletes the draft; no mail preview; Done goes straight to the list", async () => {
     for (const client of ["phone", "desktop"] as const) {
-      const { s, nodes } = await build("bots.spaces", client, { api: { [`GET ${A}/spaces?full=1`]: D.FULL_CREATE } });
+      const { s, nodes } = await build("bots.spaces", client, { api: { [`GET ${A}/spaces?full=1`]: { ...D.FULL_CREATE, mailPreview: { sender: "X0 Bot", subject: "Join", text: "Hi" } } } });
       expect(lintTree(s.root!)).toEqual([]);
       expect(s.state).toMatchObject({ creating: true, step: "people" });
       const t = texts(nodes);
       for (const w of ["Call Your People", "Someone on X0 Bot by their username, anyone else by email.", "meera@example.in", "rohan@example.in", "Continue", "Name your space", "Done"]) expect(t, w).toContain(w);
+      for (const w of ["From", "Subject", "See the whole email"]) expect(t, w).not.toContain(w);
       expect(t.filter((x) => x === "Sent")).toHaveLength(2);
       const crowd = ofType(nodes, "BotCrowd")[0]!;
-      expect(crowd.props).toMatchObject({ grownWhen: { truthy: "creating" }, grownHeight: client === "desktop" ? 600 : 560, cheerWhen: { truthy: "made" } });
+      expect(crowd.props).toMatchObject({ grownWhen: { truthy: "creating" }, grownHeight: client === "desktop" ? 600 : 560 });
       expect(callTo(crowd, "DELETE", `${A}/spaces/draft`)).toBeTruthy();
       expect(callTo(crowd, "POST", `${A}/spaces/draft/invite`)?.body).toEqual({ email: "$state.email" });
       const email = nodes.find((n) => n.type === "TextField" && n.id === "email")!;
       expect(email.props).toMatchObject({ keyboard: "email", autoFocus: true });
-      // Unnamed: Continue goes to the name; Done makes it and opens the moment it is ready.
       expect(actionsIn(crowd)).toContainEqual({ kind: "setState", path: "step", value: "name" });
       const done = callTo(crowd, "POST", `${A}/spaces/draft/done`)!;
       expect(done.body).toEqual({ name: "$state.spaceName" });
-      expect(done.onSuccess).toEqual({ kind: "navigate", screenId: "bots.spaces", params: { made: "$state.madeSpace.id" }, replace: true });
+      // Made: no moment in between; the box closes and the screen reads again, now the list with the space in it.
+      expect(JSON.stringify(done.onSuccess)).not.toContain("navigate");
+      expect(actionsIn({ a: done.onSuccess })).toContainEqual({ kind: "setState", path: "creating", value: false });
     }
     // A big family: the box grows with every invite (and the Sending row), so Continue is never cut off.
     const many = Array.from({ length: 9 }, (_, i) => ({ code: `INV${i}AAAA`, email: `p${i}@example.in`, at: 0, mail: "sent" as const }));
@@ -200,20 +208,13 @@ describe("Spaces (bots.spaces)", () => {
     expect(texts(named.nodes)).toContain("College Friends");
     const cont = callsIn(named.s.root).filter((c) => c.path === `${A}/spaces/draft/done`);
     expect(cont.some((c) => JSON.stringify(c.body) === "{}")).toBe(true);
-    const wrapped = actionsIn(named.s.root).filter((a) => a.kind === "condition" && JSON.stringify(a).includes('"body":{}') && JSON.stringify(a.if) === '{"falsy":"spaceName"}');
-    expect(wrapped).toEqual([]);
   });
 
-  it("MADE: everyone cheers, he walks back in, \"Home is ready\" and Open", async () => {
+  it("an old link to the moment after Done (made=) is just the list", async () => {
     const { s, nodes } = await build("bots.spaces", "phone", { params: { made: "s1" }, api: { [`GET ${A}/spaces?full=1`]: D.FULL_MADE } });
     expect(lintTree(s.root!)).toEqual([]);
-    expect(s.state).toMatchObject({ made: true, creating: false });
-    expect(texts(nodes)).toEqual(expect.arrayContaining(["Home is ready", "2 people invited. You are its admin.", "Open Home"]));
-    // Open: this screen becomes Your spaces and the space opens over it, so Back comes to the list, not to this moment again.
-    expect(actionsIn(s.root)).toContainEqual({ kind: "sequence", actions: [
-      { kind: "navigate", screenId: "bots.spaces", params: {}, replace: true }, { kind: "navigate", screenId: "bots.spaces", params: { id: "s1" } },
-    ] });
-    expect(ofType(nodes, "BotStage")[0]!.props!.cheerWhen).toEqual({ any: [{ truthy: "made" }, { gt: ["news", 0] }] });
+    expect(texts(nodes)).toContain("Your spaces");
+    expect(texts(nodes)).not.toContain("Home is ready");
   });
 
   for (const client of ["phone", "desktop"] as const) {
@@ -223,7 +224,10 @@ describe("Spaces (bots.spaces)", () => {
       expect(s.liveTopics).toEqual(expect.arrayContaining(["spaces", "space:s1", "space:s2"]));
       const t = texts(nodes);
       for (const w of ["Your spaces", "Home", "Mom: Dinner at 8? Bring the dahi", "Studio", "Dev: Shared a Xode project with you", "2", "1"]) expect(t, w).toContain(w);
-      expect(ofType(nodes, "BotCrowd")).toHaveLength(0);
+      // The box shows only while Create or Add is open; the + and CREATE SPACE head the list, the other + is at the top right.
+      expect(ofType(nodes, "BotCrowd").map((c) => (c.props!.bots as unknown[]).length)).toEqual([1, 7]);
+      expect(t).toContain("CREATE SPACE");
+      expect(nodes.filter((n) => n.props?.accessibilityLabel === "Add a person")).toHaveLength(1);
       expect(ofType(nodes, "Vanish")).toHaveLength(0);
       const stage = ofType(nodes, "BotStage")[0]!;
       const inThought = texts(walk(stage));

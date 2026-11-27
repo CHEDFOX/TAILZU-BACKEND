@@ -18,7 +18,7 @@ import type { Node } from "../../../../../../shared/types/sdui.js";
 import type { Activity, ActivityBot, ActivitySchedule } from "../../../../botsBots/activities.js";
 import {
   type BotsCtx, page, col, row, text, meta, grow, box, C, open, SCREENS, sectionLabel, emptyState, botAvatar,
-  statusMark, roundButton, labelled, title as pageTitle, appMark, RADIUS, botLook,
+  statusMark, roundButton, labelled, icon, title as pageTitle, appMark, RADIUS, botLook,
 } from "../../kit.js";
 import { shapes } from "../../glyphs.js";
 import { refresh } from "./parts.js";
@@ -143,7 +143,7 @@ export function activitiesPage(ctx: BotsCtx, d: ActivitiesData | undefined): Ret
       })] : []),
     ],
     // THE "+" IS THE BOTS: the roster, as the place you go to start something.
-    footer: [row([grow(), labelled(box([text("+", { size: 26, weight: 600, lineHeight: 30, color: C.paper })], {
+    footer: [row([grow(), labelled(box([icon("plus", { size: 26, color: C.paper, weight: 2.6 })], {
       width: 56, height: 56, borderRadius: 28, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0,
     }, open(SCREENS.start)), "Start something: your bots")], {})],
     gap: 20,
