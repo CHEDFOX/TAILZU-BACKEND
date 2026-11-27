@@ -843,7 +843,7 @@ describe("what people see", () => {
     const asker = await r.follows.view(U, f.id);
     expect(asker).toMatchObject({ you: "asker", holder: { name: "Mom" }, steps: [{ line: expect.stringContaining("Mom · Notification · sent") }] });
     const mom = await r.follows.view(M, f.id);
-    expect(mom).toMatchObject({ you: "holder", asker: { name: "Rahul" }, steps: [], next: { line: "If it isn't done by 9:20 pm, X0 tells Rahul." } });
+    expect(mom).toMatchObject({ you: "holder", asker: { name: "Rahul" }, steps: [], next: { line: "If it isn't done by 9:20 pm, Nudj tells Rahul." } });
     expect(mom?.buttons.later.map((l) => l.action)).toEqual(["later_15m", "later_1h", "later_tmrw"]);
     expect(await r.follows.view(D, f.id)).toMatchObject({ you: "backup", buttons: { cant: false } });
     expect(await r.follows.view(X, f.id)).toBeNull();

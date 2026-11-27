@@ -201,7 +201,7 @@ function editFace(ctx: BotsCtx, setup: MakeSetup, day0: string): Node {
   // One switch row, as the item page's: off is "" (X0 decides); "normal" comes only from the check face's Keep normal, and shows off.
   const mustOn: Condition = { eq: ["d.imp", "must"] };
   const mustRow = listRow({
-    label: "Must not miss", sub: "X0 keeps reminding until it's done.", chevron: false, right: switchMark("d.imp", mustOn),
+    label: "Must not miss", sub: "Nudj keeps reminding until it's done.", chevron: false, right: switchMark("d.imp", mustOn),
     onPress: cond(mustOn, setState("d.imp", ""), setState("d.imp", "must")),
   });
   const must = setup.follow ? [{ ...mustRow, style: { ...(mustRow.style ?? {}), paddingHorizontal: 0, paddingVertical: 0 } }] : [];
@@ -283,14 +283,14 @@ function slotNode(ctx: BotsCtx, setup: MakeSetup, n: number): Node {
     when({ truthy: `${p}.good` }, row([icon("check", { size: 14 }), text("Looks good", { size: 14, lineHeight: 19 })], { gap: 6, alignItems: "center" })),
     when({ truthy: "chk.multi" }, row([wordButton("Change", changeAction(n)), wordButton("Take out", dropAction(ctx, n), { grey: true })], { gap: 16 })),
   ], { gap: 6 });
-  // Shown with a head or a note: a draft with no name still says "Say what it is." (and its when), never an empty "X0 checked".
+  // Shown with a head or a note: a draft with no name still says "Say what it is." (and its when), never an empty "Nudj checked".
   return when({ any: [{ truthy: `${p}.head` }, { truthy: `${p}.notes.0.text` }] }, n ? col([divider(), inner], { gap: 16 }) : inner);
 }
 
 function checkFace(ctx: BotsCtx, setup: MakeSetup): Node {
   return when({ eq: ["step", "check"] }, col([
     // The tick only when nothing stops Done: with a stop the fixes are the next step, not a "checked, fine".
-    row([when({ falsy: "chk.stop" }, icon("check", { size: 14 })), sectionLabel("X0 checked")], { gap: 8, alignItems: "center" }),
+    row([when({ falsy: "chk.stop" }, icon("check", { size: 14 })), sectionLabel("Nudj checked")], { gap: 8, alignItems: "center" }),
     ...Array.from({ length: DRAFTS_MAX }, (_, n) => slotNode(ctx, setup, n)),
     when({ truthy: "chk.count" }, meta("", { size: 14, lineHeight: 19, bind: "chk.count" })),
     when({ truthy: "chk.extra" }, meta("", { size: 13, lineHeight: 18, bind: "chk.extra" })),
@@ -317,7 +317,7 @@ function checkFace(ctx: BotsCtx, setup: MakeSetup): Node {
 function typeBox(ctx: BotsCtx): Node {
   const desk = isDesk(ctx);
   const send = sendAction(ctx);
-  const f = field("say", "say", desk ? "Tell X0, like Dentist Fri 5 pm, or drop a file" : "Tell X0, like Dentist Fri 5 pm", { onSubmit: send });
+  const f = field("say", "say", desk ? "Tell Nudj, like Dentist Fri 5 pm, or drop a file" : "Tell Nudj, like Dentist Fri 5 pm", { onSubmit: send });
   const extras = ctx.can.has(KIT_EXTRAS_CAPABILITY);
   const say: Node = extras ? { ...f, props: { ...(f.props ?? {}), maxLength: WORDS_MAX, ...(ctx.params.focus === "box" ? { autoFocus: true } : {}) } } : f;
   const plus = boxPlus(ctx);
@@ -325,7 +325,7 @@ function typeBox(ctx: BotsCtx): Node {
     ...plus,
     say,
     when({ neq: ["busy", "fill"] }, labelled(box([icon("send", { size: 18, color: C.paper })], { width: 40, height: 40, borderRadius: 20, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 }, send), "Send")),
-    when({ eq: ["busy", "fill"] }, labelled(box([statusMark("working", { color: OCHRE, size: 10 })], { width: 40, height: 40, alignItems: "center", justifyContent: "center", flexShrink: 0 }), "X0 is filling it in")),
+    when({ eq: ["busy", "fill"] }, labelled(box([statusMark("working", { color: OCHRE, size: 10 })], { width: 40, height: 40, alignItems: "center", justifyContent: "center", flexShrink: 0 }), "Nudj is filling it in")),
   ], { gap: 8, alignItems: "center", borderWidth: 1, borderColor: C.line, borderRadius: 28, paddingLeft: plus.length ? 8 : 18, paddingRight: 6, paddingVertical: 4, minHeight: 52, backgroundColor: C.paper });
   return col([...boxPicks(ctx), input], { gap: 8 });
 }
@@ -354,7 +354,7 @@ export function makePage(ctx: BotsCtx, setup: MakeSetup) {
   const head = row([
     col([
       text("Plan something", { size: desk ? 24 : 22, weight: 700, tracking: -0.4, lineHeight: desk ? 30 : 28 }),
-      meta("Fill it in, or tell X0 below.", { size: 13, lineHeight: 18 }),
+      meta("Fill it in, or tell Nudj below.", { size: 13, lineHeight: 18 }),
     ], { gap: 4, flexShrink: 1 }),
     grow(),
     ...headerBuddy(ctx, "plan", { thinkWhen: { any: [{ eq: ["busy", "fill"] }, { eq: ["busy", "check"] }] } }),

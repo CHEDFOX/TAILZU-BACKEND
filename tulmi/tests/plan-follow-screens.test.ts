@@ -84,11 +84,11 @@ describe("bots.plan.follow", () => {
     for (const client of ["phone", "desktop"] as const) {
       const a = await draw("bots.plan.follow", client, { follow: V.asker.id }, api);
       expect(lintTree(a.s.root!)).toEqual([]);
-      expect(a.texts).toEqual(expect.arrayContaining(["Mom's evening medicine", "What X0 did", "9 pm · Mom · Notification · opened 9:02 pm", "Mom hasn't said done."]));
+      expect(a.texts).toEqual(expect.arrayContaining(["Mom's evening medicine", "What Nudj did", "9 pm · Mom · Notification · opened 9:02 pm", "Mom hasn't said done."]));
       const h = await draw("bots.plan.follow", client, { follow: V.holder.id }, api);
       expect(lintTree(h.s.root!)).toEqual([]);
-      expect(h.texts).toEqual(expect.arrayContaining(["Priya asked X0 to remind you.", "If it isn't done by 8:20 pm, X0 tells Priya."]));
-      expect(h.texts).not.toContain("What X0 did");
+      expect(h.texts).toEqual(expect.arrayContaining(["Priya asked Nudj to remind you.", "If it isn't done by 8:20 pm, Nudj tells Priya."]));
+      expect(h.texts).not.toContain("What Nudj did");
       const b = await draw("bots.plan.follow", client, { follow: V.backup.id }, api);
       expect(b.texts).toContain("Mom hasn't said done. You're next on it.");
       const none = await draw("bots.plan.follow", client, { follow: "eeeeeeee-0000-4000-8000-000000000009" }, api);
@@ -171,12 +171,12 @@ describe("the item page and the call screen", () => {
   });
   it("item page: the add form sends importance; details show Must not miss with why, Who, and the open follow's line; waits and someone else's items show none", async () => {
     const add = await draw("bots.plan.item", "phone", { kind: "task" }, {});
-    expect(add.texts).toEqual(expect.arrayContaining(["Must not miss", "X0 marks medicine, pickups, bills due today and flights by itself."]));
+    expect(add.texts).toEqual(expect.arrayContaining(["Must not miss", "Nudj marks medicine, pickups, bills due today and flights by itself."]));
     expect(actionsIn(add.s).filter((x) => x.kind === "callEndpoint" && String(x.path).endsWith("/tasks"))[0]!.body).toMatchObject({ importance: "$state.imp" });
     for (const client of ["phone", "desktop"] as const) {
       const d = await draw("bots.plan.item", client, { kind: "task", id: T }, itemApi(task()));
       expect(lintTree(d.s.root!)).toEqual([]);
-      expect(d.texts).toEqual(expect.arrayContaining(["Must not miss", "Marked by X0: medicine", "Who: Mom", "Mom · not done yet"]));
+      expect(d.texts).toEqual(expect.arrayContaining(["Must not miss", "Marked by Nudj: medicine", "Who: Mom", "Mom · not done yet"]));
       expect(d.s.state).toMatchObject({ must: true });
     }
     const wait = await draw("bots.plan.item", "phone", { kind: "task", id: T }, itemApi(task({ kind: "wait" }), { ...follow, allowed: false }));
@@ -187,7 +187,7 @@ describe("the item page and the call screen", () => {
   it("bill page: the same section", async () => {
     const d = await draw("bots.plan.item", "phone", { kind: "task", id: T }, itemApi(task({ kind: "due", title: "Electricity", at: null }), { ...follow, why: "bill_today" }));
     expect(lintTree(d.s.root!)).toEqual([]);
-    expect(d.texts).toEqual(expect.arrayContaining(["Paid", "Must not miss", "Marked by X0: due today", "Who: Mom"]));
+    expect(d.texts).toEqual(expect.arrayContaining(["Paid", "Must not miss", "Marked by Nudj: due today", "Who: Mom"]));
   });
   it("call screen: a follow call has Done, Later and Can't, and says who asked without the medicine", async () => {
     const seed = { source: "follow" as const, item: "pf:eeeeeeee-0000-4000-8000-000000000001:1", followId: "eeeeeeee-0000-4000-8000-000000000001", day: "2026-11-12", tz: IST, title: "Mom's meds", at: ist(12, 21), asker: "Rahul" };

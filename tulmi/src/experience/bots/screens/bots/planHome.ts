@@ -84,7 +84,8 @@ export function homeHead(ctx: BotsCtx, d: PlanDayData | undefined, day: string):
     botAvatar(look, desk ? 44 : 40),
     col([
       text("Nudj", { size: desk ? 22 : 19, weight: 600, lineHeight: desk ? 26 : 24, lines: 1 }),
-      ...(d?.head ? [text(d.head, { size: desk ? 13 : 12, weight: 500, color: OCHRE, lineHeight: desk ? 18 : 16, lines: 1 })] : []),
+      // Two lines at most: "Leave by 7:50 pm for the dentist" is the whole point of the line, so it wraps rather than being cut.
+      ...(d?.head ? [text(d.head, { size: desk ? 13 : 12, weight: 500, color: OCHRE, lineHeight: desk ? 18 : 16, lines: 2 })] : []),
     ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     ...buddy,
   ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: desk ? 12 : 10, alignItems: "center", minHeight: desk ? 56 : 48 }, planSomething(day, { box: true })),
@@ -210,9 +211,14 @@ function rowCard(ctx: BotsCtx, s: Extract<ThreadStep, { k: "row" }>): Node {
 export function threadNodes(ctx: BotsCtx, steps: ThreadStep[]): Node[] {
   const w = labelWidth(ctx);
   const blank = (): Node => box([], { width: w, flexShrink: 0 });
+  // A label is drawn once for a run of rows that share it ("To do", "To do", "To do" reads as one "To do").
+  let lastLabel = "";
   return steps.map((s): Node => {
+    if (s.k !== "row") lastLabel = "";
     if (s.k === "row") {
-      return row([text(s.label, { size: 12, weight: 600, lineHeight: 16, style: { width: w, paddingTop: 12, flexShrink: 0 } }), track(), rowCard(ctx, s)], { gap: 10, alignItems: "stretch" });
+      const label = s.label === lastLabel ? "" : s.label;
+      lastLabel = s.label;
+      return row([text(label, { size: 12, weight: 600, lineHeight: 16, style: { width: w, paddingTop: 12, flexShrink: 0 } }), track(), rowCard(ctx, s)], { gap: 10, alignItems: "stretch" });
     }
     if (s.k === "leave") {
       // Open map is a hand-off the phone checks against its own list (Maps), only when it is time to go.
@@ -434,7 +440,7 @@ export function planHomePhone(ctx: BotsCtx, d: PlanDayData | undefined) {
         ...addedLine(ctx, d),
         // Swiped on a phone that draws it; the window keeps its arrows, which suit a pointer better than a drag.
         stripNodes(d, canScrollX(ctx)),
-        ...(d.needs ? [needsPart(ctx, d.needs)] : []),
+        ...(d.needs && shownDay(ctx, d) === d.today ? [needsPart(ctx, d.needs)] : []),
         dayPart(ctx, d),
         ...openPart(ctx, d),
         ...places.homePart(ctx, d.travel),
@@ -467,7 +473,7 @@ export function planHomeDesk(ctx: BotsCtx, d: PlanDayData | undefined) {
         col([
           ...addedLine(ctx, d),
           stripNodes(d),
-          ...(d.needs ? [needsPart(ctx, d.needs)] : []),
+          ...(d.needs && shownDay(ctx, d) === d.today ? [needsPart(ctx, d.needs)] : []),
           dayPart(ctx, d),
         ], { gap: 24, flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, maxWidth: 680 }),
         rail,
