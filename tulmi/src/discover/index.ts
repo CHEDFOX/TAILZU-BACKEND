@@ -23,6 +23,7 @@ import type { Fail } from "./builder.js";
 import { store as makeStore, type DiscoverStore } from "./store.js";
 import { decayAll, fold, known, likes, dislikes, type Taste, type TasteLine } from "./taste.js";
 import { weightOf, type Signal } from "./signals.js";
+import { budgetLevel } from "./taxonomy.js";
 import type { Experiences } from "./experiences.js";
 import type { Ask, Card, Chosen } from "./types.js";
 
@@ -36,6 +37,7 @@ export { CURATED, curatedBySlug, curatedCountries } from "./catalog.js";
 export { store, type DiscoverStore } from "./store.js";
 export { pick, countFor } from "./query.js";
 export { experiences, FORUMS, KINDS, type Experiences, type Point, type Kind } from "./experiences.js";
+export { readingOf, weKnow, told, KNOWN_AT, type Reading, type Level, type Scale } from "./taste.js";
 export { DISCOVER_TOOLS, runDiscover, discoverFor } from "./tools.js";
 export * from "./taste.js";
 export * from "./signals.js";
@@ -184,6 +186,8 @@ export class Discover {
       weight: weightOf(signal),
       at: at.toISOString(),
       ...(signal.kind === "shown" ? { onlyShown: true } : {}),
+      // How hard and how dear this one was, for the levels a plan needs and a feed does not (taste.ts Scale).
+      ...(card ? { levels: { effort: card.effort, budget: budgetLevel(card.budget) } } : {}),
     });
     await this.store.saveTaste(userId, next);
     return next;

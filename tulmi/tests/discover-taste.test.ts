@@ -23,7 +23,9 @@ const { pick } = await import("../src/discover/query.js");
 const {
   emptyTaste, fold, scoreOf, sureOf, known, likes, dislikes, because, match, decayAll,
   transferWeight, tagDilution, exposureNormalised, decayFactor, HALF_LIFE_DAYS,
+  readingOf, weKnow, told, KNOWN_AT,
 } = await import("../src/discover/taste.js");
+const { budgetLevel, budgetBand } = await import("../src/discover/taxonomy.js");
 const { weightOf, rankWeight, dwellWeight, DWELL_MIN_MS, DWELL_FULL_MS } = await import("../src/discover/signals.js");
 const { seasonWords: words, daysLeftInSeason: left } = await import("../src/discover/taxonomy.js");
 
@@ -57,6 +59,71 @@ describe("where something sits in an order", () => {
 
   it("is zero when there is nothing to compare against", () => {
     expect(rankWeight(1, 1)).toBe(0);
+  });
+});
+
+describe("how hard and how dear, which are levels and not likes", () => {
+  const keep = (effort: number, budget: number, weight = 3) =>
+    ({ tags: ["desert"] as const, weight, at: at(), levels: { effort, budget } });
+
+  it("knows nothing at the start, and says so rather than guessing a middle", () => {
+    const t = emptyTaste(at());
+    expect(readingOf(t, "effort")).toEqual({ of: 0, sure: 0 });
+    expect(weKnow(t, "effort")).toBe(false);
+    expect(weKnow(t, "budget")).toBe(false);
+  });
+
+  it("settles on what they keep going toward", () => {
+    let t = emptyTaste(at());
+    for (const _ of [1, 2, 3, 4]) t = fold(t, keep(4, 3));
+    const r = readingOf(t, "effort");
+    expect(r.of).toBeCloseTo(4, 5);
+    expect(r.sure).toBeGreaterThan(KNOWN_AT);
+    expect(weKnow(t, "effort")).toBe(true);
+  });
+
+  it("averages rather than following the last thing they tapped", () => {
+    let t = emptyTaste(at());
+    t = fold(t, keep(5, 4));
+    t = fold(t, keep(1, 1));
+    expect(readingOf(t, "effort").of).toBeCloseTo(3, 5);
+  });
+
+  it("learns NOTHING about a level from a rejection, because a rejection does not say which part", () => {
+    // "Not for me" on a five-day trek could be the cold, the price, the country or the picture. Inferring
+    // "they dislike effort" from it is how somebody ends up sent up a mountain or into a hostel.
+    let t = emptyTaste(at());
+    t = fold(t, { tags: ["desert"], weight: -5, at: at(), levels: { effort: 5, budget: 4 } });
+    expect(readingOf(t, "effort")).toEqual({ of: 0, sure: 0 });
+    // and the tags still move, which is what a rejection IS evidence about
+    expect(scoreOf(t, "desert")).toBeLessThan(0);
+  });
+
+  it("learns nothing from a card merely shown, same as the tags", () => {
+    let t = emptyTaste(at());
+    t = fold(t, { tags: ["desert"], weight: 0, at: at(), onlyShown: true, levels: { effort: 5, budget: 4 } });
+    expect(readingOf(t, "effort").sure).toBe(0);
+  });
+
+  it("stays unsure after one tap, so a plan still asks", () => {
+    const t = fold(emptyTaste(at()), keep(2, 2));
+    expect(weKnow(t, "effort")).toBe(false);
+  });
+
+  it("takes an answer when somebody is asked, and weighs it heavily enough to stop asking", () => {
+    const t = told(emptyTaste(at()), "budget", 2, at());
+    expect(weKnow(t, "budget")).toBe(true);
+    expect(readingOf(t, "budget").of).toBeCloseTo(2, 5);
+  });
+
+  it("holds a budget band as a number and gives it back as a word", () => {
+    expect(budgetLevel("budget")).toBe(1);
+    expect(budgetLevel("luxury")).toBe(4);
+    expect(budgetBand(1)).toBe("budget");
+    expect(budgetBand(3.4)).toBe("premium");
+    // out of range rounds into the scale rather than throwing: a mean can drift
+    expect(budgetBand(0)).toBe("budget");
+    expect(budgetBand(99)).toBe("luxury");
   });
 });
 
@@ -248,6 +315,16 @@ describe("through Discover, as the server uses it", () => {
     const after = (await d.taste("user_1")).taste;
     const shownAfter = Object.values(after.dims).reduce((n, dim) => n + (dim?.shown ?? 0), 0);
     expect(shownAfter).toBeGreaterThan(shownBefore);
+  });
+
+  it("picks up how hard and how dear from the cards they keep, not from a question", async () => {
+    const d = new Discover({ store: memory() });
+    // son-doong is effort 5 and luxury; keeping it says something a tag never could
+    for (const _ of [1, 2, 3, 4]) await d.did("user_1", { kind: "keep", slug: "son-doong" });
+    const { taste } = await d.taste("user_1");
+    expect(weKnow(taste, "effort")).toBe(true);
+    expect(readingOf(taste, "effort").of).toBeCloseTo(5, 1);
+    expect(budgetBand(readingOf(taste, "budget").of)).toBe("luxury");
   });
 
   it("ignores a signal about something that is not a place or an image", async () => {

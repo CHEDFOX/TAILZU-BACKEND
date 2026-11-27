@@ -24,6 +24,7 @@ import type { FastifyInstance } from "fastify";
 import { resolveUser } from "../../auth/supabase.js";
 import { isBudget, isSignalKind, type Card, type Discover, type Tag } from "../../discover/index.js";
 import { daysLeftInSeason, seasonWords, TAGS } from "../../discover/taxonomy.js";
+import { KNOWN_AT, readingOf } from "../../discover/taste.js";
 
 /** One batch of what the app saw. Enough for a long scroll, small enough to parse without thinking about it. */
 const SIGNALS_MAX = 40;
@@ -72,6 +73,7 @@ function cardView(card: Card, now: Date): Record<string, unknown> {
     takes: card.detail.takes ?? null,
     getting: card.detail.getting ?? null,
     need: card.detail.need ?? null,
+    leadDays: card.detail.leadDays ?? null,
   };
 }
 
@@ -225,9 +227,17 @@ export function registerDiscoverRoutes(
     if (!d) return reply.code(503).send(off);
 
     const mine = await d.taste(userId);
+    // The LEVELS go out beside the tags, each with how sure we are of it, because a planner's first job is to
+    // know what it may get on with and what it has to ask about (taste.ts KNOWN_AT). Saying "we do not know"
+    // out loud is the point: the alternative is guessing somebody's budget and being confidently wrong.
+    const levels = (["effort", "budget"] as const).map((level) => {
+      const r = readingOf(mine.taste, level);
+      return { level, of: Number(r.of.toFixed(2)), sure: Number(r.sure.toFixed(3)), known: r.sure >= KNOWN_AT };
+    });
     return reply.send({
       known: Number(mine.known.toFixed(3)),
       signals: mine.taste.signals,
+      levels,
       likes: mine.likes.map((l) => ({ tag: l.tag, score: Number(l.score.toFixed(3)), sure: Number(l.sure.toFixed(3)) })),
       dislikes: mine.dislikes.map((l) => ({ tag: l.tag, score: Number(l.score.toFixed(3)), sure: Number(l.sure.toFixed(3)) })),
     });

@@ -156,6 +156,24 @@ describe("the bar", () => {
     }
   });
 
+  it("gives a booking clock to the places that really have one, and leaves the rest alone", () => {
+    // A plan that puts Son Doong in next month is a lie however well it is worded, so the lead time has to be
+    // a number the planner can refuse on — not only prose in `need` for a person to read.
+    const by = (slug: string) => CURATED.find((c) => c.slug === slug)!;
+    expect(by("son-doong").detail.leadDays).toBeGreaterThan(300);
+    expect(by("gorilla-trek").detail.leadDays).toBeGreaterThan(60);
+    expect(by("snow-hill-emperors").detail.leadDays).toBeGreaterThan(300);
+    // somewhere you simply turn up carries none, rather than a made-up zero
+    expect(by("kolmanskop").detail.leadDays).toBeUndefined();
+
+    const clocked = CURATED.filter((c) => typeof c.detail.leadDays === "number");
+    expect(clocked.length).toBeGreaterThan(15);
+    // and every one of them says the same thing in words, so the screen and the planner never disagree
+    for (const c of clocked) {
+      expect({ slug: c.slug, told: Boolean(c.detail.need) }).toEqual({ slug: c.slug, told: true });
+    }
+  });
+
   it("has no two cards under one slug, which the singular check cannot catch", () => {
     // judge() compares a card against OTHERS (other.slug !== card.slug), so two rows sharing a slug are invisible
     // to it — and one would silently shadow the other everywhere, since curatedBySlug returns the first.
