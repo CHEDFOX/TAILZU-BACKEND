@@ -34,17 +34,23 @@ export const wheelsPicked = (p: string): Condition => ({ all: Object.values(whee
 /** The body a write sends: the parts as picked (birth.ts whenFromParts reads them). */
 export const wheelBody = (p: string): Record<string, string> => Object.fromEntries(Object.entries(wheelPaths(p)).map(([k, v]) => [k, `$state.${v}`]));
 
+/** A wheel's row, the room between rows, and the column's own padding: a column shows exactly `rows` of them, no half row cut off. */
+const ROW = 40, ROW_GAP = 2, ROW_PAD = 4;
+const shows = (rows: number): number => rows * ROW + (rows - 1) * ROW_GAP + 2 * ROW_PAD;
+/** The date's columns show three rows at a time, the time's two (am and pm fit exactly). */
+const DATE_ROWS = 3, TIME_ROWS = 2;
+
 /** One value in a column: tapped, it is the one picked (ink), the rest stay plain. */
 function cell(path: string, value: string, label: string, width: number | string): Node {
   return labelled(box([text(label, { size: 16, weight: 500, lineHeight: 20, align: "center", style: { color: whenEq(path, value, C.paper, C.ink) } })], {
-    height: 40, width, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: whenEq(path, value, C.ink, "transparent"),
+    height: ROW, width, borderRadius: 12, flexShrink: 0, alignItems: "center", justifyContent: "center", backgroundColor: whenEq(path, value, C.ink, "transparent"),
   }, setState(path, value)), label);
 }
 
 /** A column that scrolls on its own inside the card (components/Scroll.tsx): a wheel to scroll and tap. */
-function column(path: string, values: Array<{ value: string; label: string }>, flex = 1): Node {
+function column(path: string, values: Array<{ value: string; label: string }>, rows: number, flex = 1): Node {
   return {
-    type: "Scroll", style: { height: 168, flexGrow: flex, flexBasis: 0, minWidth: 0, borderRadius: 14, backgroundColor: C.surface, padding: 4, gap: 2 },
+    type: "Scroll", style: { height: shows(rows), flexGrow: flex, flexBasis: 0, minWidth: 0, borderRadius: 14, backgroundColor: C.surface, padding: ROW_PAD, gap: ROW_GAP },
     children: values.map((v) => cell(path, v.value, v.label, "100%")),
   };
 }
@@ -73,11 +79,11 @@ export function wheels(ctx: BotsCtx, p: string): Node[] {
   const minutes = Array.from({ length: 60 }, (_, i) => ({ value: String(i).padStart(2, "0"), label: String(i).padStart(2, "0") }));
   return [
     picked(p),
-    row([column(w.day, days, 0.8), column(w.month, months, 1), column(w.year, years, 1.1)], { gap: 6 }),
+    row([column(w.day, days, DATE_ROWS, 0.8), column(w.month, months, DATE_ROWS, 1), column(w.year, years, DATE_ROWS, 1.1)], { gap: 6 }),
     row([
-      column(w.hour, hours, 1), column(w.minute, minutes, 1),
-      col([cell(w.ampm, "am", "am", "100%"), cell(w.ampm, "pm", "pm", "100%")], { gap: 6, flexGrow: 0.8, flexBasis: 0, justifyContent: "center", borderRadius: 14, backgroundColor: C.surface, padding: 4 }),
-    ], { gap: 6, height: 168 }),
+      column(w.hour, hours, TIME_ROWS, 1), column(w.minute, minutes, TIME_ROWS, 1),
+      col([cell(w.ampm, "am", "am", "100%"), cell(w.ampm, "pm", "pm", "100%")], { gap: ROW_GAP, flexGrow: 0.8, flexBasis: 0, height: shows(TIME_ROWS), borderRadius: 14, backgroundColor: C.surface, padding: ROW_PAD }),
+    ], { gap: 6, height: shows(TIME_ROWS) }),
   ];
 }
 
