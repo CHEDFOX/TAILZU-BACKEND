@@ -1,5 +1,50 @@
 # Being built right now (read before you start)
 
+## 26 Nov: CINEMA IS PICTURES AND 3D FOR NOW: AN IDEA, SEEN, THEN BUILT IN BLENDER
+
+Films are switched off (CINEMA_FILMS, off by default): no film can be started or moved forward, nothing offers one, films
+made stay. The cinema page is now An idea → Show me (a picture) → Make it 3D. The 3D loop reads the picture into a brief
+(new role cinema_brief, vision), builds from it, and its eye judges every render against the picture; the finished thing
+is rendered from two more sides; each round's preview shows on the page as it builds. Also fixed: the Blender script
+asked for a denoiser some builds do not have and then rendered nothing. Needs migration 0118. docs/cinema-3d.md §2a.
+
+## 26 Nov: REAL PICTURES ON EVERY CARD
+
+Talk's order card, the site page and the per-site cards show the real dish or product: the picture the site itself
+shows for it (read off the orders page on the phone, only from that site's image servers) and, for something new, a free
+Commons photo of the dish with its credit. Photo-led cards, thumbnails on rows and in Done for you, the kind's mark when
+there is no picture. Needs migration 0117. docs/site-portrait.md §4c.
+
+## 26 Nov: ANY CONNECTED SITE, AND THE PAGE SHOWS WHAT IS READY AND WHAT WAS DONE
+
+The site page no longer shows how X0 learned someone (no taste, habits, moments or charts): it shows **Ready for you**
+(their usual, what is about to run out, something new with a reviewer's words, each one tap from a filled cart) and
+**Done for you** (carts filled, new things found, orders seen to the door; table site_did, migration 0116). The
+analysis still runs and decides everything. And it is one pipeline for every site with an orders page: Amazon and
+Flipkart are learned like Swiggy; what differs by kind is history/kinds.ts. New: the rebuy rhythm ("about time for more
+detergent"), shopping asks in Talk ("reorder my detergent", "I'm out of coffee pods", "surf excel khatam ho gaya"), and
+the cart filled on a product page. docs/site-portrait.md §1b and §4.
+
+## 26 Nov: X0 WORKS OUT YOUR TASTE, AND FINDS PLACES YOU'D LOVE WITH REVIEWS TO SHOW FOR IT
+
+On top of the orders: taste. Signals by rules (flavour, cuisine, protein; repeat versus explore; what each moment of the
+week wants), then a reasoning model writes the profile (palate, motives, moods, dishes they would probably love and have
+not had), every claim naming the orders it rests on or dropped. New places are found on the web near where they order,
+each kept only with a reviewer's own words checked on the page. Talk's order card now puts the usual first and one new
+place beside it for a creature of habit, the new place first for an explorer, and a live find for a dish never ordered.
+The portrait shows Your taste, What you go for, Your moments and You might love. Needs migration 0115. docs/site-portrait.md §2b.
+
+## 26 Nov: X0 LEARNS HOW YOU EAT FROM SWIGGY, AND "ORDER MY USUAL" FILLS THE CART
+
+A connected food site now teaches X0 how the person eats: the site's own orders page is read on their phone (at most
+twice a day, a model only when the page changed) into orders, and the orders into a portrait. It shows as conclusions
+only, never the counting: the usual, a few plain habits, favourite places and dishes, on a page per site and as a card
+per site on Sites and in Your space. Talk's bot is told a few lines of it. In Talk, "order my usual", "khana mangwa do",
+"get me a biryani" are answered with an order card; one tap opens Swiggy on the phone, opens the restaurant, presses
+"Add" by each dish once and shows the cart. The person pays. Nothing new in the apps (the SiteView's sign-in mode runs
+the server's step). Needs migration 0114. Not yet tried on Swiggy with a real account: the first live order should be
+watched. docs/site-portrait.md.
+
 ## 24 Nov: NO PLIVO FOR NOW: THE IN-APP CALL IS THE LOUDEST STEP
 
 There is no Plivo account, so real phone calls stay off (`CHANNEL_PHONE_CALLS` unset: the routes answer 404, What pings you

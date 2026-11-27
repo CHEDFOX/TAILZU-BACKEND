@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true"; });
+vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true"; process.env.CINEMA_FILMS = "true"; }); // the film page: films are off by default for now (cinema/films.ts)
 
 type Node = import("../../shared/types/sdui.js").Node;
 type ActionSpec = import("../../shared/types/sdui.js").ActionSpec;

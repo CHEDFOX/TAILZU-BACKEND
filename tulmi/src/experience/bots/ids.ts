@@ -44,6 +44,8 @@ export const SCREENS = {
   planShare: "bots.plan.share",      // Share your plan with people you share a space with: tick as many as you like (screens/you/planShareCard.ts; no board)
   sites: "bots.sites",               // Things being watched on sites they are signed in to (screens/sites.ts; CLOUD_BROWSER, off)
   sitePanel: "bots.site.signin",     // Their own browser, drawn: the one place a site is signed in (screens/sites.ts; CLOUD_BROWSER, off)
+  sitePortrait: "bots.site.portrait", // For you on one site: what is ready, and what X0 did there (screens/sites/forYou.ts; params: site; CLOUD_BROWSER, off)
+  siteOrder: "bots.site.order",      // An order X0 made for them, filled into the site's cart on their phone (screens/sites/order.ts; params: o)
   plans: "bots.plans",               // Plans / DPlans
   link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
   devices: "bots.devices",           // Terminal sign-ins: Xode in a terminal, each with Remove, and where to type a terminal's code (screens/you/devicesPage.ts; no board)
@@ -99,6 +101,7 @@ export const SCREENS = {
   // screens/bots/cinemaScreens.ts: the cinema bot (its page is bots.bot with slug "cinema", screens/bots/cinemaPage.ts)
   cinemaFilm: "bots.cinema.film",    // one film: what it waits for, the script or the storyboard grid, the finished film (params: f)
   cinemaShot: "bots.cinema.shot",    // one shot: its still, its card in full, the takes and what the checker said, change this shot (params: f, n)
+  cinemaScene: "bots.cinema.scene",  // one 3D creation: the idea's picture beside the 3D, its sides, how it is coming on, another version (params: s; screens/bots/cinema3d.ts)
   session: "bots.session",           // one conversation with a bot and everything made in it, pickable up any time (params: s)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)

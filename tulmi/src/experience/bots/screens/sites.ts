@@ -29,6 +29,8 @@ import { hostOf, siteAllowed, siteOf } from "../../../sites/gate.js";
 import { FIND_LOGIN, PAGE_SHAPE, READ_PAGE } from "../../../sites/phone.js";
 import { panelPage as panelHtml } from "../../../sites/panelHost.js";
 import { oops } from "./keybotParts.js";
+import { loadPortraits, type PortraitsView } from "./sites/data.js";
+import { historyReaders, siteCard } from "./sites/forYou.js";
 import { field, inputBox, refresh, toast } from "./bots/parts.js";
 
 /** The pips: one dot a stage, the last done one filled, the rest of the track grey. Drawn only when the site gave stages. */
@@ -171,12 +173,20 @@ function findBlock(onPhone = false): Node[] {
   ];
 }
 
-function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
+function sitesPage(ctx: BotsCtx, d: (SitesView & { portraits?: PortraitsView }) | undefined): ScreenResponse {
   if (!d) return page(ctx, { title: "Sites", body: [emptyState({ title: "Not switched on", body: NONE_ALLOWED })], back: back() });
   const now = Date.now();
   const open = d.watches.filter((w) => w.state === "open");
   const done = d.watches.filter((w) => w.state !== "open");
   const body: Node[] = [];
+
+  // FOR YOU, a card per site they order on (screens/sites/forYou.ts): what X0 has ready there and the last thing it did.
+  // The first thing here, because it is what a connected site is for.
+  const portraits = d.portraits?.portraits ?? [];
+  if (portraits.length) {
+    body.push(sectionLabel("For you"));
+    for (const p of portraits) body.push(siteCard(p));
+  }
 
   if (open.length) {
     body.push(sectionLabel("Happening now"));
@@ -215,6 +225,9 @@ function sitesPage(ctx: BotsCtx, d: SitesView | undefined): ScreenResponse {
     const onPhone = new Set(d.logins.filter((l) => l.onPhone && !l.needsSignIn).map((l) => l.site));
     for (const w of open.filter((x) => x.due && x.url && onPhone.has(x.site)).slice(0, READERS)) body.push(reader(w));
   }
+
+  // The orders pages due a read, read here unseen, so a portrait fills in after a sign-in with nothing else to tap.
+  body.push(...historyReaders(ctx, d.portraits?.readers ?? []));
 
   return page(ctx, { title: "Sites", body, back: back(), state: { q: "", found: {} } });
 }
@@ -319,9 +332,12 @@ function panelPage(ctx: BotsCtx, d: PanelOpened | undefined): ScreenResponse {
 }
 
 export const sitesScreens: BotsScreen[] = [
-  screen<SitesView | undefined>({
+  screen<(SitesView & { portraits?: PortraitsView }) | undefined>({
     id: SCREENS.sites,
-    load: (ctx, deps) => loadSites(deps, ctx.user?.id),
+    load: async (ctx, deps) => {
+      const [sites, portraits] = await Promise.all([loadSites(deps, ctx.user?.id), loadPortraits(deps, ctx.user?.id)]);
+      return sites ? { ...sites, ...(portraits ? { portraits } : {}) } : undefined;
+    },
     build: (ctx, d) => sitesPage(ctx, d),
   }),
   screen<PanelOpened | undefined>({

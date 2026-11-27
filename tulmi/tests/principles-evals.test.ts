@@ -66,9 +66,13 @@ const { checkShown } = await import("../src/show/check.js");
 const { Seen } = await import("../src/show/links.js");
 const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
+const { BriefReply } = await import("../src/cinema/scene/brief.js");
 const { checkScene } = await import("../src/cinema/scene/check.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
+const { OrdersReply } = await import("../src/sites/history/orders.js");
+const { TasteReply } = await import("../src/sites/history/taste/profile.js");
+const { DiscoverReply } = await import("../src/sites/history/taste/discover.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -83,7 +87,7 @@ type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
 
 /** The roles that read a picture: their fixtures name one, and they are told it is evidence rather than that it is data. */
-const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye",
+const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look", "cinema_eye", "cinema_brief",
   // The film half's three eyes: on a finished picture, on a storyboard still, and on a video take.
   "cinema_picture_check", "cinema_still", "cinema_take"];
 
@@ -362,6 +366,10 @@ describe("a known-good answer for each role", () => {
       reads: (t) => checkScene(SceneReply.parse(JSON.parse(t))).scene,
     },
     cinema_eye: { text: '{"ok":true,"issues":[],"fix":""}', reads: (t) => EyeReply.parse(JSON.parse(t)) },
+    cinema_brief: {
+      text: '{"subject":"a matte black speaker on a pale floor","objects":[{"name":"speaker","shape":"a tall box with rounded edges and a round grille","size":"knee high","colour":"#1a1a1a","material":"plastic","where":"in the middle, on the floor"}],"camera":"slightly above, three quarters","light":"soft from the left","ground":"pale concrete floor, plain grey wall"}',
+      reads: (t) => BriefReply.parse(JSON.parse(t)),
+    },
     cinema_propose: {
       text: '{"ready":true,"concept":"A coffee cart at dawn: the owner pulls a shot, steam rising off the cup, and hands it to the first customer of the day.","seconds":24,"aspect":"9:16","because":"you said under half a minute, and a reel"}',
       reads: (t) => readProposal(JSON.parse(t)),
@@ -396,6 +404,22 @@ describe("a known-good answer for each role", () => {
         + '"stages":[{"name":"Order placed","when":"8:51 pm","done":true},{"name":"Food ready","when":"9:14 pm","done":true},{"name":"Out for delivery","done":false}],'
         + '"detail":"Rahul is 1.2 km away"}',
       reads: (t) => CardReply.parse(JSON.parse(t)),
+    },
+    site_orders: {
+      text: '{"orders":[{"no":"183746529012","place":"Behrouz Biryani","area":"Koramangala","items":[{"name":"Chicken Dum Biryani","qty":1}],"total":"458","at":"2026-11-21T20:40"},{"no":"183600112233","place":"Truffles","area":"Koramangala","items":[{"name":"All American Cheese Burger","qty":2}],"total":"612","at":"2026-11-16T13:15"}]}',
+      reads: (t) => OrdersReply.parse(JSON.parse(t)),
+    },
+    site_taste: {
+      text: '{"insights":["You love rich, slow-cooked rice dishes, and biryani is your comfort food.","Weekends are for a treat you trust; weekday lunches are quick and light."],'
+        + '"palate":[{"trait":"Rich, slow-cooked and mildly spicy","why":"Dum biryani again and again, with something sweet after","orders":[1,3]}],'
+        + '"motives":[{"trait":"Reliability over novelty","why":"The same Saturday order most weeks","orders":[1,3]}],'
+        + '"moods":[{"moment":"weekend dinner","wants":"an indulgent favourite","orders":[1,3]}],'
+        + '"mightLike":[{"item":"Mutton Haleem","category":"Hyderabadi","why":"Slow-cooked and rich like the dum biryani you love, with more depth","reach":"near","orders":[1,3]}],"city":"Bengaluru"}',
+      reads: (t) => TasteReply.parse(JSON.parse(t)),
+    },
+    site_discover: {
+      text: '{"picks":[{"place":"Shah Ghouse","item":"Mutton Haleem","why":"You love slow-cooked, rich biryani; this haleem is cooked overnight","said":"the haleem here is cooked overnight and it shows","from":1,"hunch":1}]}',
+      reads: (t) => DiscoverReply.parse(JSON.parse(t)),
     },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {

@@ -21,6 +21,7 @@ import type { BlobStore } from "../../media/blob.js";
 import { askJson, cut, fence, type ModelCtx } from "../../code/work/model.js";
 import { checkScene, frameCount, sceneSize } from "./check.js";
 import { lookAt, type Verdict } from "./eye.js";
+import { briefOf } from "./brief.js";
 import { creationKey, keep, type Kept, type Render, type Shot } from "./ports.js";
 import { scriptFor } from "./script.js";
 import { CAPS, type Scene } from "./types.js";
@@ -55,6 +56,15 @@ export interface MakeOpts {
   keepBlend?: boolean;
   /** Start from this scene instead of a blank page (a change to something already made). */
   from?: Scene;
+  /**
+   * A PICTURE OF THE IDEA to build from (docs/cinema-3d.md §2a): read once into a brief the builder builds from (brief.ts), and
+   * shown to the eye beside every render, so each round is judged against what they wanted to see.
+   */
+  reference?: { bytes: Buffer; mime: string };
+  /** Told after each round, so a person can watch the preview get better while it builds. Never awaited by the loop's logic. */
+  onRound?: (r: Round) => void | Promise<void>;
+  /** How many more angles of a still to render at the end, round the thing (default 2): what makes it read as 3D. */
+  views?: number;
 }
 
 export interface Round {
@@ -83,7 +93,9 @@ export interface Made {
   /** The script that makes it again, exactly. */
   script: string;
   rounds: Round[];
-  kept: { script?: Kept; preview?: Kept; final?: Kept; blend?: Kept };
+  kept: { script?: Kept; preview?: Kept; final?: Kept; blend?: Kept; views?: Kept[] };
+  /** The brief the picture was read into, when there was a picture. */
+  brief?: string;
   /** The real render, when one was made: a picture, or a clip. */
   mime?: string;
   paise: number;
@@ -103,12 +115,14 @@ export function sceneUser(o: {
   ask: string;
   assets: string[];
   round: number;
+  brief?: string | null;
   scene?: Scene | null;
   notes?: string[];
   verdict?: Verdict | null;
   renderError?: string;
 }): string {
   const out: string[] = ["<request>", fence(cut(o.ask, ASK_CHARS)), "</request>"];
+  if (o.brief) out.push("", "They showed a picture of the idea. What is in it, to build:", "<picture>", fence(cut(o.brief, 2_400)), "</picture>", "Build THAT: the same things, shapes, proportions, colours and camera angle, out of parts.");
   if (o.assets.length) out.push("", `Assets you may name: ${o.assets.slice(0, 40).join(", ")}`);
   out.push("", `At most: ${CAPS.objects} objects, ${CAPS.lights} lights, ${CAPS.materials} materials, ${CAPS.seconds}s of film, ${CAPS.size}px.`);
   if (o.round > 1 && o.scene) {
@@ -122,6 +136,32 @@ export function sceneUser(o: {
     out.push("", "Answer with the whole scene again, with that put right and the rest as it was.");
   }
   return out.join("\n");
+}
+
+/**
+ * The same scene seen from another side: the camera walked round what it looks at by `deg` about the vertical, and raised by
+ * `lift` (a share of its distance) to look down on it. Nothing in the scene changes, so the pictures are one object from
+ * several places — which is what makes a still read as a thing and not a picture.
+ */
+export function turned(scene: Scene, deg: number, lift = 0): Scene {
+  const [ax, ay, az] = scene.camera.at, [tx, ty, tz] = scene.camera.to;
+  const r = (deg * Math.PI) / 180, dx = ax - tx, dy = ay - ty;
+  const reach = Math.hypot(dx, dy, az - tz);
+  const at: [number, number, number] = [tx + dx * Math.cos(r) - dy * Math.sin(r), ty + dx * Math.sin(r) + dy * Math.cos(r), az + lift * reach];
+  return { ...scene, camera: { ...scene.camera, at } };
+}
+
+/**
+ * The other sides it is shown from: round to one side at eye height, round to the other and from above, and from behind.
+ * Far enough apart that a round thing still looks different from each, and one from above shows what is on top.
+ */
+export const VIEWS = [{ turn: -75, lift: 0 }, { turn: 70, lift: 0.6 }, { turn: 180, lift: 0.15 }] as const;
+
+/** A side view: turned, and drawn smaller and with fewer samples than the real one, in the same shape of frame. */
+export function sideOf(scene: Scene, v: { turn: number; lift: number }): Scene {
+  const t = turned(scene, v.turn, v.lift);
+  const k = Math.min(1, 720 / Math.max(scene.look.width, scene.look.height));
+  return { ...t, look: { ...t.look, width: Math.round(scene.look.width * k), height: Math.round(scene.look.height * k), samples: Math.min(scene.look.samples, 48) } };
 }
 
 /** The frame a move is previewed at: a third of the way in says more than its first frame. */
@@ -149,6 +189,14 @@ export async function make(
   let preview: Kept | undefined;
   let why: Made["why"] = "rounds";
 
+  // ---- a picture of the idea: read once into what to build
+  let brief: string | null = null;
+  if (o.reference) {
+    const read = await briefOf(ctx, { ask: o.ask, image: o.reference.bytes, mime: o.reference.mime });
+    brief = read.brief;
+    paise += read.paise;
+  }
+
   for (let n = 1; n <= rounds; n++) {
     const roundBegan = Date.now();
     let roundPaise = 0;
@@ -160,7 +208,7 @@ export async function make(
       tier: "code",
       purpose: "cinema.scene",
       role: "cinema_scene",
-      user: sceneUser({ ask: o.ask, assets: assetNames, round: n, scene, notes, verdict, ...(renderError ? { renderError } : {}) }),
+      user: sceneUser({ ask: o.ask, assets: assetNames, round: n, scene, notes, verdict, brief, ...(renderError ? { renderError } : {}) }),
       schema: SceneReply,
       maxTokens: SCENE_TOKENS,
       step: n,
@@ -192,6 +240,7 @@ export async function make(
       renderError = shot.error;
       round.renderError = shot.error;
       log.push(round);
+      await Promise.resolve(o.onRound?.(round)).catch(() => undefined);
       // A script that will not run is the next round's problem to fix; out of rounds, it is the end of it.
       if (n === rounds) { why = "render"; }
       continue;
@@ -204,7 +253,7 @@ export async function make(
     }
 
     if (png) {
-      const seen = await lookAt(ctx, { ask: o.ask, png, round: n });
+      const seen = await lookAt(ctx, { ask: o.ask, png, round: n, ...(o.reference ? { reference: o.reference } : {}) });
       verdict = seen.verdict;
       roundPaise += seen.paise;
       paise += seen.paise;
@@ -213,6 +262,7 @@ export async function make(
     }
     round.ms = Date.now() - roundBegan;
     log.push(round);
+    await Promise.resolve(o.onRound?.(round)).catch(() => undefined);
 
     if (verdict?.ok) { why = "done"; break; }
     if (!verdict) { why = "done"; break; } // no eye: one build is what we have, and it rendered
@@ -257,6 +307,25 @@ export async function make(
     }
   }
 
+  // ---- the other sides of it: a still is one angle, and three angles of the same thing is what reads as 3D. Rendered at preview
+  // quality (seconds each on a box with no graphics card), and only once the real one exists. A view that fails is left out.
+  const wantViews = Math.max(0, Math.min(VIEWS.length, o.views ?? 2));
+  if (ok && scene && !scene.move && wantViews) {
+    const views: Kept[] = [];
+    for (const v of VIEWS.slice(0, wantViews)) {
+      const shot = await o.render({
+        script: scriptFor(sideOf(scene, v)), move: false,
+        timeoutMs: o.previewMs ?? 180_000, ...(o.assets ? { assets: o.assets } : {}),
+      });
+      const png = shot.ok ? shot.shots[0]?.bytes : undefined;
+      if (png && o.store) {
+        const k = await keep(o.store, key(`view-${views.length + 1}.png`), png, "image/png");
+        if (k) views.push(k);
+      }
+    }
+    if (views.length) kept.views = views;
+  }
+
   return {
     ok,
     why,
@@ -264,6 +333,7 @@ export async function make(
     script,
     rounds: log,
     kept,
+    ...(brief ? { brief } : {}),
     ...(mime ? { mime } : {}),
     paise,
     ms: Date.now() - began,

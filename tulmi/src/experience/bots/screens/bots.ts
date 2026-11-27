@@ -68,6 +68,7 @@ import { notesLoad, notesPage, type NotesData } from "./notes.js";
 import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
 import { cinemaPage, type CinemaPageData } from "./bots/cinemaPage.js";
 import { cinemaScreens, loadCinema, type CinemaData } from "./bots/cinemaScreens.js";
+import { cinema3dScreens } from "./bots/cinema3d.js";
 import { sessionScreens } from "./bots/cinemaSession.js";
 import type { About } from "./firstRun/parts.js";
 import type { Moves } from "../../../bots/healthDays.js";
@@ -930,6 +931,7 @@ export const botsScreens: BotsScreen[] = [
   ...callRoomScreens,
   ...meetScreens,
   ...cinemaScreens,
+  ...cinema3dScreens, // One 3D creation: the idea's picture beside the 3D of it (screens/bots/cinema3d.ts)
   ...sessionScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,

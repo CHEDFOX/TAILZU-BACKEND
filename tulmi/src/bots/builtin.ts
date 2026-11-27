@@ -29,6 +29,7 @@
  * No built-in wears `stone`: it is what botLook falls back to for a bot with no colour of its own, so a built-in in stone
  * looks like any bot somebody made. `ash` is the neutral for a built-in that wants one.
  */
+import { filmsOn } from "../cinema/films.js";
 import { getConfig } from "../config.js";
 import { CINEMA_SLUG } from "../cinema/types.js";
 import { MEET_SLUG } from "../meet/types.js";
@@ -53,6 +54,8 @@ const PURPOSE = {
   meet: "Joins your video calls: takes the notes, answers what people ask in the chat and out loud, and turns what was agreed into your to-dos.",
   lingo: "Teaches you a language by talking with you, and brings each word back exactly when you are about to forget it.",
   cinema: "Makes films and videos shot by shot from your idea, and pictures: posters, product shots, portraits and logos.",
+  // While films are off (CINEMA_FILMS, cinema/films.ts): the bot is pictures, and those pictures built in 3D.
+  cinema3d: "Shows your idea as a picture, then builds it in 3D in Blender: products, props, rooms and titles you can see from every side.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -236,6 +239,24 @@ const CINEMA: BotDef = {
   knowledge: [], tone: "warm and concrete", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
 };
 
+/**
+ * THE SAME BOT WHILE FILMS ARE OFF (CINEMA_FILMS, cinema/films.ts): pictures, and the picture built in 3D. Its own words and rules,
+ * so it never offers a film nobody can make; switching films back on brings back the definition above unchanged.
+ */
+const CINEMA_3D: BotDef = {
+  ...CINEMA,
+  purpose: PURPOSE.cinema3d,
+  principles: [
+    "Answer from their own pictures and 3D creations; never invent a detail.",
+    "Say first what is waiting for them: a 3D creation still building, or one that is ready to look at.",
+    "To make a picture of an idea, or build a picture in 3D, point them to the cinema page.",
+    "Films are not made here for now; say so plainly if asked, and offer a picture and its 3D instead.",
+    "Never name the AI models or services behind a picture or a render, nor what anything costs.",
+  ],
+};
+
+const cinemaDef = (): BotDef => (filmsOn() ? CINEMA : CINEMA_3D);
+
 /** The cinema bot is listed only where it is switched on. */
 export function cinemaOn(): boolean {
   try {
@@ -293,7 +314,7 @@ function hidden(): ReadonlySet<string> {
 /** Every built-in that is set up and not switched off: Sribbu (the mail bot) where its mail OR its meetings are set up. */
 const available = (): readonly BotDef[] => {
   const off = hidden();
-  return [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() || meetOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [CINEMA] : [])]
+  return [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() || meetOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : []), ...(cinemaOn() ? [cinemaDef()] : [])]
     .filter((d) => !off.has(d.slug));
 };
 

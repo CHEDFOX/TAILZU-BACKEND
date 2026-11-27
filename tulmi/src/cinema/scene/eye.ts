@@ -35,14 +35,19 @@ export const asDataUrl = (png: Buffer, mime = "image/png"): string => `data:${mi
  * One look at one render. `ask` is what the person wanted, in their words; `png` is the preview just made. A verdict comes
  * back for the next round to read, or null when the eye could not be asked.
  */
-export async function lookAt(ctx: ModelCtx, o: { ask: string; png: Buffer; round: number }): Promise<{ verdict: Verdict | null; paise: number }> {
-  const user = [`<request>`, fence(cut(o.ask, ASK_CHARS)), `</request>`].join("\n");
+export async function lookAt(ctx: ModelCtx, o: { ask: string; png: Buffer; round: number; reference?: { bytes: Buffer; mime: string } }): Promise<{ verdict: Verdict | null; paise: number }> {
+  // Built from a picture of the idea (brief.ts): the eye sees that picture first and the render second, and judges how close
+  // the one is to the other, which is the whole point of starting from a picture.
+  const user = [
+    `<request>`, fence(cut(o.ask, ASK_CHARS)), `</request>`,
+    ...(o.reference ? ["", "The first picture is the idea they want built. The second is the render to judge against it."] : []),
+  ].join("\n");
   const asked = await askJson<z.infer<typeof EyeReply>>(ctx, {
     tier: "vision",
     purpose: "cinema.eye",
     role: "cinema_eye",
     user,
-    pictures: [asDataUrl(o.png)],
+    pictures: [...(o.reference ? [asDataUrl(o.reference.bytes, o.reference.mime)] : []), asDataUrl(o.png)],
     schema: EyeReply,
     maxTokens: 400,
     step: o.round,

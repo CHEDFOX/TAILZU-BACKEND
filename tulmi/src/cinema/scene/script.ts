@@ -307,6 +307,10 @@ export interface ScriptOpts {
 }
 
 /** A checked scene as the script that builds and renders it. The same scene gives the same text, byte for byte. */
+
+/** Denoise where the build has the denoiser, never where it has not (see the render settings below). */
+export const DENOISE = `S.cycles.use_denoising = bool(getattr(bpy.app.build_options, "openimagedenoise", False))`;
+
 export function scriptFor(scene: Scene, o: ScriptOpts = {}): string {
   const preview = o.preview === true;
   const width = preview ? 480 : scene.look.width;
@@ -328,7 +332,9 @@ export function scriptFor(scene: Scene, o: ScriptOpts = {}): string {
   if (scene.look.engine === "cycles") {
     lines.push(`S.render.engine = "CYCLES"`);
     lines.push(`S.cycles.samples = ${samples}`);
-    lines.push(`S.cycles.use_denoising = True`);
+    // The denoiser only where this Blender was built with it: a build without it (Ubuntu's own package) refuses to render a
+    // frame at all when asked to denoise, so asking unconditionally turned a missing library into no picture.
+    lines.push(DENOISE);
     lines.push(`S.cycles.seed = ${scene.seed ?? 1}`);
     lines.push(`S.cycles.use_adaptive_sampling = True`);
     // Whatever this machine has: a card if there is one, its cores if there is not.
@@ -356,7 +362,7 @@ export function scriptFor(scene: Scene, o: ScriptOpts = {}): string {
     lines.push(`    print("cinema: no graphics card here, so cycles instead of eevee")`);
     lines.push(`    S.render.engine = "CYCLES"`);
     lines.push(`    S.cycles.samples = ${Math.min(samples, 64)}`);
-    lines.push(`    S.cycles.use_denoising = True`);
+    lines.push(`    ${DENOISE}`);
     lines.push(`    S.cycles.seed = ${scene.seed ?? 1}`);
     lines.push(`else:`);
     lines.push(`    S.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in [i.identifier for i in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items] else "BLENDER_EEVEE"`);

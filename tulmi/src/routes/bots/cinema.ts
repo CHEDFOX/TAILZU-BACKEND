@@ -18,7 +18,8 @@
  *   DELETE /v1/cinema/pictures/:id                   -> { ok: true }
  * The same bot's 3D (src/cinema/scene, docs/cinema-3d.md) — a scene built as data, rendered by Blender here:
  *   GET    /v1/cinema/scenes                         -> { render: { ok, version }, scenes: [SceneView] }
- *   POST   /v1/cinema/scenes                         { ask, creation?, keepBlend? } -> 202 { id, creation, version }
+ *   POST   /v1/cinema/scenes                         { ask?, picture?, creation?, keepBlend? } -> 202 { id, creation, version }
+ *                                                     `picture`: one of their pictures, built in 3D from it (docs/cinema-3d.md §2a)
  *   GET    /v1/cinema/scenes/:id                     -> SceneView (status working until the loop stops)
  * Anyone with the link (the signature is the key, media.ts):
  *   GET    /v1/cinema/media/<key>?exp=&sig=          a still, a take, a film or its subtitles
@@ -33,6 +34,7 @@ import { CinemaError, type CinemaService } from "../../cinema/service.js";
 import type { SceneRecord } from "../../cinema/scene/store.js";
 import type { SceneService } from "../../cinema/scene/service.js";
 import { effectiveLanguage } from "../../profile/language.js";
+import { filmsOn } from "../../cinema/films.js";
 import { enforceQuota } from "../../usage/metering.js";
 
 export interface CinemaRouteDeps {
@@ -48,6 +50,9 @@ export interface CinemaRouteDeps {
 }
 
 const BASE = "/v1/cinema";
+
+/** The picture id in one of their picture keys (media.ts pictureKey: u/<user>/cinema/pictures/<id>.<ext>), or null. */
+export const pictureIdOf = (key: string): string | null => /\/cinema\/pictures\/([A-Za-z0-9_-]{1,64})\.[a-z0-9]+$/.exec(key)?.[1] ?? null;
 const PHOTO_MAX_BYTES = 8 * 1024 * 1024;
 const PHOTO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -67,6 +72,12 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
     if (!user) { reply.code(401).send({ code: "unauthorized", message: "Sign in again." }); return null; }
     return { user, s: deps.service };
   };
+  // FILMS ARE OFF FOR NOW (cinema/films.ts): starting one, or moving one forward, is refused in words. Reading one already made is not.
+  const filmsOff = (reply: FastifyReply): boolean => {
+    if (filmsOn()) return false;
+    reply.code(404).send({ code: "films_off", message: "Films are switched off for now. Make a picture, then build it in 3D." });
+    return true;
+  };
   const allowed = async (user: AuthedUser, reply: FastifyReply): Promise<boolean> => {
     const q = await (deps.quota ?? ((u) => enforceQuota(u)))(user);
     if (q) { reply.code(429).send({ code: "quota_exceeded", message: q }); return false; }
@@ -85,6 +96,7 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
   app.post(`${BASE}/films`, rl, async (req, reply) => {
     const got = await begin(req, reply);
     if (!got) return reply;
+    if (filmsOff(reply)) return reply;
     const b = body(req);
     if (!(await allowed(got.user, reply))) return reply;
     try {
@@ -114,6 +126,7 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
     app.post(`${BASE}/films/:id/${path}`, rl, async (req, reply) => {
       const got = await begin(req, reply);
       if (!got) return reply;
+      if (filmsOff(reply)) return reply;
       if (!(await allowed(got.user, reply))) return reply;
       try { return send(reply, await run(got.s, got.user.id, idOf(req))); } catch (err) { return fail(reply, err); }
     });
@@ -122,6 +135,7 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
   app.post(`${BASE}/films/:id/revise`, rl, async (req, reply) => {
     const got = await begin(req, reply);
     if (!got) return reply;
+    if (filmsOff(reply)) return reply;
     const b = body(req);
     const n = b.n === undefined || b.n === null || b.n === "" ? undefined : Number(b.n);
     if (n !== undefined && !Number.isInteger(n)) return reply.code(400).send({ code: "bad_request", message: "Which shot?" });
@@ -131,6 +145,7 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
   app.post(`${BASE}/films/:id/shots/:n/retry`, rl, async (req, reply) => {
     const got = await begin(req, reply);
     if (!got) return reply;
+    if (filmsOff(reply)) return reply;
     const n = Number((req.params as { n?: unknown }).n);
     const b = body(req);
     try { return send(reply, await got.s.retry(got.user.id, idOf(req), n, "model" in b ? { model: str(b.model) || null } : {})); } catch (err) { return fail(reply, err); }
@@ -139,6 +154,7 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
   app.post(`${BASE}/films/:id/edition`, rl, async (req, reply) => {
     const got = await begin(req, reply);
     if (!got) return reply;
+    if (filmsOff(reply)) return reply;
     const b = body(req);
     try {
       return send(reply, await got.s.edition(got.user.id, idOf(req), { aspect: str(b.aspect), captions: b.captions !== false }));
@@ -150,6 +166,7 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
   app.post(`${BASE}/films/:id/enlarge`, rl, async (req, reply) => {
     const got = await begin(req, reply);
     if (!got) return reply;
+    if (filmsOff(reply)) return reply;
     try { return send(reply, await got.s.enlarge(got.user.id, idOf(req))); } catch (err) { return fail(reply, err); }
   });
 
@@ -210,6 +227,9 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
     ...(r.kept.final ? { picture: signMedia(r.kept.final) } : {}),
     ...(r.kept.script ? { script: signMedia(r.kept.script) } : {}),
     ...(r.kept.blend ? { blend: signMedia(r.kept.blend) } : {}),
+    // The other angles of it, and the picture of the idea it was built from.
+    ...(r.kept.views?.length ? { views: r.kept.views.map((k) => signMedia(k)) } : {}),
+    ...(r.refKey ? { reference: signMedia(r.refKey), ...(pictureIdOf(r.refKey) ? { from: pictureIdOf(r.refKey) } : {}) } : {}),
   });
   const scenesOn = async (req: FastifyRequest, reply: FastifyReply): Promise<{ user: AuthedUser; s: SceneService } | null> => {
     const got = await begin(req, reply);
@@ -237,9 +257,19 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
     const render = await got.s.ready();
     if (!render.ok) return reply.code(503).send({ code: "no_renderer", message: "This server cannot render 3D yet." });
     try {
-      const started = await got.s.start(got.user.id, str(b.ask), {
+      // FROM A PICTURE: one of their own cinema pictures, by id. Its words are the ask when none was typed.
+      let pic: { key: string; bytes: Buffer; mime: string; words: string } | null = str(b.picture) && deps.service ? await deps.service.pictureFile(got.user.id, str(b.picture)) : null;
+      if (str(b.picture) && !pic) return reply.code(404).send({ code: "not_found", message: "That picture is not there." });
+      // A next version of a creation built from a picture is built from that picture again: its bytes, read from its own key.
+      if (!pic && str(b.creation) && deps.service) {
+        const before = await got.s.latest(got.user.id, str(b.creation));
+        const id = before?.refKey ? pictureIdOf(before.refKey) : null;
+        pic = id ? await deps.service.pictureFile(got.user.id, id) : null;
+      }
+      const started = await got.s.start(got.user.id, str(b.ask).trim() || pic?.words || "", {
         ...(str(b.creation) ? { creation: str(b.creation) } : {}),
         ...(b.keepBlend === true ? { keepBlend: true } : {}),
+        ...(pic ? { picture: { key: pic.key, bytes: pic.bytes, mime: pic.mime } } : {}),
       });
       return send(reply, started, 202);
     } catch (err) {

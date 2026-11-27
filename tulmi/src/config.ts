@@ -1012,8 +1012,13 @@ const EnvSchema = z.object({
    * apps open stills and films by; when not set a secret is made at each start (links are made fresh each time a screen is drawn, so
    * nothing breaks). CINEMA_FILM_MAX_PAISE is the most one film may be agreed at, and CINEMA_DAILY_PAISE what one person may spend on
    * films and pictures in a day (both on top of their plan's allowance). R2 keeps the films; needs BOTS=true to appear among the bots.
+   *
+   * CINEMA_FILMS: films (video) are OFF FOR NOW. The bot is pictures and 3D: an idea is shown as a picture, and the picture is built in
+   * 3D in Blender (docs/cinema-3d.md §2a). With this off nobody can start or move a film forward (those routes answer 404 films_off),
+   * the page and the chat offer none, and films already made stay where they are. true brings the whole film half back as it was.
    */
   CINEMA: bool(false),
+  CINEMA_FILMS: bool(false),
   CINEMA_USERS: orDefault(""),
   CINEMA_MEDIA_SECRET: z.string().optional(),
   CINEMA_FILM_MAX_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(150_000),

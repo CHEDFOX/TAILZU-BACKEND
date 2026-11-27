@@ -97,7 +97,7 @@ describe("a creation, start to finish", () => {
     const { s, settled } = svcWith();
     await s.start(ME, "a steel kettle");
     const r = await settled();
-    for (const key of Object.values(r.kept)) {
+    for (const key of Object.values(r.kept).flat()) {
       expect(key.startsWith(`c/${ME}/`), key).toBe(true);
       expect(ownerOfKey(key)).toBe(ME);
       expect(isCinemaKey(key)).toBe(true);

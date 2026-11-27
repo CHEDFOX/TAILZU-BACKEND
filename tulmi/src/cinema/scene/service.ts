@@ -26,6 +26,9 @@ import { renderHere } from "./blender.js";
 import { make, type Made } from "./make.js";
 import type { Render } from "./ports.js";
 import { sceneStore, type KeptKeys, type SceneRecord, type SceneStore } from "./store.js";
+import { botTopic } from "../../live/topics.js";
+import { livePublish } from "../../live/writes.js";
+import { CINEMA_SLUG } from "../types.js";
 
 export interface SceneDeps {
   store: SceneStore;
@@ -38,6 +41,8 @@ export interface SceneDeps {
   now?: () => number;
   /** Tests wait on this instead of sleeping. */
   onDone?: (r: SceneRecord) => void;
+  /** Tells the person's screens something moved (a round, the end), so the page shows the preview getting better. */
+  live?: (userId: string) => void;
   log?: (line: string) => void;
 }
 
@@ -62,7 +67,11 @@ export class SceneService {
    * A new creation, or the next version of one. The row is written before the loop starts, so a person who asks and closes the app
    * still has the thing they asked for when they come back.
    */
-  async start(userId: string, ask: string, o: { creation?: string; keepBlend?: boolean } = {}): Promise<{ id: string; creation: string; version: number }> {
+  /**
+   * `picture`: build it FROM A PICTURE OF THE IDEA (docs/cinema-3d.md §2a): the loop reads it into a brief and its eye compares
+   * every render with it. The key is kept on the row so the page can show the idea beside the 3D; the bytes go to the loop only.
+   */
+  async start(userId: string, ask: string, o: { creation?: string; keepBlend?: boolean; picture?: { key: string; bytes: Buffer; mime: string } } = {}): Promise<{ id: string; creation: string; version: number }> {
     const words = ask.trim();
     if (!words) throw new Error("say what to build");
     if (this.working.has(userId)) throw new Error("one at a time");
@@ -77,16 +86,20 @@ export class SceneService {
       id: randomUUID(), ownerId: userId, creation, version, ask: words.slice(0, 4000),
       status: "working", why: null, rounds: 0, objects: 0, kept: {}, mime: null, paise: 0, error: null,
       createdAt: at, updatedAt: at,
+      // A next version of a creation built from a picture keeps building from that picture.
+      ...((o.picture?.key ?? before?.refKey) ? { refKey: o.picture?.key ?? before?.refKey } : {}),
     };
     await this.d.store.create(row);
 
     this.working.add(userId);
-    void this.run(row, o.keepBlend === true).finally(() => this.working.delete(userId));
+    void this.run(row, o.keepBlend === true, o.picture ? { bytes: o.picture.bytes, mime: o.picture.mime } : undefined)
+      .finally(() => this.working.delete(userId));
     return { id: row.id, creation, version };
   }
 
   /** The loop, and the row it leaves behind either way. */
-  private async run(row: SceneRecord, keepBlend: boolean): Promise<void> {
+  private async run(start: SceneRecord, keepBlend: boolean, reference?: { bytes: Buffer; mime: string }): Promise<void> {
+    let row = start;
     let made: Made | null = null;
     let failed: string | null = null;
     try {
@@ -96,6 +109,14 @@ export class SceneService {
           ask: row.ask, creation: row.creation, version: row.version, rounds: ROUNDS,
           capPaise: this.d.capPaise, keepBlend,
           render: this.d.render, store: this.d.blobs,
+          ...(reference ? { reference } : {}),
+          // Each round's preview goes on the row as it is made, so the page shows it getting better rather than a spinner.
+          onRound: async (r) => {
+            const kept: KeptKeys = { ...row.kept, ...(r.preview ? { preview: r.preview.key } : {}) };
+            row = { ...row, rounds: r.n, objects: r.objects, kept, updatedAt: this.now() };
+            await this.d.store.save(row).catch(() => undefined);
+            this.d.live?.(row.ownerId);
+          },
         },
       );
     } catch (err) {
@@ -109,6 +130,7 @@ export class SceneService {
       const k = made?.kept[name];
       if (k) kept[name] = k.key;
     }
+    if (made?.kept.views?.length) kept.views = made.kept.views.map((v) => v.key);
     const done: SceneRecord = {
       ...row,
       status: made?.ok ? "done" : "failed",
@@ -122,10 +144,13 @@ export class SceneService {
       updatedAt: this.now(),
     };
     await this.d.store.save(done).catch(() => this.d.log?.(`[cinema/scene] ${row.id} not written down`));
+    this.d.live?.(row.ownerId);
     this.d.onDone?.(done);
   }
 
   async get(userId: string, id: string): Promise<SceneRecord | null> { return this.d.store.get(userId, id); }
+  /** The newest version of one creation. */
+  async latest(userId: string, creation: string): Promise<SceneRecord | null> { return this.d.store.latest(userId, creation).catch(() => null); }
   async list(userId: string, limit = 30): Promise<SceneRecord[]> { return this.d.store.list(userId, limit); }
 
   /**
@@ -165,6 +190,7 @@ export function buildSceneService(): SceneService {
     ready: here.ready,
     capPaise: cfg.CINEMA_CAP_PAISE,
     log: (line) => console.warn(line),
+    live: (userId) => livePublish(userId, [botTopic(CINEMA_SLUG)]),
   });
   shared = svc;
   return svc;

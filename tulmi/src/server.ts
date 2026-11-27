@@ -67,7 +67,18 @@ import { SITE_READ_PAISE } from "./sites/read.js";
 import { Sites } from "./sites/service.js";
 import { getHolder, getVisitor } from "./web/browser/index.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
-import type { TalkPictures } from "./routes/bots/botsTalk.js";
+import type { TalkOrders, TalkPictures } from "./routes/bots/botsTalk.js";
+import { registerSiteHistoryRoutes } from "./routes/bots/botsSiteHistory.js";
+import { SiteHistories } from "./sites/history/service.js";
+import { SITE_ORDERS_PAISE } from "./sites/history/orders.js";
+import { portraitLines } from "./sites/history/portrait.js";
+import { readOrderAsk } from "./sites/history/ask.js";
+import { planLine, planOrder, wantsNew } from "./sites/history/plan.js";
+import { SITE_TASTE_PAISE } from "./sites/history/taste/profile.js";
+import { SITE_DISCOVER_PAISE } from "./sites/history/taste/discover.js";
+import { search as webSearch, searchEnvFromConfig } from "./web/search/engine.js";
+import { readPage } from "./web/reader.js";
+import { photosFromConfig } from "./discover/photos.js";
 import type { BotSites } from "./bots/ports.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -580,8 +591,10 @@ routineChat = botsParts.chat;
 // chat message's files are simply ignored and its words asked as before.
 // Talk's pictures are the cinema bot's engine, which is built further down: Talk asks for it at each message.
 let talkPictures: TalkPictures | null = null;
+// Talk's orders: a food site's history and the planner over it (src/sites/history), made in the sites block below.
+let talkOrders: TalkOrders | null = null;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, {
-  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}), pictures: () => talkPictures,
+  parts: botsParts, ...(front ? { readFiles: front.readFiles } : {}), pictures: () => talkPictures, orders: () => talkOrders,
 });
 // Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
 // account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
@@ -601,14 +614,58 @@ registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending:
   if (cloudBrowserOn()) {
     const visit = getVisitor();
     const sites = new Sites({ ...(visit ? { visit } : {}), read: { maxPaise: SITE_READ_PAISE } });
+    // What their orders on a food site say about them (src/sites/history, docs/site-portrait.md): learned from the site's own
+    // orders page, read on their phone, and what Talk orders from.
+    // Their taste is worked out from the orders (taste/profile.ts), and new places are found for it on the web and vouched for
+    // by reviewers' own words (taste/discover.ts): the same search and reader the review reader uses (discover/server.ts).
+    const sitePhotos = photosFromConfig();
+    const histories = new SiteHistories({
+      read: { maxPaise: SITE_ORDERS_PAISE },
+      taste: { maxPaise: SITE_TASTE_PAISE },
+      discover: {
+        maxPaise: SITE_DISCOVER_PAISE,
+        // A free photo of a dish found for them, with its credit (src/discover/photos.ts): Wikimedia Commons, as the
+        // travel catalogue uses. Absent when COMMONS is off, and then a new find is drawn with its kind's mark.
+        ...(sitePhotos ? {
+          async photo(query: string) {
+            const got = (await sitePhotos.find(`${query} food`, { want: 1 }).catch(() => []))[0];
+            return got ? { url: got.tile ?? got.url, ...(got.credit ? { credit: got.credit } : {}) } : null;
+          },
+        } : {}),
+        async find(query, limit) {
+          const out = await webSearch(query, { limit, depth: "quick", env: searchEnvFromConfig() });
+          return out.results.map((r) => ({ title: r.title, url: r.url, ...(typeof r.published === "number" ? { published: r.published } : {}) }));
+        },
+        async read(url, maxChars) {
+          const page = await readPage(url, { maxChars, purpose: "user" }).catch(() => null);
+          return page ? { url: page.finalUrl || page.url, text: page.text } : null;
+        },
+      },
+    });
     // What Talk's bot knows of them, and the one thing it may do: watch one more page (read only, bots/ports.ts BotSites).
     botSites = {
-      snapshot: async (userId) => ({ logins: await sites.logins(userId), watches: await sites.list(userId) }),
+      snapshot: async (userId) => ({
+        logins: await sites.logins(userId), watches: await sites.list(userId),
+        habits: (await histories.portraits(userId).catch(() => [])).flatMap(portraitLines).slice(0, 12),
+      }),
       watch: async (userId, url, label) => { const w = await sites.watch(userId, url, label); return { id: w.id, site: w.site, label: w.label }; },
     };
     const hold = getHolder();
     const panels = hold ? new Panels({ hold }) : undefined;
     registerSitesRoutes(app, botsAreaDeps, { sites, ...(panels ? { panels } : {}) });
+    registerSiteHistoryRoutes(app, botsAreaDeps, { histories, watches: (userId) => sites.list(userId) });
+    talkOrders = {
+      plan: async (userId, words, tz) => {
+        const ask = readOrderAsk(words);
+        if (!ask) return null;
+        const had = await histories.histories(userId);
+        if (!had.length) return null;
+        // Something they have never ordered: a live look on the web for it, read through their taste, held to seconds.
+        const live = wantsNew(had, ask) ? await histories.discoverFor(userId, ask.want.join(" ")).catch(() => []) : [];
+        const options = planOrder(had, ask, Date.now(), tz, live);
+        return options.length ? { options, line: planLine(options) } : null;
+      },
+    };
     // The clock only has something to do with a browser of its own: logins held on a phone are read by the phone.
     const stopSites = visit ? startSitesClock({ sites, log: app.log }) : () => {};
     app.addHook("onClose", async () => { stopSites(); await panels?.closeAll(); });

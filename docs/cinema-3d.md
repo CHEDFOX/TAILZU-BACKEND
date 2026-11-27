@@ -27,6 +27,7 @@ Tests: `tulmi/tests/cinema-scene.test.ts`, `cinema-script.test.ts`, `cinema-make
 
 * [1. The one decision: a scene is data](#1-the-one-decision-a-scene-is-data)
 * [2. The loop](#2-the-loop)
+* [2a. From a picture of the idea, and in the app](#2a-from-a-picture-of-the-idea-and-in-the-app)
 * [3. Where it renders](#3-where-it-renders)
 * [3a. With no app anywhere: the backend on its own](#3a-with-no-app-anywhere-the-backend-on-its-own)
 * [4. What is kept, and what is not](#4-what-is-kept-and-what-is-not)
@@ -64,6 +65,41 @@ The looking is the part that matters. A model that never sees its render will ha
 It stops for one of five reasons and always says which: `done` (the eye was happy), `rounds`, `budget`, `render` (the script would not run) or `model`. Whatever the reason, **everything made up to then is kept** — a scene that is nearly right is worth more than an error.
 
 A script that will not run is not a failure either: the error goes back to the model as the thing to fix, in the next round.
+
+## 2a. From a picture of the idea, and in the app
+
+**Films are off for now** (`CINEMA_FILMS`, off by default; `tulmi/src/cinema/films.ts`). The cinema bot is pictures and 3D:
+
+```
+an idea, in their words  ─►  a picture of it (the picture engine, docs/cinema.md §7)  ─►  they look at it
+      ─►  Make it 3D  ─►  the picture read into a brief (brief.ts)  ─►  the loop builds from it
+      ─►  every preview judged AGAINST THE PICTURE (eye.ts)  ─►  the real render  ─►  two more sides of it
+```
+
+* **Why the picture first.** Words are a poor way to agree on a shape and a picture is a good one. The person keeps the
+  picture they like, and only that is built, so what comes out looks like what they chose.
+* **The brief** (`brief.ts`, role `cinema_brief`, the vision tier): the picture read once into what a modeller needs —
+  each thing's shape out of simple parts, its size beside the others, its colour as hex, its material, where it stands;
+  the camera; the light; the ground. The scene model builds from the brief and their words (it runs on text models that
+  do not see). A brief that cannot be had means building from the words, as before.
+* **The eye sees both** (`eye.ts`): the idea's picture first and the render second, and judges likeness — the same
+  things, shapes, colours and angle — not photographic detail. What it saw is what the next round puts right.
+* **From every side** (`make.ts VIEWS`, `sideOf`): after the real render, a still is rendered twice more with the camera
+  walked round it and once raised to look down, at a middle quality and in the same shape of frame. One angle is a
+  picture; three of the same thing read as an object. A moving scene needs none: its clip already goes round.
+* **Progress as it builds** (`onRound`): each round's preview goes on the row as it is made and the screens are told
+  (the cinema bot's live topic), so the page shows the thing getting better rather than a spinner.
+* **The doors**: `POST /v1/cinema/scenes { picture }` builds one of their own pictures (`pictureFile`; another person's is
+  not there); its words are the ask when none is typed; a next version (`creation`) is built from the same picture
+  again. A creation's view carries `reference` and `from` (the picture) and `views`. The row keeps the picture's key
+  (`ref_key`, migration 0118).
+* **In the app** (`screens/bots/cinema3d.ts`): the cinema page becomes An idea and Show me, the ideas as large pictures
+  each with **Make it 3D** (or See it in 3D once built), and Your 3D; what is building sits over the page with its
+  latest preview. A creation's page (`bots.cinema.scene`) shows the idea above the 3D, the thing from every side,
+  another version in their words, and the Blender script to take away. A server with no Blender says so and offers no
+  button that would fail.
+* **The script now renders on any Blender**: it asks for the denoiser only where the build has it
+  (`bpy.app.build_options.openimagedenoise`); a build without it used to refuse every frame.
 
 ## 3. Where it renders
 
@@ -143,6 +179,7 @@ What is missing is the part that belongs to the bot, not to the 3D:
 ## 8. What it does not do yet
 
 * **No in-app 3D viewer.** A person sees renders and a clip, not something they can spin with a finger. That needs a new drawing surface in both apps, and it is not where the value is first.
-* **No generated meshes.** Image-to-3D would give a rough prop to import; the scene vocabulary already has `asset` for it, and the service behind it is not wired.
+* **No generated meshes.** A picture is now built in 3D out of the scene vocabulary's parts (§2a), which is a likeness, not
+  a scan. An image-to-mesh service would give a detailed prop to import; `asset` is ready for it, and nothing behind it is wired.
 * **No textures or UVs.** Materials are colour, metal, roughness, glass and glow. An image on a surface is the next thing the vocabulary needs.
 * **No library of its own.** Assets and skies come from whatever the runner is given.

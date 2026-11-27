@@ -57,8 +57,12 @@ const { ShowReply } = await import("../src/show/design.js");
 const { DrawReply } = await import("../src/drawn/draw.js");
 const { SceneReply } = await import("../src/cinema/scene/make.js");
 const { EyeReply } = await import("../src/cinema/scene/eye.js");
+const { BriefReply } = await import("../src/cinema/scene/brief.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { CardReply } = await import("../src/sites/read.js");
+const { OrdersReply } = await import("../src/sites/history/orders.js");
+const { TasteReply } = await import("../src/sites/history/taste/profile.js");
+const { DiscoverReply } = await import("../src/sites/history/taste/discover.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -318,6 +322,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   screen_draw: 2290, // 2082 measured
   cinema_scene: 2743, // 2494 measured
   cinema_eye: 1354, // 1231 measured
+  cinema_brief: 1415, // 1286 measured
   cinema_propose: 1700, // 1593 measured
   cinema_direct: 6700, // 6426 measured
   cinema_revise: 7000, // 6792 measured
@@ -327,6 +332,9 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   cinema_take: 1600, // 1432 measured
   widget_digest: 853, // 776 measured
   site_read: 1531, // 1392 measured
+  site_orders: 1438, // 1307 measured
+  site_taste: 3336, // 3033 measured
+  site_discover: 1804, // 1640 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured
@@ -429,8 +437,12 @@ describe("the contracts say what the parsers read", () => {
     ["screen_draw", DrawReply],
     ["cinema_scene", SceneReply],
     ["cinema_eye", EyeReply],
+    ["cinema_brief", BriefReply],
     ["widget_digest", DigestReply],
     ["site_read", CardReply],
+    ["site_orders", OrdersReply],
+    ["site_taste", TasteReply],
+    ["site_discover", DiscoverReply],
   ];
 
   it("name every field of the schema the answer is read with", () => {

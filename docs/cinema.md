@@ -5,6 +5,10 @@ storyboard is drawn and agreed, each shot is filmed by the camera that suits it,
 cuts it together with the voice-over, the music and the subtitles. It makes pictures too: posters, product shots, portraits, logos and edits of
 a photo the person sends. Every model is reached through OpenRouter (`OPENROUTER_API_KEY`), the key the server already has.
 
+**Films are off for now** (`CINEMA_FILMS`, off by default; `cinema/films.ts`): nobody can start a film or move one forward,
+the page and the chat offer none, and films already made stay. The bot is pictures and 3D: an idea is shown as a picture,
+and the picture is built in 3D in Blender (docs/cinema-3d.md §2a). `CINEMA_FILMS=true` brings everything below back.
+
 Code: `tulmi/src/cinema/`, the doors `tulmi/src/routes/bots/cinema.ts`, the screens `tulmi/src/experience/bots/screens/bots/cinemaPage.ts` and
 `cinemaScreens.ts`, migration `0101_cinema.sql`. Off unless `CINEMA=true` (and `BOTS`).
 

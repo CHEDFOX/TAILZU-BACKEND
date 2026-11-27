@@ -28,6 +28,8 @@ import { mailField } from "./mailCards.js";
 import { abs, CINEMA, openFilm, statusLine, waitsForYou, type CinemaData } from "./cinemaScreens.js";
 import type { Aspect, FilmRow } from "../../../../cinema/types.js";
 import { type BotPageData, chatBar, isDesk, lookOf, setState } from "./parts.js";
+import { filmsOn } from "../../../../cinema/films.js";
+import { cinema3dPage } from "./cinema3d.js";
 
 export type CinemaPageData = BotPageData & { cinema?: CinemaData };
 
@@ -89,6 +91,8 @@ const refresh: ActionSpec = { kind: "refresh" };
 const plain = (s: string | null | undefined): string => String(s ?? "").trim().replace(/^[@\s]+/, "");
 
 export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
+  // FILMS ARE OFF FOR NOW (cinema/films.ts): the page is an idea, its picture, and the picture built in 3D (cinema3d.ts).
+  if (!filmsOn()) return cinema3dPage(ctx, d);
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
   const o = d.cinema?.overview;

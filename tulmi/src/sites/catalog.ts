@@ -47,6 +47,21 @@ export interface SiteEntry {
    * address, or that has no such page, has none, and is offered no watch.
    */
   orders?: string;
+  /**
+   * The site's own search, with `{q}` where the words go: where an order starts when the restaurant's own page is not
+   * known yet (src/sites/history/plan.ts). Only on the site's host, like everything else here.
+   */
+  search?: string;
+  /**
+   * What the address of one restaurant's or product's page has in it on this site ("/restaurants/", "/dp/"), so a link to
+   * it can be picked out of the orders page and an order can start there instead of at the search.
+   */
+  placePath?: string;
+  /**
+   * Where the site keeps its pictures (its image servers): the only hosts a dish's or product's photo is taken from, read
+   * off its orders page on the phone (src/sites/history/pictures.ts). A picture anywhere else is not shown.
+   */
+  images?: string[];
   /** What it is for, shown beside the name. */
   category: string;
   /** Other ways it is typed, lower case. Searching is by name, host and these. */
@@ -61,21 +76,27 @@ export const SITE_CATALOG: readonly SiteEntry[] = [
   {
     id: "amazon-in", name: "Amazon", host: "amazon.in", category: "Shopping",
     signIn: "https://www.amazon.in/", orders: "https://www.amazon.in/gp/css/order-history",
+    search: "https://www.amazon.in/s?k={q}", placePath: "/dp/",
+    images: ["m.media-amazon.com", "images-eu.ssl-images-amazon.com", "images-na.ssl-images-amazon.com"],
     aliases: ["amazon", "amazon india", "amzn", "orders", "parcel", "delivery"],
   },
   {
     id: "flipkart", name: "Flipkart", host: "flipkart.com", category: "Shopping",
     signIn: "https://www.flipkart.com/account/login", orders: "https://www.flipkart.com/account/orders",
+    search: "https://www.flipkart.com/search?q={q}", placePath: "/p/",
+    images: ["rukminim1.flixcart.com", "rukminim2.flixcart.com", "rukmini1.flixcart.com"],
     aliases: ["flipkart", "orders", "parcel", "delivery"],
   },
   {
     id: "swiggy", name: "Swiggy", host: "swiggy.com", category: "Food",
     signIn: "https://www.swiggy.com/auth", orders: "https://www.swiggy.com/my-account/orders",
+    search: "https://www.swiggy.com/search?query={q}", placePath: "/restaurants/",
+    images: ["media-assets.swiggy.com"],
     aliases: ["swiggy", "food", "order food", "instamart"],
   },
   {
     id: "zomato", name: "Zomato", host: "zomato.com", category: "Food",
-    signIn: "https://www.zomato.com/login",
+    signIn: "https://www.zomato.com/login", images: ["b.zmtcdn.com"],
     aliases: ["zomato", "food", "order food", "blinkit"],
   },
   {
