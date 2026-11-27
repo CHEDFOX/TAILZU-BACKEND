@@ -1,5 +1,12 @@
 # Being built right now (read before you start)
 
+## 27 Nov: KUTT'S CARD SAYS 3D, AND KEYLESSBORD IS A TILE LIKE THE REST
+
+Start something: Kutt's line follows the films switch ("A 3D studio in your pocket…" while CINEMA_FILMS is off, the film line
+when it is on), and his chat sessions no longer propose a film or read the talk for one while films are off. Keylessbord is no
+longer a plain row at the foot: it is a living tile in its own group, "Wherever you type", with a line like the others'
+(botsStart.ts START_LINES).
+
 ## 26 Nov: CINEMA IS PICTURES AND 3D FOR NOW: AN IDEA, SEEN, THEN BUILT IN BLENDER
 
 Films are switched off (CINEMA_FILMS, off by default): no film can be started or moved forward, nothing offers one, films
