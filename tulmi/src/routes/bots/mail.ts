@@ -28,7 +28,7 @@
  *   DELETE /v1/mail/businesses/:id/replies/:run               thrown away
  *   POST   /v1/mail/businesses/:id/mail-app-password          { password }: for a mail app on a phone or a computer
  *   GET    /v1/mail/businesses/:id/folders                    all its mail, the main address's own, one per alias, the system folders
- *   GET    /v1/mail/businesses/:id/messages?folder=&page=     a folder's conversations, 30 a page, newest first
+ *   GET    /v1/mail/businesses/:id/messages?folder=&page=&q=  a folder's conversations, 30 a page, newest first; q finds
  *   GET    /v1/mail/businesses/:id/threads/:tid               one conversation (its unread messages marked read)
  *   POST   /v1/mail/businesses/:id/threads/:tid/:action       read, unread, star, unstar, archive, trash, junk, inbox
  *   POST   /v1/mail/businesses/:id/send                       { from, to, cc?, subject, text, replyTo? | forward?, tid? }
@@ -126,7 +126,7 @@ const PERSON = /^[A-Za-z0-9_-]{1,64}$/;
 /** An address as the worker's notice names it. */
 const EMAIL = /^[^\s@<>,;]{1,64}@[^\s@<>,;]{1,253}$/;
 /** What a query may hold, by its name: a folder's key, a page. */
-const QUERY: Record<string, RegExp> = { limit: /^[0-9]{1,4}$/, page: /^[0-9]{1,4}$/, folder: /^(inbox|main|drafts|sent|archive|junk|trash|f-[A-Za-z0-9_-]{1,64})$/ };
+const QUERY: Record<string, RegExp> = { limit: /^[0-9]{1,4}$/, page: /^[0-9]{1,4}$/, folder: /^(inbox|main|drafts|sent|archive|junk|trash|f-[A-Za-z0-9_-]{1,64})$/, q: /^[^\u0000-\u001f]{1,100}$/ };
 const NOTICE_MAX = 4 * 1024;
 /** What waits for a person, every business together, most important first. */
 const WAITING_MAX = 50;
@@ -176,7 +176,7 @@ const ROUTES: readonly RouteDef[] = [
   { method: "DELETE", path: `${B}/replies/:run`, handler: "reply" },
   { method: "POST", path: `${B}/mail-app-password`, body: ["password"] },
   { method: "GET", path: `${B}/folders`, handler: "folders" },
-  { method: "GET", path: `${B}/messages`, query: ["folder", "page"], handler: "messages" },
+  { method: "GET", path: `${B}/messages`, query: ["folder", "page", "q"], handler: "messages" },
   { method: "GET", path: `${B}/threads/:tid`, handler: "thread" },
   { method: "POST", path: `${B}/threads/:tid/:action`, handler: "action" },
   { method: "POST", path: `${B}/send`, body: ["from", "to", "cc", "subject", "text", "replyTo", "forward"], handler: "send" },
@@ -445,8 +445,9 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
         const folder = key ? list.find((f) => f.key === key) : undefined;
         if (!folder) return REFUSED;
         const page = typeof c.q.page === "string" && QUERY.page!.test(c.q.page) ? `&page=${c.q.page}` : "";
+        const words = typeof c.q.q === "string" && QUERY.q!.test(c.q.q) ? `&q=${encodeURIComponent(c.q.q)}` : "";
         // The main address alone: its mail is the Inbox's, asked for by that name, and shown as theirs.
-        const out = await c.w.call<Record<string, unknown>>(owner, "GET", `${at}/messages?folder=${folder === inbox ? "inbox" : encodeURIComponent(folder.key)}${page}`);
+        const out = await c.w.call<Record<string, unknown>>(owner, "GET", `${at}/messages?folder=${folder === inbox ? "inbox" : encodeURIComponent(folder.key)}${page}${words}`);
         return { ...out, folder: folder === inbox ? inbox : out.folder, folders: list };
       }
       case "thread": {

@@ -96,7 +96,7 @@ describe("the mailbox", () => {
     expect(p.calls.some((c) => c.path === `${B}/messages?folder=inbox`)).toBe(true);
     const t = p.texts;
     // The folders, the Inbox read as All mail, with what is unread.
-    expect(t).toEqual(expect.arrayContaining(["All mail 2", "Hello", "Support 1", "Drafts", "Sent", "Trash"]));
+    expect(t).toEqual(expect.arrayContaining(["All mail · 2", "Hello", "Support · 1", "Drafts", "Sent", "Trash"]));
     // A chip per domain once there are several.
     expect(t).toEqual(expect.arrayContaining(["leafandco.in", "teahouse.in"]));
     // Each conversation: who, how many, the subject, the start of the last message, and the AI's tag or a star.
@@ -113,7 +113,7 @@ describe("the mailbox", () => {
     const sup = FOLDERS[2]!;
     const p = await build("bots.mail.inbox", { b: "leaf-co", folder: "f-sup", page: "1" }, { api: { [`GET ${B}/messages?folder=f-sup&page=1`]: MESSAGES(sup, { page: 1, more: true }) } });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toEqual(expect.arrayContaining(["Support", "Mail to support@leafandco.in", "Newer", "Older"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["Support · 1", "Mail to support@leafandco.in", "Newer", "Older"]));
     const pages = navs(p.every()).filter((a) => a.screenId === "bots.mail.inbox" && a.params.folder === "f-sup").map((a) => a.params.page ?? "0");
     expect(pages).toEqual(expect.arrayContaining(["0", "2"]));
   });
@@ -346,5 +346,19 @@ describe("an attachment in a conversation", () => {
     expect(p.texts).toContain("Open");
     const plain = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" });
     expect(navs(plain.every()).some((a) => a.screenId === "bots.media")).toBe(false);
+  });
+});
+
+describe("searching the mail", () => {
+  it("finds in the folder with the words: the thin round field keeps them, says what was found, and pages keep the search", async () => {
+    const found = MESSAGES(FOLDERS[0], { more: true, total: 34 });
+    const p = await build("bots.mail.inbox", { b: "leaf-co", folder: "inbox", q: "order" }, { api: { [`GET ${B}/messages?folder=inbox&q=order`]: found } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toEqual(expect.arrayContaining(["Search", "34 found for \"order\""]));
+    expect(p.state).toMatchObject({ mailQ: "order" });
+    const older = p.every().find((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.page === "1") as { params: Record<string, string> };
+    expect(older.params).toMatchObject({ folder: "inbox", q: "order" });
+    const none = await build("bots.mail.inbox", { b: "leaf-co", folder: "inbox", q: "zebra" }, { api: { [`GET ${B}/messages?folder=inbox&q=zebra`]: MESSAGES(FOLDERS[0], { messages: [], total: 0 }) } });
+    expect(none.texts).toContain("Nothing in All mail has \"zebra\".");
   });
 });

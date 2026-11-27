@@ -16,30 +16,33 @@
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, page, row, col, text, C, card, chip, chips, meta, notice, primaryButton, secondaryButton, quietButton, listCard, sectionLabel,
-  call, seq, when, SCREENS, icon, statusMark, infoChip, divider, labelled, grow,
+  type BotsCtx, page, row, col, text, C, card, chip, chips, meta, notice, primaryButton, secondaryButton, quietButton, sectionLabel,
+  call, seq, when, SCREENS, icon, infoChip, divider, labelled, grow, box, canScrollX, scrollRow,
 } from "../../kit.js";
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
 import {
-  ago, bizParam, folderName, MAIL, MAIL_SLUG, type MailBusinessView, type MessageRow, type MessagesView, openReply, type ThreadView,
+  bizParam, folderName, MAIL, MAIL_SLUG, type MailBusinessView, type MessageRow, type MessagesView, openReply, type ThreadView,
 } from "./mailParts.js";
-import { clockOf, isDesk, setState, shortDate } from "./parts.js";
+import { clockOf, dayKeyOf, isDesk, setState, shortDate } from "./parts.js";
 import { shareButtonsFor } from "../../shareAction.js";
 import { openMedia } from "../media.js";
+import { plusCircle } from "../spaces/start.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
 const said = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
 const tidParam = (v: unknown): string => (/^[A-Za-z0-9_-]{1,64}$/.test(String(v ?? "")) ? String(v) : "");
 const folderParam = (v: unknown): string => (/^(inbox|main|drafts|sent|archive|junk|trash|f-[A-Za-z0-9_-]{1,64})$/.test(String(v ?? "")) ? String(v) : "inbox");
+/** What is searched for: its words, one line, 100 characters at most. */
+const qParam = (v: unknown): string => String(v ?? "").replace(/[\u0000-\u001f]+/g, " ").trim().slice(0, 100);
 const pageParam = (v: unknown): number => Math.max(0, Math.min(200, Math.floor(Number(v) || 0)));
 const nameOf = (p: { name: string; email: string }) => p.name.trim() || p.email;
 
 /** The mailbox, at a folder (and a page): the screen replaces itself, so going back leaves it. */
-export const openInbox = (b: string, folder = "inbox", pageNo = 0, replace = false): ActionSpec =>
-  ({ kind: "navigate", screenId: SCREENS.mailInbox, params: { b, folder, ...(pageNo ? { page: String(pageNo) } : {}) }, ...(replace ? { replace: true } : {}) });
+export const openInbox = (b: string, folder = "inbox", pageNo = 0, replace = false, q = ""): ActionSpec =>
+  ({ kind: "navigate", screenId: SCREENS.mailInbox, params: { b, folder, ...(pageNo ? { page: String(pageNo) } : {}), ...(q ? { q } : {}) }, ...(replace ? { replace: true } : {}) });
 export const openThread = (b: string, tid: string, folder: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.mailThread, params: { b, tid, folder } });
 export const openCompose = (b: string, o: { tid?: string; re?: string; fwd?: string } = {}): ActionSpec =>
   ({ kind: "navigate", screenId: SCREENS.mailCompose, params: { b, ...o } });
@@ -55,25 +58,84 @@ const AI_TAG: Record<string, string> = { needs_person: "Needs you", drafted: "AI
 
 export type InboxData = { messages?: MessagesView; businesses?: MailBusinessView[] };
 
-function messageRow(ctx: BotsCtx, b: string, folder: string, m: MessageRow): Node {
+/** The first letter of who it is from, on a soft round: the list's left edge, as any mail app has. */
+function initial(who: string): Node {
+  const ch = (who.replace(/^To /, "").match(/[A-Za-z0-9]/)?.[0] ?? "?").toUpperCase();
+  return box([text(ch, { size: 15, weight: 600, lineHeight: 20, color: C.ink })],
+    { width: 38, height: 38, borderRadius: 19, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
+}
+
+/** One conversation: who, when, the subject, the start of its last message; bold while unread, and what the AI did with it. */
+export function messageRow(ctx: BotsCtx, b: string, folder: string, m: MessageRow): Node {
   const who = m.from.email ? nameOf(m.from) : m.to[0] ? `To ${nameOf(m.to[0])}` : "(no sender)";
-  return row([
-    col([m.unread ? statusMark("needs", { size: 8 }) : { type: "Stack", style: { width: 8, height: 8 } }], { width: 10, paddingTop: 7, alignItems: "center" }),
+  const tag = m.ai && AI_TAG[m.ai.status];
+  return labelled(row([
+    initial(who),
     col([
       row([
         text(who, { size: 15, weight: m.unread ? 600 : 400, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }),
         ...(m.count > 1 ? [text(String(m.count), { size: 12, color: C.meta, lineHeight: 16 })] : []),
-        { type: "Stack", style: { flexGrow: 1 } },
-        text(ago(ctx, m.at), { size: 12, color: C.meta, lineHeight: 16, style: { flexShrink: 0 } }),
+        grow(),
+        text(clockOf(ctx, m.at), { size: 12, weight: m.unread ? 600 : 400, color: m.unread ? C.ink : C.meta, lineHeight: 16, style: { flexShrink: 0 } }),
       ], { gap: 6, alignItems: "center" }),
-      text(m.subject || "(no subject)", { size: 14, weight: m.unread ? 500 : 400, lineHeight: 19, lines: 1 }),
-      text(m.preview, { size: 13, color: C.meta, lineHeight: 18, lines: 1 }),
-      ...(m.ai || m.starred ? [row([
-        ...(m.ai && AI_TAG[m.ai.status] ? [infoChip(AI_TAG[m.ai.status]!)] : []),
+      text(m.subject || "(no subject)", { size: 14, weight: m.unread ? 600 : 400, lineHeight: 19, lines: 1 }),
+      row([
+        text(m.preview, { size: 13, color: C.meta, lineHeight: 18, lines: 1, style: { flexShrink: 1, flexGrow: 1, minWidth: 0 } }),
+        ...(tag ? [infoChip(tag)] : []),
         ...(m.starred ? [infoChip("Starred")] : []),
-      ], { gap: 6, paddingTop: 2 })] : []),
-    ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
-  ], { gap: 10, paddingVertical: 12, paddingHorizontal: 16, alignItems: "flex-start" }, openThread(b, m.threadId, folder));
+      ], { gap: 6, alignItems: "center" }),
+    ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 1 }),
+  ], { gap: 12, paddingVertical: 10, alignItems: "flex-start" }, openThread(b, m.threadId, folder)), `${who}: ${m.subject || "no subject"}`);
+}
+
+const HOUR = 3_600_000;
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * Where a message sits in the list: today by the part of the day (Morning before noon, Afternoon to five, Evening after), then Yesterday,
+ * then each day by its name this week ("Monday"), and its date before that ("12 November", with the year when it isn't this one).
+ */
+export function dayGroup(ctx: BotsCtx, at: number): string {
+  const local = new Date(at + ctx.tzOffsetMinutes * 60_000);
+  const key = dayKeyOf(ctx, at);
+  if (key === dayKeyOf(ctx, ctx.live.now)) {
+    const h = local.getUTCHours();
+    return h < 12 ? "This morning" : h < 17 ? "This afternoon" : "This evening";
+  }
+  if (key === dayKeyOf(ctx, ctx.live.now - 24 * HOUR)) return "Yesterday";
+  if (ctx.live.now - at < 6 * 24 * HOUR) return DAY_NAMES[local.getUTCDay()]!;
+  const thisYear = new Date(ctx.live.now + ctx.tzOffsetMinutes * 60_000).getUTCFullYear();
+  return `${local.getUTCDate()} ${MONTH_NAMES[local.getUTCMonth()]}${local.getUTCFullYear() === thisYear ? "" : ` ${local.getUTCFullYear()}`}`;
+}
+
+/** The conversations, newest first, under their day (and today, the part of the day): a plain list, as a mail app shows it. */
+export function mailDays(ctx: BotsCtx, b: string, folder: string, list: MessageRow[]): Node[] {
+  const groups: Array<{ label: string; rows: Node[] }> = [];
+  for (const m of [...list].sort((x, y) => y.at - x.at)) {
+    const label = dayGroup(ctx, m.at);
+    const last = groups[groups.length - 1];
+    if (last?.label === label) last.rows.push(divider(), messageRow(ctx, b, folder, m));
+    else groups.push({ label, rows: [messageRow(ctx, b, folder, m)] });
+  }
+  return groups.map((g) => col([sectionLabel(g.label), col(g.rows, { gap: 0 })], { gap: 2 }));
+}
+
+/** The search: one thin round field at the top. Submitting finds it in the folder (bots.mail.inbox with q). */
+export function mailSearch(b: string, folder = "inbox"): Node {
+  const find: ActionSpec = { kind: "condition", if: { falsy: "mailQ" }, then: toast("Type what to find"), else: { kind: "navigate", screenId: SCREENS.mailInbox, params: { b, folder, q: "$state.mailQ" } } } as ActionSpec;
+  return row([
+    icon("search", { size: 16, color: C.meta }),
+    {
+      type: "TextField", id: "mailQ", bind: { value: "mailQ" },
+      props: {
+        placeholder: "Search mail", placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0, paddingVertical: 0,
+        minHeight: 36, color: C.ink, returnKeyType: "search",
+      },
+      on: { onSubmit: find },
+      style: { flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 36, fontSize: 14, lineHeight: 20, color: C.ink, borderWidth: 0, backgroundColor: "transparent", outlineStyle: "none" },
+    } as Node,
+  ], { gap: 8, height: 38, paddingHorizontal: 14, borderRadius: 19, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, alignItems: "center" });
 }
 
 export function inboxPage(ctx: BotsCtx, d: InboxData | undefined) {
@@ -85,25 +147,34 @@ export function inboxPage(ctx: BotsCtx, d: InboxData | undefined) {
     return page(ctx, { back: toMailPage, backTitle: "Mail", title: "Mail", body: [notice("The mailbox couldn't be read just now. Pull to try again.")] });
   }
   const f = v.folder;
+  const q = qParam(ctx.params.q);
   const businesses = d?.businesses ?? [];
-  const domains: Node[] = businesses.length > 1 ? [row(businesses.map((x) => chip(x.domain, { selected: x.id === b, onPress: openInbox(x.id, "inbox", 0, true) })), { gap: 8, flexWrap: "wrap" })] : [];
-  const folders = row(v.folders.map((x) => chip(`${folderName(x)}${x.unread ? ` ${x.unread}` : ""}`, { selected: x.key === f.key, onPress: openInbox(b, x.key, 0, true) })), { gap: 8, flexWrap: "wrap" });
-  const list = v.messages.length
-    ? listCard(v.messages.map((m) => messageRow(ctx, b, f.key, m)))
-    : card([text(`Nothing in ${folderName(f)}.`, { size: 15, weight: 500, lineHeight: 20 }), ...(f.key === "inbox" ? [meta("Mail sent to any of its addresses arrives here.", { size: 13 })] : [])], { gap: 6 });
+  const domains: Node[] = businesses.length > 1 && !q ? [row(businesses.map((x) => chip(x.domain, { selected: x.id === b, onPress: openInbox(x.id, "inbox", 0, true) })), { gap: 8, flexWrap: "wrap" })] : [];
+  const chipsOf = v.folders.map((x) => chip(`${folderName(x)}${x.unread ? ` · ${x.unread}` : ""}`, { selected: x.key === f.key, onPress: openInbox(b, x.key, 0, true, q) }));
+  // One line that swipes sideways where the build can; else they wrap.
+  const folders = canScrollX(ctx) ? scrollRow(chipsOf, { gap: 8, marginHorizontal: -20, paddingHorizontal: 20 }) : row(chipsOf, { gap: 8, flexWrap: "wrap" });
+  const list: Node[] = v.messages.length
+    ? mailDays(ctx, b, f.key, v.messages)
+    : [card([
+      text(q ? `Nothing in ${folderName(f)} has "${q}".` : `Nothing in ${folderName(f)}.`, { size: 15, weight: 500, lineHeight: 20 }),
+      ...(q ? [meta("Try fewer words, or another folder.", { size: 13 })] : f.key === "inbox" ? [meta("Mail sent to any of its addresses arrives here.", { size: 13 })] : []),
+    ], { gap: 6 })];
   const pager: Node[] = v.page > 0 || v.more ? [row([
-    ...(v.page > 0 ? [secondaryButton("Newer", openInbox(b, f.key, v.page - 1, true), { size: "md" })] : []),
+    ...(v.page > 0 ? [secondaryButton("Newer", openInbox(b, f.key, v.page - 1, true, q), { size: "md" })] : []),
     { type: "Stack", style: { flexGrow: 1 } },
-    ...(v.more ? [secondaryButton("Older", openInbox(b, f.key, v.page + 1, true), { size: "md" })] : []),
+    ...(v.more ? [secondaryButton("Older", openInbox(b, f.key, v.page + 1, true, q), { size: "md" })] : []),
   ], { gap: 8, alignItems: "center" })] : [];
+  const title = q ? "Search" : folderName(f);
   return page(ctx, {
-    back: toMailPage, backTitle: folderName(f), backRight: writeButton(b), title: folderName(f), ...(desk ? { maxWidth: 760 } : {}),
+    back: toMailPage, backTitle: title, backRight: plusCircle(openCompose(b), "Write an email"), title, ...(desk ? { maxWidth: 760 } : {}),
     pullBot: { top: true, items: v.messages.map((m) => m.threadId) },
+    ...(q ? { state: { mailQ: q } } : {}),
     body: [
+      mailSearch(b, f.key),
       ...domains,
       folders,
-      ...(f.email ? [meta(`Mail to ${f.email}`, { size: 12 })] : []),
-      list,
+      ...(q ? [meta(v.messages.length ? `${v.total} found for "${q}"` : `Searched for "${q}"`, { size: 12 })] : f.email ? [meta(`Mail to ${f.email}`, { size: 12 })] : []),
+      ...list,
       ...pager,
     ],
     gap: 14,
@@ -260,9 +331,9 @@ export const mailInboxScreens: BotsScreen[] = [
     load: async (ctx, deps: Deps) => {
       const b = bizParam(ctx.params.b);
       if (!b) return {};
-      const folder = folderParam(ctx.params.folder), pageNo = pageParam(ctx.params.page);
+      const folder = folderParam(ctx.params.folder), pageNo = pageParam(ctx.params.page), q = qParam(ctx.params.q);
       const [messages, businesses] = await Promise.all([
-        deps.api<MessagesView>("GET", `${MAIL}/businesses/${b}/messages?folder=${folder}${pageNo ? `&page=${pageNo}` : ""}`).catch(() => undefined),
+        deps.api<MessagesView>("GET", `${MAIL}/businesses/${b}/messages?folder=${folder}${pageNo ? `&page=${pageNo}` : ""}${q ? `&q=${encodeURIComponent(q)}` : ""}`).catch(() => undefined),
         deps.api<{ businesses: MailBusinessView[] }>("GET", `${MAIL}/businesses`).then((r) => r.businesses).catch(() => undefined),
       ]);
       return { ...(messages ? { messages } : {}), ...(businesses ? { businesses } : {}) };

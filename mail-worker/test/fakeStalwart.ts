@@ -24,6 +24,11 @@ export function fakeStalwart() {
       return f.operator === "AND" ? cs.every((c) => matches(e, c)) : f.operator === "OR" ? cs.some((c) => matches(e, c)) : !cs.some((c) => matches(e, c));
     }
     if (typeof f.inMailbox === "string") return !!e.mailboxIds[f.inMailbox];
+    // JMAP's text filter: the words anywhere in who it is from, the subject or the body (as Stalwart's full-text search finds them).
+    if (typeof f.text === "string") {
+      const hay = JSON.stringify([e.from, (e as { subject?: unknown }).subject, (e as { preview?: unknown }).preview, (e as { bodyValues?: unknown }).bodyValues]).toLowerCase();
+      return hay.includes(f.text.toLowerCase());
+    }
     return true;
   };
   const counts = (id: string) => {

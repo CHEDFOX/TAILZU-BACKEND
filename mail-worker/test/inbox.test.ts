@@ -78,6 +78,14 @@ test("conversations per folder, newest first: all of them, the main address's, a
   assert.equal((await call("GET", `${B}/messages?folder=nope`)).json.folder.key, "inbox");
 });
 
+test("a search finds in the folder only what has the words", async () => {
+  const hit = (await call("GET", `${B}/messages?folder=inbox&q=${encodeURIComponent("any news")}`)).json;
+  assert.deepEqual(hit.messages.map((m: any) => m.threadId), ["t-m1"]);
+  assert.equal((await call("GET", `${B}/messages?folder=inbox&q=nothing-like-this`)).json.messages.length, 0);
+  // Searched in the alias's folder, the main address's mail is not found.
+  assert.equal((await call("GET", `${B}/messages?folder=f-${SP}&q=${encodeURIComponent("any news")}`)).json.messages.length, 0);
+});
+
 test("a conversation, oldest first, is marked read as it is opened; only looked at (peek), it is left as it was", async () => {
   const peeked = (await call("GET", `${B}/threads/t-m1?peek=1`)).json;
   assert.deepEqual(peeked.messages.map((m: any) => [m.from.email, m.to.map((x: any) => x.email), m.unread]), [["asha@customer.test", ["hello@shop.test"], true], ["asha@customer.test", ["hello@shop.test"], true]]);

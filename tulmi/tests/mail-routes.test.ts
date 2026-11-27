@@ -137,6 +137,9 @@ describe("the mail bot", () => {
     await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=f-Ab_9&page=2&limit=999" });
     // A folder that is not one of the mailbox's keys is not passed on.
     await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=..%2Foverview&page=x" });
+    // A search goes with its words; a line break in them does not.
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=inbox&q=order%201234" });
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=inbox&q=a%0Ab" });
     await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/threads/T-1_a" });
     await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/threads/T-1_a/archive", payload: { all: true } });
     await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/send", payload: { from: "hello@leafandco.in", to: "asha@customer.test", cc: "", subject: "Hi", text: "Hello.", replyTo: "m1", bcc: "x@y.z", headers: { a: 1 } } });
@@ -155,6 +158,8 @@ describe("the mail bot", () => {
       { method: "GET", path: "/businesses/leaf-co/folders", body: undefined },
       { method: "GET", path: "/businesses/leaf-co/messages?folder=f-Ab_9&page=2", body: undefined },
       { method: "GET", path: "/businesses/leaf-co/messages", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/messages?folder=inbox&q=order%201234", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/messages?folder=inbox", body: undefined },
       { method: "GET", path: "/businesses/leaf-co/threads/T-1_a", body: undefined },
       { method: "POST", path: "/businesses/leaf-co/threads/T-1_a/archive", body: {} },
       { method: "POST", path: "/businesses/leaf-co/send", body: { from: "hello@leafandco.in", to: "asha@customer.test", cc: "", subject: "Hi", text: "Hello.", replyTo: "m1" } },

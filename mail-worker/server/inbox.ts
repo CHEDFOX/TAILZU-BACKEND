@@ -86,16 +86,18 @@ function aiOf(companyId: string, threadIds: string[]): Map<string, { run: number
 const person = (a?: Addr[] | null) => (a?.[0] ? { name: a[0].name ?? "", email: a[0].email } : { name: "", email: "" });
 const people = (a?: Addr[] | null) => (a ?? []).map((x) => ({ name: x.name ?? "", email: x.email }));
 
-/** One folder's conversations, newest first, a page at a time. */
-export async function messages(company: Company, o: { folder?: string; page?: number; limit?: number } = {}) {
+/** One folder's conversations, newest first, a page at a time; with `q`, only those whose words, sender or subject have it. */
+export async function messages(company: Company, o: { folder?: string; page?: number; limit?: number; q?: string } = {}) {
   const box = new Mailbox(company.email);
   const all = buildFolders(await boxesOf(box), company);
   const folder = all.find((f) => f.key === o.folder) ?? all.find((f) => f.key === "inbox");
   if (!folder) throw new InputError("This mailbox has no Inbox yet.");
   const limit = Math.max(1, Math.min(50, Math.round(o.limit ?? 30)));
   const page = Math.max(0, Math.min(200, Math.round(o.page ?? 0)));
+  const words = (o.q ?? "").trim().slice(0, 100);
+  const filter = words ? { operator: "AND", conditions: [filterOf(folder, all), { text: words }] } : filterOf(folder, all);
   const [q, g, t] = await box.request([
-    ["Email/query", { filter: filterOf(folder, all), sort: [{ property: "receivedAt", isAscending: false }], collapseThreads: true, position: page * limit, limit, calculateTotal: true }, "q"],
+    ["Email/query", { filter, sort: [{ property: "receivedAt", isAscending: false }], collapseThreads: true, position: page * limit, limit, calculateTotal: true }, "q"],
     ["Email/get", { "#ids": { resultOf: "q", name: "Email/query", path: "/ids" }, properties: ["id", "threadId", "from", "to", "subject", "preview", "receivedAt", "keywords", "mailboxIds"] }, "g"],
     ["Thread/get", { "#ids": { resultOf: "g", name: "Email/get", path: "/list/*/threadId" } }, "t"],
   ]);

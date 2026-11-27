@@ -213,75 +213,93 @@ describe("the mail bot's page", () => {
   };
   const runs = [RUN(7, { status: "needs_person" }), RUN(8), RUN(5, { status: "sent", summary: "Asks about gift wrapping" }), RUN(4, { status: "skipped", kind: "notification", summary: "", subject: "Our autumn sale", reason: "a newsletter (List-Unsubscribe)" })];
 
-  it("shows what needs a person first, then what was answered and filed, and the day in numbers", async () => {
-    const p = await build({ overview, runs });
+  // Now is FIXED_NOW, 7:40 pm in IST on 28 October: mail this morning and this afternoon, yesterday, three days ago, and on 2 October.
+  const at = (daysAgo: number, hour: number) => {
+    const day = new Date(FIXED_NOW + IST * 60_000); day.setUTCHours(hour, 5, 0, 0);
+    return day.getTime() - IST * 60_000 - daysAgo * 86_400_000;
+  };
+  const msg = (id: string, from: string, subject: string, when: number, o: Record<string, unknown> = {}) => ({
+    id, threadId: `t${id}`, from: { name: from, email: `${from.toLowerCase()}@customer.test` }, to: [{ name: "", email: "hello@leafandco.in" }],
+    subject, preview: `About ${subject.toLowerCase()}`, at: when, unread: false, starred: false, count: 1, ...o,
+  });
+  const today = [msg("2", "Kabir", "Gift wrapping", at(0, 14)), msg("1", "Asha", "Where is my order?", at(0, 9), { unread: true, ai: { run: 7, status: "needs_person" } })];
+  const MAIL = {
+    folder: { key: "inbox", id: "in", name: "Inbox", role: "inbox", kind: "system", unread: 1, total: 6 }, folders: [], page: 0, more: true, total: 6,
+    messages: [...today, msg("4", "Dev", "Invoice 88", at(1, 11)), msg("5", "Neha", "Return", at(3, 10), { starred: true }), msg("6", "Om", "Our autumn sale", Date.UTC(2026, 9, 2, 6))],
+  };
+  const withMail = { "GET /v1/mail/businesses/leaf-co/messages?folder=inbox": MAIL };
+
+  it("is a plain inbox: a thin round search, the folders and Write, then the mail under its day, today by the part of the day", async () => {
+    const p = await build({ overview, runs, api: withMail });
     expect(p.lint).toEqual([]);
     expect(p.card).toBeUndefined();
     const t = p.texts;
-    // The sections in that order (the day's numbers above them have words of their own: "Answered", "Filed").
-    const needs = t.indexOf("Needs you"), answered = t.indexOf("Answered", needs), filed = t.indexOf("Filed", answered);
-    expect(needs).toBeGreaterThan(-1);
-    expect(answered).toBeGreaterThan(needs);
-    expect(filed).toBeGreaterThan(answered);
-    expect(t).toEqual(expect.arrayContaining(["Bag arrived torn, wants a replacement", "Asks about gift wrapping", "Our autumn sale", "Newsletter"]));
-    expect(t).toContain("Asha · Complaint");
-    // An answered one carries no word of its own: its section says it.
-    expect(t.filter((x) => x === "Answered")).toHaveLength(2);
-    expect(t).toEqual(expect.arrayContaining(["9", "4", "2", "3", "hello@leafandco.in · Drafts for you"]));
-    // A waiting message opens its reply; an answered one is a record.
-    const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.reply") as Array<{ params: Record<string, string> }>;
-    expect(opens.map((o) => o.params)).toEqual([{ b: "leaf-co", run: "7" }, { b: "leaf-co", run: "8" }]);
-    // The chat reads the same mail: its bar and the first questions.
+    // The search is the first thing under the head: one thin round field, finding in all mail.
+    const search = p.nodes.find((n) => n.type === "TextField" && (n.bind as { value: string }).value === "mailQ")!;
+    expect(search.props).toMatchObject({ placeholder: "Search mail", returnKeyType: "search" });
+    const find = JSON.stringify(search.on?.onSubmit);
+    expect(find).toContain('"screenId":"bots.mail.inbox"');
+    expect(find).toContain('"q":"$state.mailQ"');
+    // Today by the part of the day, then Yesterday, the weekday, and the date.
+    const heads = t.filter((x) => /^(This morning|This afternoon|This evening|Yesterday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|\d+ \w+)$/.test(x));
+    expect(heads).toEqual(["This afternoon", "This morning", "Yesterday", "Sunday", "2 October"]);
+    expect(t).toEqual(expect.arrayContaining(["Asha", "Where is my order?", "Needs you", "Starred", "Our autumn sale"]));
+    // Each opens its conversation; More mail, the mailbox's next page.
+    expect(navTo(p.every(), "bots.mail.thread").map((a) => (a as { params: Record<string, string> }).params.tid)).toEqual(MAIL.messages.map((m) => m.threadId));
+    expect(t).toContain("More mail");
+    // What waits for a person is one line, opening the first.
+    expect(t).toContain("2 replies wait for you");
+    expect(navTo(p.every(), "bots.mail.reply").map((a) => (a as { params: Record<string, string> }).params)).toEqual([{ b: "leaf-co", run: "7" }]);
+    // None of the old page: no numbers of the day, no Answered and Filed lists, no starters.
+    for (const gone of ["Last 24 hours", "Answered", "Filed", "Mailbox", "What needs me today?"]) expect(t, gone).not.toContain(gone);
     expect(p.fields).toContain("say");
-    expect(t).toContain("What needs me today?");
-    expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.settings")).toBe(true);
-    // No set-up read for a business that is set up.
+    expect(navTo(p.every(), "bots.mail.settings").length).toBeGreaterThan(0);
     expect(p.calls.some((c) => c.path.endsWith("/dns"))).toBe(false);
   });
 
   it("says that mail comes once the domain points here, before anything arrived", async () => {
-    const p = await build({ overview: { businesses: [BIZ()], waiting: [], today: ZERO } });
+    const p = await build({ overview: { businesses: [BIZ()], waiting: [], today: ZERO }, api: { "GET /v1/mail/businesses/leaf-co/messages?folder=inbox": { ...MAIL, messages: [], more: false } } });
     expect(p.texts).toContain("Nothing has arrived yet. Mail starts once leafandco.in points here.");
-    expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.dns")).toBe(true);
+    expect(navTo(p.every(), "bots.mail.dns")).toHaveLength(1);
   });
 
-  it("shows its mailbox: all mail, the main address's own and each alias's with what is unread, then the other folders, and Write", async () => {
+  it("shows the folders as one row of chips, with what is unread, and Write as a small + in the head", async () => {
     const folders = [
       { key: "inbox", id: "in", name: "Inbox", role: "inbox", kind: "system", unread: 3, total: 40 },
       { key: "main", id: "in", name: "Hello", role: null, kind: "address", unread: 0, total: 0, email: "hello@leafandco.in" },
       { key: "f-sup", id: "sup", name: "Support", role: null, kind: "address", unread: 2, total: 9, email: "support@leafandco.in" },
       { key: "sent", id: "snt", name: "Sent", role: "sent", kind: "system", unread: 0, total: 12 },
     ];
-    const p = await build({ overview, runs, folders });
+    const p = await build({ overview, runs, folders, api: withMail });
     expect(p.lint).toEqual([]);
-    expect(p.calls.some((c) => c.path === "/v1/mail/businesses/leaf-co/folders")).toBe(true);
-    const t = p.texts;
-    // One row of doors into the mailbox, each with what is unread: not a second list beside Needs you.
-    expect(t).toEqual(expect.arrayContaining(["Mailbox", "All mail · 3", "Hello", "Support · 2", "Sent and more", "Write"]));
-    const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
+    expect(p.texts).toEqual(expect.arrayContaining(["All mail · 3", "Hello", "Support · 2", "Sent and more"]));
+    const opens = navTo(p.every(), "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
     expect(opens).toEqual(expect.arrayContaining(["inbox", "main", "f-sup", "sent"]));
-    expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.compose")).toBe(true);
+    expect(navTo(p.every(), "bots.mail.compose").length).toBeGreaterThan(0);
+    // One address alone has no chip of its own: All mail is its mail.
+    const one = await build({ overview, runs, folders: [folders[0], folders[1], folders[3]], api: withMail });
+    expect(one.texts).not.toContain("Hello");
   });
 
   it("opens All mail and Sent even when the folders couldn't be read", async () => {
     const p = await build({ overview, runs });
     expect(p.texts).toEqual(expect.arrayContaining(["All mail", "Sent and more"]));
+    expect(p.texts).toContain("Your mail couldn't be read just now. Pull to try again.");
   });
 
-  it("shows one domain at a time, with a chip for each, and adds another", async () => {
+  it("shows a chip per domain only when there are several; another is added in Settings", async () => {
     const two = { ...overview, businesses: [BIZ(), BIZ({ id: "tea-house", name: "Tea House", domain: "teahouse.in", email: "hello@teahouse.in" })] };
-    const p = await build({ overview: two, runs });
-    expect(p.texts).toEqual(expect.arrayContaining(["leafandco.in", "teahouse.in", "Add a domain", "Every domain, last 24 hours"]));
-    expect(p.every().some((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.add === "1")).toBe(true);
-    // One domain still has Add a domain beside it.
-    const one = await build({ overview, runs });
-    expect(one.texts).toContain("Add a domain");
+    const p = await build({ overview: two, runs, api: withMail });
+    expect(p.texts).toEqual(expect.arrayContaining(["leafandco.in", "teahouse.in"]));
+    const one = await build({ overview, runs, api: withMail });
+    expect(one.texts).not.toContain("leafandco.in");
+    expect(one.texts).not.toContain("Add a domain");
   });
 
   it("draws in the window too", async () => {
-    const p = await build({ overview, runs, client: "desktop" });
+    const p = await build({ overview, runs, client: "desktop", api: withMail });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("Needs you");
+    expect(p.texts).toContain("This afternoon");
   });
 
   it("says so when the mail service cannot be reached", async () => {
@@ -433,18 +451,11 @@ describe.each(["phone", "desktop"] as const)("the mail page for a space's admin 
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Ravi's business. As their space's admin you can see and change everything.");
     expect(navTo(p.every(), "bots.mail.settings")).toHaveLength(1);
-    expect(p.texts).toEqual(expect.arrayContaining(["Sent and more", "Write"]));
+    expect(p.texts).toContain("Sent and more");
+    expect(navTo(p.every(), "bots.mail.compose").length).toBeGreaterThan(0);
     expect(p.texts.some((t) => t.startsWith("All mail"))).toBe(true);
     // The day in numbers is the admin's own mail: it is not shown on Ravi's page.
     expect(p.texts).not.toContain("Last 24 hours");
-    expect(p.texts).not.toContain("Every domain, last 24 hours");
-  });
-
-  it("counts only the person's own domains in the day's heading, and shows it on their own business", async () => {
-    const p = await build({ client, overview: { businesses: [mine, theirs, given], waiting: [], today: ZERO }, params: { b: "mine-co" } });
-    expect(p.lint).toEqual([]);
-    // Three chips, but one business of their own: its numbers are that domain's.
-    expect(p.texts).toContain("Last 24 hours");
     expect(p.texts).not.toContain("Every domain, last 24 hours");
   });
 
@@ -465,8 +476,10 @@ describe.each(["phone", "desktop"] as const)("the mail page for a space's admin 
     expect(p.texts).not.toEqual(expect.arrayContaining(["All mail"]));
     expect(p.texts).not.toContain("Sent and more");
     expect(p.texts).not.toContain("Last 24 hours");
-    expect(p.texts).toEqual(expect.arrayContaining(["Mailbox", "Orders · 4", "Help", "Write", "Add a domain", "Needs you"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["Orders · 4", "Help"]));
+    // Their list is their first address's mail: they have no All mail.
+    expect(p.calls.some((c) => c.path === "/v1/mail/businesses/tea-co/messages?folder=f-o")).toBe(true);
     const opens = navTo(p.every(), "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
-    expect(opens.sort()).toEqual(["f-h", "f-o"]);
+    expect([...new Set(opens)].sort()).toEqual(["f-h", "f-o"]);
   });
 });

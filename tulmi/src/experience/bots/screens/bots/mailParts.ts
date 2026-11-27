@@ -81,6 +81,8 @@ export interface MailData {
   folders?: FolderView[];
   /** The business shown's calls (src/rooms), newest first; absent when calls are not switched on, or the business is not theirs to call from. */
   calls?: RoomView[];
+  /** The business shown's newest mail, the page's list: all mail (a handler's, their first address's). */
+  messages?: MessagesView;
 }
 
 /** A business id as it may stand in a path or a param. */

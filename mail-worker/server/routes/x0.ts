@@ -23,7 +23,7 @@
  *   DELETE /v1/o/:owner/businesses/:id/replies/:run         thrown away
  *   POST   /v1/o/:owner/businesses/:id/mail-app-password    { password }: for a phone or desktop mail app
  *   GET    /v1/o/:owner/businesses/:id/folders              all its mail, the main address's own, one per alias, the system folders, others
- *   GET    /v1/o/:owner/businesses/:id/messages?folder=&page=  a folder's conversations, newest first, 30 a page, each with the AI's last word
+ *   GET    /v1/o/:owner/businesses/:id/messages?folder=&page=&q=  a folder's conversations, newest first, 30 a page, each with the AI's last word
  *   GET    /v1/o/:owner/businesses/:id/threads/:tid?peek=   one conversation, every message's text (the unread ones marked read; peek=1: left as they are)
  *   POST   /v1/o/:owner/businesses/:id/threads/:tid/:action read, unread, star, unstar, archive, trash, junk, inbox
  *   GET    /v1/o/:owner/businesses/:id/threads/:tid/files/:eid/:blob   one attachment's file (only one of that message, in that conversation)
@@ -179,8 +179,11 @@ export async function x0Routes(app: FastifyInstance) {
   // The mailbox itself (inbox.ts): its folders, its conversations, what can be done to one, mail sent from it, and its rules.
   app.get("/v1/o/:owner/businesses/:id/folders", route(async (req) => ({ folders: await folders(business(req)) })));
   app.get("/v1/o/:owner/businesses/:id/messages", route(async (req) => {
-    const q = (req.query ?? {}) as { folder?: unknown; page?: unknown };
-    return messages(business(req), { ...(typeof q.folder === "string" ? { folder: q.folder.slice(0, 80) } : {}), page: Number(q.page) || 0 });
+    const q = (req.query ?? {}) as { folder?: unknown; page?: unknown; q?: unknown };
+    return messages(business(req), {
+      ...(typeof q.folder === "string" ? { folder: q.folder.slice(0, 80) } : {}), page: Number(q.page) || 0,
+      ...(typeof q.q === "string" && q.q.trim() ? { q: q.q.slice(0, 100) } : {}),
+    });
   }));
   app.get("/v1/o/:owner/businesses/:id/threads/:tid", route(async (req) => thread(business(req), threadIdOf(req), { peek: (req.query as { peek?: unknown }).peek === "1" })));
   // One attachment's file, as itself (not JSON): X0 Bot streams it on to the person who may see it.
