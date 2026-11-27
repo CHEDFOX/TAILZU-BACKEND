@@ -256,8 +256,8 @@ describe("the mail bot's page", () => {
     expect(p.lint).toEqual([]);
     expect(p.calls.some((c) => c.path === "/v1/mail/businesses/leaf-co/folders")).toBe(true);
     const t = p.texts;
-    expect(t).toEqual(expect.arrayContaining(["Mailbox", "All mail", "Every address of leafandco.in", "3", "hello@leafandco.in", "The main address's own",
-      "support@leafandco.in", "Support folder", "2", "Sent and other folders", "Write"]));
+    // One row of doors into the mailbox, each with what is unread: not a second list beside Needs you.
+    expect(t).toEqual(expect.arrayContaining(["Mailbox", "All mail · 3", "Hello", "Support · 2", "Sent and more", "Write"]));
     const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
     expect(opens).toEqual(expect.arrayContaining(["inbox", "main", "f-sup", "sent"]));
     expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.compose")).toBe(true);
@@ -265,7 +265,7 @@ describe("the mail bot's page", () => {
 
   it("opens All mail and Sent even when the folders couldn't be read", async () => {
     const p = await build({ overview, runs });
-    expect(p.texts).toEqual(expect.arrayContaining(["All mail", "hello@leafandco.in", "Sent and other folders"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["All mail", "Sent and more"]));
   });
 
   it("shows one domain at a time, with a chip for each, and adds another", async () => {
@@ -433,7 +433,8 @@ describe.each(["phone", "desktop"] as const)("the mail page for a space's admin 
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Ravi's business. As their space's admin you can see and change everything.");
     expect(navTo(p.every(), "bots.mail.settings")).toHaveLength(1);
-    expect(p.texts).toEqual(expect.arrayContaining(["All mail", "Sent and other folders", "Write"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["Sent and more", "Write"]));
+    expect(p.texts.some((t) => t.startsWith("All mail"))).toBe(true);
     // The day in numbers is the admin's own mail: it is not shown on Ravi's page.
     expect(p.texts).not.toContain("Last 24 hours");
     expect(p.texts).not.toContain("Every domain, last 24 hours");
@@ -462,9 +463,9 @@ describe.each(["phone", "desktop"] as const)("the mail page for a space's admin 
     expect(p.texts).not.toContain("Point teahouse.in here");
     expect(p.texts).not.toContain("Domain records");
     expect(p.texts).not.toEqual(expect.arrayContaining(["All mail"]));
-    expect(p.texts).not.toContain("Sent and other folders");
+    expect(p.texts).not.toContain("Sent and more");
     expect(p.texts).not.toContain("Last 24 hours");
-    expect(p.texts).toEqual(expect.arrayContaining(["Mailbox", "orders@teahouse.in", "4", "help@teahouse.in", "Write", "Add a domain", "Needs you"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["Mailbox", "Orders · 4", "Help", "Write", "Add a domain", "Needs you"]));
     const opens = navTo(p.every(), "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
     expect(opens.sort()).toEqual(["f-h", "f-o"]);
   });

@@ -224,7 +224,7 @@ export function composePage(ctx: BotsCtx, d: ComposeData | undefined) {
     ...(desk ? { maxWidth: 760 } : {}),
     body: [
       col([label("From"), chips(biz.addresses.map((a) => ({ label: a.email, value: a.email })), "cm_from")], { gap: 8 }),
-      col([label("To"), mailField("cm_to", "name@example.com, another@example.com", desk, { label: "who it goes to", keyboard: "email" })], { gap: 8 }),
+      col([label("To"), mailField("cm_to", "Their email address", desk, { label: "who it goes to", keyboard: "email" })], { gap: 8 }),
       col([label("Cc"), mailField("cm_cc", "Optional", desk, { label: "copies", keyboard: "email" })], { gap: 8 }),
       col([label("Subject"), mailField(subjectPath, "What it is about", desk, { label: "the subject", capitalize: false })], { gap: 8 }),
       col([label(mode === "forward" ? "Your note" : "Message"), mailField("cmw.text", mode === "forward" ? "Add a note above the forwarded message" : "Write your message", desk, { label: "the message", multiline: true, minHeight: 200 })], { gap: 8 }),

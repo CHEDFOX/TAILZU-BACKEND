@@ -46,16 +46,29 @@ const section = (label: string, kids: Node[]): Node => col([sectionLabel(label),
  * A list that opens on its heading: the heading says how many are in it, and the rows (with the lines between them) are behind
  * `path`, so a shut one is the heading alone — no stray line under it, which is why this is not listCard.
  */
+/** How many rows a section shows before "See all". */
+const FOLD_SHOWN = 3;
+
+/** A section of meetings, open: its first few rows, and the rest behind "See all N". */
 function fold(title: string, path: string, rows: Node[]): Node {
-  const inside = rows.flatMap((r, i) => (i ? [divider(), r] : [r]));
-  return {
-    type: "Stack",
-    style: { flexDirection: "column", borderRadius: RADIUS.list, borderWidth: 1, borderColor: C.line, overflow: "hidden", backgroundColor: C.paper },
-    children: [
-      listRow({ label: title, value: String(rows.length), strong: true, onPress: { kind: "toggleState", path } }),
-      when({ truthy: path }, col([divider(), ...inside])),
-    ],
-  };
+  const lines = (rs: Node[]) => rs.flatMap((r, i) => (i ? [divider(), r] : [r]));
+  const first = rows.slice(0, FOLD_SHOWN), rest = rows.slice(FOLD_SHOWN);
+  return col([
+    sectionLabel(title),
+    {
+      type: "Stack",
+      style: { flexDirection: "column", borderRadius: RADIUS.list, borderWidth: 1, borderColor: C.line, overflow: "hidden", backgroundColor: C.paper },
+      children: [
+        ...lines(first),
+        ...(rest.length ? [
+          when({ truthy: path }, col([divider(), ...lines(rest)])),
+          divider(),
+          when({ falsy: path }, listRow({ label: `See all ${rows.length}`, onPress: { kind: "toggleState", path } })),
+          when({ truthy: path }, listRow({ label: "Show fewer", onPress: { kind: "toggleState", path } })),
+        ] : []),
+      ],
+    },
+  ], { gap: 8 });
 }
 
 /**

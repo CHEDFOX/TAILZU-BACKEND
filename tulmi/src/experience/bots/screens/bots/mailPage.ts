@@ -22,7 +22,7 @@
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, chip, meta, notice, quietButton, primaryButton, C, botAvatar, listCard,
-  listRow, sectionLabel, open, SCREENS, canMoments, botMoment, canBuddy, botBuddy,
+  sectionLabel, open, SCREENS, canMoments, botMoment, canBuddy, botBuddy,
 } from "../../kit.js";
 import { addBusiness, mailCards, mailCardsDue, mailCardsState } from "./mailCards.js";
 import { callsSection } from "./mailCalls.js";
@@ -57,23 +57,23 @@ function stat(n: number, label: string): Node {
 }
 
 /**
- * The mailbox, as Xooteq Mail's side bar has it: All mail (every address), then the main address's own and each alias's, then Sent and the
- * other folders, with what is unread on the right. Without its folders (the worker didn't answer them), All mail and Sent still open it.
+ * The mailbox, as one row of doors into it (All mail, each address's own folder, Sent and the rest), each with what is unread: a way in,
+ * not a second list beside Needs you. Without its folders (the worker didn't answer them), All mail and Sent still open it.
  */
 function mailbox(b: MailBusinessView, folders: FolderView[] | undefined): Node {
   const handler = accessOf(b) === "handler";
   const all = folders?.find((f) => f.key === "inbox");
   const own = (folders ?? []).filter((f) => f.kind === "address");
-  const unread = (f?: FolderView) => (f?.unread ? String(f.unread) : undefined);
+  const withCount = (label: string, f?: FolderView) => (f?.unread ? `${label} · ${f.unread}` : label);
   // A handler sees only the addresses given to them: no All mail, no Sent and other folders.
-  const rows: Node[] = [
-    ...(handler ? [] : [listRow({ label: "All mail", sub: own.length ? `Every address of ${b.domain}` : b.email, strong: !!all?.unread, ...(all?.unread ? { value: unread(all) } : {}), onPress: openInbox(b.id, "inbox") })]),
-    ...own.map((f) => listRow({ label: f.email ?? f.name, sub: f.key === "main" ? "The main address's own" : `${f.name} folder`, strong: !!f.unread, ...(f.unread ? { value: unread(f) } : {}), onPress: openInbox(b.id, f.key) })),
-    ...(handler ? [] : [listRow({ label: "Sent and other folders", sub: "Sent, Drafts, Archive, Spam, Trash", onPress: openInbox(b.id, "sent") })]),
+  const doors: Node[] = [
+    ...(handler ? [] : [chip(withCount("All mail", all), { onPress: openInbox(b.id, "inbox") })]),
+    ...own.map((f) => chip(withCount(f.name, f), { onPress: openInbox(b.id, f.key) })),
+    ...(handler ? [] : [chip("Sent and more", { onPress: openInbox(b.id, "sent") })]),
   ];
   return col([
     row([sectionLabel("Mailbox"), grow(), writeButton(b.id)], { gap: 8, alignItems: "center" }),
-    listCard(rows),
+    row(doors, { gap: 8, flexWrap: "wrap" }),
   ], { gap: 8 });
 }
 
@@ -94,7 +94,8 @@ export function mailPage(ctx: BotsCtx, d: MailPageData, o: { tabs?: Node[] } = {
   const line = b && primary ? `${primary.email} · ${MODE_WORDS[primary.aiMode] ?? ""}` : "Your business's email, sorted and answered";
   const name = col([
     text(bot.name, { size: desk ? 17 : 19, weight: 600, lineHeight: desk ? 22 : 24 }),
-    meta(line, { size: 12, lines: 1 }),
+    // Two lines at most: the address and how it answers are both the point, so it wraps rather than being cut.
+    meta(line, { size: 12, lines: 2 }),
   ], { gap: 1, flexShrink: 1 });
   const settings = b && accessOf(b) !== "handler" ? [labelled(box([icon("settings", { size: 20, color: C.ink })], { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
     open(SCREENS.mailSettings, { b: b.id })), "Settings")] : [];
