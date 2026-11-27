@@ -164,10 +164,11 @@ function thought(ctx: BotsCtx, L: Layout, d: SpacesFull, focusCode: boolean): No
 
 // ===================================================================== a bold +, and finding a person by username
 
-/** A thick, bold + in a circle: Create space in the box, Add a person at the top right. */
-export function plusCircle(onPress: ActionRef, label: string, size = 48): Node {
-  return labelled(box([icon("plus", { size: Math.round(size * 0.5), color: C.ink, weight: 2.6 })], {
-    width: size, height: size, borderRadius: size / 2, borderWidth: 2.5, borderColor: C.ink, backgroundColor: C.paper,
+/** A small black circle with a bold white + (round ends): Create space in the box, Add a person at the top right. */
+export const PLUS_SIZE = 32;
+export function plusCircle(onPress: ActionRef, label: string, size = PLUS_SIZE): Node {
+  return labelled(box([icon("plus", { size: Math.round(size * 0.56), color: C.paper, weight: 2.6 })], {
+    width: size, height: size, borderRadius: size / 2, backgroundColor: C.ink,
     alignItems: "center", justifyContent: "center", flexShrink: 0,
   }, onPress), label);
 }
@@ -388,7 +389,7 @@ export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResp
   const adding = when(ADDING, botCrowd({
     life: "spaces.add", bots: ONE, size: 22, grownWhen: ADDING, grownHeight: desk ? GROWN.desk : GROWN.phone, label: "A tiny bot",
   }, [addPersonCard()]));
-  const addPlus = when(AT_REST, plusCircle(seq(setState("adding", true), setState("thOpen", false)), "Add a person", 44));
+  const addPlus = when(AT_REST, plusCircle(seq(setState("adding", true), setState("thOpen", false)), "Add a person"));
 
   const body: Node[] = [top];
   if (L === "joined") {

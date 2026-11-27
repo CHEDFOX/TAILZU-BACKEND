@@ -157,7 +157,8 @@ describe("Spaces (bots.spaces)", () => {
       expect(texts(walk(crowds[0]!))).toContain("CREATE SPACE");
       const pluses = nodes.filter((n) => n.props?.accessibilityLabel === "Create a space" || n.props?.accessibilityLabel === "Add a person");
       expect(pluses.map((n) => n.props!.accessibilityLabel).sort()).toEqual(["Add a person", "Create a space"]);
-      for (const n of pluses) expect(n.style).toMatchObject({ borderWidth: 2.5, borderRadius: 22 + (n.props!.accessibilityLabel === "Create a space" ? 2 : 0) });
+      // Small and black, a white + in it.
+      for (const n of pluses) expect(n.style).toMatchObject({ width: 32, height: 32, borderRadius: 16, backgroundColor: "#0a0a0a" });
       // Add a person: a username, the names that start with it as it is typed, Add.
       expect(texts(walk(crowds[1]!))).toEqual(expect.arrayContaining(["Add a person", "By their username. Once they say yes, you can message each other."]));
       expect(callTo(crowds[1]!, "GET", `${A}/people/search?q=$state.who`)).toBeTruthy();
