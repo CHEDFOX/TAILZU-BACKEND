@@ -148,3 +148,30 @@ export const whenLine = (s: BirthWhen): string => `${dateWords(s)}, ${timeWords(
 export function skyLine(s: Pick<Sky, "year" | "month" | "day" | "hour" | "minute" | "place" | "timeKnown">): string {
   return `${whenLine(s)}, ${s.place.split(",")[0]}`;
 }
+
+/**
+ * The when from the cards' wheels: the day, the month (its name or its number), the year, and the hour (1 to 12), the minute and am/pm.
+ * Null when any part is missing or the date does not exist (31 February). Read the same way as typed words would be.
+ */
+export function whenFromParts(b: Record<string, unknown>, nowYear = new Date().getUTCFullYear()): BirthWhen | null {
+  const num = (v: unknown): number => (typeof v === "number" ? v : typeof v === "string" && /^\d{1,4}$/.test(v.trim()) ? Number(v.trim()) : NaN);
+  const monthIn = typeof b.month === "string" ? b.month.trim().toLowerCase() : "";
+  const month = /^\d{1,2}$/.test(monthIn) ? Number(monthIn) : (MONTHS[monthIn.slice(0, 3)] ?? num(b.month));
+  const day = num(b.day), year = num(b.year), hour12 = num(b.hour), minute = num(b.minute);
+  const ampm = typeof b.ampm === "string" ? b.ampm.trim().toLowerCase() : "";
+  if (![day, month, year, hour12, minute].every(Number.isInteger)) return null;
+  if (year < 1800 || year > nowYear || !validDate(year, month, day)) return null;
+  if (hour12 < 1 || hour12 > 12 || minute < 0 || minute > 59 || (ampm !== "am" && ampm !== "pm")) return null;
+  return { year, month, day, hour: (hour12 % 12) + (ampm === "pm" ? 12 : 0), minute, timeKnown: true };
+}
+
+/** The wheels' parts of a when, to open them on what was kept: { day: "13", month: "July", year: "1994", hour: "9", minute: "30", ampm: "am" }. */
+export function partsOf(s: BirthWhen): { day: string; month: string; year: string; hour: string; minute: string; ampm: string } {
+  const h = s.hour % 12 === 0 ? 12 : s.hour % 12;
+  return {
+    day: String(s.day), month: MONTH_NAMES[s.month - 1]!, year: String(s.year),
+    hour: s.timeKnown ? String(h) : "", minute: s.timeKnown ? String(s.minute).padStart(2, "0") : "", ampm: s.timeKnown ? (s.hour < 12 ? "am" : "pm") : "",
+  };
+}
+
+export { MONTH_NAMES };

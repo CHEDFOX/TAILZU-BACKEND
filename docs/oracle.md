@@ -80,6 +80,26 @@ man's without the gender ("Other" is not sent: the engine reads only male and fe
 answer says what is missing (the birth details, the town, or a place not found) and sends them to the cards. Ask's answer from the Oracle has
 "Open the Oracle".
 
+## 2a. People, and charts shared with you
+
+Chamen reads for more than the person themselves (`src/oracle/people.ts`, `routes/bots/oracle.ts` `/v1/oracle/people`, migration 0119).
+
+- **One chat.** Picking someone does not open another conversation: each question is read against whoever is picked when it is asked
+  (`readFor`). The pick, the people added (up to 20) and the person's own Chamen-only gender live on their `oracle_people` row.
+- **The stage.** A circle at its top left shows who it reads for; a tap opens the people card: **Yours** (themselves, with the gender Chamen
+  reads their chart with, switchable there only; the people they added, each with Share and Take out; Add someone) and **Shared with you**.
+  The + at its top right adds someone: who it is (a name, and a gender with none picked), when they were born (the wheels), where. Before
+  the first question the stage says "Ask Chamen anything"; once they have asked, those words go and the card is shorter.
+- **Shared, not shown.** A chart (their own, or someone they added) can be shared into any space they are in, a one-to-one pair included
+  (`oracle_shares`). Its members can pick it and ask about it; the server reads it for them, so they see a name and the readings, never the
+  date, the time or the place. Membership is checked on the page and on every question: leaving the space, or the owner taking the share
+  back, ends it at once (the pick falls back to their own chart).
+- **Gender.** Their own first chart starts with the profile's gender already picked; switched in Chamen it is Chamen's alone, and the
+  profile is left as it is. Someone added later has none picked.
+- **The wheels.** Birth dates and times are picked, never typed: the day, the month and the year side by side, each a column to scroll
+  and tap, then the hour, the minute and am/pm. Server-drawn (a Scroll box of pressable rows), so every build has them; the parts go to
+  the server as they are (`birth.ts whenFromParts`), and 31 February is refused in words.
+
 ## 3. The page and the looks
 
 `experience/bots/screens/bots/oraclePage.ts`: the Oracle's bot page and its chat are one page.

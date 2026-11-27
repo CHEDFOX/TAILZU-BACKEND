@@ -154,8 +154,9 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       // A fitness bot's daily steps and workouts (migration 0090). It cascades from the account and from the bot; it is listed
       // here so the most sensitive thing X0 Bot holds goes first and by name, not only by a cascade nobody can see.
       ["bot_health_days", null],
-      // Chamen (migration 0078): when and where they were born, and the route of their last question.
-      ["oracle_people", null],
+      // Chamen (migrations 0078, 0119): when and where they and the people they added were born, the route of their last question,
+      // and the charts they shared into a space.
+      ["oracle_people", null], ["oracle_shares", null],
       // The mail bot (migration 0080): the hash its worker knows their account by, for the push.
       ["mail_owners", null],
       // Babbl (migration 0087): the languages they were learning, and every word and phrase with it.

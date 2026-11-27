@@ -24,6 +24,7 @@ import { type BotsCtx, back, botCard, box, C, call, canMove, col, FACE, icon, la
 import { SCREENS } from "../../ids.js";
 import { genderChips } from "../firstRun/aboutCard.js";
 import { type About, cardBack, GENDERS, line, nameField, permitStep, setState, toast } from "../firstRun/parts.js";
+import { wheelBody, wheels, wheelsPicked, wheelState } from "./oraclePeople.js";
 
 const SKY = "/v1/oracle/sky";
 const PLACES = "/v1/oracle/places";
@@ -39,7 +40,7 @@ const WIDTH = { phone: 330, desktop: 360 };
 export interface OracleCardsData {
   /** `sky` is the whole one (null while anything the engine needs is owed); `place` is the place card's own answer, kept
    *  whether or not the rest is, so the cards ask only for what is missing. */
-  sky?: { sky: unknown; place?: string | null; when?: { date: string; time: string } | null } | undefined;
+  sky?: { sky: unknown; place?: string | null; when?: { date: string; time: string } | null; parts?: Parameters<typeof wheelState>[1] } | undefined;
   about?: About | undefined;
 }
 
@@ -66,8 +67,10 @@ export function cardsState(ctx: BotsCtx, d: OracleCardsData): Record<string, unk
     // isComplete). The place is answered as soon as it was kept, whether or not the time was — nobody is asked for it twice.
     [OC.date]: when?.date ?? "", [OC.time]: when?.time ?? "", [OC.when]: !!when?.time && !edit,
     [OC.q]: "", [OC.found]: { q: "", places: [] }, [OC.place]: !!d.sky?.place && !edit,
-    [OC.name]: d.about?.name ?? "", [OC.gender]: gender, [OC.you]: !needsYou(d.about),
+    [OC.name]: d.about?.name ?? "", [OC.gender]: gender, [OC.you]: !needsYou(d.about) && (edit || !!d.sky?.sky),
     [OC.closed]: false, [OC.session]: randomUUID(),
+    // The wheels, on what was kept (Change), else nothing picked.
+    ...wheelState("oc", d.sky?.parts ?? null),
   };
 }
 
@@ -114,27 +117,18 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
   );
 
   // 1. When.
+  // Picked on the wheels, nothing typed. The time is what fixes the sky to a place and a moment, so it is asked for rather than guessed at.
   const saveWhen: ActionSpec = {
-    kind: "condition", if: { truthy: OC.date },
-    then: {
-      kind: "condition", if: { truthy: OC.time },
-      then: call("PUT", SKY, { date: `$state.${OC.date}`, time: `$state.${OC.time}` }, {
-        ok: kept(OC.when), fail: toast("Couldn't read that. Try a date like 13 July 1994, and a time like 9:30 am."),
-      }),
-      // The time is what fixes the sky to a place and a moment, so it is asked for rather than guessed at.
-      else: toast("Add the time you were born. Someone at home will know it, or it is on your birth certificate."),
-    } as ActionSpec,
-    else: toast("Add the date you were born."),
+    kind: "condition", if: wheelsPicked("oc"),
+    then: call("PUT", SKY, wheelBody("oc"), { ok: kept(OC.when), fail: toast("That date doesn't exist. Check the day and the month.") }),
+    else: toast("Pick the day, the month, the year and the time you were born. Someone at home will know the time, or it is on your birth certificate."),
   } as ActionSpec;
   const editing = ctx.params.edit === "1" && !!d.sky?.sky;
   const whenStep = permitStep({
     when: { falsy: OC.when },
     title: "When were you born?",
     lines: [line("The date and the time you were born. The time is what fixes the sky to that moment, so Chamen asks for both.")],
-    extra: [
-      cardField(OC.date, "Date, like 13 July 1994", desk, { label: "the date" }),
-      cardField(OC.time, "Time, like 9:30 am", desk, { label: "the time", onSubmit: saveWhen }),
-    ],
+    extra: wheels(ctx, "oc"),
     cta: { label: "Next", onPress: saveWhen },
     ...(editing ? { quiet: { label: "Cancel", onPress: again() } } : {}),
   });
@@ -168,20 +162,26 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
     quiet: { label: "Back", onPress: setState(OC.when, false) },
   });
 
-  // 3. You: only when the app does not have their name and gender.
+  // 3. You: when the app does not have their name and gender, and on their very first chart, with the profile's gender already picked:
+  // switched here, it is Chamen's alone (PUT /v1/oracle/people/me), and the profile is left as it is.
+  const first = !d.sky?.sky && ctx.params.edit !== "1";
   const apple = d.about?.via === "apple";
   const nameShown = !apple || !!d.about?.name?.trim();
   const both = call("PUT", "/v1/profile", { full_name: `$state.${OC.name}`, gender: `$state.${OC.gender}` }, { ok: kept(OC.you), fail: toast("Couldn't save that. Try again.") });
   const genderOnly = call("PUT", "/v1/profile", { gender: `$state.${OC.gender}` }, { ok: kept(OC.you), fail: toast("Couldn't save that. Try again.") });
-  const saveYou: ActionSpec = apple
+  const chamenOnly = call("PUT", "/v1/oracle/people/me", { gender: `$state.${OC.gender}` }, { ok: kept(OC.you), fail: toast("Couldn't save that. Try again.") });
+  const saveProfile: ActionSpec = apple
     ? { kind: "condition", if: { truthy: OC.gender }, then: nameShown ? { kind: "condition", if: { truthy: OC.name }, then: both, else: genderOnly } as ActionSpec : genderOnly, else: toast("Pick one to save.") } as ActionSpec
     : { kind: "condition", if: { all: [{ truthy: OC.name }, { truthy: OC.gender }] }, then: both, else: toast("Add your name and pick one.") } as ActionSpec;
-  const youStep = you ? [permitStep({
+  const saveYou: ActionSpec = you ? saveProfile : { kind: "condition", if: { truthy: OC.gender }, then: chamenOnly, else: toast("Pick one to save.") } as ActionSpec;
+  const youStep = you || first ? [permitStep({
     when: { all: [{ truthy: OC.when }, { truthy: OC.place }, { falsy: OC.you }] },
     title: "And you?",
-    lines: [line("Your name and gender. Some of the oldest ways of reading a life use your name, and some read a woman's chart differently from a man's.")],
+    lines: [line(you
+      ? "Your name and gender. Some of the oldest ways of reading a life use your name, and some read a woman's chart differently from a man's."
+      : "Some read a woman's chart differently from a man's. Chamen uses this for your chart only; your profile stays as it is.")],
     extra: [
-      ...(nameShown ? [nameField(OC.name, "Your name", { kind: "haptic", style: "selection" } as ActionSpec, desk, { capitalize: true, label: "your name", height: 44 })] : []),
+      ...(nameShown && you ? [nameField(OC.name, "Your name", { kind: "haptic", style: "selection" } as ActionSpec, desk, { capitalize: true, label: "your name", height: 44 })] : []),
       genderChips(desk, OC.gender),
     ],
     cta: { label: "Save", onPress: saveYou },
