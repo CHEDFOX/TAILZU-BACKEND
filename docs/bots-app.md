@@ -792,3 +792,20 @@ long press (Ask, Dictate, New note, Spaces). All of it is decided on the server,
   ([widget-glance-v2.md](widget-glance-v2.md); `src/widgets/{glance,situation,digest,activity,apns}.ts`). Migration 0059 adds
   `widget_glance` and `widget_activity_tokens`.
 
+
+## Media
+
+A file someone shared opens in the app's own viewer (`bots.media`, `tulmi/src/experience/bots/screens/media.ts`), not the browser:
+
+- **From** a space's chat and a conversation (`screens/spaces/feed.ts fileNode`: a photo by its picture, a video or a sound with a play
+  mark, any other file as a row) and Kutt's pictures, renders and side views (`screens/bots/cinema3d.ts`).
+- **A photo**: whole on a dark ground; Save to Photos, Save to Files, Share.
+- **A video**: played in the app with its controls for a client with the `media` block (vocabulary 2: `SDUI_V2` on), with the frame
+  that opens it as the node's fallback; without the block, that frame (a tap opens it); Save to Photos, Save to Files, Share.
+- **A sound** (a voice note, a song): play and pause in the app and how far it is (AudioPlay, from its signed https address);
+  Download, Share.
+- **Any other file**: its name and size; Open, Download, Share. The window downloads to its folder and copies the link.
+- **Saving** is download's `then` (`MediaSave`, the app's `actions.ts`): "photos" saves what came down to Photos, "files" hands it to the
+  share sheet (Save to Files). A build without it is offered "Open in browser", where the file can still be kept.
+- **Only this server's files**: a `/v1/...` path or https on `PUBLIC_ORIGIN`'s host (`safeMediaUrl`); any other link is "This file
+  can't be opened here". Mail attachments are not in it yet: the mail worker serves no attachment's bytes.
