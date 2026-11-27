@@ -39,6 +39,8 @@ const ROW = 40, ROW_GAP = 2, ROW_PAD = 4;
 const shows = (rows: number): number => rows * ROW + (rows - 1) * ROW_GAP + 2 * ROW_PAD;
 /** The date's columns show three rows at a time, the time's two (am and pm fit exactly). */
 const DATE_ROWS = 3, TIME_ROWS = 2;
+/** Every column one width, so the time's three sit exactly under the date's three (a Scroll does not share out flex evenly). */
+const COL_W = "32%";
 
 /** One value in a column: tapped, it is the one picked (ink), the rest stay plain. */
 function cell(path: string, value: string, label: string, width: number | string): Node {
@@ -48,9 +50,9 @@ function cell(path: string, value: string, label: string, width: number | string
 }
 
 /** A column that scrolls on its own inside the card (components/Scroll.tsx): a wheel to scroll and tap. */
-function column(path: string, values: Array<{ value: string; label: string }>, rows: number, flex = 1): Node {
+function column(path: string, values: Array<{ value: string; label: string }>, rows: number): Node {
   return {
-    type: "Scroll", style: { height: shows(rows), flexGrow: flex, flexBasis: 0, minWidth: 0, borderRadius: 14, backgroundColor: C.surface, padding: ROW_PAD, gap: ROW_GAP },
+    type: "Scroll", style: { height: shows(rows), width: COL_W, flexGrow: 0, flexShrink: 0, borderRadius: 14, backgroundColor: C.surface, padding: ROW_PAD, gap: ROW_GAP },
     children: values.map((v) => cell(path, v.value, v.label, "100%")),
   };
 }
@@ -68,7 +70,7 @@ function picked(p: string): Node {
   ], { gap: 6, minHeight: 20, flexWrap: "wrap" });
 }
 
-/** The date's three wheels, then the time's three. Years run from this one back. */
+/** The date's three wheels, then the time's three, every column the same width so the two rows line up. Years run from this one back. */
 export function wheels(ctx: BotsCtx, p: string): Node[] {
   const w = wheelPaths(p);
   const thisYear = new Date(ctx.live.now + ctx.tzOffsetMinutes * 60_000).getUTCFullYear();
@@ -79,11 +81,11 @@ export function wheels(ctx: BotsCtx, p: string): Node[] {
   const minutes = Array.from({ length: 60 }, (_, i) => ({ value: String(i).padStart(2, "0"), label: String(i).padStart(2, "0") }));
   return [
     picked(p),
-    row([column(w.day, days, DATE_ROWS, 0.8), column(w.month, months, DATE_ROWS, 1), column(w.year, years, DATE_ROWS, 1.1)], { gap: 6 }),
+    row([column(w.day, days, DATE_ROWS), column(w.month, months, DATE_ROWS), column(w.year, years, DATE_ROWS)], { justifyContent: "space-between" }),
     row([
-      column(w.hour, hours, TIME_ROWS, 1), column(w.minute, minutes, TIME_ROWS, 1),
-      col([cell(w.ampm, "am", "am", "100%"), cell(w.ampm, "pm", "pm", "100%")], { gap: ROW_GAP, flexGrow: 0.8, flexBasis: 0, height: shows(TIME_ROWS), borderRadius: 14, backgroundColor: C.surface, padding: ROW_PAD }),
-    ], { gap: 6, height: shows(TIME_ROWS) }),
+      column(w.hour, hours, TIME_ROWS), column(w.minute, minutes, TIME_ROWS),
+      col([cell(w.ampm, "am", "am", "100%"), cell(w.ampm, "pm", "pm", "100%")], { gap: ROW_GAP, width: COL_W, flexGrow: 0, flexShrink: 0, height: shows(TIME_ROWS), borderRadius: 14, backgroundColor: C.surface, padding: ROW_PAD }),
+    ], { justifyContent: "space-between", height: shows(TIME_ROWS) }),
   ];
 }
 
