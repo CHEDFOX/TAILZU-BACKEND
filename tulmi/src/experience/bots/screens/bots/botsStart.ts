@@ -92,10 +92,10 @@ export const START_TILE_HEIGHT = 184;
 
 /**
  * A build that can (BotTilesStage): the bot keeps the top of the card as on Home, and the card grows DOWN for his name
- * and what he can do, which start under him and may take three lines. The stage is the bot's full size (core.ts: his
+ * and what he can do, which start under him and is never cut: the height is the least it takes, and it grows for a longer line. The stage is the bot's full size (core.ts: his
  * size tops out with a floor of about 80 px); the rest is the words and the padding under them.
  */
-export const START_STAGE = 100;
+export const START_STAGE = 114;
 export const START_SUB_LINES = 3;
 /** The room between the name and what the bot is, so the two read as a title and its line. */
 export const START_NAME_GAP = 12;
