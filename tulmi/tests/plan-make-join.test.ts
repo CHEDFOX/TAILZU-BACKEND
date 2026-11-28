@@ -295,7 +295,7 @@ describe("Plan something, driven through the real routes", () => {
       expect(m.get("busy")).toBe("");
       expect(m.get("key")).toMatch(UUID);
       expect(m.get("say")).toBeUndefined();
-      expect(m.words()).toEqual(expect.arrayContaining(["X0 checked", "Dentist", "Sat 14 Nov · 5 pm", "For you", "Looks good", "Change", "Done"]));
+      expect(m.words()).toEqual(expect.arrayContaining(["Nudj checked", "Dentist", "Sat 14 Nov · 5 pm", "For you", "Looks good", "Change", "Done"]));
 
       await m.tap("Done");
       const done = posts(S, MK)[0]!;

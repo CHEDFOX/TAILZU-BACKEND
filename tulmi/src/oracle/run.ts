@@ -3,6 +3,8 @@
  *
  *   runOracle(deps, req) -> BotAnswer          bots/run.ts sends Chamen's turns here; every other bot runs the usual loop
  *
+ *   0. who           whoever is picked on Chamen's page (people.ts readFor): themselves, someone they added, or a chart shared with them. One
+ *                    chat: each question is read against the one picked when it is asked
  *   1. the sky       when and where they were born (store.ts), read only once it is whole (the cards keep the when first), with their name and
  *                    gender from the profile (the About you card's, or Chamen's last card). Not known yet and the message holds it ("13 July
  *                    1994, 9:30 am, Mumbai")? It is read (birth.ts), the place found (places/), kept, and said back in the notes. Still no whole
@@ -24,6 +26,7 @@ import { BotError, type BotAnswer } from "../bots/types.js";
 import type { AuthedUser } from "../auth/supabase.js";
 import { getProfile } from "../profile/store.js";
 import { isComplete, readBirth, skyLine, skyOf, type Sky } from "./birth.js";
+import { readFor } from "./people.js";
 import { oracleStore, type OracleStore } from "./store.js";
 import { oracleWorker, OracleUnavailable, type OraclePerson, type OracleWorker } from "./worker.js";
 
@@ -83,16 +86,33 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
   const notes: string[] = [];
 
   emit({ t: "status", stage: "reading" });
-  const [row, mem, person] = await Promise.all([
+  const [row, mem, profile] = await Promise.all([
     store.get(r.userId).catch(() => null),
     remember ? memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })) : Promise.resolve({ facts: [], thread: null }),
     (d.oracle?.person ?? profilePerson)(r.userId).catch(() => null),
   ]);
+  // Who this question is about: the one picked on the page (themselves unless they picked someone).
+  const who = await readFor(r.userId, profile, store);
+  const person = who.person;
 
-  // Birth details in the message: kept when there were none yet, or when a whole new set is given.
-  let sky: Sky | null = isComplete(row?.sky) ? row!.sky as Sky : null;
+  if (!who.own && !who.sky) {
+    const text = `I don't have all of ${who.name}'s birth details yet, so I can't read for them. Pick yourself, or add the rest of theirs.`;
+    r.onText?.(text);
+    emit({ t: "text", text });
+    const out: BotAnswer = {
+      bot: { slug: bot.slug, name: bot.name, colour: bot.colour, builtin: bot.ownerId === null },
+      text, paise: 0, tools: [], approvals: [], artifacts: [], opens: [], notes: [], ...(r.pickedBy ? { pickedBy: r.pickedBy } : {}), ms: now() - t0,
+    };
+    emit({ t: "result", result: out });
+    return out;
+  }
+  if (!who.own) notes.push(`Read for ${who.name}.`);
+
+  // Birth details in the message: kept as their OWN when there were none yet, or when a whole new set is given (never while reading for
+  // someone else: those are theirs, not the person's).
+  let sky: Sky | null = who.own ? (isComplete(row?.sky) ? row!.sky as Sky : null) : who.sky;
   let route = row?.route ?? null;
-  const said = await skyFromWords(r.message, find);
+  const said = who.own ? await skyFromWords(r.message, find) : { sky: null, missing: null };
   if (said.sky && remember) {
     sky = said.sky;
     route = null;
@@ -116,7 +136,7 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
   const history = r.history?.length ? r.history : remember && !r.fresh ? recentTurnsOf(mem.thread) : [];
   let answer;
   try {
-    answer = await worker.answer({ message: r.message, history, sky, person, route, session: sessionOf(r.userId) },
+    answer = await worker.answer({ message: r.message, history, sky, person, route, session: sessionOf(who.own ? r.userId : `${r.userId}:${who.ref}`) },
       (e) => { if (e.t === "status") emit(e); else r.onText?.(e.text); }, r.signal);
   } catch (err) {
     if ((err as { name?: unknown } | null)?.name === "AbortError") throw err;

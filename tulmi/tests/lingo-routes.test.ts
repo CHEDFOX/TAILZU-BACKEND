@@ -284,14 +284,23 @@ describe("a session and an answer", () => {
     expect((await store.items("u1", "es")).find((i) => i.item === "perro")!.spoken).toBe(0);
   });
 
-  it("marks a reply by which one was picked, and the answer is not in what it sent", async () => {
+  it("marks a reply by which one was picked, and only then says which one was right", async () => {
     const { app } = await start();
     const ref = refOf("u1", "es", "hola");
     const wrong = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "reply", picked: -1 });
     expect(wrong.statusCode).toBe(200);
     expect(wrong.json().mark).toMatchObject({ verdict: "wrong" });
-    // Nothing in a marked answer tells the app which option it should have been.
-    expect(JSON.stringify(wrong.json())).not.toContain("correct");
+    // Once it is marked, the screen is told which option was right, to light it before the set moves on.
+    const right = wrong.json().correct as number;
+    expect(Number.isInteger(right)).toBe(true);
+    const again = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "reply", picked: right });
+    expect(again.json().mark).toMatchObject({ verdict: "right" });
+  });
+
+  it("says nothing about a right option for an answer that was typed", async () => {
+    const { app } = await start();
+    const res = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: refOf("u1", "es", "hola"), kind: "write", said: "nope" });
+    expect(res.json()).not.toHaveProperty("correct");
   });
 
   it("takes every kind it says it takes", async () => {

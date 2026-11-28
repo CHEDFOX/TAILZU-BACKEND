@@ -24,7 +24,12 @@ export class MailError extends Error {
 export interface MailWorker {
   /** `path` is what follows `/v1/o/<owner>` ("" for the account itself), with its query. */
   call<T = Record<string, unknown>>(owner: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T>;
+  /** A file the worker hands over as itself (an attachment): its bytes, type and name. A refusal is a MailError, as for call(). */
+  file?(owner: string, path: string): Promise<{ body: Buffer; type: string; name: string }>;
 }
+
+/** The most an attachment handed on may be (the worker's own cap is the same). */
+export const FILE_MAX = 40 * 1024 * 1024;
 
 /** The person's account as the worker knows it: a hash, enough to keep their businesses apart from everyone else's, nothing more. */
 export const ownerOf = (userId: string): string => `mail:${createHash("sha256").update(`mail:${userId}`).digest("hex").slice(0, 32)}`;
@@ -73,6 +78,32 @@ export function mailWorker(o: { fetchFn?: FetchFn; url?: string; secret?: string
       if (res.status >= 400 && res.status < 500 && res.status !== 401) throw new MailError(res.status, String(data?.code ?? "bad_request"), message);
       // 401 is our own signature refused: a setting, not something the person can fix.
       throw new MailError(res.status === 401 ? 503 : 502, res.status === 401 ? "mail_down" : String(data?.code ?? "mail_failed"), res.status === 401 ? DOWN : message);
+    },
+
+    async file(owner: string, path: string): Promise<{ body: Buffer; type: string; name: string }> {
+      if (!OWNER.test(owner)) throw new MailError(400, "bad_request", "No such account.");
+      const pathWithQuery = `/v1/o/${owner}${path}`;
+      const timestamp = Math.floor(now() / 1000);
+      const nonce = randomBytes(16).toString("hex");
+      const signature = workerSignature(secret, { timestamp, nonce, method: "GET", pathWithQuery, body: Buffer.alloc(0) });
+      let res: Response;
+      try {
+        res = await fetchFn(`${url}${pathWithQuery}`, {
+          method: "GET", headers: { "x-tailzu-timestamp": String(timestamp), "x-tailzu-nonce": nonce, "x-tailzu-signature": signature },
+          signal: AbortSignal.timeout(60_000),
+        });
+      } catch {
+        throw new MailError(503, "mail_down", DOWN);
+      }
+      if (!res.ok) {
+        const data = (await res.json().catch(() => null)) as { code?: string; message?: string } | null;
+        throw new MailError(res.status >= 400 && res.status < 500 && res.status !== 401 ? res.status : 502, String(data?.code ?? "mail_failed"), data?.message || DOWN);
+      }
+      const body = Buffer.from(await res.arrayBuffer());
+      if (body.length > FILE_MAX) throw new MailError(413, "too_big", "That attachment is too big to open here. Open it in your mail app.");
+      const disp = res.headers.get("content-disposition") ?? "";
+      const name = decodeURIComponent((/filename\*=UTF-8''([^;]+)/i.exec(disp)?.[1] ?? "").trim()) || "attachment";
+      return { body, type: (res.headers.get("content-type") ?? "application/octet-stream").slice(0, 100), name: name.slice(0, 120) };
     },
   };
 }

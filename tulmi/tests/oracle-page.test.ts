@@ -79,8 +79,7 @@ describe("there is a way off the screen", () => {
     const q = await oraclePage({});
     const acts = JSON.stringify(q.every());
     // the time is no longer optional: nothing is sent until both are there, and each missing one says which
-    expect(acts).toContain("Add the date you were born.");
-    expect(acts).toContain("Add the time you were born");
+    expect(acts).toContain("Pick the day, the month, the year and the time you were born.");
     expect(acts).toContain("Type the town or city you were born in.");
     // and the words no longer invite them to leave the time out
     expect(q.texts.join(" ")).not.toMatch(/leave it empty|if you know it/i);
@@ -110,7 +109,12 @@ describe("Chamen's cards", () => {
     expect(p.calls.some((c) => c.method === "GET" && c.path === "/v1/oracle/sky")).toBe(true);
 
     const all = p.every(p.card!);
-    expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/oracle/sky", body: { date: "$state.oc_date", time: "$state.oc_time" } }));
+    // Picked on the wheels, nothing typed: the parts as picked.
+    expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/oracle/sky",
+      body: { day: "$state.oc_dd", month: "$state.oc_mm", year: "$state.oc_yy", hour: "$state.oc_hh", minute: "$state.oc_mi", ampm: "$state.oc_ap" } }));
+    const wheels = walk(p.card!).filter((n) => n.type === "Scroll");
+    expect(wheels.length).toBe(5);
+    expect(walk(p.card!).some((n) => n.type === "TextField" && /Date, like|Time, like/.test(String(n.props?.placeholder)))).toBe(false);
     expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "GET", path: "/v1/oracle/places?q=$state.oc_q&s=$state.oc_s", assignTo: "oc_found" }));
     expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/oracle/sky", body: { placeId: "$state.oc_found.places.0.id", place: "$state.oc_found.places.0.label", session: "$state.oc_s" } }));
     expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.oc_name", gender: "$state.oc_gender" } }));
@@ -120,10 +124,16 @@ describe("Chamen's cards", () => {
     expect(walk(rows[0]!).some((n) => (n.bind as { content?: string } | undefined)?.content === "oc_found.places.0.label")).toBe(true);
   });
 
-  it("pass what is already kept: the place is next when the when is kept, and there is no name and gender step when the app has them", async () => {
-    const p = await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" } }, about: KNOWN });
-    expect(p.state).toMatchObject({ oc_when: true, oc_place: false, oc_you: true, oc_date: "13 July 1994", oc_time: "9:30 am" });
-    expect(walk(p.card!).some((n) => n.props?.content === "And you?")).toBe(false);
+  it("pass what is already kept; on the first chart the gender is asked with the profile's already picked, and saved for Chamen only", async () => {
+    const parts = { day: "13", month: "July", year: "1994", hour: "9", minute: "30", ampm: "am" };
+    const p = await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" }, parts }, about: KNOWN });
+    expect(p.state).toMatchObject({ oc_when: true, oc_place: false, oc_you: false, oc_gender: "female", oc_dd: "13", oc_mm: "July", oc_yy: "1994", oc_hh: "9", oc_mi: "30", oc_ap: "am" });
+    expect(walk(p.card!).some((n) => n.props?.content === "And you?")).toBe(true);
+    // No name field (the app has it), and the switch is Chamen's: the profile is not written.
+    expect(walk(p.card!).some((n) => n.props?.placeholder === "Your name")).toBe(false);
+    const all = p.every(p.card!);
+    expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/oracle/people/me", body: { gender: "$state.oc_gender" } }));
+    expect(all.some((a) => a.path === "/v1/profile")).toBe(false);
   });
 
   it("a date with no time is not an answered when: the engine would only get a noon nobody gave", async () => {
@@ -138,18 +148,20 @@ describe("Chamen's cards", () => {
       sky: { sky: null, line: null, place: "Mumbai, Maharashtra, India", when: { date: "13 July 1994", time: "", line: "13 July 1994, time not known" } },
       about: KNOWN,
     });
-    expect(p.state).toMatchObject({ oc_when: false, oc_place: true, oc_you: true });
+    expect(p.state).toMatchObject({ oc_when: false, oc_place: true, oc_you: false });
     // the place step is there but shut: it shows only while the place is still owed, and theirs is kept
     const where = walk(p.card!).find((n) => walk(n).some((x) => x.props?.content === "Where were you born?") && JSON.stringify(n.visibleIf ?? "").includes("oc_place"));
     // it waits for the when to be answered AND for the place to still be owed, and theirs is kept, so it never opens
     expect(where?.visibleIf).toEqual({ all: [{ truthy: "oc_when" }, { falsy: "oc_place" }] });
   });
 
-  it("are not there once everything is kept: the sky is one line, and Change opens them again, filled in", async () => {
+  it("are not there once everything is kept: no birth line, the stage's circle and +; the cards can still open filled in (edit)", async () => {
     const p = await oraclePage({ sky: WHOLE, about: KNOWN });
     expect(p.card).toBeUndefined();
-    expect(p.texts).toContain("13 July 1994, 9:30 am, Mumbai");
-    expect(p.every()).toContainEqual({ kind: "navigate", screenId: "bots.chat", params: { slug: "oracle", edit: "1" }, replace: true });
+    expect(p.texts).not.toContain("13 July 1994, 9:30 am, Mumbai");
+    expect(p.texts).toContain("Reading for you");
+    expect(p.nodes.some((n) => String(n.props?.accessibilityLabel ?? "").startsWith("Reading for "))).toBe(true);
+    expect(p.nodes.some((n) => n.props?.accessibilityLabel === "Add someone to read for")).toBe(true);
 
     const again = await oraclePage({ sky: WHOLE, about: KNOWN, edit: true, screen: "bots.chat" });
     expect(again.card).toBeDefined();

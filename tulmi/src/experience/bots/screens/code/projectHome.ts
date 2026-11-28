@@ -2,6 +2,7 @@
  * The Code bot's projectHome screen.
  */
 
+import { ASK_BAR_STATE } from "../../ask.js";
 import type { ActionSpec, Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
 import { type BrainLite, health, firstTasks, isEmptyRepo, stackChips, placeOf, checksOf } from "../../../../botsCode/brain.js";
 import {
@@ -140,7 +141,7 @@ export function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project"
         ], { height: 52, gap: 8, ...(i < tasks.length - 1 ? { borderBottomWidth: 1, borderBottomColor: C.divider } : {}) }, startTask(p.id, t.task)))], { gap: 4 })] : []),
         latelyBlock,
       ],
-      footer: [taskBar(ctx, { projectId: p.id })], gap: 18,
+      footer: [taskBar(ctx, { projectId: p.id })], gap: 18, state: { task: "", ...ASK_BAR_STATE },
     });
   }
 

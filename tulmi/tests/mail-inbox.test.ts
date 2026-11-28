@@ -96,7 +96,7 @@ describe("the mailbox", () => {
     expect(p.calls.some((c) => c.path === `${B}/messages?folder=inbox`)).toBe(true);
     const t = p.texts;
     // The folders, the Inbox read as All mail, with what is unread.
-    expect(t).toEqual(expect.arrayContaining(["All mail 2", "Hello", "Support 1", "Drafts", "Sent", "Trash"]));
+    expect(t).toEqual(expect.arrayContaining(["All mail · 2", "Hello", "Support · 1", "Drafts", "Sent", "Trash"]));
     // A chip per domain once there are several.
     expect(t).toEqual(expect.arrayContaining(["leafandco.in", "teahouse.in"]));
     // Each conversation: who, how many, the subject, the start of the last message, and the AI's tag or a star.
@@ -113,7 +113,7 @@ describe("the mailbox", () => {
     const sup = FOLDERS[2]!;
     const p = await build("bots.mail.inbox", { b: "leaf-co", folder: "f-sup", page: "1" }, { api: { [`GET ${B}/messages?folder=f-sup&page=1`]: MESSAGES(sup, { page: 1, more: true }) } });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toEqual(expect.arrayContaining(["Support", "Mail to support@leafandco.in", "Newer", "Older"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["Support · 1", "Mail to support@leafandco.in", "Newer", "Older"]));
     const pages = navs(p.every()).filter((a) => a.screenId === "bots.mail.inbox" && a.params.folder === "f-sup").map((a) => a.params.page ?? "0");
     expect(pages).toEqual(expect.arrayContaining(["0", "2"]));
   });
@@ -331,5 +331,52 @@ describe("sharing and handing over addresses", () => {
     expect(p.texts).toEqual(expect.arrayContaining([
       "The main address · Drafts for you · Ravi and Meera answer it", "Support folder · Drafts for you · Ravi answers it",
     ]));
+  });
+});
+
+describe("an attachment in a conversation", () => {
+  it("opens in the app's viewer when it has its link; without one (an older worker) it is its name", async () => {
+    const url = "/v1/mail/businesses/leaf-co/threads/t1/files/m1/blob-1?v=u1&exp=9&sig=x";
+    const withLink = THREAD();
+    (withLink.messages[0] as { attachments: unknown[] }).attachments = [{ name: "receipt.pdf", size: 52_000, type: "application/pdf", url }];
+    const p = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" }, { api: { [`GET ${B}/threads/t1`]: withLink } });
+    expect(p.lint).toEqual([]);
+    const opens = navs(p.every()).filter((a) => a.screenId === "bots.media");
+    expect(opens).toEqual([expect.objectContaining({ params: { u: url, n: "receipt.pdf", m: "application/pdf", s: "51 KB" } })]);
+    expect(p.texts).toContain("Open");
+    const plain = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" });
+    expect(navs(plain.every()).some((a) => a.screenId === "bots.media")).toBe(false);
+  });
+});
+
+describe("searching the mail", () => {
+  it("finds in the folder with the words: the thin round field keeps them, says what was found, and pages keep the search", async () => {
+    const found = MESSAGES(FOLDERS[0], { more: true, total: 34 });
+    const p = await build("bots.mail.inbox", { b: "leaf-co", folder: "inbox", q: "order" }, { api: { [`GET ${B}/messages?folder=inbox&q=order`]: found } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toEqual(expect.arrayContaining(["Search", "34 found for \"order\""]));
+    expect(p.state).toMatchObject({ mailQ: "order" });
+    const older = p.every().find((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.page === "1") as { params: Record<string, string> };
+    expect(older.params).toMatchObject({ folder: "inbox", q: "order" });
+    const none = await build("bots.mail.inbox", { b: "leaf-co", folder: "inbox", q: "zebra" }, { api: { [`GET ${B}/messages?folder=inbox&q=zebra`]: MESSAGES(FOLDERS[0], { messages: [], total: 0 }) } });
+    expect(none.texts).toContain("Nothing in All mail has \"zebra\".");
+  });
+});
+
+describe("a mail's files in the list", () => {
+  it("shows a small preview under its text: a photo as itself, a video with a play mark, any file by its name; each opens the viewer, then +N", async () => {
+    const u = (n: string) => `${B}/threads/t1/files/1/${n}?v=u&exp=9&sig=s`;
+    const files = [
+      { name: "label.jpg", size: 210_000, type: "image/jpeg", url: u("b1") }, { name: "unboxing.mp4", size: 4_000_000, type: "video/mp4", url: u("b2") },
+      { name: "receipt.pdf", size: 52_000, type: "application/pdf", url: u("b3") }, { name: "more.png", size: 1, type: "image/png", url: u("b4") },
+    ];
+    const list = MESSAGES(FOLDERS[0], { messages: [MSG("1", { files, fileCount: 5 }), MSG("2")] });
+    const p = await build("bots.mail.inbox", { b: "leaf-co", folder: "inbox" }, { api: { [`GET ${B}/messages?folder=inbox`]: list } });
+    expect(p.lint).toEqual([]);
+    expect(p.nodes.some((n) => n.type === "Image" && JSON.stringify(n.props).includes("/b1?"))).toBe(true);
+    expect(p.texts).toEqual(expect.arrayContaining(["▶", "receipt.pdf", "+2"]));
+    const opened = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.media").map((a) => (a as { params: Record<string, string> }).params);
+    expect(opened.map((o) => o.n)).toEqual(["label.jpg", "unboxing.mp4", "receipt.pdf"]);
+    expect(opened[0]).toMatchObject({ m: "image/jpeg", s: "205 KB" });
   });
 });

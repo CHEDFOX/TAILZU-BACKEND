@@ -23,7 +23,7 @@ import { toast } from "../firstRun/parts.js";
 import { addBusiness, mailField, needsBusiness, needsSetup, openSetup, recordRow, toModeStep } from "./mailCards.js";
 import { openAddresses, openRules } from "./mailAliases.js";
 import {
-  bizParam, type BriefView, type DnsView, type FolderView, KIND_LABEL, MAIL, MAIL_SLUG, type MailBusinessView, type MailData, type MailOverview, type MailRunView,
+  bizParam, type BriefView, type DnsView, type FolderView, KIND_LABEL, MAIL, MAIL_SLUG, type MailBusinessView, type MailData, type MailOverview, type MailRunView, type MessagesView, accessOf,
   type ReplyView, senderOf, shownBusiness,
 } from "./mailParts.js";
 import { clockOf, isDesk, setState } from "./parts.js";
@@ -45,16 +45,25 @@ export async function loadMail(ctx: BotsCtx, deps: Deps): Promise<MailData> {
   const b = shownBusiness(ctx, overview);
   if (!b) return { overview };
   const setup = !needsBusiness(ctx, { overview }) && needsSetup(ctx, { overview });
-  const [runs, dns, brief, folders, calls] = await Promise.all([
+  const handler = accessOf(b) === "handler";
+  const inbox = (folder: string) => deps.api<MessagesView>("GET", `${MAIL}/businesses/${b.id}/messages?folder=${encodeURIComponent(folder)}`).catch(() => undefined);
+  const [runs, dns, brief, folders, calls, all] = await Promise.all([
     deps.api<{ runs: MailRunView[] }>("GET", `${MAIL}/businesses/${b.id}/activity?limit=40`).then((r) => r.runs).catch(() => [] as MailRunView[]),
     setup ? deps.api<DnsView>("GET", `${MAIL}/businesses/${b.id}/dns`).catch(() => undefined) : Promise.resolve(undefined),
     setup ? deps.api<{ profile: BriefView; saved: boolean }>("GET", `${MAIL}/businesses/${b.id}/brief`).catch(() => undefined) : Promise.resolve(undefined),
-    // The mailbox's rows on the page: all mail, the main address's, each alias's, with what is unread.
+    // The mailbox's chips on the page: all mail, the main address's, each alias's, with what is unread.
     deps.api<{ folders: FolderView[] }>("GET", `${MAIL}/businesses/${b.id}/folders`).then((r) => r.folders).catch(() => undefined),
     // Its calls (src/rooms): none when calls are off, or the business is not theirs to call from (the route says 404).
     deps.api<{ calls: RoomView[] }>("GET", `${MAIL}/businesses/${b.id}/calls`).then((r) => (Array.isArray(r.calls) ? r.calls : undefined)).catch(() => undefined),
+    // The page's list: all mail, at once; a handler has no All mail, so theirs waits for their folders.
+    handler ? Promise.resolve(undefined) : inbox("inbox"),
   ]);
-  return { overview, runs, ...(dns ? { dns } : {}), ...(brief ? { brief } : {}), ...(folders ? { folders } : {}), ...(calls ? { calls } : {}) };
+  const first = handler ? folders?.find((f) => f.kind === "address") : undefined;
+  const messages = all ?? (first ? await inbox(first.key) : undefined);
+  return {
+    overview, runs, ...(dns ? { dns } : {}), ...(brief ? { brief } : {}), ...(folders ? { folders } : {}), ...(calls ? { calls } : {}),
+    ...(messages ? { messages } : {}),
+  };
 }
 
 // ===================================================================== a reply

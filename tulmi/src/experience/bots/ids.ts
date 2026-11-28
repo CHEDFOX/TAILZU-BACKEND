@@ -84,6 +84,8 @@ export const SCREENS = {
   travelFelt: "bots.travel.felt",    // What people who went say about it (params: slug; screens/discoverFeed.ts)
   chat: "bots.chat",                 // Chat (params: slug)
   // screens/bots/mailScreens.ts: the mail bot (its page is bots.bot with slug "mail", screens/bots/mailPage.ts; no board)
+  // screens/media.ts: one file, seen or played in the app, saved or shared (params: u the address, n its name, m its type)
+  media: "bots.media",
   mailReply: "bots.mail.reply",      // a draft beside the message it answers: change, write again, send, throw away (params: b, run)
   mailDns: "bots.mail.dns",          // the records to add at the domain's DNS, each checked live, with Copy (params: b)
   mailBrief: "bots.mail.brief",      // what the AI knows and how it writes, with Fill from my website (params: b)

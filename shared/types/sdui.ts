@@ -1004,7 +1004,7 @@ export interface BotTilesProps {
   padding: number;
   gap: number;
   /** The Geist faces by weight, as the app registered them. */
-  faces: { regular: string; medium: string; semibold: string };
+  faces: { regular: string; medium: string; semibold: string; bold?: string };
   /**
    * One more tile as a full-width row under the grid (Notes): its bot on a stage of its own at the left, its name and
    * line on the right. The last bot of the grid's world, so its tap is the tiles' moment. Only for a build that
@@ -1241,6 +1241,8 @@ export const FILE_UPLOAD_CAPABILITY = "FileUpload";
  * than the arrows it replaces, so the server keeps the arrows for a build that does not declare this.
  */
 export const SCROLL_X_CAPABILITY = "ScrollX";
+/** NOT A COMPONENT — download's `then` (save to Photos, or hand to the share sheet): the media viewer's Save and Download. */
+export const MEDIA_SAVE_CAPABILITY = "MediaSave";
 /** Declared by a build that runs playAudio and stopAudio. */
 export const AUDIO_PLAY_CAPABILITY = "AudioPlay";
 /** Declared by a build that runs recordVoice. */
@@ -1609,7 +1611,7 @@ export interface BotStageProps {
 
 export interface BotCrowdProps {
   life: string;
-  /** 5 to 9 tiny bots, each on his own patch, lots of empty space. */
+  /** 1 to 9 tiny bots, each on his own patch, lots of empty space (Spaces: 7 in its box, one under Add a person). */
   bots: Array<{ kind: BotTileKind; color: string; avatar?: BotAvatarRef }>;
   /** Each bot's height in px. */
   size: number;
@@ -1908,7 +1910,9 @@ export type ActionSpec =
   | { kind: "sms"; number?: string; body?: string }
   | { kind: "email"; to?: string; subject?: string; body?: string }
   | { kind: "phone"; number: string }
-  | { kind: "download"; url: string; filename?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  /** `then` (MEDIA_SAVE_CAPABILITY): once the file is on the phone, "photos" saves a picture or a video to Photos, "files" opens the
+   *  share sheet with it (Save to Files). Without it the file only lands in the app's own cache. */
+  | { kind: "download"; url: string; filename?: string; then?: "photos" | "files"; mimeType?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "saveToPhotos"; path: string }
   // --- media pickers ---
   | { kind: "pickImage"; assignTo: string; source?: "library" | "camera"; onSuccess?: ActionRef; onError?: ActionRef }

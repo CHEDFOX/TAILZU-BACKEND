@@ -55,6 +55,7 @@ import { activitiesPage, type ActivitiesData } from "./bots/activities.js";
 import { botSessions, newSessionKey, SESSION_STATE, type BotSession } from "./bots/botSessions.js";
 import { botsStartPage } from "./bots/botsStart.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
+import type { CircleView } from "../../../oracle/people.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
 import { mailInboxScreens } from "./bots/mailInbox.js";
@@ -69,6 +70,7 @@ import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
 import { cinemaPage, type CinemaPageData } from "./bots/cinemaPage.js";
 import { cinemaScreens, loadCinema, type CinemaData } from "./bots/cinemaScreens.js";
 import { cinema3dScreens } from "./bots/cinema3d.js";
+import { mediaScreens } from "./media.js";
 import { sessionScreens } from "./bots/cinemaSession.js";
 import type { About } from "./firstRun/parts.js";
 import type { Moves } from "../../../bots/healthDays.js";
@@ -85,7 +87,7 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
   // `o.slug` is for a page that is a TAB: a tab root is fetched with no params, so there is nowhere to read one from.
   const slug = o.slug ?? slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sessions, sky, about, mail, meet, cinema, notes] = await Promise.all([
+  const [bot, memory, linked, chat, sessions, sky, about, mail, meet, cinema, notes, circle] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
@@ -106,6 +108,8 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     slug === "cinema" && o.cinema ? loadCinema(ctx, deps).catch((): CinemaData => ({ down: true })) : Promise.resolve(undefined),
     // Sribbu's Notes part: every meeting written up (notes.ts).
     slug === "mail" && o.mail && sribbuPart(ctx) === "notes" ? notesLoad(ctx, deps).catch(() => undefined) : Promise.resolve(undefined),
+    // Chamen's people: who it reads for, the people added, and the charts shared with them (oracle/people.ts).
+    slug === "oracle" ? deps.api<CircleView>("GET", "/v1/oracle/people").catch(() => undefined) : Promise.resolve(undefined),
   ]);
   // THE MOVES COUNTS, on their own route and only for a bot that is counting (docs: perms §4.6). They are asked for after
   // the bot is known, and only then, so a page that can never show them never reads a health row, and nothing on the bot's
@@ -116,7 +120,7 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
   return {
     bot, memory, linked, turns: chat, ...(sessions ? { sessions } : {}), ...(moves ? { moves } : {}),
     ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}),
-    ...(cinema ? { cinema } : {}), ...(notes ? { notes } : {}),
+    ...(cinema ? { cinema } : {}), ...(notes ? { notes } : {}), ...(circle ? { circle } : {}),
   };
 }
 
@@ -931,6 +935,7 @@ export const botsScreens: BotsScreen[] = [
   ...callRoomScreens,
   ...meetScreens,
   ...cinemaScreens,
+  ...mediaScreens, // One file seen or played in the app, saved or shared (screens/media.ts)
   ...cinema3dScreens, // One 3D creation: the idea's picture beside the 3D of it (screens/bots/cinema3d.ts)
   ...sessionScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).

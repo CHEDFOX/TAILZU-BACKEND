@@ -436,8 +436,9 @@ function detailsShell(ctx: BotsCtx, title: string, lines: Node[], extra: Node[],
       text(title, { size: 20, weight: 600, lineHeight: 26 }),
       col(lines, { gap: 6, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
       ...extra,
+      // Right under what they act on, not pinned to the foot of the screen with an empty gap between.
+      row(buttons, { gap: 10, flexWrap: "wrap", paddingTop: 4 }),
     ],
-    footer: [row(buttons, { gap: 10, flexWrap: "wrap" })],
   });
 }
 

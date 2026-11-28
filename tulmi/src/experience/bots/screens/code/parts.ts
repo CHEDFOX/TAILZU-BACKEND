@@ -11,6 +11,8 @@ import {
   up,
 } from "../../kit.js";
 import { modeHead, pinnedHead } from "../shell/modeHead.js";
+import { askFiles, insertCard, insertKey, INSERT_PATHS, ON_ASK } from "../../ask.js";
+import { uploadChip } from "../../media.js";
 
 /**
  * THE TWO WAYS TO ANOTHER PROJECT, and they belong on a PROJECT'S OWN PAGE as much as on the overview.
@@ -224,16 +226,21 @@ export function startTask(projectId: string, task: string, statePath?: string): 
  * open the answer: a question, "what changed this week?", "explain this change". Offline (a build with an outbox), an ask about no one
  * project is kept there and goes once the connection is back (kit keptOffline).
  */
-export function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; statePath?: string } = {}): ActionRef {
+export function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; statePath?: string; attachments?: boolean } = {}): ActionRef {
   const asked: ActionSpec = {
     kind: "sequence", actions: [
       ...momentStart({ message, busy: "asking", ...(o.statePath ? { from: o.statePath } : {}) }),
       streamed(ctx, {
         kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
-        body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "code", ...(o.projectId ? { projectId: o.projectId } : {}) },
+        body: {
+          message: SENT_WORDS, device: ctx.client, mode: "text", bot: "code", ...(o.projectId ? { projectId: o.projectId } : {}),
+          // The files put on the box with the insert key (ask.ts): the door reads them before Xode answers.
+          ...(o.attachments ? { attachments: `$state.${INSERT_PATHS.attach}` } : {}),
+        },
         assignTo: "asked",
         onSuccess: seq(
           { kind: "setState", path: "asking", value: false },
+          ...(o.attachments ? [{ kind: "clearState", path: INSERT_PATHS.attach } as ActionSpec, { kind: "clearState", path: INSERT_PATHS.shots } as ActionSpec] : []),
           // IT MAY HAVE STARTED A JOB. Asking Xode from outside a project used to be the only thing this box
           // could do, because the roads that work need a project and nobody had named one. The front door picks
           // it from the words now (front/decide.ts), so "fix the cart rounding" comes back with a job on a branch
@@ -252,16 +259,29 @@ export function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; 
   return o.statePath ? { kind: "condition", if: { falsy: o.statePath }, then: toast("Type what you need first"), else: send } : send;
 }
 
-/** "Tell Xode what to do…": the field and its send button; in a project it starts a plan, elsewhere it asks the bot. */
+/**
+ * "Tell Xode what to do…": the insert key, the field and its send button; in a project it starts a plan, elsewhere it asks
+ * the bot. The key is the ask bar's own (ask.ts insertKey / insertCard): a photo, a screenshot, a file or the clipboard.
+ *
+ * A FILE GOES BY THE ASK DOOR. Starting a plan (POST /v1/bots/code/start) takes words only, so while a file is on the box
+ * the send asks Xode about the project with the file (POST /v1/shell/ask, which reads it first and may start the job
+ * itself, front/decide.ts). With nothing attached it is the plan, as it always was.
+ */
 export function taskBar(ctx: BotsCtx, o: { projectId?: string; placeholder?: string }): Node {
-  const send = o.projectId ? startTask(o.projectId, "$state.task", "task") : codeAsk(ctx, "$state.task", { statePath: "task" });
+  const plain = o.projectId ? startTask(o.projectId, "$state.task", "task") : codeAsk(ctx, "$state.task", { statePath: "task" });
   const desk = ctx.client === "desktop";
+  const key = insertKey(ctx, "task");
+  const withFiles = codeAsk(ctx, "$state.task", { statePath: "task", attachments: true, ...(o.projectId ? { projectId: o.projectId } : {}) });
+  const send: ActionRef = key.length ? { kind: "condition", if: ON_ASK, then: withFiles, else: plain } : plain;
+  const bar = row([
+    field("task", o.placeholder ?? "Tell Xode what to do…", { onSubmit: send, size: desk ? 15 : 16, label: "Tell Xode what to do" }),
+    roundInk("send", send, "Send", desk ? 46 : 48),
+  ], { gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: desk ? 30 : 28, paddingVertical: 6, paddingRight: 6, paddingLeft: desk ? 20 : 18, flexGrow: 1, flexShrink: 1, minWidth: 0 });
   return col([
     askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: o.projectId ? "starting" : "asking", line: o.projectId ? "Making a plan…" : "Asking Xode…" }),
-    row([
-      field("task", o.placeholder ?? "Tell Xode what to do…", { onSubmit: send, size: desk ? 15 : 16, label: "Tell Xode what to do" }),
-      roundInk("send", send, "Send", desk ? 46 : 48),
-    ], { gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: desk ? 30 : 28, paddingVertical: 6, paddingRight: 6, paddingLeft: desk ? 20 : 18 }),
+    ...(key.length ? [uploadChip(INSERT_PATHS.attach, { wide: true }), askFiles({ desk })] : []),
+    key.length ? row([...key, bar], { gap: 10, alignItems: "flex-end" }) : bar,
+    ...insertCard(ctx, "task"),
   ], { gap: 8 });
 }
 

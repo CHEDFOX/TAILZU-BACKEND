@@ -86,17 +86,17 @@ describe("Plan something: the card", () => {
       expect(calls).toContain(SETUP_KEY);
       expect(s.title).toBe("Plan something");
       expect(texts).toEqual(expect.arrayContaining([
-        "Plan something", "Fill it in, or tell X0 below.", "What", "When", "Today", "Tomorrow", "Fri 30", "No day", "Other day",
+        "Plan something", "Fill it in, or tell Nudj below.", "What", "When", "Today", "Tomorrow", "Fri 30", "No day", "Other day",
         "Any time", "9 am", "12 pm", "4 pm", "6 pm", "8 pm", "Other time", "For who", "You", "Dad", "Mom", "Riya", "They get the reminder on their phone.",
-        "Must not miss", "X0 keeps reminding until it's done.", "+ Repeat", "+ Place", "Repeat", "Once", "Every day", "Every week", "Every month",
-        "Mon", "Sun", "Pick the days.", "Where", "Check", "Checking…", "X0 checked", "Looks good", "Change", "Take out", "Done", "Adding…",
+        "Must not miss", "Nudj keeps reminding until it's done.", "+ Repeat", "+ Place", "Repeat", "Once", "Every day", "Every week", "Every month",
+        "Mon", "Sun", "Pick the days.", "Where", "Check", "Checking…", "Nudj checked", "Looks good", "Change", "Take out", "Done", "Adding…",
       ]));
       const field = (path: string) => nodes.find((n) => n.type === "TextField" && n.bind?.value === path);
       expect(field("d.title")?.props).toMatchObject({ placeholder: "Dentist, Dad's medicine, school fees…", maxLength: 120 });
       expect(field("d.dayWords")?.props?.placeholder).toBe("Type a day, like 20 Nov");
       expect(field("d.timeWords")?.props?.placeholder).toBe("Type a time, like 5:30 pm");
       expect(field("d.place")?.props?.placeholder).toBe("Where, like Indiranagar");
-      expect(field("say")?.props).toMatchObject({ placeholder: client === "phone" ? "Tell X0, like Dentist Fri 5 pm" : "Tell X0, like Dentist Fri 5 pm, or drop a file", maxLength: 2000, returnKeyType: "send" });
+      expect(field("say")?.props).toMatchObject({ placeholder: client === "phone" ? "Tell Nudj, like Dentist Fri 5 pm" : "Tell Nudj, like Dentist Fri 5 pm, or drop a file", maxLength: 2000, returnKeyType: "send" });
       // The walking bot thinks while the box fills the card or Check runs.
       expect(nodes.find((n) => n.type === "BotBuddy")?.props).toMatchObject({ thinkWhen: { any: [{ eq: ["busy", "fill"] }, { eq: ["busy", "check"] }] } });
     }
@@ -333,7 +333,7 @@ describe("Plan something: the card", () => {
       vi.stubEnv(flag, "false"); resetConfigForTests();
       const d = await draw("phone");
       expect(d.texts).toContain("Add to your Plan");
-      expect(d.texts).not.toContain("X0 checked");
+      expect(d.texts).not.toContain("Nudj checked");
       vi.unstubAllEnvs(); resetConfigForTests();
     }
     // A failed setup read never fails the card: no people, no AI.
@@ -402,8 +402,8 @@ describe("fixes after review", () => {
     // Two Dones: the main (black) one only without a stop, the outline one only with it.
     const dones = conds.filter((c) => c.n.on?.onPress && walk(c.n).some((x) => x.type === "Text" && x.props?.content === "Done") && JSON.stringify(c.conds).includes('"step","check"'));
     expect(dones.map((d) => JSON.stringify(d.conds).includes('{"falsy":"chk.stop"}') ? "no stop" : JSON.stringify(d.conds).includes('{"truthy":"chk.stop"}') ? "stop" : "?").sort()).toEqual(["no stop", "stop"]);
-    // The tick beside "X0 checked" shows only without a stop.
-    const headRow = conds.find((c) => (c.n.children ?? []).some((k) => k.type === "Text" && k.props?.content === "X0 checked"))!.n;
+    // The tick beside "Nudj checked" shows only without a stop.
+    const headRow = conds.find((c) => (c.n.children ?? []).some((k) => k.type === "Text" && k.props?.content === "Nudj checked"))!.n;
     expect(headRow.children![0]).toMatchObject({ type: "SVG", visibleIf: { falsy: "chk.stop" } });
     // The slot shows with a head or a first note; "Say what it is." has Fill it in, not Pick.
     expect(conds.some((c) => JSON.stringify(c.n.visibleIf) === JSON.stringify({ any: [{ truthy: "chk.items.0.head" }, { truthy: "chk.items.0.notes.0.text" }] }))).toBe(true);

@@ -24,6 +24,11 @@ export function fakeStalwart() {
       return f.operator === "AND" ? cs.every((c) => matches(e, c)) : f.operator === "OR" ? cs.some((c) => matches(e, c)) : !cs.some((c) => matches(e, c));
     }
     if (typeof f.inMailbox === "string") return !!e.mailboxIds[f.inMailbox];
+    // JMAP's text filter: the words anywhere in who it is from, the subject or the body (as Stalwart's full-text search finds them).
+    if (typeof f.text === "string") {
+      const hay = JSON.stringify([e.from, (e as { subject?: unknown }).subject, (e as { preview?: unknown }).preview, (e as { bodyValues?: unknown }).bodyValues]).toLowerCase();
+      return hay.includes(f.text.toLowerCase());
+    }
     return true;
   };
   const counts = (id: string) => {
@@ -44,6 +49,12 @@ export function fakeStalwart() {
         return send(200, { username: user, capabilities: {}, accounts: { a1: {} }, primaryAccounts: { "urn:stalwart:jmap": "admin1", "urn:ietf:params:jmap:mail": "mail1" } });
       }
       if (req.method === "POST" && req.url?.startsWith("/jmap/upload/")) return send(200, { blobId: `b${seq++}`, size: raw.length, type: "application/sieve" });
+      // A blob's bytes (an attachment): "file <blobId>", as its type was asked for.
+      if (req.method === "GET" && req.url?.startsWith("/jmap/download/")) {
+        const [, , , , blob] = req.url.split("?")[0]!.split("/");
+        const type = new URL(req.url, "http://x").searchParams.get("accept") ?? "application/octet-stream";
+        res.writeHead(200, { "content-type": type }); return res.end(`file ${decodeURIComponent(blob ?? "")}`);
+      }
       if (req.method !== "POST" || req.url !== "/jmap/") return send(404, {});
       const { methodCalls } = JSON.parse(raw) as { methodCalls: [string, Record<string, unknown>, string][] };
       const done = new Map<string, Record<string, unknown>>();

@@ -39,10 +39,10 @@ const STATE_WORDS: Partial<Record<FollowView["state"], string>> = { missed: "Not
 function roleLine(v: FollowView): string {
   // Done: the done line under the title says who and when ("Mom said done · 9:12 pm"); nothing here may say otherwise.
   if (v.state === "done") return "";
-  if (v.you === "holder" && !v.asker.me) return `${v.asker.name} asked X0 to remind you.`;
+  if (v.you === "holder" && !v.asker.me) return `${v.asker.name} asked Nudj to remind you.`;
   if (v.you === "backup") return `${v.holder.name} hasn't said done. You're next on it.`;
   if (v.asker.me && !v.holder.me) return v.state === "nobody" ? "Nobody else can do it." : v.state === "told" ? `${v.holder.name} hasn't said done.` : `${v.holder.name} has it now.`;
-  return v.must ? "X0 keeps at it until you say done." : "";
+  return v.must ? "Nudj keeps at it until you say done." : "";
 }
 
 /** The one-time question for someone on another person's must item: may that person's reminders ring them louder and call them? */
@@ -71,7 +71,7 @@ function history(v: FollowView): Node[] {
   if (!v.asker.me) return [];
   const lines = [...v.steps, ...v.answers].sort((a, b) => a.at - b.at);
   if (!lines.length) return [];
-  return [col([sectionLabel("What X0 did"), ...lines.map((l) => meta(l.line, { size: 13, lineHeight: 19 }))], { gap: 6 })];
+  return [col([sectionLabel("What Nudj did"), ...lines.map((l) => meta(l.line, { size: 13, lineHeight: 19 }))], { gap: 6 })];
 }
 
 export function followPage(ctx: BotsCtx, v: FollowView | undefined) {
@@ -156,7 +156,7 @@ export function followPeoplePage(ctx: BotsCtx, d: PeoplePicker | undefined) {
       listRow({ label: p.name, sub: [i === 0 ? "Does it" : "If they can't", HOW[p.how]].filter(Boolean).join(" · ") }),
       ...(buttons.length ? [row(buttons, { gap: 4, flexWrap: "wrap", paddingHorizontal: 8, paddingBottom: 8 })] : []),
       ...(d.numbers && !p.me ? [when({ eq: ["numFor", pid] }, col([
-        meta("Only for your Call button. X0 never calls or messages it.", { size: 12 }),
+        meta("Only for your Call button. Nudj never calls or messages it.", { size: 12 }),
         inputBox([field(`num-${pid}`, "num", "Their number")]),
         row([
           secondaryButton("Save", call("PUT", `${FOLLOW}/number`, { member: pid, phone: "$state.num" }, { ok: seq(toast("Saved"), setState("numFor", ""), refresh), fail: toast("That number doesn't look right.", true) }), md),
@@ -168,7 +168,7 @@ export function followPeoplePage(ctx: BotsCtx, d: PeoplePicker | undefined) {
   const addable = d.people.filter((p) => !onIt.includes(keyId(p.key)) && !(p.me && !item.people.length));
   const invite: ActionSpec | null = d.invite ? open(d.invite.screen, d.invite.params ?? {}) : null;
   const addRows: Node[] = addable.map((p) => listRow({
-    label: p.name, sub: p.me ? "Yourself" : "Has X0",
+    label: p.name, sub: p.me ? "Yourself" : "On X0",
     right: secondaryButton("Add", save([...onIt, keyId(p.key)], `Added ${p.name}`), md), chevron: false,
   }));
   const byName = d.spaces ? [col([
@@ -179,12 +179,12 @@ export function followPeoplePage(ctx: BotsCtx, d: PeoplePicker | undefined) {
   return page(ctx, {
     back: true, ...(isDesk(ctx) ? { backTitle: "Nudj" } : {}), nav: "plan", title: "Who does it", maxWidth: 560, gap: 18, state: { numFor: "", num: "", addName: "" },
     body: [
-      col([text("Who does it", { size: 22, weight: 700, lineHeight: 28 }), meta("X0 reminds them first. If they can't, the next one.", { size: 13 })], { gap: 4 }),
+      col([text("Who does it", { size: 22, weight: 700, lineHeight: 28 }), meta("Nudj reminds them first. If they can't, the next one.", { size: 13 })], { gap: 4 }),
       col([sectionLabel("On it"), col(rows.flatMap((r, i) => (i ? [divider(), r] : [r])), { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })], { gap: 8 }),
       ...(addRows.length ? [listCard(addRows, { title: "Add" })] : []),
       ...byName,
       notice(d.spaces
-        ? "Only people in your X0 people can be on it: someone with X0 you share a space with. Everyone on it gets X0's reminders on their phone."
+        ? "Only people in your X0 people can be on it: someone with X0 you share a space with. Everyone on it gets Nudj's reminders on their phone."
         : "Only you for now. People you share a space with on X0 can be added once Spaces is on."),
       ...(invite ? [secondaryButton("Invite someone to a space", invite, md)] : []),
     ],
@@ -214,7 +214,7 @@ export const planFollowScreens: BotsScreen[] = [
 // ------------------------------------------------------------------ the item page's part
 
 const WHY_WORDS: Record<string, string> = {
-  medicine: "Marked by X0: medicine", pickup: "Marked by X0: a pickup", bill_today: "Marked by X0: due today", flight: "Marked by X0: travel",
+  medicine: "Marked by Nudj: medicine", pickup: "Marked by Nudj: a pickup", bill_today: "Marked by Nudj: due today", flight: "Marked by Nudj: travel",
 };
 
 /**
@@ -246,6 +246,6 @@ export function importanceField(): Node {
   return col([
     sectionLabel("Must not miss"),
     chips([{ label: "Normal", value: "normal" }, { label: "Must not miss", value: "must" }], "imp"),
-    meta("X0 marks medicine, pickups, bills due today and flights by itself.", { size: 12 }),
+    meta("Nudj marks medicine, pickups, bills due today and flights by itself.", { size: 12 }),
   ], { gap: 8 });
 }

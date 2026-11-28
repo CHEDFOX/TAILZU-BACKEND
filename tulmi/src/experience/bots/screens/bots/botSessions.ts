@@ -66,7 +66,7 @@ export function newSession(ctx: BotsCtx, slug: string): ActionRef {
 
 /** The round "+" at the foot of a bot's page: begin something, the same gesture as the one on Activities. */
 export function newSessionKey(ctx: BotsCtx, slug: string): Node {
-  return row([grow(), labelled(box([text("+", { size: 26, weight: 600, lineHeight: 30, color: C.paper })], {
+  return row([grow(), labelled(box([icon("plus", { size: 26, color: C.paper, weight: 2.6 })], {
     width: 56, height: 56, borderRadius: 28, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0,
   }, newSession(ctx, slug)), "Start a new chat")], {});
 }

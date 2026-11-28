@@ -137,7 +137,7 @@ export async function deleteMyData(userId: string, d: Pick<DataDeps, "media">, l
   try { await d.media?.forAccountDelete(userId); } catch (err) { log?.error({ err }, "you: delete file bytes"); }
   // `plan_busy` (0094): the busy times read from the phone's own calendars go with the chats and the notes, and the switch
   // behind them is turned off below, so nothing starts reading again by itself (docs: perms2 §2.4).
-  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "bot_health_days", "oracle_people", "code_chat_threads", "notes", "media_items", "plan_busy"]) {
+  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "bot_health_days", "oracle_people", "oracle_shares", "code_chat_threads", "notes", "media_items", "plan_busy"]) {
     try {
       const { error } = await admin.from(table).delete().eq("user_id", userId);
       if (error) log?.error({ err: error }, `you: delete ${table}`); else cleared.push(table);

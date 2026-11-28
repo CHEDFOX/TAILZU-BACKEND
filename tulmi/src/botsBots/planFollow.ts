@@ -1271,16 +1271,16 @@ export class PlanFollows {
       const ladder = ladderOf({ importance: f.importance, base: f.base_ms, climb: f.climb_ms, t });
       const tell = ladder.find((s) => s.rung === "tell");
       const holderName = await nameFor(holder);
-      if (role === "holder" && !asker && tell && f.importance === "must") next = { at: tell.at, line: `If it isn't done by ${clockAt(tell.at, f.tz_min)}, X0 tells ${firstName(askerName)}.` };
+      if (role === "holder" && !asker && tell && f.importance === "must") next = { at: tell.at, line: `If it isn't done by ${clockAt(tell.at, f.tz_min)}, Nudj tells ${firstName(askerName)}.` };
       else if (f.state === "nobody") next = null;
       else if (holder.id === viewer && f.importance === "must") {
         // A real phone call is a step only where it can happen: the provider set up and their switch on. Otherwise the in-app
         // call is the loudest step, and the line never promises a call that will not come.
         const phoneStep = phoneReady() && (await this.settingsOf(holder.id).catch(() => null))?.notify.phoneCall === true;
         const n = ladder.find((s) => RUNG_RANK[s.rung] > RUNG_RANK[f.state === "snoozed" ? "line" : f.rung] && (s.rung !== "phone" || phoneStep));
-        if (n) next = { at: n.at, line: `Next: ${n.rung === "push" ? "a reminder" : n.rung === "loud" ? "a louder reminder" : n.rung === "call" ? "X0 calls" : n.rung === "phone" ? "a phone call, if you turned that on" : "X0 tells the family"} at ${clockAt(n.at, f.tz_min)}` };
+        if (n) next = { at: n.at, line: `Next: ${n.rung === "push" ? "a reminder" : n.rung === "loud" ? "a louder reminder" : n.rung === "call" ? "X0 calls" : n.rung === "phone" ? "a phone call, if you turned that on" : "Nudj tells the family"} at ${clockAt(n.at, f.tz_min)}` };
       } else if (asker && holder.id !== viewer && f.importance === "must" && tell && RUNG_RANK[f.rung] < RUNG_RANK.tell) {
-        next = { at: tell.at, line: `At ${clockAt(tell.at, f.tz_min)} X0 tells you if ${firstName(holderName)} hasn't said done.` };
+        next = { at: tell.at, line: `At ${clockAt(tell.at, f.tz_min)} Nudj tells you if ${firstName(holderName)} hasn't said done.` };
       }
     }
     const done = f.state === "done" && f.done_by && f.done_via && f.done_ms !== null

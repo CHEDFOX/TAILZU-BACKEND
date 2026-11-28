@@ -313,7 +313,9 @@ Sending…, Sent, Couldn't send · Try again; the window's Edit and Cancel), and
 bar keeps an ask the same way while `online` is false (kit `keptOffline`: the ask bar, Ask's own send, the Code bot's "Tell Code bot
 what to do"), clears the field and says "Kept. It will send when you're back."; online, it sends as before.
 
-**Spaces, the family redesign** (shared/types/sdui.ts section 3i; the phone mirrors it in `app/src/sdui/types.ts`). Five nodes, each
+**Spaces, the family redesign** (the start screen, now: a bold + at the box's top left with CREATE SPACE, a bold + at the top right
+for Add a person, which grows the same box with one tiny bot in it; Call Your People shows no mail preview; Done goes straight to the
+list, with no "is ready" moment) (shared/types/sdui.ts section 3i; the phone mirrors it in `app/src/sdui/types.ts`). Five nodes, each
 in `KIT_TYPES`, and four names that are not nodes, each declared by name in `capabilities.components`:
 
 * **`BotStage`** (`botStage(props, children, on)`): a full tiny bot on a stage of his own (`life` keeps him across screens and
@@ -327,7 +329,7 @@ in `KIT_TYPES`, and four names that are not nodes, each declared by name in `cap
   `size + 18 + 82 + 48` tall: the box sits inside it, never over the page.
 * **`BotCrowd`** (`botCrowd`): a box of 5 to 9 tiny bots playing, grown taller while `grownWhen` holds (Call Your People sits in it),
   all cheering on `cheerWhen`; `surprises` is kit `crowdSurprises(ctx)`.
-* **`Vanish`** (`vanish`): its children vaporise while `goneWhen` holds (Create and "Your Own Space"); kept per `key`.
+* **`Vanish`** (`vanish`): its children vaporise while `goneWhen` holds; kept per `key`.
 * **`MentionField`** (`mentionField`): the space's box. "@" picks a person, "/" one of the person's four shareable bots and then one of
   its things (GET `thingsPath`), or one of `tools`; it writes a `MentionDraft` to `draftPath`; `on.onSubmit` sends it.
 * **`LiveWords`** (`liveWords`): the words a voice session hears, nothing else.
@@ -790,3 +792,26 @@ long press (Ask, Dictate, New note, Spaces). All of it is decided on the server,
   ([widget-glance-v2.md](widget-glance-v2.md); `src/widgets/{glance,situation,digest,activity,apns}.ts`). Migration 0059 adds
   `widget_glance` and `widget_activity_tokens`.
 
+
+## Media
+
+A file someone shared opens in the app's own viewer (`bots.media`, `tulmi/src/experience/bots/screens/media.ts`), not the browser:
+
+- **From** a space's chat and a conversation (`screens/spaces/feed.ts fileNode`: a photo by its picture, a video or a sound with a play
+  mark, any other file as a row) and Kutt's pictures, renders and side views (`screens/bots/cinema3d.ts`).
+- **A photo**: whole on a dark ground; Save to Photos, Save to Files, Share.
+- **A video**: played in the app with its controls for a client with the `media` block (vocabulary 2: `SDUI_V2` on), with the frame
+  that opens it as the node's fallback; without the block, that frame (a tap opens it); Save to Photos, Save to Files, Share.
+- **A sound** (a voice note, a song): play and pause in the app and how far it is (AudioPlay, from its signed https address);
+  Download, Share.
+- **Any other file**: its name and size; Open, Download, Share. The window downloads to its folder and copies the link.
+- **Saving** is download's `then` (`MediaSave`, the app's `actions.ts`): "photos" saves what came down to Photos, "files" hands it to the
+  share sheet (Save to Files). A build without it is offered "Open in browser", where the file can still be kept.
+- **Only this server's files**: a `/v1/...` path or https on `PUBLIC_ORIGIN`'s host (`safeMediaUrl`); any other link is "This file
+  can't be opened here".
+- **Mail attachments** open in it too: the worker names each attachment's file (`blob`) and hands it over as itself
+  (`GET /v1/o/:owner/businesses/:id/threads/:tid/files/:eid/:blob`, only one of that message in that conversation, 40 MB at most);
+  the backend gives each attachment a link signed for the viewer (`spaceLinks.ts`, an hour) and serves it from
+  `GET /v1/mail/businesses/:id/threads/:tid/files/:mid/:blob`, checking again that the viewer may still see the conversation (its
+  owner or admin, or a member given an address it involves).
+- **On by default**: `SDUI_V2` (the player) is on unless the env says `SDUI_V2=false`.

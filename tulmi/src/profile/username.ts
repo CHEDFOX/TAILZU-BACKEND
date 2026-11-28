@@ -7,6 +7,7 @@
  *   claim(userId, name)       take it: "ok", "taken", "too_soon" or "blocked"
  *   usernameOf(userId)        theirs
  *   idFor(name)               whose it is, for adding someone by username: the id alone, never anything about them
+ *   namesStarting(start, n)   the usernames that start with what was typed (Add a person, as they type): name and id only
  *
  * EVERY ACCOUNT HAS ONE from the moment it is made (the trigger in 0110), so adding by username can rely on it. The one a person
  * is given is a word pair and a number, never a running count: a number in order would say how many accounts there are and let
@@ -126,6 +127,30 @@ export async function idFor(raw: unknown): Promise<string | null> {
     throw new Error(`usernames: read: ${error.message}`);
   }
   return (data?.user_id as string | undefined) ?? null;
+}
+
+/** A LIKE pattern's own characters, taken literally. */
+const likeSafe = (s: string): string => s.replace(/[\\%_]/g, (c) => `\\${c}`);
+
+/**
+ * The usernames that start with what was typed, in order, held ones only: each with its holder's id. For adding a person as they
+ * type (botsBots/spaceJoin.ts search, which hides blocks and brakes the asking). A start shorter than USERNAME_MIN finds nothing.
+ */
+export async function namesStarting(raw: unknown, limit: number): Promise<Array<{ name: string; userId: string }>> {
+  const start = typeof raw === "string" ? raw.trim().replace(/^@+/, "").toLowerCase() : "";
+  if (start.length < USERNAME_MIN || start.length > USERNAME_MAX || /[^a-z0-9_-]/.test(start)) return [];
+  const n = Math.max(1, Math.min(20, Math.floor(limit)));
+  const sb = supabase();
+  if (!sb) {
+    return [...held.entries()].filter(([name]) => name.startsWith(start)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .slice(0, n).map(([name, userId]) => ({ name, userId }));
+  }
+  const { data, error } = await sb.from("usernames").select("name, user_id").eq("kind", "held").like("name", `${likeSafe(start)}%`).order("name").limit(n);
+  if (error) {
+    if (notMigrated(error.message)) return [];
+    throw new Error(`usernames: search: ${error.message}`);
+  }
+  return (data ?? []).map((r) => ({ name: String(r.name), userId: String(r.user_id) }));
 }
 
 /**

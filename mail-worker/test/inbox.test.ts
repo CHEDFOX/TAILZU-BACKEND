@@ -78,6 +78,14 @@ test("conversations per folder, newest first: all of them, the main address's, a
   assert.equal((await call("GET", `${B}/messages?folder=nope`)).json.folder.key, "inbox");
 });
 
+test("a search finds in the folder only what has the words", async () => {
+  const hit = (await call("GET", `${B}/messages?folder=inbox&q=${encodeURIComponent("any news")}`)).json;
+  assert.deepEqual(hit.messages.map((m: any) => m.threadId), ["t-m1"]);
+  assert.equal((await call("GET", `${B}/messages?folder=inbox&q=nothing-like-this`)).json.messages.length, 0);
+  // Searched in the alias's folder, the main address's mail is not found.
+  assert.equal((await call("GET", `${B}/messages?folder=f-${SP}&q=${encodeURIComponent("any news")}`)).json.messages.length, 0);
+});
+
 test("a conversation, oldest first, is marked read as it is opened; only looked at (peek), it is left as it was", async () => {
   const peeked = (await call("GET", `${B}/threads/t-m1?peek=1`)).json;
   assert.deepEqual(peeked.messages.map((m: any) => [m.from.email, m.to.map((x: any) => x.email), m.unread]), [["asha@customer.test", ["hello@shop.test"], true], ["asha@customer.test", ["hello@shop.test"], true]]);
@@ -152,4 +160,29 @@ test("rules one at a time: added as a sentence, turned off, removed", async () =
   assert.deepEqual(left.json.rules.map((r: any) => r.line), ['When Subject contains "urgent": star it']);
   assert.equal((await call("POST", `${B}/rules`, { field: "from", value: "", action: "delete" })).status, 400);
   assert.equal((await call("POST", `${B}/rules`, { field: "from", value: "x", action: "forward", target: "nobody" })).status, 400);
+});
+
+test("an attachment's file: only one of that message, in that conversation; anything else is no such attachment", async () => {
+  mail.deliver({ id: "m9", messageId: "<m9@x>", from: "asha@customer.test", name: "Asha", to: "hello@shop.test", subject: "Receipt", text: "Here it is.", thread: "t-m9" });
+  const e = mail.emails.find((x) => x.id === "m9")! as any;
+  e.attachments = [{ blobId: "blob-r1", name: "receipt.pdf", type: "application/pdf", size: 12 }];
+  // The list carries the newest message's files, for its small previews.
+  const row = (await call("GET", `${B}/messages?folder=inbox`)).json.messages.find((m: any) => m.threadId === "t-m9");
+  assert.deepEqual([row.files, row.fileCount], [[{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-r1" }], 1]);
+  const t = (await call("GET", `${B}/threads/t-m9`)).json;
+  assert.deepEqual(t.messages[0].attachments, [{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-r1" }]);
+  const get = async (url: string) => {
+    const timestamp = Math.floor(Date.now() / 1000), nonce = crypto.randomBytes(16).toString("hex");
+    const headers = { "x-tailzu-timestamp": String(timestamp), "x-tailzu-nonce": nonce, "x-tailzu-signature": sign(SECRET, { timestamp, nonce, method: "GET", pathWithQuery: url, body: Buffer.from("") }) };
+    return app.inject({ method: "GET", url, headers });
+  };
+  const ok = await get(`${B}/threads/t-m9/files/m9/blob-r1`);
+  assert.equal(ok.statusCode, 200);
+  assert.equal(ok.headers["content-type"], "application/pdf");
+  assert.match(String(ok.headers["content-disposition"]), /receipt\.pdf/);
+  assert.equal(ok.body, "file blob-r1");
+  // Another conversation's id, another blob, a bad id: nothing.
+  assert.equal((await get(`${B}/threads/t-m1/files/m9/blob-r1`)).statusCode, 404);
+  assert.equal((await get(`${B}/threads/t-m9/files/m9/blob-other`)).statusCode, 404);
+  assert.equal((await get(`${B}/threads/t-m9/files/m9/bad!blob`)).statusCode, 404);
 });

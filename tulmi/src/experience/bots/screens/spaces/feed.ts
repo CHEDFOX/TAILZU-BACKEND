@@ -32,6 +32,7 @@ import {
   type Payment, type Task,
 } from "./parts.js";
 import { KIND_WORD } from "./sharePage.js";
+import { mediaKind, openMedia } from "../media.js";
 import { clockOf, dayKeyOf, dayWords, link, payRow, plural, taskRow } from "./spaceDetail.js";
 
 // ===================================================================== what it reads (src/botsBots/spaceFeed.ts, as the route answers)
@@ -71,14 +72,20 @@ export interface FeedRead {
  */
 const cardGround = (bare?: boolean) => (bare ? {} : { borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 14 });
 
-/** A file in a message: a photo by its signed link in a sized box, any other file as a row; both open it. */
+/**
+ * A file in a message, opened in the app's viewer (screens/media.ts): a photo by its signed link in a sized box, a video with a play
+ * mark, a sound with a play mark and its length, any other file as a row.
+ */
 export function fileNode(f: FeedMessage["files"][number], desk: boolean, bare?: boolean): Node {
-  const go: ActionSpec = { kind: "openUrl", url: f.url, external: true };
-  return f.mime.startsWith("image/")
-    ? box([picture(f.url, desk ? 280 : 220, desk ? 200 : 160, { radius: 14, fit: "cover", background: C.surface, label: f.name })], {}, go)
-    : row([icon("clip", { size: 16 }), text(f.name, { size: 14, lineHeight: 19, lines: 1, style: { flexShrink: 1 } }), meta(kb(f.bytes), { size: 12 })], {
-      gap: 8, ...(bare ? { paddingVertical: 2 } : { paddingVertical: 10, paddingHorizontal: 12 }), ...cardGround(bare), maxWidth: 280,
-    }, go);
+  const go: ActionSpec = openMedia({ url: f.url, name: f.name, mime: f.mime, size: kb(f.bytes) });
+  const kind = mediaKind(f.mime, f.name);
+  if (kind === "image") return box([picture(f.url, desk ? 280 : 220, desk ? 200 : 160, { radius: 14, fit: "cover", background: C.surface, label: f.name })], {}, go);
+  const mark = kind === "video" || kind === "audio"
+    ? box([text("▶", { size: 11, color: C.paper, lineHeight: 14 })], { width: 26, height: 26, borderRadius: 13, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 })
+    : icon("clip", { size: 16 });
+  return row([mark, text(f.name, { size: 14, lineHeight: 19, lines: 1, style: { flexShrink: 1 } }), meta(kb(f.bytes), { size: 12 })], {
+    gap: 8, alignItems: "center", ...(bare ? { paddingVertical: 2 } : { paddingVertical: 10, paddingHorizontal: 12 }), ...cardGround(bare), maxWidth: 280,
+  }, go);
 }
 
 /** Something shared from the person's things (a list, a trip, a note), opening it. */

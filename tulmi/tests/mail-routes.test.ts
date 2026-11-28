@@ -137,6 +137,9 @@ describe("the mail bot", () => {
     await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=f-Ab_9&page=2&limit=999" });
     // A folder that is not one of the mailbox's keys is not passed on.
     await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=..%2Foverview&page=x" });
+    // A search goes with its words; a line break in them does not.
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=inbox&q=order%201234" });
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=inbox&q=a%0Ab" });
     await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/threads/T-1_a" });
     await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/threads/T-1_a/archive", payload: { all: true } });
     await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/send", payload: { from: "hello@leafandco.in", to: "asha@customer.test", cc: "", subject: "Hi", text: "Hello.", replyTo: "m1", bcc: "x@y.z", headers: { a: 1 } } });
@@ -155,6 +158,8 @@ describe("the mail bot", () => {
       { method: "GET", path: "/businesses/leaf-co/folders", body: undefined },
       { method: "GET", path: "/businesses/leaf-co/messages?folder=f-Ab_9&page=2", body: undefined },
       { method: "GET", path: "/businesses/leaf-co/messages", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/messages?folder=inbox&q=order%201234", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/messages?folder=inbox", body: undefined },
       { method: "GET", path: "/businesses/leaf-co/threads/T-1_a", body: undefined },
       { method: "POST", path: "/businesses/leaf-co/threads/T-1_a/archive", body: {} },
       { method: "POST", path: "/businesses/leaf-co/send", body: { from: "hello@leafandco.in", to: "asha@customer.test", cc: "", subject: "Hi", text: "Hello.", replyTo: "m1" } },
@@ -326,6 +331,9 @@ const THREADS: Record<string, Record<string, unknown>> = {
   "t-sup": { threadId: "t-sup", subject: "Login trouble", messages: [message("m-sup", "asha@customer.test", ["Support@LeafandCo.in"]), message("m-sup2", "support@leafandco.in", ["asha@customer.test"])] },
   "t-bil": { threadId: "t-bil", subject: "Invoice", messages: [message("m-bil", "ravi@customer.test", ["billing@leafandco.in"])] },
   "t-cc": { threadId: "t-cc", subject: "Hello", messages: [message("m-cc", "x@customer.test", ["hello@leafandco.in"], ["support@leafandco.in"])] },
+  // With an attachment: one to support@ (Sam answers it), one to billing@ (he does not).
+  "t-att": { threadId: "t-att", subject: "Receipt", messages: [{ ...message("m-att", "asha@customer.test", ["support@leafandco.in"]), attachments: [{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-1" }] }] },
+  "t-batt": { threadId: "t-batt", subject: "Bill", messages: [{ ...message("m-batt", "ravi@customer.test", ["billing@leafandco.in"]), attachments: [{ name: "bill.pdf", size: 9, type: "application/pdf", blob: "blob-2" }] }] },
 };
 
 const run = (id: number, company: string, address: string, status: string, priority = "normal") => ({
@@ -365,7 +373,8 @@ function spaceWorker() {
       if (sub === "/messages") {
         const all = biz.id === "solo-co" ? SOLO_FOLDERS : FOLDERS;
         const folder = all.find((f) => f.key === new URLSearchParams(query).get("folder")) ?? all[0];
-        return { folder, folders: all, page: 0, more: false, total: 1, messages: [{ id: "m-1", threadId: "t-1", subject: "Hi" }] } as T;
+        return { folder, folders: all, page: 0, more: false, total: 1, messages: [{ id: "m-1", threadId: "t-1", subject: "Hi" },
+          { id: "m-att", threadId: "t-att", subject: "Receipt", files: [{ name: "receipt.pdf", size: 12, type: "application/pdf", blob: "blob-1" }], fileCount: 1 }] } as T;
       }
       const t = /^\/threads\/([^/]+)(\/[a-z]+)?$/.exec(sub);
       if (t) {
@@ -385,6 +394,12 @@ function spaceWorker() {
       if (a && method === "DELETE") return { business: { ...biz, addresses: biz.addresses.filter((x) => x.id !== Number(a[1])) } } as T;
       return { ok: true } as T;
     },
+  };
+  w.file = async (owner: string, path: string) => {
+    calls.push({ owner, method: "FILE", path, body: undefined });
+    const m = /^\/businesses\/([a-z0-9-]+)\/threads\/([^/]+)\/files\/([^/]+)\/([^/]+)$/.exec(path);
+    if (!m || !list(owner).some((b) => b.id === m[1])) throw new MailError(404, "bad_request", "No such business.");
+    return { body: Buffer.from(`file ${decodeURIComponent(m[4]!)}`), type: "application/pdf", name: m[4] === "blob-1" ? "receipt.pdf" : "bill.pdf" };
   };
   return { calls, w };
 }
@@ -723,5 +738,51 @@ describe("in a space: the pushes", () => {
     }
     expect(PUSH_DEFAULTS.labels["push.space_mail.body"]).toBe("set up mail for {domain}.");
     expect(PUSH_DEFAULTS.labels["push.space_mail_handle.body"]).toBe("gave you {address} to answer.");
+  });
+});
+
+describe("a conversation's attachments", () => {
+  it("come with a signed link for the viewer (the worker's file id goes no further), and the link hands over the file", async () => {
+    const { a, call, calls } = await spaceApp();
+    const t = (await call(RAVI, "GET", `${L}/threads/t-att`)).json();
+    const att = t.messages[0].attachments[0];
+    expect(att).toMatchObject({ name: "receipt.pdf", size: 12, type: "application/pdf" });
+    expect(att.blob).toBeUndefined();
+    expect(att.url).toMatch(/^\/v1\/mail\/businesses\/leaf-co\/threads\/t-att\/files\/m-att\/blob-1\?v=.+&exp=\d+&sig=/);
+    // No session: the link says who it is for.
+    const got = await a.inject({ method: "GET", url: att.url });
+    expect(got.statusCode).toBe(200);
+    expect(got.headers["content-type"]).toBe("application/pdf");
+    expect(String(got.headers["content-disposition"])).toContain("receipt.pdf");
+    expect(got.body).toBe("file blob-1");
+    expect(calls.some((c) => c.method === "FILE" && c.owner === ownerOf(RAVI) && c.path === `${L}/threads/t-att/files/m-att/blob-1`)).toBe(true);
+    // Changed, or another file under the same signature: nothing.
+    expect((await a.inject({ method: "GET", url: att.url.replace("blob-1", "blob-2") })).statusCode).toBe(404);
+    expect((await a.inject({ method: "GET", url: att.url.replace(/sig=[^&]+/, "sig=bad") })).statusCode).toBe(404);
+    expect((await a.inject({ method: "GET", url: att.url.split("?")[0]! })).statusCode).toBe(404);
+  });
+
+  it("show in a folder's list too, each with its own signed link, so the list can preview them", async () => {
+    const { a, call } = await spaceApp();
+    for (const [who, folder] of [[RAVI, "inbox"], [SAM, "f-sup"]] as const) {
+      const list = (await call(who, "GET", `${L}/messages?folder=${folder}`)).json();
+      const f = list.messages.find((m: { id: string }) => m.id === "m-att").files[0];
+      expect(f).toMatchObject({ name: "receipt.pdf", type: "application/pdf" });
+      expect(f.blob).toBeUndefined();
+      expect(f.url).toMatch(/^\/v1\/mail\/businesses\/leaf-co\/threads\/t-att\/files\/m-att\/blob-1\?v=.+&sig=/);
+      expect((await a.inject({ method: "GET", url: f.url })).statusCode, who).toBe(200);
+    }
+  });
+
+  it("a member who answers an address: the files of conversations that involve it, and none of the rest", async () => {
+    const { a, call } = await spaceApp();
+    const mine = (await call(SAM, "GET", `${L}/threads/t-att`)).json();
+    const url = mine.messages[0].attachments[0].url as string;
+    expect((await a.inject({ method: "GET", url })).statusCode).toBe(200);
+    // Ravi's link to the billing conversation's file, carried by Sam's signature, opens nothing: the viewer is checked again.
+    const ravis = (await call(RAVI, "GET", `${L}/threads/t-batt`)).json().messages[0].attachments[0].url as string;
+    const samsSig = new URL(url, "http://x").search;
+    const forged = `${ravis.split("?")[0]}${samsSig}`;
+    expect((await a.inject({ method: "GET", url: forged })).statusCode).toBe(404);
   });
 });

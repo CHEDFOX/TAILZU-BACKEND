@@ -106,6 +106,7 @@ import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerNativeLooksRoutes } from "./routes/app/nativeLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
+import { setOracleSpaces } from "./oracle/people.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
 import { registerRoomsRoutes } from "./routes/bots/rooms.js";
@@ -694,6 +695,17 @@ registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 registerNativeLooksRoutes(app, { rateLimit: AUTHED_RL });
 // Chamen's card: when and where a person was born, for Chamen to read their sky from (src/oracle, docs/oracle.md).
 registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
+// Chamen's shared charts (oracle/people.ts): the spaces a person is in, and what they call someone in one of them.
+setOracleSpaces({
+  mine: (userId) => botsParts.spaces.mine(userId),
+  nameOf: async (viewerId, userId) => {
+    for (const sp of await botsParts.spaces.mine(viewerId)) {
+      const m = (await botsParts.spaces.membersOf(sp.id)).find((x) => x.userId === userId);
+      if (m) return m.name;
+    }
+    return "";
+  },
+});
 // Who is whose space admin (meet/people.ts; nobody while Spaces is off), made once from the bots area's Spaces: the meeting bot and the mail
 // bot read the same people.
 const spacesPeople = spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(Date.now, { log: app.log }) });

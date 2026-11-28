@@ -16,14 +16,15 @@
  *   is tapped, now and then a gesture of his own; then its name, and a short line on what it can do — taller than Home's
  *   rows, because here the line is the point. A build that cannot draw the living tiles gets the same rows, still.
  *
- * KEYLESSBORD IS NOT A TILE, and that is deliberate. It is a keyboard: you use it by typing in other apps, never by
- * starting something here, and its pages are settings-shaped (voices, words, haptics, history). A tile in a "start
- * something" grid would be a promise it does not keep — so it gets one plain line at the foot, which keeps every one
- * of its pages reachable without lying about what it is.
+ * KEYLESSBORD IS A TILE LIKE THE REST, in a group of its own ("Wherever you type"). It was once a plain line at the foot,
+ * because a keyboard is used by typing in other apps rather than started here; but a card that looked unlike every
+ * other read as an afterthought. Its line says what it is and where it works ("in any app"), so the tile promises
+ * nothing it does not do, and a tap opens its pages (voices, words, haptics, history) as before.
  */
+import { filmsOn } from "../../../../cinema/films.js";
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, type LiveBot, page, col, row, text, meta, grow, C, open, SCREENS, sectionLabel, botAvatar, icon,
+  type BotsCtx, type LiveBot, page, col, row, text, meta, grow, C, open, SCREENS, sectionLabel,
   grid, labelled, title as pageTitle, botRoute, canMove, canStage, botTiles, botTileSpec, makeTileSpec, botTile, makeBotTile, homeSurprises,
 } from "../../kit.js";
 import { oracleTileLook } from "./oraclePage.js";
@@ -41,13 +42,14 @@ export const BOT_GROUPS: ReadonlyArray<{ id: string; title: string; line: string
   { id: "said", title: "Said and written", line: "Your mail, your meetings, and what was agreed", slugs: ["mail"] },
   { id: "making", title: "Making", line: "Describe it, and they build it", slugs: ["code", "cinema"] },
   { id: "world", title: "Out in the world", line: "Where you are going, and how you'll speak there", slugs: ["travel", "lingo"] },
+  { id: "keys", title: "Wherever you type", line: "Your own voice, in every app you write in", slugs: ["keybot"] },
 ];
 
 /**
- * Built-ins that are deliberately not tiles here. `talk` is the tab you came from; `keybot` is a keyboard, and gets
- * its own line at the foot (see this file's head); `meet` is part of Sribbu (the mail bot's tile: screens/bots/sribbu.ts).
+ * Built-ins that are deliberately not tiles here. `talk` is the tab you came from; `meet` is part of Sribbu (the mail
+ * bot's tile: screens/bots/sribbu.ts).
  */
-export const NOT_TILED: readonly string[] = ["talk", "keybot", "meet"];
+export const NOT_TILED: readonly string[] = ["talk", "meet"];
 
 /** Every slug a group claims, for the check that nothing is lost. */
 export const GROUPED_SLUGS: readonly string[] = BOT_GROUPS.flatMap((g) => g.slugs);
@@ -64,12 +66,19 @@ export const START_LINES: Readonly<Record<string, string>> = {
   code: "A developer on call. Say what's broken; it reads your code, fixes it and sends you the change to approve.",
   cinema: "A film studio in your pocket. Describe a video or a poster; it writes, shoots, edits and hands it over done.",
   travel: "A travel planner that does the legwork. Say where and when; it builds the route, the stays and the timings.",
+  keybot: "A keyboard that writes like you. Say a rough thought in any app; it types the message you meant to send.",
   lingo: "A language tutor you talk to. It teaches by conversation and brings each word back just before you'd forget it.",
 };
 const LINE_MAX = 116;
 
+/**
+ * KUTT WHILE FILMS ARE OFF (CINEMA_FILMS, cinema/films.ts): a picture of the idea, then the picture built in 3D. The film line above
+ * comes back with films; the card never promises what the page cannot make.
+ */
+export const CINEMA_3D_LINE = "A 3D studio in your pocket. Describe an idea; you see it as a picture, then it's built in 3D from every side.";
+
 export function startLine(b: LiveBot, ctx: BotsCtx): string {
-  const own = b.builtin ? START_LINES[b.slug] : undefined;
+  const own = b.builtin ? (b.slug === "cinema" && !filmsOn() ? CINEMA_3D_LINE : START_LINES[b.slug]) : undefined;
   if (own) return own;
   const p = (b.purpose || "").replace(/\s+/g, " ").trim();
   if (!p) return idleLine(b, ctx.client);
@@ -83,13 +92,13 @@ export const START_TILE_HEIGHT = 184;
 
 /**
  * A build that can (BotTilesStage): the bot keeps the top of the card as on Home, and the card grows DOWN for his name
- * and what he can do, which start under him and may take three lines. The stage is the bot's full size (core.ts: his
+ * and what he can do, which start under him and is never cut: the height is the least it takes, and it grows for a longer line. The stage is the bot's full size (core.ts: his
  * size tops out with a floor of about 80 px); the rest is the words and the padding under them.
  */
-export const START_STAGE = 100;
+export const START_STAGE = 114;
 export const START_SUB_LINES = 3;
 /** The room between the name and what the bot is, so the two read as a title and its line. */
-export const START_NAME_GAP = 9;
+export const START_NAME_GAP = 12;
 export const START_STAGE_HEIGHT = START_STAGE + 21 + START_NAME_GAP + START_SUB_LINES * 16 + 24;
 
 /** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
@@ -133,7 +142,6 @@ export function botsStartPage(ctx: BotsCtx): ReturnType<typeof page> {
   // Theirs: anything they made, plus any built-in no group claims — so a built-in added later is still reachable here
   // even before someone puts it in a group (the test says to put it in one).
   const mine = ctx.live.bots.filter((b) => !GROUPED_SLUGS.includes(b.slug) && !NOT_TILED.includes(b.slug));
-  const keybot = have.get("keybot");
   return page(ctx, {
     back: true, title: "Start something", nav: "bots",
     body: [
@@ -145,14 +153,6 @@ export function botsStartPage(ctx: BotsCtx): ReturnType<typeof page> {
         col([sectionLabel("Yours"), meta(mine.length ? "The ones you made" : "Nothing yet — one sentence is enough", { size: 12, lineHeight: 16 })], { gap: 2 }),
         groupRow(ctx, mine, { make: true }),
       ], { gap: 10 }),
-      // The keyboard: one line, because it is not something you start (see this file's head).
-      ...(keybot ? [labelled(row([
-        botAvatar(keybot, 26),
-        col([text(keybot.name, { size: 14, weight: 500, lineHeight: 19 }), meta(idleLine(keybot, ctx.client), { size: 12, lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-        icon("chevron", { size: 16, color: C.meta }),
-      ], {
-        gap: 12, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: C.line,
-      }, botRoute(keybot.slug)), `Open ${keybot.name}`)] : []),
       row([grow(), labelled(text("Done", { size: 14, weight: 500, lineHeight: 19, color: C.meta }), "Close"), grow()], { paddingTop: 4 }),
     ],
     gap: 22,

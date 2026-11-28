@@ -147,3 +147,35 @@ describe("one to one: Add a person", () => {
     expect(last).toBe(429);
   });
 });
+
+describe("Add a person as they type (GET /people/search)", () => {
+  it("lists the usernames that start with what was typed: name and tiny bot only, never yourself, never across a block", async () => {
+    const s = await served();
+    await claim("00000000-0000-4000-8000-0000000000ee", "meerakat");
+    const r = await s.call("GET", `${AREA}/people/search?q=MEE`, A_);
+    expect(r.status).toBe(200);
+    expect(r.body.people.map((p: { username: string }) => p.username)).toEqual(["meera", "meerakat"]);
+    // Nothing about them but the name and their tiny bot: no id, no name, no email.
+    for (const p of r.body.people) expect(Object.keys(p).sort()).toEqual(["bot", "username"]);
+    // An @ is fine; fewer than three letters finds nothing; you are never in your own list.
+    expect((await s.call("GET", `${AREA}/people/search?q=@rohan`, A_)).body.people.map((p: { username: string }) => p.username)).toEqual(["rohan"]);
+    expect((await s.call("GET", `${AREA}/people/search?q=me`, A_)).body.people).toEqual([]);
+    expect((await s.call("GET", `${AREA}/people/search?q=aan`, A_)).body.people).toEqual([]);
+    // A block, either way round: they are not listed. (Blocking needs a space in common: Meera comes into Home first.)
+    const id = (await s.call("POST", `${AREA}/spaces`, A_, { name: "Home" })).body.id as string;
+    await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "meera" });
+    const inv = (await full(s, M_)).invitations;
+    await s.call("PUT", `${AREA}/spaces/invitations/${inv[0].code}`, M_, { decision: "accept" });
+    expect((await s.call("POST", `${AREA}/blocks`, M_, { person: A_ })).status).toBe(200);
+    expect((await s.call("GET", `${AREA}/people/search?q=mee`, A_)).body.people.map((p: { username: string }) => p.username)).toEqual(["meerakat"]);
+  });
+
+  it("is braked on its own: a keystroke is a search, so 240 an hour, then the server's words", async () => {
+    const s = await served();
+    let last = 0;
+    for (let i = 0; i < 241; i++) last = (await s.call("GET", `${AREA}/people/search?q=mee${i % 10}`, X_)).status;
+    expect(last).toBe(429);
+    // Look-ups by a whole name have their own brake, untouched.
+    expect((await s.call("POST", `${AREA}/spaces/people`, X_, { username: "meera" })).status).toBe(201);
+  });
+});

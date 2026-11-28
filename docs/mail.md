@@ -161,11 +161,11 @@ the backend and checks that it answers set up.
 * `tulmi/tests/mail-page.test.ts`: the set-up cards (the business, then the records with Copy, then the company personality read from the
   website as the records are kept and shown as read, Keep or Change it, its own page going on to the last step, then how it answers; not
   read again when set up again unless asked), the plain card
-  for an older build, the page (the mailbox's rows with what is unread, needs you, answered, filed, the day's numbers, a chip per domain and
-  Add a domain), a reply (Send with the changes first, Keep, Throw away, written again, Stop), the settings' rows, the records and the
+  for an older build, the page (the search, the folder chips with what is unread, the line of what waits, the mail under its day and today
+  by the part of the day, a chip per domain only when there are several, a handler's list from their first address), a reply (Send with the changes first, Keep, Throw away, written again, Stop), the settings' rows, the records and the
   company personality; every tree through the app's linter.
 * `tulmi/tests/mail-inbox.test.ts`: the mailbox (a chip per folder and per domain, its conversations, a page at a time, an unknown folder
-  read as All mail), one conversation (oldest first, attachments, Archive, Delete, Spam or Back to inbox, the AI's draft), writing (from any
+  read as All mail, a search kept across pages and when nothing has the words), one conversation (oldest first, attachments, Archive, Delete, Spam or Back to inbox, the AI's draft), writing (from any
   address, a reply from the address it came to, a forward, the AI writing it), a domain's addresses (an alias added with its folder; one
   address's folder, name, AI mode and auto-reply; removed on a second yes, never the main one) and its rules.
 * `tulmi/tests/mail-chat.test.ts`: the chat's digest (the day, what needs a person, the latest, a stranger's subject fenced), the mail bot's
@@ -217,17 +217,24 @@ in and he catches it, reads who it is from and tucks it away (`m.catch`); in the
 4. **How it answers**: Drafts for you (every reply waits for a person; the start) or Sends by itself (after a short wait; money, legal
    matters, complaints and anything unsure still wait). Every address of the business, the same way.
 
-**The page**: the domain's main address and how it answers, and its settings; a chip per domain, and **Add a domain** (any number). Before
-anything arrives, one line says that mail comes once the domain points here, with the records a tap away. Then the last 24 hours in
-numbers; **the mailbox**, as Xooteq Mail's side bar has it: All mail (every address), the main address's own and each alias's (once there
-are aliases), Sent and the other folders, each with what is unread, and **Write**; and three lists: **Needs you** (a message a person should answer, then drafts, then replies about to go by themselves, urgent ones
-first, each with the AI's one line, the sender, the kind and when), **Answered** and **Filed** (with why: a newsletter, automatic mail, the
-AI paused). At its foot, the chat: "What needs me today?", "Summarize this week's mail".
+**The page** is a plain mail inbox: the domain's main address, a small black **+** to write and its settings; a chip per domain only
+when there are several (another is added in Settings). Under the head, one thin round **search** ("Search mail", finding in all mail: the
+mailbox with q, which the worker asks Stalwart for as JMAP's text filter), then the folders as one line of chips that swipes sideways (All
+mail, each alias's once there are several addresses, Sent and more), each with what is unread. When replies wait for a person, one line
+says how many and opens the first. Then the newest mail, 30 at most, under its day: today by the part of the day (**This morning** before
+noon, **This afternoon** to five, **This evening** after), then **Yesterday**, the weekday this week, and the date before that; each row
+the sender's initial, who, when, the subject, the start of it, and what the AI did ("Needs you", "AI draft", "AI answered"). A mail with
+files shows them small under its text (the newest message's, three and then "+N"): a photo as a 44-point thumbnail, a video as a dark square
+with a play mark, a sound with a mic, any other file as a pill with its name; each opens the viewer (`bots.media`). The worker lists each
+message's files with their ids, and X0 Bot signs a link for each for the viewer (as a conversation's attachments are), so a preview is
+seen only by whoever may see that conversation. **More mail**
+opens the mailbox at its next page. A handler's list and search are their first address's. Before anything arrives, one line says that
+mail comes once the domain points here, with the records a tap away. Calls sit under the mail; at the foot, the chat.
 
-**The mailbox** (`bots.mail.inbox`): a chip per domain (when there are several) and per folder: All mail, the main address's own, each
-alias's, Drafts, Sent, Archive, Spam, Trash and any other folder, with what is unread. A folder's conversations, newest first, 30 a page
-(Newer, Older): who, how many, the subject, the start of the last message, when, unread, starred, and what the AI did ("AI draft", "Needs
-you", "AI answered"). **One conversation** (`bots.mail.thread`): oldest first, each message whole with its attachments' names; Archive,
+**The mailbox** (`bots.mail.inbox`): the same search, a chip per domain (when there are several) and per folder: All mail, the main
+address's own, each alias's, Drafts, Sent, Archive, Spam, Trash and any other folder, with what is unread. A folder's conversations under
+their day as on the page, 30 a page (Newer, Older). With q it is a search ("Search", how many were found, kept as it pages and changes
+folder). **One conversation** (`bots.mail.thread`): oldest first, each message whole with its attachments' names; Archive,
 Delete, Spam (Back to inbox from Trash or Spam), Mark unread, Star; the AI's draft a tap away ("See the draft"); Reply and Forward.
 
 **Writing** (`bots.mail.compose`): new mail, a reply or a forward, from any of the domain's addresses (a reply from the address it was sent

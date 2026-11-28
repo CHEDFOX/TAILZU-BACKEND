@@ -25,7 +25,7 @@ const asker: FollowView = {
 const holder: FollowView = {
   id: "eeeeeeee-0000-4000-8000-0000000000a2", item: "stask:s1:t1", kind: "ask", title: "Pick Kabir up from school", when: "8 pm", must: true, why: "pickup",
   state: "open", you: "holder", n: 2, asker: { name: "Priya", me: false }, holder: { key: ME, name: "You", me: true, how: "app" },
-  people: [], steps: [], answers: [], next: { at: ist(12, 20, 20), line: "If it isn't done by 8:20 pm, X0 tells Priya." }, done: null,
+  people: [], steps: [], answers: [], next: { at: ist(12, 20, 20), line: "If it isn't done by 8:20 pm, Nudj tells Priya." }, done: null,
   buttons: buttons({ cant: true, later: [{ action: "later_15m", label: "In 15 min" }, { action: "later_tmrw", label: "Tomorrow morning" }] }), ask: { asker: "Priya" },
 };
 const backup: FollowView = {

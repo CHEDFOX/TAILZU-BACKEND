@@ -87,6 +87,11 @@ something on) and the to-dos with no day on the right. Work in space's tabs sit 
 - **Today** shows up to 6 rows and **Tomorrow** up to 3, then "2 more". After 5 pm Tomorrow comes first and Today keeps only what is
   open. Done items fade and go to the end. The source of an item is only in its details. The one exception is the tiny bot of the person
   who set it.
+- **The threaded home** (`screens/bots/planHome.ts`) opens on today, and on tomorrow as soon as today is done, at any hour (nothing open
+  still to come, no follow line; a day with nothing on stays today until 5 pm: `planThread.ts` defaultDay). On the phone the head,
+  Your work / Work in space and the days stay pinned at the top while the day scrolls under them (kit page `top`). The day's content
+  slides in whenever it is drawn for another day, including when the live channel brings tomorrow in after the last thing is done, and
+  the day picked in the strip pops in where it now is.
 - **See the week** (`bots.plan.week`) is a plain list, one line a day ("Sat 14 · PTM 9:30 · 2 more"); an empty day is just its date,
   and a tap opens that day's rows. The window has the rest of the week on the right.
 - **One box**: "Tell me anything, or add a photo". The server decides what it was (section 4). The + opens Photo, Camera and File, and
@@ -570,13 +575,13 @@ strip was on) opens the card on today, so a plain Check is never "That time has 
 words); Time, under its own label (Any time, 9 am, 12 pm, 4 pm, 6 pm, 8 pm, Other time), so What, When, Time, For who, Must not miss and
 Check fit one 390 × 844 phone screen above the box; For who
 (each of the person's X0 people as their tiny bot, You first, only with follow-through on and someone to pick: "They get the reminder on
-their phone."); one Must not miss switch ("X0 keeps reminding until it's done."; off means X0 decides); "+ Repeat" and "+ Place", closed
+their phone."); one Must not miss switch ("Nudj keeps reminding until it's done."; off means X0 decides); "+ Repeat" and "+ Place", closed
 until tapped or filled by the box. Then **Check**. There is no "if not done, pass to": who comes next is set on the item page's "Who does
 it", which already orders people. Check reads the What words by rules into what the person left as it was ("Dentist Fri 5 pm" with
 nothing picked is Dentist, Fri, 5 pm), and only the words it uses leave the title: "Friday prayer 1 pm" on a picked Saturday stays
 "Friday prayer" at 1 pm, "Morning walk 7 am" stays "Morning walk" at 7 am.
 
-**Check (rules, free, always).** The check face is titled "X0 checked": up to 3 drafts, each with its head ("Medicine (Mom)" while an
+**Check (rules, free, always).** The check face is titled "Nudj checked": up to 3 drafts, each with its head ("Medicine (Mom)" while an
 unmatched name stays), when ("Fri 13 Nov · 5 pm", "Every Tue and Thu · 5 pm", "To do · no day"), for who ("For Dad · reminded at 8:45 pm":
 what Done will really do, with Dad's tiny bot; a repeat made after today's reminder minute says "reminded tomorrow at 4:45 pm", the
 first one that really comes, since a repeat's reminder is never shortened), Must not miss, where, and up to 3 notes, stops first, each
@@ -608,7 +613,7 @@ Plan."). The checks:
 With follow-through off, who-words and must-words are not read at all (they stay in the title), and none of the who, must or follow
 checks is made. No check reads anything of the other person's: only their name, from the person's own X0 people.
 
-**The box** at the bottom: "Tell X0, like Dentist Fri 5 pm" (the example teaches the shape the rules read best). It does everything the
+**The box** at the bottom: "Tell Nudj, like Dentist Fri 5 pm" (the example teaches the shape the rules read best). It does everything the
 old box did, and makes drafts:
 - plan words ("Dentist Fri 5 pm and remind Mom about medicine at 9 every night") become up to 3 drafts, shown checked; a 4th or more:
   "X0 took the first 3. Tell it the rest after.";

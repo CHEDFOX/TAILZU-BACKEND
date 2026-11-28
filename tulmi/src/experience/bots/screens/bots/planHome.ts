@@ -84,7 +84,8 @@ export function homeHead(ctx: BotsCtx, d: PlanDayData | undefined, day: string):
     botAvatar(look, desk ? 44 : 40),
     col([
       text("Nudj", { size: desk ? 22 : 19, weight: 600, lineHeight: desk ? 26 : 24, lines: 1 }),
-      ...(d?.head ? [text(d.head, { size: desk ? 13 : 12, weight: 500, color: OCHRE, lineHeight: desk ? 18 : 16, lines: 1 })] : []),
+      // Two lines at most: "Leave by 7:50 pm for the dentist" is the whole point of the line, so it wraps rather than being cut.
+      ...(d?.head ? [text(d.head, { size: desk ? 13 : 12, weight: 500, color: OCHRE, lineHeight: desk ? 18 : 16, lines: 2 })] : []),
     ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     ...buddy,
   ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: desk ? 12 : 10, alignItems: "center", minHeight: desk ? 56 : 48 }, planSomething(day, { box: true })),
@@ -128,7 +129,7 @@ const longDay = (k: string) => { const t = keyDate(k); return `${WEEKDAYS_LONG[t
 export function stripNodes(d: PlanDayData, scroll = false): Node {
   const cell = (x: PlanDayData["strip"]["days"][number]): Node => {
     const on = x.key === d.day;
-    return labelled(col([
+    const c = labelled(col([
       text(x.wd, { size: 11, weight: 500, color: on ? C.paper : C.meta, lineHeight: 14 }),
       text(x.n, { size: 15, weight: on || x.today ? 600 : 400, color: on ? C.paper : C.ink, lineHeight: 20 }),
       box([], { width: 4, height: 4, borderRadius: 2, backgroundColor: x.busy ? (on ? C.paper : OCHRE) : "transparent" }),
@@ -137,6 +138,8 @@ export function stripNodes(d: PlanDayData, scroll = false): Node {
       alignItems: "center", gap: 2, paddingVertical: 7, borderRadius: 14, backgroundColor: on ? C.ink : C.paper,
       ...(x.today && !on ? { borderWidth: 1, borderColor: C.line } : {}),
     }, goDay(x.key)), longDay(x.key));
+    // The day shown pops in where it now is: only it carries the motion, so moving to another day mounts it afresh.
+    return on ? { ...c, motion: { appear: "scaleIn", durationMs: 240 } } : c;
   };
   const arrow = (to: string | null, dir: -1 | 1): Node => (to
     ? labelled(box([icon(dir < 0 ? "back" : "chevron", { size: 16, color: C.grey70 })], { width: 26, alignSelf: "stretch", alignItems: "center", justifyContent: "center" }, goDay(to)), dir < 0 ? "The week before" : "The week after")
@@ -210,9 +213,14 @@ function rowCard(ctx: BotsCtx, s: Extract<ThreadStep, { k: "row" }>): Node {
 export function threadNodes(ctx: BotsCtx, steps: ThreadStep[]): Node[] {
   const w = labelWidth(ctx);
   const blank = (): Node => box([], { width: w, flexShrink: 0 });
+  // A label is drawn once for a run of rows that share it ("To do", "To do", "To do" reads as one "To do").
+  let lastLabel = "";
   return steps.map((s): Node => {
+    if (s.k !== "row") lastLabel = "";
     if (s.k === "row") {
-      return row([text(s.label, { size: 12, weight: 600, lineHeight: 16, style: { width: w, paddingTop: 12, flexShrink: 0 } }), track(), rowCard(ctx, s)], { gap: 10, alignItems: "stretch" });
+      const label = s.label === lastLabel ? "" : s.label;
+      lastLabel = s.label;
+      return row([text(label, { size: 12, weight: 600, lineHeight: 16, style: { width: w, paddingTop: 12, flexShrink: 0 } }), track(), rowCard(ctx, s)], { gap: 10, alignItems: "stretch" });
     }
     if (s.k === "leave") {
       // Open map is a hand-off the phone checks against its own list (Maps), only when it is time to go.
@@ -425,18 +433,34 @@ export function focusSync(ctx: BotsCtx, d?: PlanDayData): Node[] {
 
 // ------------------------------------------------------------------ the home, phone and window
 
+/**
+ * THE DAY'S CONTENT, ARRIVING. It slides in each time it is drawn for another day: on a tap in the strip, and when today is done and
+ * the home moves on to tomorrow by itself (planThread.ts defaultDay, the live channel bringing the page again). A refresh of the same
+ * screen keeps what is drawn, so the block sits at an index that flips with the day: a new day mounts it afresh, and its motion plays.
+ */
+const dayNumber = (day: string): number => Math.floor(Date.parse(`${day}T00:00:00Z`) / 86_400_000);
+function arriving(day: string, children: Node[]): Node {
+  const block: Node = { ...col(children, { gap: 22 }), motion: { appear: "slideInRight", durationMs: 320 } };
+  return col([...(dayNumber(day) % 2 ? [box([], { height: 0 })] : []), block], { gap: 0 });
+}
+
 export function planHomePhone(ctx: BotsCtx, d: PlanDayData | undefined) {
   return page(ctx, {
     title: "Nudj", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 22,
-    body: [
+    // The head, Your work / Work in space and the days stay at the top while the day scrolls under them.
+    top: [
       homeHead(ctx, d, shownDay(ctx, d)),
+      // Swiped on a phone that draws it; the window keeps its arrows, which suit a pointer better than a drag.
+      ...(d ? [stripNodes(d, canScrollX(ctx))] : []),
+    ],
+    body: [
       ...(!d ? [noRead()] : [
         ...addedLine(ctx, d),
-        // Swiped on a phone that draws it; the window keeps its arrows, which suit a pointer better than a drag.
-        stripNodes(d, canScrollX(ctx)),
-        ...(d.needs ? [needsPart(ctx, d.needs)] : []),
-        dayPart(ctx, d),
-        ...openPart(ctx, d),
+        arriving(d.day, [
+          ...(d.needs && shownDay(ctx, d) === d.today ? [needsPart(ctx, d.needs)] : []),
+          dayPart(ctx, d),
+          ...openPart(ctx, d),
+        ]),
         ...places.homePart(ctx, d.travel),
         // The phone's own things (docs: perms2): the two switches, and the quiet syncs that keep the rest in step.
         ...phoneRows(ctx, d),
@@ -467,7 +491,7 @@ export function planHomeDesk(ctx: BotsCtx, d: PlanDayData | undefined) {
         col([
           ...addedLine(ctx, d),
           stripNodes(d),
-          ...(d.needs ? [needsPart(ctx, d.needs)] : []),
+          ...(d.needs && shownDay(ctx, d) === d.today ? [needsPart(ctx, d.needs)] : []),
           dayPart(ctx, d),
         ], { gap: 24, flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, maxWidth: 680 }),
         rail,

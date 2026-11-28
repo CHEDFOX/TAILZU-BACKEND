@@ -22,6 +22,7 @@
  * Pushes (push/engine): the storyboard is ready (cinema_board), the film waits for them (cinema_hold), the film is ready (cinema_ready).
  * Never a word of the film in a push: its title only.
  */
+import { filmsOn } from "./films.js";
 import { randomUUID } from "node:crypto";
 import { usdToPaise } from "../code/brain/money.js";
 import { asPerson } from "../privacy/aiGate.js";
@@ -465,6 +466,8 @@ export class CinemaService {
    * said. Costs a fraction of a paisa and makes nothing; what it costs is on the person's meter, as the bot's own reading of a picture is.
    */
   async proposal(userId: string, turns: readonly { role: "me" | "bot"; text: string }[]): Promise<Proposal | null> {
+    // Films are off for now (cinema/films.ts): no film card in the talk, and no reading of the talk for one.
+    if (!filmsOn()) return null;
     await this.consent(userId);
     const out = await asPerson(userId, () => propose(this.d.think(userId), turns));
     if (out.usd > 0) this.d.charge(userId, out.usd);

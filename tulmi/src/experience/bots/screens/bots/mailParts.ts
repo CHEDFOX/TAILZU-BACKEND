@@ -58,9 +58,14 @@ export interface ReplyView {
 /** The mailbox (the worker's inbox.ts): its folders, a folder's conversations, one conversation, its rules. */
 export interface FolderView { key: string; id: string; name: string; role: string | null; kind: "system" | "address" | "folder"; unread: number; total: number; email?: string }
 export interface Person { name: string; email: string }
-export interface MessageRow { id: string; threadId: string; from: Person; to: Person[]; subject: string; preview: string; at: number; unread: boolean; starred: boolean; count: number; ai?: { run: number; status: string } }
+export interface MessageRow {
+  id: string; threadId: string; from: Person; to: Person[]; subject: string; preview: string; at: number; unread: boolean; starred: boolean; count: number;
+  ai?: { run: number; status: string };
+  /** The newest message's files (four at most, each with its signed link) and how many it has in all. */
+  files?: Array<{ name: string; size: number; type: string; url?: string }>; fileCount?: number;
+}
 export interface MessagesView { folder: FolderView; folders: FolderView[]; page: number; more: boolean; total: number; messages: MessageRow[] }
-export interface ThreadMessage { id: string; from: Person; to: Person[]; cc: Person[]; at: number; text: string; unread: boolean; mine: boolean; attachments: Array<{ name: string; size: number; type: string }> }
+export interface ThreadMessage { id: string; from: Person; to: Person[]; cc: Person[]; at: number; text: string; unread: boolean; mine: boolean; attachments: Array<{ name: string; size: number; type: string; url?: string }> }
 export interface ThreadView { threadId: string; subject: string; starred: boolean; where: string[]; messages: ThreadMessage[]; ai?: { run: number; status: string } }
 export interface RuleView { id: number; name: string; enabled: boolean; line: string }
 
@@ -81,6 +86,8 @@ export interface MailData {
   folders?: FolderView[];
   /** The business shown's calls (src/rooms), newest first; absent when calls are not switched on, or the business is not theirs to call from. */
   calls?: RoomView[];
+  /** The business shown's newest mail, the page's list: all mail (a handler's, their first address's). */
+  messages?: MessagesView;
 }
 
 /** A business id as it may stand in a path or a param. */

@@ -109,15 +109,16 @@ async function routesExist(f: Fam, s: ScreenResponse) {
 const has3i = (nodes: Node[]) => nodes.some((n) => NODES_3I.includes(n.type));
 
 describe("the new Spaces from the server's answers", () => {
-  it("a first Spaces screen: the crowd and the dotted Create; an invitation waiting opens his thought, and Accept lets her in", async () => {
+  it("a first Spaces screen: the crowd with its + and CREATE SPACE; an invitation waiting opens his thought, and Accept lets her in", async () => {
     const f = await family();
     // Mom K. is invited to Home by Aanya and has no space yet.
     const inv = await f.call("POST", `${AREA}/spaces/${f.home}/invite`, A_, { email: "mom.k@example.in" });
     expect(inv.status).toBe(200);
     for (const client of ["phone", "desktop"] as const) {
       const v = await draw(f, K_, "bots.spaces", client);
-      expect(v.texts, client).toContain("Your Own Space");
-      expect(v.nodes.filter((n) => n.type === "BotCrowd"), client).toHaveLength(1);
+      expect(v.texts, client).toContain("CREATE SPACE");
+      // The box of tiny bots, and the one-bot box Add a person grows into.
+      expect(v.nodes.filter((n) => n.type === "BotCrowd"), client).toHaveLength(2);
       expect(v.s.state, client).toMatchObject({ thOpen: true, news: 1, creating: false });
       expect(v.texts, client).toContain("Home");
       expect(v.texts.some((t) => t.startsWith("Aanya") && t.includes("invited you")), client).toBe(true);
@@ -133,7 +134,8 @@ describe("the new Spaces from the server's answers", () => {
     expect(acc.body).toMatchObject({ status: "joined", id: f.home, name: "Home" });
     const joined = await draw(f, K_, "bots.spaces", "phone");
     expect(joined.texts).toContain("Your spaces");
-    expect(joined.nodes.filter((n) => n.type === "BotCrowd")).toHaveLength(0);
+    // On the list, the boxes are there only for Create and Add (each drawn while it is open).
+    expect(joined.nodes.filter((n) => n.type === "BotCrowd")).toHaveLength(2);
   });
 
   it("Call Your People, then Name your space, then Done: the draft's Sent rows, and the space made", async () => {
@@ -151,10 +153,11 @@ describe("the new Spaces from the server's answers", () => {
     const done = await f.call("POST", `${AREA}/spaces/draft/done`, X_, { name: "Friends" });
     expect(done.status).toBe(200);
     for (const client of ["phone", "desktop"] as const) {
-      const v = await draw(f, X_, "bots.spaces", client, { params: { made: done.body.id } });
-      expect(v.texts, client).toContain("Friends is ready");
-      expect(v.texts.some((t) => t.includes("invited. You are its admin.")), client).toBe(true);
-      expect(v.s.state, client).toMatchObject({ made: true, creating: false });
+      // Done reads the screen again: the list, with Friends in it. No moment in between.
+      const v = await draw(f, X_, "bots.spaces", client);
+      expect(v.texts, client).toContain("Your spaces");
+      expect(v.texts, client).toContain("Friends");
+      expect(v.s.state, client).toMatchObject({ creating: false });
     }
   });
 

@@ -11,7 +11,7 @@ const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { builtinBots } = await import("../src/bots/builtin.js");
-const { GROUPED_SLUGS, NOT_TILED, START_LINES, START_TILE_HEIGHT, START_STAGE, START_STAGE_HEIGHT, START_SUB_LINES } = await import("../src/experience/bots/screens/bots/botsStart.js");
+const { CINEMA_3D_LINE, GROUPED_SLUGS, NOT_TILED, START_LINES, START_TILE_HEIGHT, START_STAGE, START_STAGE_HEIGHT, START_SUB_LINES } = await import("../src/experience/bots/screens/bots/botsStart.js");
 
 const build = (client: "phone" | "desktop", can: (c: string) => boolean = () => true) => buildBotsScreen({
   screenId: SCREENS.start, client, params: {}, tzOffsetMinutes: IST, user: { id: "u-aanya", name: "Aanya" },
@@ -57,7 +57,7 @@ describe("Start something", () => {
   });
 
   it("every line says what the bot is, then what it does, and fits three lines of a tile", () => {
-    for (const [slug, line] of Object.entries(START_LINES)) {
+    for (const [slug, line] of [...Object.entries(START_LINES), ["cinema (films off)", CINEMA_3D_LINE] as const]) {
       expect(line.length, slug).toBeLessThanOrEqual(116);
       expect(line, slug).toMatch(/^An? [^.]+\. \S/);
     }

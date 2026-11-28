@@ -45,7 +45,8 @@ const v2 = (userId = "u1"): void => {
   resetConfigForTests();
   void userId;
 };
-const v2off = (): void => { delete process.env.SDUI_V2; delete process.env.SDUI_V2_USERS; resetConfigForTests(); };
+/** Off, said so: on is the default now, so leaving the switch out is on. */
+const v2off = (): void => { process.env.SDUI_V2 = "false"; delete process.env.SDUI_V2_USERS; resetConfigForTests(); };
 
 const phone = (blocks: string[], runtime = PHONE_RUNTIME) =>
   clientVocab({ vocab: 2, blocks, runtime, platform: "ios" }, { client: "phone", userId: "u1" });
@@ -433,6 +434,13 @@ describe("who gets a vocabulary-2 screen", () => {
     const r = gateScreen(broken, phone(["expr"]));
     expect(r.served).toBe("refused");
     expect(r.errors.length).toBeGreaterThan(0);
+  });
+
+  it("is on by default: a client's blocks count unless SDUI_V2=false says otherwise", () => {
+    delete process.env.SDUI_V2; delete process.env.SDUI_V2_USERS; resetConfigForTests();
+    expect(sduiV2Live("u1")).toBe(true);
+    expect(phone(["media"]).blocks).toEqual(["media"]);
+    v2off();
   });
 
   it("with SDUI_V2 off nobody is treated as having a block, whatever they say", () => {

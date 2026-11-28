@@ -161,22 +161,21 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     expect(p.texts).not.toContain("Everyone in the call sees it join, and it says so in the chat.");
   });
 
-  it("keeps Coming up and Recent shut until their heading is pressed", async () => {
+  it("shows Coming up and Recent open, the first three of each, and the rest behind See all", async () => {
+    const many = Array.from({ length: 5 }, (_, i) => meeting(`r${i}`, { status: "done", title: `Sync ${i}`, startedAt: FIXED_NOW - (i + 1) * 3_600_000, endedAt: FIXED_NOW - (i + 1) * 3_000_000 }));
     const p = await build({ client, overview: OVERVIEW({
       upcoming: [meeting("u1", { title: "Board call" })],
-      recent: [meeting("r1", { status: "done", title: "Customer sync", noteId: "n7", startedAt: FIXED_NOW - 3_600_000, endedAt: FIXED_NOW - 3_000_000 })],
+      recent: many,
       live: [meeting("l1", { status: "in_call", title: "Sprint planning" })],
     }) });
     expect(p.lint).toEqual([]);
-    // The headings are there, and each opens its own list.
+    // Nothing to open to see what is coming: the headings are words, the rows are under them.
+    expect(p.texts).toEqual(expect.arrayContaining(["Coming up", "Board call", "Recent", "Sync 0", "Sync 1", "Sync 2", "See all 5"]));
+    // Only the rest of Recent is behind a tap; Coming up has one, so no See all.
     const folds = p.every().filter((a) => a.kind === "toggleState").map((a) => (a as unknown as { path: string }).path);
-    expect(folds).toEqual(expect.arrayContaining(["mp_up", "mp_recent"]));
-    expect(p.state).toMatchObject({ mp_up: false, mp_recent: false });
-    // The rows and the lines between them are behind the heading, so a shut one is the heading alone.
-    const behind = (path: string) => p.nodes.filter((n) => JSON.stringify(n.visibleIf ?? "") === JSON.stringify({ truthy: path })).length;
-    expect(behind("mp_up")).toBe(1);
-    expect(behind("mp_recent")).toBe(1);
-    // What it is in now is not behind anything.
+    expect([...new Set(folds)]).toEqual(["mp_recent"]);
+    const behind = p.nodes.find((n) => JSON.stringify(n.visibleIf ?? "") === JSON.stringify({ truthy: "mp_recent" }) && JSON.stringify(n).includes("Sync 3"));
+    expect(behind).toBeTruthy();
     expect(p.texts).toContain("In a call now");
     expect(JSON.stringify(p.every())).not.toContain("mp_live");
   });

@@ -37,7 +37,7 @@ describe("Chamen's card", () => {
 
   it("reads the date, the time and the place, keeps them, and says them back", async () => {
     const { a } = await app();
-    expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json()).toEqual({ sky: null, line: null, place: null, when: null });
+    expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json()).toEqual({ sky: null, line: null, place: null, when: null, parts: null });
     const put = await a.inject({ method: "PUT", url: "/v1/oracle/sky", payload: { date: "13 July 1994", time: "9:30 am", place: "Mumbai" } });
     expect(put.statusCode).toBe(200);
     expect(put.json().line).toBe("13 July 1994, 9:30 am, Mumbai");
@@ -50,7 +50,8 @@ describe("Chamen's card", () => {
     const { a } = await app();
     const when = await put(a, { date: "13 July 1994", time: "9:30 am" });
     expect(when.statusCode).toBe(200);
-    expect(when.json()).toEqual({ sky: null, line: null, place: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" } });
+    expect(when.json()).toEqual({ sky: null, line: null, place: null, when: { date: "13 July 1994", time: "9:30 am", line: "13 July 1994, 9:30 am" },
+      parts: { day: "13", month: "July", year: "1994", hour: "9", minute: "30", ampm: "am" } });
     expect((await a.inject({ method: "GET", url: "/v1/oracle/sky" })).json().when.line).toBe("13 July 1994, 9:30 am");
 
     const where = await put(a, { placeId: "c:19.0760,72.8777", place: "Mumbai", session: "0b6c1d0e-6a0f-4a43-9c1e-6f5b1a2c3d4e" });

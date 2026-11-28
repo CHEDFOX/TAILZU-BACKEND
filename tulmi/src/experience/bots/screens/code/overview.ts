@@ -2,6 +2,7 @@
  * The Code bot's overview screen.
  */
 
+import { ASK_BAR_STATE } from "../../ask.js";
 import type { ScreenResponse, ActionRef } from "../../../../../../shared/types/sdui.js";
 import { firstTasks, builtWith, testsLine } from "../../../../botsCode/brain.js";
 import { modeHead, pinnedHead } from "../shell/modeHead.js";
@@ -79,7 +80,7 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
         ...(need ? [needsCard(need)] : []),
         col([sectionLabel("Projects"), ...cards, addRow], { gap: 10 }),
       ],
-      footer: [chipRow, taskBar(ctx, {})], gap: 18,
+      footer: [chipRow, taskBar(ctx, {})], gap: 18, state: { task: "", ...ASK_BAR_STATE },
     });
   }
   const rows = d.projects.slice(0, 8).map((p) => {
@@ -129,6 +130,6 @@ export function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = fals
       ...(need ? [needsCard(need, { layout: "row" })] : []),
       row([col([sectionLabel(`Projects · ${d.projects.length}`), table], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 8 }), running], { gap: 24, alignItems: "flex-start" }),
     ],
-    footer: [chipRow, taskBar(ctx, { placeholder: "Tell Xode what to do" })],
+    footer: [chipRow, taskBar(ctx, { placeholder: "Tell Xode what to do" })], state: { task: "", ...ASK_BAR_STATE },
   });
 }

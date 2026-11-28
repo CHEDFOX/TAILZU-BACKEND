@@ -26,11 +26,14 @@ import { abs, CINEMA } from "./cinemaScreens.js";
 import { loadScene, sceneLine, SCENES, type SceneView } from "./cinema3dData.js";
 import { type BotPageData, chatBar, isDesk, lookOf, setState } from "./parts.js";
 import type { CinemaPageData } from "./cinemaPage.js";
+import { openMedia } from "../media.js";
 
 const DIRECTOR = "director";
 const said = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
 const refresh: ActionSpec = { kind: "refresh" };
 const plain = (s: string | null | undefined): string => String(s ?? "").trim().replace(/^[@\s]+/, "");
+/** A picture of theirs, whole, in the viewer: Save to Photos, Share (screens/media.ts). */
+const viewPicture = (url: string, words: string): ActionSpec => openMedia({ url: abs(url), name: `${(words || "Picture").slice(0, 60)}.png`, mime: "image/png" });
 const openScene = (id: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.cinemaScene, params: { s: id } });
 
 /**
@@ -127,7 +130,8 @@ export function cinema3dPage(ctx: BotsCtx, d: CinemaPageData): ScreenResponse {
             ? button(s.status === "working" ? "Building in 3D…" : "See it in 3D", openScene(s.id), { kind: "secondary", size: "md", icon: "spark" })
             : canRender ? button("Make it 3D", make3d(p.id), { kind: "secondary", size: "md", icon: "spark" }) : null;
           return card([
-            wide(p.url, desk ? 280 : 220, 12, plain(p.words).slice(0, 60)),
+            // A tap opens it whole in the viewer, to save or share (screens/media.ts).
+            box([wide(p.url, desk ? 280 : 220, 12, plain(p.words).slice(0, 60))], {}, viewPicture(p.url, plain(p.words))),
             text(plain(p.words), { size: 14, lineHeight: 20, lines: 3 }),
             ...(next ? [row([next])] : []),
           ], { gap: 12, padding: 12 });
@@ -190,7 +194,7 @@ function scenePage(ctx: BotsCtx, s: SceneView | undefined): ScreenResponse {
   if (shot) {
     body.push(col([
       sectionLabel(s.status === "working" ? "Building it" : "In 3D"),
-      wide(shot, desk ? 440 : 380, 14, "the 3D render", true),
+      box([wide(shot, desk ? 440 : 380, 14, "the 3D render", true)], {}, viewPicture(shot, `${plain(s.ask).slice(0, 40)} · 3D`)),
       ...(s.status === "working" ? [meta("This is the latest look. Each round is checked against your idea and the next one puts right what was off.", { size: 12, lines: 3 })] : []),
     ], { gap: 8 }));
   } else if (s.status === "working") {
@@ -203,7 +207,7 @@ function scenePage(ctx: BotsCtx, s: SceneView | undefined): ScreenResponse {
     const size = desk ? 200 : 104;
     body.push(col([
       sectionLabel("From every side"),
-      row(sides.map((u) => box([picture(abs(u), size, size, { radius: 12, fit: "contain", background: C.surface })], {})), { gap: 8, flexWrap: "wrap" }),
+      row(sides.map((u, i) => box([picture(abs(u), size, size, { radius: 12, fit: "contain", background: C.surface })], {}, viewPicture(u, `${plain(s.ask).slice(0, 40)} · side ${i + 1}`))), { gap: 8, flexWrap: "wrap" }),
     ], { gap: 8 }));
   }
 
