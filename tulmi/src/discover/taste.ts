@@ -51,9 +51,37 @@ export interface Dimension {
 
 export type TasteVector = Partial<Record<Tag, Dimension>>;
 
+/**
+ * HOW HARD, AND HOW EXPENSIVE — which are LEVELS, not likes.
+ *
+ * A tag is something you are for or against, so it gets pos and neg. Effort is not: nobody is "against 3 out of
+ * 5". What we want is where on the scale somebody sits and how sure we are of it, so these keep a weighted mean
+ * instead — `sum / weight`, with `weight` playing the part that evidence plays in `sure`.
+ *
+ * THEY LEARN FROM WHAT SOMEBODY WANTED, NEVER FROM WHAT THEY REFUSED. A keep on a five-day trek is evidence that
+ * this person will walk. "Not for me" on the same card is not evidence against walking — it could be the cold,
+ * the price, the country or the picture, and we have no way to tell which. A negative signal moves the tags and
+ * leaves the levels alone, because a wrong inference here sends somebody up a mountain or into a hostel.
+ */
+export interface Scale {
+  /** Sum of (level x weight). */
+  sum: number;
+  /** Sum of the weights behind it. */
+  weight: number;
+  at: string;
+}
+
+export const EMPTY_SCALE: Scale = { sum: 0, weight: 0, at: "1970-01-01T00:00:00.000Z" };
+
+/** The levels a plan needs and a feed does not. */
+export type Level = "effort" | "budget";
+export type Scales = Partial<Record<Level, Scale>>;
+
 export interface Taste {
   /** Per tag. A tag with no evidence is simply absent. */
   dims: TasteVector;
+  /** Effort and budget, as levels. Absent until something positive has been folded in. */
+  scales?: Scales;
   /** How many signals have been folded in, all told. */
   signals: number;
   at: string;
@@ -63,7 +91,7 @@ export interface Taste {
 
 export const EMPTY_DIMENSION: Dimension = { pos: 0, neg: 0, shown: 0, at: "1970-01-01T00:00:00.000Z" };
 
-export const emptyTaste = (at: string): Taste => ({ dims: {}, signals: 0, at, version: 0 });
+export const emptyTaste = (at: string): Taste => ({ dims: {}, scales: {}, signals: 0, at, version: 0 });
 
 export const dimOf = (t: Taste, tag: Tag): Dimension => t.dims[tag] ?? EMPTY_DIMENSION;
 
@@ -183,6 +211,11 @@ export interface Observation {
   at: string;
   /** True for a "shown": no evidence of taste, only of our choices. */
   onlyShown?: boolean;
+  /**
+   * The card's own effort (1-5) and budget (1-4). Folded into the LEVELS, and only when the signal is positive —
+   * see the note on Scale for why a rejection teaches us nothing about either.
+   */
+  levels?: { effort?: number; budget?: number };
 }
 
 /**
@@ -225,7 +258,59 @@ export function fold(t: Taste, o: Observation, nowMs: number = Date.parse(o.at))
     };
   }
 
-  return { dims, signals: t.signals + 1, at: nowIso, version: t.version + 1 };
+  // The levels: only what they went toward, never what they turned down.
+  const scales: Scales = { ...t.scales };
+  if (!o.onlyShown && o.weight > 0 && o.levels) {
+    for (const level of ["effort", "budget"] as const) {
+      const of = o.levels[level];
+      if (typeof of !== "number" || !Number.isFinite(of)) continue;
+      const had = scales[level] ?? EMPTY_SCALE;
+      scales[level] = { sum: had.sum + of * o.weight, weight: had.weight + o.weight, at: nowIso };
+    }
+  }
+
+  return { dims, scales, signals: t.signals + 1, at: nowIso, version: t.version + 1 };
+}
+
+// ===================================================================== levels
+
+/** What we think somebody's level is, and whether we actually know it. */
+export interface Reading {
+  /** The weighted mean, on the dimension's own scale. Meaningless when `sure` is low. */
+  of: number;
+  /** 0 .. 1, the same shrinkage as a tag: thin evidence is honestly thin. */
+  sure: number;
+}
+
+/**
+ * HOW SURE WE HAVE TO BE BEFORE WE STOP ASKING.
+ *
+ * Under this, a planner asks the person instead of guessing, and says that is what it is doing. Over it, we have
+ * watched them choose enough times to not waste a question. Deliberately not high: three or four keeps is a real
+ * signal, and a product that interrogates somebody who has already told it through their behaviour is worse than
+ * one that occasionally gets it slightly wrong.
+ */
+export const KNOWN_AT = 0.45;
+
+export const readingOf = (t: Taste, level: Level): Reading => {
+  const s = t.scales?.[level] ?? EMPTY_SCALE;
+  return { of: s.weight > 0 ? s.sum / s.weight : 0, sure: s.weight / (s.weight + SHRINKAGE) };
+};
+
+/** Whether a plan can get on without asking about this. */
+export const weKnow = (t: Taste, level: Level): boolean => readingOf(t, level).sure >= KNOWN_AT;
+
+/** Somebody answered a question we could not answer ourselves. Folded like any other evidence, and heavily. */
+export const ANSWER_WEIGHT = 8;
+
+export function told(t: Taste, level: Level, of: number, at: string): Taste {
+  const had = t.scales?.[level] ?? EMPTY_SCALE;
+  return {
+    ...t,
+    scales: { ...t.scales, [level]: { sum: had.sum + of * ANSWER_WEIGHT, weight: had.weight + ANSWER_WEIGHT, at } },
+    at,
+    version: t.version + 1,
+  };
 }
 
 // ===================================================================== using it

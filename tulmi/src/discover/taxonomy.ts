@@ -39,6 +39,12 @@ export const BUDGETS = ["budget", "moderate", "premium", "luxury"] as const;
 export type Budget = (typeof BUDGETS)[number];
 export const isBudget = (v: unknown): v is Budget => typeof v === "string" && (BUDGETS as readonly string[]).includes(v);
 
+/** 1..4, so the profile can hold "about how much do they spend" as a level (taste.ts Scale). */
+export const budgetLevel = (b: Budget): number => BUDGETS.indexOf(b) + 1;
+/** Back again, for saying it in words. Rounds to the nearest band. */
+export const budgetBand = (level: number): Budget =>
+  BUDGETS[Math.min(BUDGETS.length - 1, Math.max(0, Math.round(level) - 1))]!;
+
 /** Months 1-12 as bits, so "is it good in March" is one integer test. */
 export type SeasonMask = number;
 export const ALL_YEAR: SeasonMask = 0b1111_1111_1111;
