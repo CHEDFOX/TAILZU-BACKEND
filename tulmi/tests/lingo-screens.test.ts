@@ -180,7 +180,26 @@ describe("the new rungs draw with nodes every build already has", () => {
     const s = json(setScreen(ctx(), "es", data));
     expect(s).toContain("What would you say?");
     expect(s).toContain("un café por favor");
-    expect(s).not.toContain("correct");
+    // The tree never holds the answer: which option was right comes back with the mark, from the server.
+    expect(s).not.toMatch(/"correct"\s*:/);
+    expect(s).toContain('"mark.correct"');
+  });
+
+  it("lights the right option and greys the rest once the pick is marked, before Next", () => {
+    const data: SetData = {
+      exercises: [ex("choose", { prompt: "café", options: ["coffee", "dog", "book"] })],
+      progress: course().progress, mastery: course().mastery,
+    };
+    const s = json(setScreen(ctx(), "es", data));
+    // Each option has a strong row shown when it is the right one and a grey row otherwise, and the one picked says so.
+    for (const i of [0, 1, 2]) {
+      expect(s).toContain(`{"eq":["mark.correct",${i}]}`);
+      expect(s).toContain(`{"neq":["mark.correct",${i}]}`);
+      expect(s).toContain(`{"eq":["picked",${i}]}`);
+    }
+    expect(s).toContain("your pick");
+    // The taps are only there until the mark is.
+    expect(s).toContain('"visibleIf":{"falsy":"mark"}');
   });
 
   it("asks for the whole thing out loud for speak, and for something of their own for talk", () => {

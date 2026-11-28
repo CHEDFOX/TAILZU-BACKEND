@@ -356,6 +356,25 @@ function served() {
 }
 const who = (user: string) => ({ authorization: `Bearer ${user}` });
 
+describe("Tell Xode what to do, with a file", () => {
+  it("puts the insert key beside the box on the overview and in a project, and a file goes with the ask", async () => {
+    const two = { ...API, "GET /v1/code/projects": { projects: [project, { ...project, id: "22222222-2222-4222-8222-222222222222", fullName: "aanya-sharma/salon-booking" }] } };
+    for (const [params, api] of [[{}, two], [{ project: project.id }, API]] as const) {
+      const s = await buildBotsScreen({ screenId: "bots.code", client: "phone", params, tzOffsetMinutes: IST, user: { id: "u" }, can: new Set(["BotsKit", "FileUpload", "BotsMotion"]), files: true, desk: { pages: false, notes: false } }, fakeDeps({ api }));
+      const json = JSON.stringify(s.root);
+      const lint = lintTree(s.root!);
+      expect(lint).toEqual([]);
+      expect(json, JSON.stringify(params)).toContain("Insert a photo or a file");
+      // While a file is on the box the send asks Xode with it; with none it does what it always did.
+      expect(json).toContain('"attachments":"$state.attach"');
+      expect(json).toContain('{"any":[{"truthy":"attach.0"}');
+    }
+    // A build that cannot upload keeps the bar as it was, with no key.
+    const { json } = await build("bots.code", "phone", { project: project.id });
+    expect(json).not.toContain("Insert a photo or a file");
+  });
+});
+
 describe("Tell Xode what to do, offline", () => {
   it("keeps the ask in the outbox for Xode (a build with one says it is offline); online, it asks as before", async () => {
     // Two projects: Xode's overview, whose bar asks the bot (not one project's plan).

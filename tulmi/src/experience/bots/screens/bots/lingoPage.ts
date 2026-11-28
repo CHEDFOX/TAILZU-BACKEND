@@ -426,6 +426,47 @@ export const END: Record<Performance, { head: string; body: string }> = {
   struggling: { head: "That was a hard one", body: "Next set is the ones you missed, and nothing new." },
 };
 
+/**
+ * THE OPTIONS OF A PICK-ONE QUESTION, and what they become once it is marked.
+ *
+ * Until the mark comes back each option is a row to tap. Once it is back (`mark.correct`, the server's: the app never
+ * held the answer) the taps are gone and the list says what was right: that option drawn strong with a tick, the
+ * others gone grey, and the one they picked, when it was not the right one, says so. Only then does Next appear
+ * (setScreen step), so a wrong pick is always shown its answer before the set moves on.
+ */
+function choices(options: readonly string[], answer: (body: Record<string, unknown>) => ActionRef): Node[] {
+  const pick = (i: number): ActionRef => seq({ kind: "setState", path: "picked", value: i }, answer({ picked: i }));
+  const shown = (o: string, i: number): Node[] => [
+    when({ eq: ["mark.correct", i] }, row([
+      text(o, { size: 15, weight: 600, lineHeight: 20, style: { flexGrow: 1, flexShrink: 1 } }),
+      icon("check", { size: 16, weight: 2.2 }),
+    ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 48, backgroundColor: C.surface })),
+    when({ neq: ["mark.correct", i] }, row([
+      text(o, { size: 15, lineHeight: 20, color: C.idle, style: { flexGrow: 1, flexShrink: 1 } }),
+      when({ eq: ["picked", i] }, text("your pick", { size: 12, color: C.idle })),
+    ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 48 })),
+  ];
+  return [
+    when({ falsy: "mark" }, listCard(options.map((o, i) => listRow({ label: o, onPress: pick(i) })))),
+    when({ truthy: "mark" }, listCard(options.map((o, i) => col(shown(o, i))))),
+  ];
+}
+
+/** The same for a gap in a sentence, whose options are word chips: the right word filled in, the others grey. */
+function wordChoices(options: readonly string[], answer: (body: Record<string, unknown>) => ActionRef): Node[] {
+  const pick = (i: number): ActionRef => seq({ kind: "setState", path: "picked", value: i }, answer({ picked: i }));
+  const faded = (o: string): Node => row([text(o, { size: 13, color: C.idle, lineHeight: 17 })], {
+    paddingVertical: 8, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, alignSelf: "flex-start",
+  });
+  return [
+    when({ falsy: "mark" }, row(options.map((o, i) => chip(o, { onPress: pick(i) })), { gap: 8, flexWrap: "wrap" })),
+    when({ truthy: "mark" }, row(options.map((o, i) => col([
+      when({ eq: ["mark.correct", i] }, chip(o, { selected: true })),
+      when({ neq: ["mark.correct", i] }, faded(o)),
+    ])), { gap: 8, flexWrap: "wrap" })),
+  ];
+}
+
 /** One exercise, drawn by its kind. Every node here is vocabulary 1. */
 function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
   // `ref` and never the word: a typed or spoken exercise must not carry its own answer to the client.
@@ -439,7 +480,7 @@ function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
     return [
       head(ex.prompt),
       meta("What does it mean?", { size: 13 }),
-      listCard(ex.options.map((o, i) => listRow({ label: o, onPress: answer({ picked: i }) }))),
+      ...choices(ex.options, answer),
     ];
   }
   if (ex.kind === "reply") {
@@ -448,14 +489,14 @@ function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
     return [
       meta("What would you say?", { size: 13 }),
       head(ex.prompt),
-      listCard(ex.options.map((o, i) => listRow({ label: o, onPress: answer({ picked: i }) }))),
+      ...choices(ex.options, answer),
     ];
   }
   if (ex.kind === "blank") {
     return [
       meta(ex.prompt, { size: 14 }),
       head(ex.sentence),
-      row(ex.options.map((o, i) => chip(o, { onPress: answer({ picked: i }) })), { gap: 8, flexWrap: "wrap" }),
+      ...wordChoices(ex.options, answer),
     ];
   }
   if (ex.kind === "chips") {
@@ -591,7 +632,7 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
   // THE APP REPORTS NOTHING. Every answer was marked and written into the set by the server as it was given
   // (/v1/lingo/answer, migration 0109), so closing a set off sends which course and nothing else. An app that
   // handed its own list back would be the one message in Babbl that could say "I was right".
-  const clear: ActionSpec[] = [{ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }];
+  const clear: ActionSpec[] = [{ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }, { kind: "setState", path: "picked", value: null }];
 
   /**
    * THE END OF THE SET, and the only time the server is asked anything between the first exercise and the last.
@@ -692,7 +733,7 @@ export const LINGO_SCREENS: BotsScreen[] = [
       // the server's, written as they were marked.
       // `done` is what the finished set came back as: while it is null the exercises are drawn, and once it is
       // there the set's end is (setScreen `ended`).
-      state: { i: 0, said: "", mark: null, say: "", done: null },
+      state: { i: 0, said: "", mark: null, say: "", done: null, picked: null },
     }),
   }),
   screen({

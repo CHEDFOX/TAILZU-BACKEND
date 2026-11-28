@@ -629,6 +629,9 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       againAfter: againAfter(mark.verdict),
       // What it was actually asked as, which differs from `kind` only when a gap had no sentence to sit in.
       asked: ex.kind,
+      // WHICH OPTION WAS RIGHT, for a question answered by picking one: the screen lights it and greys the rest
+      // before the set moves on (lingoPage.ts choices). Only now, after the pick is marked, so nothing is given away.
+      ...(ex.kind === "choose" || ex.kind === "reply" || ex.kind === "blank" ? { correct: ex.correct } : {}),
     });
   });
 }

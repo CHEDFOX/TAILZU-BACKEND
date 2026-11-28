@@ -53,6 +53,8 @@ const shut: ActionSpec = { kind: "setState", path: INSERT, value: false };
 
 /** Any file on the ask. One can be taken off from the middle and leave a gap, so it is any of them, not the first. */
 const anyOnAsk: Condition = { any: Array.from({ length: MOST }, (_, i) => ({ truthy: `${ATTACH}.${i}` })) };
+/** The same test, for a bar of its own that sends differently while a file is on it (Xode's task bar). */
+export const ON_ASK = anyOnAsk;
 /** Take ONE file off the ask: its ref and its picture, at the same place in both lists (the gap is skipped when sent). */
 const takeOff = (i: number): ActionRef => seq({ kind: "clearState", path: `${ATTACH}.${i}` }, { kind: "clearState", path: `${SHOTS}.${i}` });
 
