@@ -550,8 +550,8 @@ function markRow(): Node {
     // The palette has no green and no red, and that is right: a verdict is said with the same marks the rest of the
     // app says state with. `close` gets "waiting" rather than "failed", because it is not a failure.
     when({ eq: ["mark.mark.verdict", "right"] }, row([statusMark("done", { size: 10, still: true }), text("right", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
-    when({ eq: ["mark.mark.verdict", "close"] }, row([statusMark("waiting", { size: 10, still: true }), text("$state.whyWords", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
-    when({ eq: ["mark.mark.verdict", "wrong"] }, row([statusMark("needs", { size: 10, still: true }), text("$state.whyWords", { size: 14, weight: 600 })], { gap: 8, alignItems: "center" })),
+    when({ eq: ["mark.mark.verdict", "close"] }, row([statusMark("waiting", { size: 10, still: true }), ...whyLine()], { gap: 8, alignItems: "center" })),
+    when({ eq: ["mark.mark.verdict", "wrong"] }, row([statusMark("needs", { size: 10, still: true }), ...whyLine()], { gap: 8, alignItems: "center" })),
     when({ truthy: "mark.learned" }, meta("Learned — you've said it right twice now.", { size: 12 })),
   ], { gap: 8 }));
 }
@@ -807,6 +807,15 @@ export const LINGO_SCREENS: BotsScreen[] = [
     }),
   }),
 ];
+
+/**
+ * A mark's reason in words, on the screen: one line per reason the grader can give, shown when it is the one (the
+ * reply carries the code, `mark.mark.why`, never a sentence), and "not quite" when it gives none.
+ */
+function whyLine(): Node[] {
+  const words = (w: string): Node => text(w, { size: 14, weight: 600 });
+  return [...Object.entries(WHY).map(([why, w]) => when({ eq: ["mark.mark.why", why] }, words(w))), when({ falsy: "mark.mark.why" }, words(whyWords("")))];
+}
 
 /** The words for a mark's reason, for a screen to show. The grader returns a code, never a sentence. */
 export const whyWords = (why: string): string => WHY[why] ?? "not quite";
