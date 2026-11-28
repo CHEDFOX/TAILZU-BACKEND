@@ -344,9 +344,10 @@ export function botChip(bot: Pick<LiveBot, "name" | "color" | "icon" | "head">, 
 
 /** The line under a bot's name: what it is doing, in its colour, or its own line in grey; "Needs you" in ink. */
 export function botLine(bot: LiveBot, idle: string): Node {
-  if (bot.working) return text(`Working · ${bot.doing ?? "on it"}`, { size: 12, weight: 500, color: bot.color, lines: 1 });
+  // Semibold in every state, as on the living tiles; the colour says which.
+  if (bot.working) return text(`Working · ${bot.doing ?? "on it"}`, { size: 12, weight: 600, color: bot.color, lines: 1 });
   if (bot.needs) return text(`Needs you · ${bot.needs === 1 ? "1 question" : `${bot.needs} things`}`, { size: 12, weight: 600, color: C.ink, lines: 1 });
-  return meta(idle, { lines: 2 });
+  return text(idle, { size: 12, weight: 600, color: C.meta, lineHeight: 16, lines: 2 });
 }
 
 /**
@@ -358,7 +359,8 @@ export function botTile(bot: LiveBot, o: { idle: string; onPress?: ActionRef; he
     : bot.needs ? statusMark("needs", { size: 10 }) : null;
   return col([
     row([icon(bot.icon, { size: 26, color: bot.color, weight: 1.8 }), grow(), ...(mark ? [mark] : [])], { alignItems: "flex-start" }),
-    col([text(bot.name, { size: 16, weight: 600, lineHeight: 21 }), botLine(bot, o.idle)], { gap: 3 }),
+    // The name in capitals and bold, a clear gap above its line (the living tiles draw the same: BotTiles).
+    col([text(bot.name, { size: 15, weight: 700, lineHeight: 20, tracking: 0.6, upper: true, lines: 1 }), botLine(bot, o.idle)], { gap: 7 }),
   ], {
     height: o.height ?? 132, padding: o.padding ?? 16, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line,
     justifyContent: "space-between", backgroundColor: C.paper,
@@ -419,7 +421,7 @@ export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: num
   return {
     type: "BotTiles",
     props: {
-      tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold },
+      tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold, bold: FACE.bold },
       ...(o.strip ? { strip: o.strip, stripHeight: o.stripHeight ?? 104 } : {}),
       ...(o.surprises ? { surprises: o.surprises } : {}),
       ...(o.stage ? { stage: o.stage, subLines: o.subLines ?? 2, ...(o.nameGap ? { nameGap: o.nameGap } : {}) } : {}),

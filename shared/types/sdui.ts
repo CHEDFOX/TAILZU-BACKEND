@@ -1004,7 +1004,7 @@ export interface BotTilesProps {
   padding: number;
   gap: number;
   /** The Geist faces by weight, as the app registered them. */
-  faces: { regular: string; medium: string; semibold: string };
+  faces: { regular: string; medium: string; semibold: string; bold?: string };
   /**
    * One more tile as a full-width row under the grid (Notes): its bot on a stage of its own at the left, its name and
    * line on the right. The last bot of the grid's world, so its tap is the tiles' moment. Only for a build that

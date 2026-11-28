@@ -98,7 +98,7 @@ export const START_TILE_HEIGHT = 184;
 export const START_STAGE = 100;
 export const START_SUB_LINES = 3;
 /** The room between the name and what the bot is, so the two read as a title and its line. */
-export const START_NAME_GAP = 9;
+export const START_NAME_GAP = 12;
 export const START_STAGE_HEIGHT = START_STAGE + 21 + START_NAME_GAP + START_SUB_LINES * 16 + 24;
 
 /** One bot as a living tile: its name and what it can do (always as a description here, never a status). */
